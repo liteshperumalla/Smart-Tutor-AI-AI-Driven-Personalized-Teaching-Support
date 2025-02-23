@@ -11,4 +11,7 @@ Vector Database & Model Selection: Selected a scalable vector database (e.g., FA
 
 RAG Model Development: Integrated the vector database with a generative model (e.g., GPT-4) for precise responses, ranking retrieved documents by relevance. Front-End Integration: Use Streamlit or Flask to create an interactive UI with real-time query processing and search history. 
 
-Meeting Scheduler Agent (Optional): Automated scheduling via NLP-based intent detection, integrating with Google Calendar and Outlook. This system enhances learning by providing structured, relevant, and easily accessible academic conten
+Meeting Scheduler Agent: Automated scheduling via NLP-based intent detection, integrating with Google Calendar and Outlook. This system enhances learning by providing structured, relevant, and easily accessible academic conten
+
+
+![smart tutor ai assitant flow diagram-Page-1 drawio (1)](https://github.com/user-attachments/assets/fd4827f3-0157-430f-8d58-d64ac8bee433)
