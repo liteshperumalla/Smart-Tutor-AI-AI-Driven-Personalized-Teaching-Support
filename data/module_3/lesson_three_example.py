@@ -9,8 +9,6 @@ Original file is located at
 # 1. Python module and Python package
 
 **Python Modules**
-
-
 *   A module is a file containing Python definitions and statements.
 *   A module can define functions, classes and variables.
 *   A module can also include runnable code.
