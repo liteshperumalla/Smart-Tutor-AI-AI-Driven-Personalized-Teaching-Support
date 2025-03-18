@@ -8,7 +8,6 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, get_response_synthesizer
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter
-#from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from chromadb import PersistentClient
 from llama_index.core.retrievers import BaseRetriever
@@ -52,18 +51,28 @@ def preprocess_text(file_path, text):
 # LOAD DOCUMENTS & PREPROCESS
 # ------------------------------
 doc_path = "/Users/Guest/Downloads/Module 2"
+
 try:
-    reader = SimpleDirectoryReader(doc_path, required_exts=['.pptx', '.ipynb']).load_data()
-    if not reader:
+    # Specify file extensions you want to read
+    reader = SimpleDirectoryReader(doc_path, required_exts=['.pptx', '.ipynb', '.docx', '.csv', '.jpeg', '.pdf', '.png'])
+    docs = reader.load_data()  # Load the documents
+
+    if not docs:
         print("❌ No documents found! Check the path and file extensions.")
         exit()
-    print(f"✅ Loaded {len(reader)} documents from {doc_path}")
+
+    print(f"✅ Loaded {len(docs)} docs")
+
+    # Loop through the documents and print metadata
+    for idx, doc in enumerate(docs):
+        print(f"{idx} - {doc.metadata}")  # Print the metadata of each document
+
 except Exception as e:
     print(f"❌ Error loading documents: {e}")
     exit()
 
-# Apply metadata and preprocess text
-for doc in reader:
+# Apply metadata and preprocess text for documents in `docs`
+for doc in docs:
     doc.metadata = {
         "file_name": doc.metadata.get("file_name", ""),
         "file_path": doc.metadata.get("file_path", "")
@@ -96,7 +105,7 @@ pipeline = IngestionPipeline(
 )
 
 try:
-    nodes = pipeline.run(documents=reader)
+    nodes = pipeline.run(documents=docs)  # Use docs instead of reader
     if not nodes:
         print("❌ No nodes were created. Check document parsing.")
         exit()
@@ -124,6 +133,7 @@ try:
 except Exception as e:
     print(f"❌ Error creating VectorStoreIndex: {e}")
     exit()
+
 # ------------------------------
 # CREATE CHAT ENGINE & PROCESS QUERY
 # ------------------------------
