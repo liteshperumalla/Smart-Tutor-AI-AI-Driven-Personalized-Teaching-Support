@@ -1,0 +1,3887 @@
+✅ Model sentence-transformers/all-MiniLM-L6-v2 loaded successfully.
+LLM is explicitly disabled. Using MockLLM.
+✅ Loaded 93 docs
+0 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'file_size': 4128140, 'creation_date': '2025-03-20', 'last_modified_date': '2025-03-07'}
+1 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'file_name': 'Lesson_two_example1.ipynb', 'file_size': 25667, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+2 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+3 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+4 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+5 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+6 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+7 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+8 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+9 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+10 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+11 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+12 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+13 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+14 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+15 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+16 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+17 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+18 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+19 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+20 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+21 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+22 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+23 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+24 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+25 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+26 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+27 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+28 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+29 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+30 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+31 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+32 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+33 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+34 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+35 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+36 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+37 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+38 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+39 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+40 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+41 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+42 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+43 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+44 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+45 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+46 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+47 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+48 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+49 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+50 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+51 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+52 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+53 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+54 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+55 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+56 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+57 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+58 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+59 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+60 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+61 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+62 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+63 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+64 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+65 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+66 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+67 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+68 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+69 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+70 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+71 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+72 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+73 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+74 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+75 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'file_name': 'Lesson_two_example2.ipynb', 'file_size': 67052, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+76 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'file_name': 'Lesson_two_example3.ipynb', 'file_size': 72802, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+77 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'file_name': 'Lesson_two_example3.ipynb', 'file_size': 72802, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+78 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'file_name': 'Lesson_two_example3.ipynb', 'file_size': 72802, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+79 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'file_name': 'Lesson_two_example3.ipynb', 'file_size': 72802, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+80 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'file_name': 'Lesson_two_example3.ipynb', 'file_size': 72802, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+81 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+82 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+83 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+84 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+85 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+86 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+87 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+88 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+89 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+90 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+91 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+92 - {'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'file_name': 'Week_2_Code_Demo.ipynb', 'file_size': 42143, 'creation_date': '2025-03-20', 'last_modified_date': '2025-02-22'}
+
+Chunk 1:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 87, 'num_chars': 512}
+Text: 
+
+Slide #0: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+Lesson 2: Python Basic (1)
+Haihua Chen, Ph.D.
+2025/3/6
+1
+
+
+Slide #1: 
+
+
+
+
+
+
+1
+
+
+2
+
+
+3
+
+
+4
+
+ Image: a city with tall buildings and a sky background
+
+Basic Syntax
+Python Variables
+Python Operators
+Python Data Types
+2025/3/6
+2
+
+
+5
+Python Files
+
+
+6
+Loop
+
+
+7
+Conditionals
+
+
+8
+In-class Quiz 1
+
+
+Slide #2: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+1
+Basic Syntax
+
+2025/3/6
+3
+
+
+Slide #3: 
+
+a  high-level programming langua
+
+
+Chunk 2:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 94, 'num_chars': 512}
+Text: anguage like Java, C#, C++ et al.
+
+1. Execute Python Syntax
+Interpreter: immediate mode  and script mode 
+
+
+2025/3/6
+4
+
+ Image: a computer screen with a bunch of pictures on it
+
+
+ Image: a black and white clock on a black and white tv screen
+
+
+ Image: a black and white photo of a clock on a wall
+
+
+ Image: a sign with a picture of a man and a clock
+
+
+
+Slide #4: 
+
+
+Python Indentation
+2025/3/6
+5
+Indentation refers to the spaces at the beginning of a code line.
+Python uses indentation to indicate a block of cod
+
+
+Chunk 3:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 91, 'num_chars': 512}
+Text: f code.
+
+
+ Image: a collage of photographs of a person wearing a blue ribbon
+
+
+ Image: a collage of photographs of a person
+
+
+ Image: a collage of photographs of a person in a blue shirt
+
+
+
+Slide #5: 
+
+
+Python Comments
+2025/3/6
+6
+Comments can be used to explain Python code.
+Comments can be used to make the code more readable.
+Comments can be used to prevent execution when testing code.
+
+ Image: a sign that is on the side of a building
+
+
+ Image: a collage of photos of a person holding a computer keyboard
+
+
+ 
+
+
+Chunk 4:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 91, 'num_chars': 512}
+Text: d
+
+
+ Image: an advertisement for a new york state university
+
+
+ Image: an advertisement for a new york state university
+
+
+ Image: a drawing of a person with an arrow pointing in the right direction
+
+
+
+Slide #6: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+2
+Python Variables
+
+2025/3/6
+7
+
+
+Slide #7: 
+
+A variable is a name that refers to a value
+
+Variables
+2025/3/6
+8
+A variable can have a short name (like x and y) or a more descriptive name (age, carname, total_volume)
+A variable name must s
+
+
+Chunk 5:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 85, 'num_chars': 512}
+Text: ust start with a letter or the underscore character
+A variable name cannot start with a number
+A variable name can only contain alpha-numeric characters and underscores (A-z, 0-9, and _ )
+Variable names are case-sensitive
+
+ Image: a computer screen with a picture of a person on it
+
+
+ Image: a collage of photos showing a person holding a sign
+
+
+ Image: a collage of images showing different types of computers
+
+
+
+Slide #8: 
+
+These words can’t be used as variables
+
+Variable names and keywords
+
+ Image: a collage
+
+
+Chunk 6:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 91, 'num_chars': 512}
+Text: llage of photographs showing various signs for sale
+
+2025/3/6
+9
+
+
+Slide #9: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+3
+Python Data Types
+
+2025/3/6
+10
+
+
+Slide #10: 
+
+
+Commonly used python data types
+
+
+
+
+2025/3/6
+11
+
+
+Slide #11: 
+
+
+Python Numbers
+2025/3/6
+12
+int
+float
+complex
+
+ Image: a white screen with a picture of a person on it
+
+
+ Image: a white screen with a picture of a man on it
+
+
+ Image: a white screen with a picture of a person on it
+
+
+
+Slide #12: 
+
+
+Python Numbers - Type Conv
+
+
+Chunk 7:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 85, 'num_chars': 512}
+Text:  Conversion
+2025/3/6
+13
+You can convert from one type to another with the int(), float(), and complex() methods
+
+
+ Image: a close up picture of a computer screen
+
+
+
+Slide #13: 
+
+
+Python Numbers - Random Number
+2025/3/6
+14
+Python has a built-in module called random that can be used to make random numbers
+
+ Image: a close up picture of a picture of a person on a computer
+
+
+
+Slide #14: 
+
+
+Python String
+2025/3/6
+15
+Either single quotation marks, or double quotation marks
+Multiline Strings
+Strings are Arrays: le
+
+
+Chunk 8:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 93, 'num_chars': 512}
+Text: s: len(), strip(), lower(), upper(), replace(), split(), format()
+
+ Image: a white wall with a picture of a clock on it
+
+
+ Image: an advertisement for a new york state university
+
+
+ Image: a clock on the side of a wall
+
+
+ Image: a sign that is on the side of a building
+
+
+ Image: a clock on the side of a wall
+
+
+ Image: a clock on the wall of a store
+
+
+
+Slide #15: 
+
+
+Python Casting
+2025/3/6
+16
+int() - constructs an integer number from an integer literal, a float literal, or a string literal
+float() - construc
+
+
+Chunk 9:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 97, 'num_chars': 512}
+Text: structs a float number from an integer literal, a float literal or a string literal
+str() - constructs a string from a wide variety of data types, including strings, integer literals and float literals
+
+ Image: a sign that is on top of a wall
+
+
+ Image: a sign that is on top of a white wall
+
+
+ Image: a sign that is on top of a wall
+
+
+
+Slide #16: 
+
+
+Python Booleans
+2025/3/6
+17
+Booleans represent one of two values: True or False.
+
+ Image: a white and blue sign with numbers on it
+
+
+ Image: a screen shot of a si
+
+
+Chunk 10:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 93, 'num_chars': 512}
+Text:  a sign on a computer screen
+
+
+
+Slide #17: 
+
+
+Python Booleans - Evaluate Values and Variables
+2025/3/6
+18
+Almost any value is evaluated to True if it has some sort of content.
+Any string is True, except empty strings.
+Any number is True, except 0.
+Any list, tuple, set, and dictionary are True, except empty ones.
+There are not many values that evaluates to False, except empty values, such as (), [], {}, "", the number 0, and the value None.
+
+ Image: a collage of photos showing a clock and a sign
+
+
+ Image: a 
+
+
+Chunk 11:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 68, 'num_chars': 512}
+Text: e: a black and white photo of a smart phone
+
+
+
+Slide #18: 
+
+
+Python List
+2025/3/6
+19
+List is a collection which is ordered and changeable. Allows duplicate members.
+
+ Image: a clock is displayed on the wall of a store
+
+W3schools_list: https://www.w3schools.com/python/python_lists.asp  
+
+
+Slide #19: 
+
+
+Python Tuple
+2025/3/6
+20
+Tuple is a collection which is ordered and unchangeable. Allows duplicate members.
+W3schools_tuple: https://www.w3schools.com/python/python_tuples.asp 
+
+ Image: a white wall with a num
+
+
+Chunk 12:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 61, 'num_chars': 512}
+Text: a number of signs on it
+
+
+
+Slide #20: 
+
+
+Python Set 
+2025/3/6
+21
+Set is a collection which is unordered and unindexed. No duplicate members.
+W3schools_set: https://www.w3schools.com/python/python_dictionaries.asp 
+
+ Image: a collage of photos showing different types of signs
+
+
+
+Slide #21: 
+
+
+Python Dictionary  
+2025/3/6
+22
+Dictionary is a collection which is unordered, changeable and indexed. No duplicate members.
+W3schools_dictionary: https://www.w3schools.com/python/python_lists.asp  
+
+ Image: a white pap
+
+
+Chunk 13:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 78, 'num_chars': 512}
+Text: e paper with a picture of a person on it
+
+
+
+Slide #22: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+4
+Python Operators
+
+2025/3/6
+23
+
+
+Slide #23: 
+
+
+Python Operators - Arithmetic Operators
+
+Arithmetic operators are used with numeric values to perform common mathematical operations
+2025/3/6
+24
+
+ Image: a collage of photos showing different types of electronic devices
+
+
+
+Slide #24: 
+
+
+Python Operators - Assignment Operators
+
+Assignment operators are used to assign values to variables
+2025/3/
+
+
+Chunk 14:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 74, 'num_chars': 512}
+Text: 25/3/6
+25
+
+ Image: a collage of images of a computer screen
+
+
+
+Slide #25: 
+
+
+Python Operators - Comparison Operators
+
+Comparison operators are used to compare two values
+2025/3/6
+26
+
+ Image: a collage of photos showing different types of electronic devices
+
+
+
+Slide #26: 
+
+
+Python Operators - Logical Operators
+
+Logical operators are used to combine conditional statements
+2025/3/6
+27
+
+ Image: a collage of photos showing different types of electronic devices
+
+
+
+Slide #27: 
+
+
+Python Operators - Identity Operato
+
+
+Chunk 15:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 85, 'num_chars': 512}
+Text: erators
+
+Identity operators are used to compare the objects, not if they are equal, but if they are actually the same object, with the same memory location
+
+2025/3/6
+28
+
+ Image: a collage of images showing a person wearing a blue shirt
+
+
+
+Slide #28: 
+
+
+Python Operators - Membership Operators
+
+Membership operators are used to test if a sequence is presented in an object:
+
+2025/3/6
+29
+
+ Image: a collage of photographs of a man in a blue shirt
+
+
+
+Slide #29: 
+
+
+Python Operators - Bitwise Operators
+
+Bitwise oper
+
+
+Chunk 16:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 88, 'num_chars': 512}
+Text:  operators are used to compare (binary) numbers
+2025/3/6
+30
+
+ Image: a collage of photos showing different types of electronic devices
+
+
+
+Slide #30: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+5
+Python Files
+
+2025/3/6
+31
+
+
+Slide #31: 
+
+
+Reading and writing
+
+To write a file, you have to open it with mode 'w' as a second parameter
+2025/3/6
+32
+
+ Image: a series of photographs showing the contents of a paper
+
+
+ Image: a white paper that has numbers on it
+
+
+ Image: a collage of photos showing
+
+
+Chunk 17:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 92, 'num_chars': 512}
+Text: owing a person wearing a blue shirt
+
+
+ Image: a collage of photographs of a person with a computer
+
+
+ Image: a number of signs on a white paper
+
+
+
+Slide #32: 
+
+
+Filenames and paths
+
+The os module provides functions for working with files and directories
+2025/3/6
+33
+
+ Image: a black and white photo of a sign on a white wall
+
+
+ Image: a collage of various signs on a wall
+
+
+ Image: a collage of photographs of people on a street
+
+
+ Image: a collage of various signs on a wall
+
+
+ Image: a collage of photographs o
+
+
+Chunk 18:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 88, 'num_chars': 512}
+Text: phs of a person with a sign
+
+
+
+Slide #33: 
+
+
+Input
+
+Input is  a built-in function in Python for getting input from the user
+
+Name=input(“please enter your name:”)
+
+
+2025/3/6
+34
+
+ Image: a collage of images of a person holding a computer keyboard
+
+
+
+Slide #34: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+6
+Loop
+
+2025/3/6
+35
+
+
+Slide #35: 
+
+
+Problem Statement
+
+ Image: a close up of a picture of a computer screen
+
+
+It is really bad to repeat similar codes again and again. 
+
+
+Slide #36: 
+
+Pyth
+
+
+Chunk 19:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 97, 'num_chars': 512}
+Text: 
+Python’s for loop could solve this kind of problems
+
+for loop
+We want to invite several friends to join a party. 
+
+
+Slide #37: 
+
+
+for loop – invite friends
+
+ Image: a black and white photo of a clock on a table
+
+
+ Image: a collage of photographs of a person on a computer screen
+
+friend in line 1 is called loop variable 
+Line 2 and 3 are loop body
+
+ Image: a sign that is on top of a pole
+
+
+
+Slide #38: 
+
+
+for--improved herd of turtles
+
+
+
+
+
+ Image: a collage of images of a person on a computer screen
+
+for i 
+
+
+Chunk 20:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 74, 'num_chars': 512}
+Text: or i in range(8)
+for _ in range(8)
+for color in [“yellow”,”red”,”purple”,”blue”]
+       alex.color(color)      
+alex.shape(“turtle”)      
+
+
+Slide #39: 
+
+
+for--Using for loop to print tables
+
+
+
+
+
+ Image: a computer screen with a picture of a person on it
+
+
+
+Slide #40: 
+
+
+The while statement--Using for loop to print tables
+
+
+ Image: a computer screen with a picture of a person on it
+
+ while condition:
+          statement
+
+ Image: a screen shot of a person using a computer
+
+
+
+Slide #41: 
+
+
+The while statemen
+
+
+Chunk 21:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 88, 'num_chars': 512}
+Text: tement—Another example
+
+ while condition:
+          statement
+
+ Image: a computer screen with a picture of a person on it
+
+
+
+Slide #42: 
+
+
+Question: how to choose between for and while?
+
+ Use a for loop if you know, before you start looping, the maximum number of times that you’ll need to execute the body.
+ So any problem like “iterate this weather model for 1000 cycles”, or “search this list of words”, “find all prime numbers up to 10000” suggest that a for loop is best.
+ By contrast, if you are required t
+
+
+Chunk 22:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 95, 'num_chars': 512}
+Text: red to repeat some computation until some condition is met, and you cannot calculate in advance when (of if) this will happen, as we did in this 3n + 1 problem, you’ll need a while loop.
+ We call the first case definite iteration — we know ahead of time some definite bounds for what is needed. The latter case is called indefinite iteration — we’re not sure how many iterations we’ll need — we cannot even establish an upper bound!
+
+
+Slide #43: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+7
+
+
+
+Chunk 23:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 80, 'num_chars': 512}
+Text: 
+
+
+7
+Conditionals
+2025/3/6
+44
+
+ Image: a black and white photo of a blue and white airplane
+
+
+
+Slide #44: 
+
+
+if statement
+
+
+
+
+ Image: a black and white photo of a clock on a wall
+
+If boolean expression:
+        statement_1
+else:
+         statement_2
+
+ Image: a blurry picture of a person on a computer screen
+
+
+
+Slide #45: 
+
+
+Omitting the else clause
+
+
+
+If boolean expression:
+        statement_1
+        statement_2
+
+ Image: a black and white photo of a clock on a wall
+
+
+ Image: a close up picture of a person'
+
+
+Chunk 24:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 71, 'num_chars': 512}
+Text: rson's face on a computer screen
+
+
+
+Slide #46: 
+
+
+Chained conditionals
+
+
+
+If x<y:
+     statement_1
+elif x>y:
+     statement_2
+Else:
+     statement_3
+
+ Image: a series of photographs showing a series of street signs
+
+
+ Image: a screen shot of a computer screen with a message on it
+
+
+
+Slide #47: 
+
+
+Nested conditionals
+
+
+
+If x<y:
+     statement_1
+else:
+     if x>y:
+         statement_2 
+    else:
+        statement_3
+
+ Image: a collage of photos showing different angles of a building
+
+
+ Image: a white table top
+
+
+Chunk 25:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 91, 'num_chars': 512}
+Text: e topped with a picture of a person
+
+
+
+Slide #48: 
+
+
+The break statement
+
+ The break statement is used to immediately leave the body of its loop.
+
+
+ Image: a computer screen with a picture of a person on it
+
+
+ Image: a collage of photos of a person on a cell phone
+
+
+
+Slide #49: 
+
+
+ continue statement
+
+
+
+ Image: a close up picture of a person's face on a computer screen
+
+ continue causes the program to immediately skip the processing of the rest of the body of the loop
+
+
+ Image: a series of photographs showi
+
+
+Chunk 26:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 84, 'num_chars': 512}
+Text: showing a street sign
+
+
+
+Slide #50: 
+
+
+pass statement
+
+
+ pass statement is used when a statement is required syntactically but you do not want any command or code to execute. 
+It is like null operation, as nothing will happen is it is executed
+
+ Image: a collage of photographs of a person wearing a blue shirt
+
+
+
+Slide #51: 
+
+
+Question: What's the difference between "break" and "continue" in Python?
+
+ Break: Jumps out of the closest enclosing loop (past the entire loop statement)
+ Continue: Jumps to the top 
+
+
+Chunk 27:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 88, 'num_chars': 512}
+Text:  top of the closest enclosing loop (to the loop’s header line)
+
+
+ Image: a collage of photos showing different types of signs
+
+
+ Image: a collage of photographs showing a number of different signs
+
+
+
+Slide #52: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+8
+In-class Quiz 1
+2025/3/6
+53
+
+ Image: a blurry picture of a blue and white object
+
+
+
+Slide #53: 
+Can be accessed on Canvas!
+
+In-class Exercise
+
+
+
+2025/3/6
+54
+
+
+Slide #54: 
+
+ Image: a large group of birds sitting on top of a building
+
+
+T
+
+
+Chunk 28:
+Document ID: 30a41613-59fd-4157-8e2c-9a3c54bbef07
+Metadata: {'file_name': 'Lesson two-Python Basic-Fall2024.pptx', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx', 'num_tokens': 5, 'num_chars': 26}
+Text: g
+
+
+Thank you
+2025/3/6
+55
+
+
+
+Chunk 29:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 82, 'num_chars': 512}
+Text: 
+
+
+# Python Indentations: Where in other programming languages the indentation in code is for readability only, in Python the indentation is very important. Python uses indentation to indicate a block of code.
+if 5 > 2:
+  print("Five is greater than two!")
+if(7<2):
+  print("Seven is not greater than 2? false")
+else: 
+  print("Ok, 7>2")
+
+
+# (1) Python Variables: integer, floats, booleans, strings 
+
+# In[ ]:
+
+
+### Define variables
+x = 5
+y = "John"
+z = 1000.0
+m = True
+print(x)
+print(type(x))
+print(y)
+print(typ
+
+
+Chunk 30:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 97, 'num_chars': 512}
+Text: t(type(y))
+print(z)
+print(type(z))
+print(m)
+print(type(m))
+
+
+# In[ ]:
+
+
+x = 4 # x is of type int
+print(type(x))
+x = "Sally" # x is now of type str
+print(x)
+print(type(x))
+
+
+# In[ ]:
+
+
+x = "John"
+print(x)
+# is the same as
+x = 'John'
+print(x)
+
+
+# # **Variable Names**
+# 
+# A variable can have a short name (like x and y) or a more descriptive name (age, carname, total_volume). Rules for Python variables:
+# 
+# *   A variable name must start with a letter or the underscore character
+# *   A variable name cannot s
+
+
+Chunk 31:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 89, 'num_chars': 512}
+Text: not start with a number
+# *   A variable name can only contain alpha-numeric characters and underscores (A-z, 0-9, and _ )
+# *   Variable names are case-sensitive (age, Age and AGE are three different variables)
+# 
+# 
+
+# Assign Value to Multiple Variables
+# 
+
+# In[ ]:
+
+
+x, y, z = "Orange", "Banana", "Cherry"
+print(x)
+print(y)
+print(z)
+
+print("--------------------------")
+a = b = c = "Orange"
+print(a)
+print(b)
+print(c)
+
+
+# # Python Numbers
+# There are three numeric types in Python:
+# 
+# *   int
+# *   float
+#
+
+
+Chunk 32:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 79, 'num_chars': 512}
+Text: oat
+# *   complex
+# 
+# Variables of numeric types are created when you assign a value to them:
+# 
+# 
+# 
+# 
+
+# In[ ]:
+
+
+# Example 1:
+
+x = 1    # int
+y = 2.8  # float
+z = 1j   # complex
+
+print(type(x))
+print(type(y))
+print(type(z))
+
+print("-------------------------------------")
+
+
+# Example 2:
+
+x = 1
+y = 35656222554887711
+z = -3255522
+
+print(type(x))
+print(type(y))
+print(type(z))
+
+print("-------------------------------------")
+
+# Example 3:
+
+
+x = 1.10
+y = 12E4
+z = -35.59
+
+print(type(x))
+print(type(y))
+print(t
+
+
+Chunk 33:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 90, 'num_chars': 512}
+Text: int(type(z))
+
+print("-------------------------------------")
+
+# Example 4:
+
+x = 3+5j
+y = 5j
+z = -5j
+
+print(type(x))
+print(type(y))
+print(type(z))
+
+
+# # Type Conversion
+# You can convert from one type to another with the int(), float(), and complex() methods:
+
+# In[ ]:
+
+
+# Convert from one type to another:
+
+x = 1 # int
+y = 2.8 # float
+z = 1j # complex
+
+#convert from int to float:
+a = float(x)
+
+#convert from float to int:
+b = int(y)
+
+#convert from int to complex:
+c = complex(x)
+
+print(a)
+print(b)
+print(c)
+
+pr
+
+
+Chunk 34:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 84, 'num_chars': 512}
+Text: )
+
+print(type(a))
+print(type(b))
+print(type(c))
+
+
+# # Random Number
+# Python does not have a random() function to make a random number, but Python has a built-in module called random that can be used to make random numbers:
+
+# In[ ]:
+
+
+# Import the random module, and display a random number between 1 and 9:
+
+import random
+
+print(random.randrange(1,10))
+
+
+# # Python Strings
+# String literals in python are surrounded by either single quotation marks, or double quotation marks.
+# 'hello' is the same as "hello"
+
+
+Chunk 35:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 89, 'num_chars': 512}
+Text: ello".
+
+# In[ ]:
+
+
+# Example 1
+# Assign String to a Variable: Assigning a string to a variable is done with the variable name followed by an equal sign and the string:
+
+a = "Hello"
+print(a)
+
+# Example 2
+# Multiline Strings: assign a multiline string to a variable by using three quotes (three double quotes or three single quotes)
+b= """Lorem ipsum dolor sit amet,
+consectetur adipiscing elit,
+sed do eiusmod tempor incididunt
+ut labore et dolore magna aliqua."""
+print(b)
+c= '''Lorem ipsum dolor sit amet,
+conse
+
+
+Chunk 36:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 72, 'num_chars': 512}
+Text: consectetur adipiscing elit,
+sed do eiusmod tempor incididunt
+ut labore et dolore magna aliqua.'''
+print(c)
+
+
+# Strings are Arrays
+
+# In[ ]:
+
+
+# Example 3
+# Get the character at position 1 (remember that the first character has the position 0):
+a = "Hello, World!"
+print(a[1])
+
+print("-------------------------------------")
+ 
+# Example 4
+# Substring. Get the characters from position 2 to position 5 (not included):
+b = "Hello, World!"
+print(b[2:5])
+
+print("-------------------------------------")
+
+
+# Example 5
+
+
+Chunk 37:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 77, 'num_chars': 512}
+Text: ple 5
+# The strip() method removes any whitespace from the beginning or the end:
+c = " Hello, World! "
+print(c.strip()) # returns "Hello, World!"
+
+print("-------------------------------------")
+
+
+# Example 6
+# The len() method returns the length of a string:
+
+d = " Hello, World! "
+print(a.strip()) # returns "Hello, World!"
+print("-------------------------------------")
+
+
+# Example 6
+# The lower() method returns the string in lower case:
+
+a = "Hello, World!"
+print(a.lower())
+
+
+
+# # Python Functions
+# In the 
+
+
+Chunk 38:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 95, 'num_chars': 512}
+Text:  the context of programming, a function is a named sequence of statements that performs a computation. When you define a function, you specify the name and the sequence of statements. Later, you can “call” the function by name.
+# 
+# A function is a block of code which only runs when it is called. You can pass data, known as parameters, into a function. A function can return data as a result.
+# 
+
+# In[ ]:
+
+
+# Example 1: Creating a Function
+# In Python a function is defined using the def keyword:
+
+def my_func
+
+
+Chunk 39:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 64, 'num_chars': 512}
+Text: _function_1():
+  print("Hello from a function")
+  print("-------------------------------------")
+  
+
+# Example 2: Calling a Function
+# To call a function, use the function name followed by parenthesis:
+
+def my_function_2():
+  print("Hello from a function")
+  print("*************************************")
+
+my_function_2()
+
+
+# Example 3: Parameters
+# Parameters are specified after the function name, inside the parentheses. You can add as many parameters as you want, just separate them with a comma:
+
+def my_fu
+
+
+Chunk 40:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 65, 'num_chars': 512}
+Text: my_function_3(fname):
+  print(fname + " Refsnes")
+
+my_function_3("Emil")
+my_function_3("Tobias")
+my_function_3("Linus")
+
+
+# Example 4: Default Parameter Value
+# If we call the function without parameter, it uses the default value:
+
+def my_function_4(country = "Norway"):
+  print("I am from " + country)
+
+my_function_4("Sweden")
+my_function_4("India")
+my_function_4()
+my_function_4("Brazil")
+
+
+# Example 5: Passing a List as a Parameter
+# You can send any data types of parameter to a function (string, number, li
+
+
+Chunk 41:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 75, 'num_chars': 512}
+Text: r, list, dictionary etc.), and it will be treated as the same data type inside the function.
+
+def my_function_5(food):
+  for x in food:
+    print(x)
+
+fruits = ["apple", "banana", "cherry"]
+
+my_function_5(fruits)
+
+# Example 6: Return Values
+# To let a function return a value, use the return statement:
+
+def my_function_6(x):
+  return 5 * x
+
+print(my_function_6(3))
+print(my_function_6(5))
+print(my_function_6(9))
+
+
+# Example 7: Keyword Arguments
+# You can also send arguments with the key = value syntax. This wa
+
+
+Chunk 42:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 77, 'num_chars': 512}
+Text: is way the order of the arguments does not matter.
+
+def my_function_7(child3, child2, child1):
+  print("The youngest child is " + child3)
+
+my_function_7(child1 = "Emil", child2 = "Tobias", child3 = "Linus")
+
+
+# Example 8: Arbitrary Arguments
+# If you do not know how many arguments that will be passed into your function, add a * before the parameter name in the function definition.
+
+def my_function_8(*kids):
+  print("The youngest child is " + kids[2])
+
+my_function_8("Emil", "Tobias", "Linus")
+
+
+# Example 9: 
+
+
+Chunk 43:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 62, 'num_chars': 512}
+Text: e 9: Recursion
+
+def tri_recursion(k):
+  if(k>0):
+    result = k+tri_recursion(k-1)
+    print(result)
+  else:
+    result = 0
+  return result
+
+print("\n\nRecursion Example Results")
+tri_recursion(6)
+
+
+
+# # Three common ways to use python functions
+# 
+# 
+# 1. Python Built-in Functions:
+# 
+# https://docs.python.org/3/library/functions.html
+# 
+# 
+# 2. Python libraries:
+# 
+# 20 Python libraries you can’t live without
+# 
+# https://pythontips.com/2013/07/30/20-python-libraries-you-cant-live-without/
+# 
+# 
+# 3. Defi
+
+
+Chunk 44:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 87, 'num_chars': 512}
+Text:  Define the functions by yourself.
+
+# # Python I/O
+# There are several different ways of handling input/output.
+# 
+
+# In[ ]:
+
+
+# Example 1: Keyboard Input and Output
+
+# Store input numbers
+num1 = input('Enter first number: ')
+num2 = input('Enter second number: ')
+# Add two numbers
+sum = float(num1) + float(num2)
+# Display the sum
+print('The sum of {0} and {1} is {2}'.format(num1, num2, sum))
+
+
+
+# In[ ]:
+
+
+# Example 2: Opening and Closing Files
+
+# Open a file
+fo = open("california_housing_test.csv", "wb")
+pr
+
+
+Chunk 45:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 93, 'num_chars': 512}
+Text: ")
+print ("Name of the file: ", fo.name)
+print ("Closed or not : ", fo.closed)
+print ("Opening mode : ", fo.mode)
+
+# Close opend file
+fo.close()
+
+
+# In[ ]:
+
+
+# Example 3: Writing into a file
+
+# Open a file
+fo = open("foo.txt", "w")
+fo.write( "Python is a great language.\nYeah its great!!\n")
+
+# Close opend file
+fo.close()
+
+
+# Python is a great language. and Yeah its great!! will be written in foo.txt
+
+
+# # **Excise for assignent one (Exercise 8-5):**
+# 
+# A Caesar cypher is a weak form of encryption that in
+
+
+Chunk 46:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 98, 'num_chars': 512}
+Text: at involves “rotating” each letter by a fixed number of places. To rotate a letter means to shift it through the alphabet, wrapping around to the beginning if necessary, so ’A’ rotated by 3 is ’D’ and ’Z’ rotated by 1 is ’A’.
+# 
+# To rotate a word, rotate each letter by the same amount. For example, “cheer” rotated by 7 is “jolly” and “melon” rotated by -10 is “cubed”. In the movie 2001: A Space Odyssey, the ship computer is called HAL, which is IBM rotated by -1.
+# 
+# Write a function called rotate_word th
+
+
+Chunk 47:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 92, 'num_chars': 512}
+Text: rd that takes a string and an integer as parameters, and returns a new string that contains the letters from the original string rotated by the given amount.
+# 
+# You might want to use the built-in function ord, which converts a character to a numeric code, and chr, which converts numeric codes to characters. Letters of the alphabet are encoded in alphabetical order, so for example:
+# 
+# \>>>ord('c') - ord('a')
+# 
+# 2
+# 
+# Because 'c' is the two-eth letter of the alphabet. But beware: the numeric codes for 
+
+
+Chunk 48:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 73, 'num_chars': 512}
+Text:  for upper case letters are different.
+# 
+# Potentially offensive jokes on the Internet are sometimes encoded in ROT13, which is a Caesar cypher with rotation 13. If you are not easily offended, find and decode some of them.
+# 
+# **Solution:**
+# http://thinkpython2.com/code/rotate.py.
+# 
+
+# In[ ]:
+
+
+"""This module contains a code example related to
+
+Think Python, 2nd Edition
+by Allen Downey
+http://thinkpython2.com
+
+Copyright 2015 Allen Downey
+
+License: http://creativecommons.org/licenses/by/4.0/
+"""
+
+from _
+
+
+Chunk 49:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 66, 'num_chars': 512}
+Text: rom __future__ import print_function, division
+
+
+def rotate_letter(letter, n):
+    """Rotates a letter by n places.  Does not change other chars.
+
+    letter: single-letter string
+    n: int
+
+    Returns: single-letter string
+    """
+    if letter.isupper():
+        start = ord('A')
+    elif letter.islower():
+        start = ord('a')
+    else:
+        return letter
+
+    c = ord(letter) - start
+    i = (c + n) % 26 + start
+    return chr(i)
+
+
+def rotate_word(word, n):
+    """Rotates a word by n places.
+
+    
+
+
+Chunk 50:
+Document ID: 7c13dccc-0d06-4353-8e47-8d85f6dead5a
+Metadata: {'file_name': 'Lesson_two_example1.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb', 'num_tokens': 30, 'num_chars': 291}
+Text: 
+    word: string
+    n: integer
+
+    Returns: string
+    """
+    res = ''
+    for letter in word:
+        res += rotate_letter(letter, n)
+    return res
+
+
+if __name__ == '__main__':
+    print(rotate_word('cheer', 7))
+    print(rotate_word('melon', -10))
+    print(rotate_word('sleep', 9))
+
+
+
+
+Chunk 51:
+Document ID: b1e1a77d-6aed-42fb-af68-7d294a140012
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 34, 'num_chars': 195}
+Text: 
+
+
+# Assign a list to an variable named my_list
+my_list = [1,2,3]
+print(my_list)
+
+
+# We just created a list of integers, but lists can actually hold different object types. For example:
+# 
+# 
+
+# 
+
+
+Chunk 52:
+Document ID: da18f8dc-21eb-457d-8b3c-dff149308bdf
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 27, 'num_chars': 166}
+Text: 
+
+
+my_list = ['A string',23,100.232,'o']
+print(my_list)
+
+
+# Just like strings, the len() function will tell you how many items are in the sequence of the list.
+# 
+
+# 
+
+
+Chunk 53:
+Document ID: 7ab6e891-c81c-4e54-b6c8-2f6f4fd47a97
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 30, 'num_chars': 164}
+Text: 
+
+
+len(my_list)
+
+
+# # 1.2 Indexing and Slicing
+# Indexing and slicing work just like in strings. Let's make a new list to remind ourselves of how this works:
+# 
+
+# 
+
+
+Chunk 54:
+Document ID: b43944bd-135b-4af1-9ee6-23ce8e96f9f6
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 11, 'num_chars': 80}
+Text: 
+
+
+my_list = ['one','two','three',4,5]
+# Grab element at index 0
+my_list[0]
+
+
+# 
+
+
+Chunk 55:
+Document ID: a07421f6-5ec7-4a90-b49e-ece9b405a139
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 10, 'num_chars': 57}
+Text: 
+
+
+# Grab index 1 and everything past it
+my_list[1:]
+
+
+# 
+
+
+Chunk 56:
+Document ID: 7169cc1b-aaa5-4d1f-87d0-5a6c45755248
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 24, 'num_chars': 124}
+Text: 
+
+
+# Grab everything UP TO index 3
+my_list[:3]
+
+
+# We can also use + to concatenate lists, just like we did for strings.
+
+# 
+
+
+Chunk 57:
+Document ID: b49a9d23-444e-422c-8aaf-b471c034600d
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 14, 'num_chars': 87}
+Text: 
+
+
+my_list + ['new item']
+
+
+# Note: This doesn't actually change the original list!
+
+# 
+
+
+Chunk 58:
+Document ID: 7ea3980a-19d6-4cfa-a648-b677cd0e340b
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 15, 'num_chars': 84}
+Text: 
+
+
+my_list
+
+
+# You would have to reassign the list to make the change permanent.
+
+# 
+
+
+Chunk 59:
+Document ID: dad1cd61-7be8-4e82-8412-55a87cd7f8c9
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 26, 'num_chars': 152}
+Text: 
+
+
+# Reassign
+my_list = my_list + ['add new item permanently']
+print(my_list)
+
+
+# We can also use the * for a duplication method similar to strings:
+
+# 
+
+
+Chunk 60:
+Document ID: 9b6b8f5c-74b9-4883-a9b3-e0f62e00c983
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 9, 'num_chars': 42}
+Text: 
+
+
+# Make the list double
+my_list * 2
+
+
+# 
+
+
+Chunk 61:
+Document ID: 01061050-42df-4da5-8327-98c8998db90f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 92, 'num_chars': 512}
+Text: 
+
+
+# Again doubling not permanent
+my_list
+
+
+# # 1.3 Basic List Methods
+# If you are familiar with another programming language, you might start to draw parallels between arrays in another language and lists in Python. Lists in Python however, tend to be more flexible than arrays in other languages for a two good reasons: they have no fixed size (meaning we don't have to specify how big a list will be), and they have no fixed type constraint (like we've seen above).
+# 
+# Let's go ahead and explore some more 
+
+
+Chunk 62:
+Document ID: 01061050-42df-4da5-8327-98c8998db90f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 33, 'num_chars': 158}
+Text: more special methods for lists:
+
+# In[ ]:
+
+
+# Create a new list
+list1 = [1,2,3]
+
+
+# Use the append method to permanently add an item to the end of a list:
+
+# 
+
+
+Chunk 63:
+Document ID: e94394d8-0f77-4fd9-bcf6-38b4d870596d
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 39, 'num_chars': 215}
+Text: 
+
+
+# Append
+list1.append('append me!')
+print(list1)
+
+
+# Use pop to "pop off" an item from the list. By default pop takes off the last index, but you can also specify which index to pop off. Let's see an example:
+
+# 
+
+
+Chunk 64:
+Document ID: f39cca07-c6c7-4bde-b519-ec636c2a20b9
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 10, 'num_chars': 62}
+Text: 
+
+
+# Pop off the 0 indexed item
+list1.pop(0)
+print(list1)
+
+
+# 
+
+
+Chunk 65:
+Document ID: 8950fbe4-aacc-41a2-b615-5aa3cded49c6
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 40, 'num_chars': 249}
+Text: 
+
+
+# Assign the popped element, remember default popped index is -1
+popped_item = list1.pop()
+print(popped_item)
+print(list1)
+
+
+# It should also be noted that lists indexing will return an error if there is no element at that index. For example:
+
+# 
+
+
+Chunk 66:
+Document ID: 6fdd677d-e1d5-49da-8ab5-cbbafdb8cfde
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 18}
+Text: 
+
+
+list1[100]
+
+
+# 
+
+
+Chunk 67:
+Document ID: d0120460-f15c-49d7-9816-38cc6a995f54
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 15, 'num_chars': 128}
+Text: 
+
+
+new_list = ['a','e','x','b','c']
+
+# Use reverse to reverse order (this is permanent!)
+new_list.reverse()
+print(new_list)
+
+
+# 
+
+
+Chunk 68:
+Document ID: 11f6e84f-14f6-4818-8307-56805834be20
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 65, 'num_chars': 368}
+Text: 
+
+
+# Use sort to sort the list (in this case alphabetical order, but for numbers it will go ascending)
+new_list.sort()
+print(new_list)
+
+
+# # 1.4 Nesting Lists
+# A great feature of of Python data structures is that they support nesting. This means we can have data structures within data structures. For example: A list inside a list.
+# 
+# Let's see how this works!
+
+# 
+
+
+Chunk 69:
+Document ID: 0a42be58-98f7-43e6-bbed-da727d9750a5
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 54, 'num_chars': 319}
+Text: 
+
+
+# Let's make three lists
+lst_1=[1,2,3]
+lst_2=[4,5,6]
+lst_3=[7,8,9]
+
+# Make a list of lists to form a matrix
+matrix = [lst_1,lst_2,lst_3]
+
+print(matrix)
+
+
+# We can again use indexing to grab elements, but now there are two levels for the index. The items in the matrix object, and then the items inside that list!
+
+# 
+
+
+Chunk 70:
+Document ID: bae809ec-fda8-401b-86bb-8d76321eb82f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 9, 'num_chars': 52}
+Text: 
+
+
+# Grab first item in matrix object
+matrix[0]
+
+
+# 
+
+
+Chunk 71:
+Document ID: 5da94a2e-4cb5-4489-920e-58eae9f823b4
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 87, 'num_chars': 487}
+Text: 
+
+
+# Grab first item of the first item in the matrix object
+matrix[0][0]
+
+
+# # 1.5 List Comprehensions
+# 
+# Python has an advanced feature called list comprehensions. They allow for quick construction of lists. To fully understand list comprehensions we need to understand for loops. So don't worry if you don't completely understand this section, and feel free to just skip it since we will return to this topic later.
+# 
+# But in case you want to know now, here are a few examples!
+
+# 
+
+
+Chunk 72:
+Document ID: e6c19cfe-9d74-4d09-8476-19e9fe83bb53
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 93, 'num_chars': 512}
+Text: 
+
+
+# Build a list comprehension by deconstructing a for loop within a []
+first_col = [row[0] for row in matrix]
+print(first_col)
+
+
+# For more advanced methods and features of lists in Python, check the **Python library**.
+
+# # 2. Tuples
+# In Python tuples are very similar to lists, however, unlike lists they are immutable meaning they can not be changed. You would use tuples to present things that shouldn't be changed, such as days of the week, or dates on a calendar.
+# 
+# In this section, we will get a bri
+
+
+Chunk 73:
+Document ID: e6c19cfe-9d74-4d09-8476-19e9fe83bb53
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 93, 'num_chars': 496}
+Text: a brief overview of the following:
+# 
+# 
+# 
+# 1.   Constructing Tuples
+# 2.   Basic Tuple Methods
+# 3.   Immutability
+# 4.   When to Use Tuples
+# 
+# 
+# You'll have an intuition of how to use tuples based on what you've learned about lists. We can treat them very similarly with the major distinction being that tuples are immutable.
+
+# # 2.1 Constructing Tuples
+# 
+# The construction of a tuples use () with elements separated by commas. For example:
+
+# In[ ]:
+
+
+# Create a tuple
+t = (1,2,3)
+
+
+# 
+
+
+Chunk 74:
+Document ID: c5dcde85-fd12-40fe-84ed-346ef9334772
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 9, 'num_chars': 43}
+Text: 
+
+
+# Check len just like a list
+len(t)
+
+
+# 
+
+
+Chunk 75:
+Document ID: ef1c796f-5152-402a-a9bd-0117a63722f6
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 11, 'num_chars': 58}
+Text: 
+
+
+# Can also mix object types
+t = ('one',2)
+print(t)
+
+
+# 
+
+
+Chunk 76:
+Document ID: 65cc69d5-f01d-4e66-814b-ae9dc4b76605
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 11, 'num_chars': 53}
+Text: 
+
+
+# Use indexing just like we did in lists
+t[0]
+
+
+# 
+
+
+Chunk 77:
+Document ID: bb18496e-ecef-4236-bc55-95e024be64e1
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 34, 'num_chars': 163}
+Text: 
+
+
+# Slicing just like a list
+t[-1]
+
+
+# # 2.2 Basic Tuple Methods
+# 
+# Tuples have built-in methods, but not as many as lists do. Let's look at two of them:
+# 
+
+# 
+
+
+Chunk 78:
+Document ID: 60ae2562-df2c-4c83-9800-e0eda918ea6b
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 13, 'num_chars': 73}
+Text: 
+
+
+# Use .index to enter a value and return the index
+t.index('one')
+
+
+# 
+
+
+Chunk 79:
+Document ID: e7a7472a-635b-4e47-96e4-013e3a7d8c52
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 34, 'num_chars': 188}
+Text: 
+
+
+# Use .count to count the number of times a value appears
+t.count('one')
+
+
+# # 2.3 Immutability
+# 
+# It can't be stressed enough that tuples are immutable. To drive that point home:
+
+# 
+
+
+Chunk 80:
+Document ID: b1469582-9e81-4994-99ee-a61bb046b5e6
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 3, 'num_chars': 22}
+Text: 
+
+
+t[0]= 'change'
+
+
+# 
+
+
+Chunk 81:
+Document ID: 905e147b-d35d-47f0-91c5-e299ad3546a0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 93, 'num_chars': 512}
+Text: 
+
+
+t.append('nope')
+
+
+# # 2.4 When to use Tuples
+# 
+# You may be wondering, "Why bother using tuples when they have fewer available methods?" To be honest, tuples are not used as often as lists in programming, but are used when immutability is necessary. If in your program you are passing around an object and need to make sure it does not get changed, then a tuple becomes your solution. It provides a convenient source of data integrity.
+# 
+# You should now be able to create and use tuples in your programmin
+
+
+Chunk 82:
+Document ID: 905e147b-d35d-47f0-91c5-e299ad3546a0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 89, 'num_chars': 512}
+Text: amming as well as have an understanding of their immutability.
+
+# # 3. Dictionaries
+# 
+# **If you're familiar with other languages you can think of these Dictionaries as hash tables.**
+# 
+# This section will serve as a brief introduction to dictionaries and consist of:
+# 
+# 
+# 
+# 1.   Constructing a Dictionary
+# 2.   Nesting Dictionaries
+# 3.   Basic Dictionary Methods
+# 4.   Advanced Dictionaries
+# 
+# So what are mappings? Mappings are a collection of objects that are stored by a key, unlike a sequence tha
+
+
+Chunk 83:
+Document ID: 905e147b-d35d-47f0-91c5-e299ad3546a0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 80, 'num_chars': 447}
+Text: e that stored objects by their relative position. This is an important distinction, since mappings won't retain order since they have objects defined by a key.
+# 
+# A Python dictionary consists of a key and then an associated value. That value can be almost any Python object.
+# 
+# 
+# 
+# 
+
+# # 3.1 Constructing a Dictionary
+
+# In[ ]:
+
+
+# Make a dictionary with {} and : to signify a key and a value
+my_dict = {'key1':'value1','key2':'value2'}
+
+
+# 
+
+
+Chunk 84:
+Document ID: efccee41-95bc-4262-a47d-c250ba034124
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 33, 'num_chars': 244}
+Text: 
+
+
+# Call values by their key
+my_dict['key2']
+
+
+# Its important to note that dictionaries are very flexible in the data types they can hold. For example:
+
+# In[ ]:
+
+
+my_dict = {'key1':123,'key2':[12,23,33],'key3':['item0','item1','item2']}
+
+
+# 
+
+
+Chunk 85:
+Document ID: da00c067-ed8e-4959-a73f-c2bc9ac3fba7
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 9, 'num_chars': 62}
+Text: 
+
+
+# Let's call items from the dictionary
+my_dict['key3']
+
+
+# 
+
+
+Chunk 86:
+Document ID: ed7f0613-2ad3-4286-b3d4-01eaae838844
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 10, 'num_chars': 60}
+Text: 
+
+
+# Can call an index on that value
+my_dict['key3'][0]
+
+
+# 
+
+
+Chunk 87:
+Document ID: 36445c62-52bd-45f5-8f66-294b7a4cf2f4
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 25, 'num_chars': 140}
+Text: 
+
+
+# Can then even call methods on that value
+my_dict['key3'][0].upper()
+
+
+# We can affect the values of a key as well. For instance:
+# 
+
+# 
+
+
+Chunk 88:
+Document ID: 3b5897fe-065d-48ae-9994-aed96d268705
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 69, 'num_chars': 396}
+Text: 
+
+
+# Subtract 123 from the value
+my_dict['key1'] = my_dict['key1'] - 123
+print(my_dict['key1'])
+
+# I have run this code for several times, every time it will subtract 123, that's why it is -984 now!
+
+
+# A quick note, Python has a built-in method of doing a self subtraction or addition (or multiplication or division). We could have also used += or -= for the above statement. For example:
+# 
+
+# 
+
+
+Chunk 89:
+Document ID: 3a408d58-0f8a-4c7b-bdb1-da83057a69e2
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 72, 'num_chars': 386}
+Text: 
+
+
+# Set the object equal to itself minus 123 
+my_dict['key1'] -= 123
+my_dict['key1']
+
+
+# We can also create keys by assignment. For instance if we started off with an empty dictionary, we could continually add to it:
+
+# In[ ]:
+
+
+# Create a new dictionary
+d = {}
+
+
+# In[ ]:
+
+
+# Create a new key through assignment
+d['animal'] = 'Dog'
+
+# Can do this with any object
+d['answer'] = 42
+
+
+# 
+
+
+Chunk 90:
+Document ID: 4118e921-4047-4aa8-b52f-ebfd2864722f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 72, 'num_chars': 453}
+Text: 
+
+
+print(d)
+
+
+# # 3.2 Nesting with Dictionaries
+# 
+# Hopefully you're starting to see how powerful Python is with its flexibility of nesting objects and calling methods on them. Let's see a dictionary nested inside a dictionary:
+
+# In[ ]:
+
+
+# Dictionary nested inside a dictionary nested inside a dictionary
+d = {'key1':{'nestkey':{'subnestkey':'value'}}}
+
+
+# That's a quite the inception of dictionaries! Let's see how we can grab that value:
+# 
+# 
+
+# 
+
+
+Chunk 91:
+Document ID: f3c5a6cc-405c-4beb-b96b-1a327bdc14e4
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 48, 'num_chars': 283}
+Text: 
+
+
+# Keep calling the keys
+d['key1']['nestkey']['subnestkey']
+
+
+# # 3.3 A few Dictionary Methods
+# 
+# There are a few methods we can call on a dictionary. Let's get a quick introduction to a few of them:
+
+# In[ ]:
+
+
+# Create a typical dictionary
+d = {'key1':1,'key2':2,'key3':3}
+
+
+# 
+
+
+Chunk 92:
+Document ID: 74ba8688-5d7b-4e9d-8897-c2a4a3ac40dc
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 11, 'num_chars': 55}
+Text: 
+
+
+# Method to return a list of all keys 
+d.keys()
+
+
+# 
+
+
+Chunk 93:
+Document ID: c6b5818b-7195-464f-936a-836a75f79d12
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 8, 'num_chars': 46}
+Text: 
+
+
+# Method to grab all values
+d.values()
+
+
+# 
+
+
+Chunk 94:
+Document ID: 0a034cb9-7ffe-4e03-90bb-075d776f030d
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 57, 'num_chars': 356}
+Text: 
+
+
+# Method to return tuples of all items  (we'll learn about tuples soon)
+d.items()
+
+
+# # 3.4 Advanced Dictionaries
+# 
+
+# **Dictionary Comprehensions:**
+# 
+# Just like List Comprehensions, Dictionary Data Types also support their own version of comprehension for quick creation. It is not as commonly used as List Comprehensions, but the syntax is:
+# 
+
+# 
+
+
+Chunk 95:
+Document ID: 58564ba7-a79c-4765-9de5-ce0d89551471
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 56, 'num_chars': 312}
+Text: 
+
+
+{x:x**2 for x in range(10)}
+
+
+# One of the reasons it is not as common is the difficulty in structuring key names that are not based off the values.
+
+# 
+# **Iteration over keys, values, and items:** 
+# 
+# Dictionaries can be iterated over using the keys(), values() and items() methods. For example:
+# 
+# 
+
+# 
+
+
+Chunk 96:
+Document ID: c29b90d7-7356-4bcb-8c45-3106f62847f7
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 9, 'num_chars': 59}
+Text: 
+
+
+d = {'k1':1,'k2':2}
+for k in d.keys():
+    print(k)
+
+
+# 
+
+
+Chunk 97:
+Document ID: 739028f4-507d-41fd-9f32-d60873edb12c
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 6, 'num_chars': 41}
+Text: 
+
+
+for v in d.values():
+    print(v)
+
+
+# 
+
+
+Chunk 98:
+Document ID: 0d89f3bb-a3f5-4188-92b0-15bb5de132c3
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 45, 'num_chars': 277}
+Text: 
+
+
+for item in d.items():
+    print(item)
+
+
+# **Viewing keys, values and items:**
+# 
+# By themselves the keys(), values() and items() methods return a dictionary view object. This is not a separate list of items. Instead, the view is always tied to the original dictionary.
+
+# 
+
+
+Chunk 99:
+Document ID: 3907ddb3-c10a-478c-8a7d-004380fa6cb7
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 5, 'num_chars': 37}
+Text: 
+
+
+key_view = d.keys()
+
+key_view
+
+
+# 
+
+
+Chunk 100:
+Document ID: 80a52f47-c94b-452a-b1f0-a3eb60e8b6ea
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 5, 'num_chars': 22}
+Text: 
+
+
+d['k3'] = 3
+
+d
+
+
+# 
+
+
+Chunk 101:
+Document ID: 1108a801-f638-4ee2-a54b-26fc3d13958a
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 43, 'num_chars': 211}
+Text: 
+
+
+key_view
+
+
+# # 4. Sets
+# 
+# Sets are an unordered collection of unique elements. We can construct them by using the set() function. Let's go ahead and make a set to see how it works
+
+# In[ ]:
+
+
+x = set()
+
+
+# 
+
+
+Chunk 102:
+Document ID: 205557f1-81e0-4e53-9543-a6d19540fc09
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 66, 'num_chars': 340}
+Text: 
+
+
+# We add to sets with the add() method
+x.add(1)
+
+print(x)
+
+
+# **add:**
+# 
+# Note the curly brackets. This does not indicate a dictionary! Although you can draw analogies as a set being a dictionary with only keys.
+# 
+# We know that a set has only unique entries. So what happens when we try to add something that is already in a set?
+
+# 
+
+
+Chunk 103:
+Document ID: a4c16eb5-2c9e-4a6d-8c4d-d9aa39a7e1e0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 8, 'num_chars': 51}
+Text: 
+
+
+# Add a different element
+x.add(2)
+print(x)
+
+
+# 
+
+
+Chunk 104:
+Document ID: 8ff6dbf8-eb7e-47a8-b57c-073501961318
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 60, 'num_chars': 333}
+Text: 
+
+
+# Try to add the same element
+x.add(1)
+print(x)
+
+
+# Notice how it won't place another 1 there. That's because a set is only concerned with unique elements! We can cast a list with multiple repeat elements to a set to get the unique elements. For example:
+
+# In[ ]:
+
+
+# Create a list with repeats
+list1 = [1,1,2,2,3,4,5,6,1,1]
+
+
+# 
+
+
+Chunk 105:
+Document ID: 56f4fda3-e882-4428-9c43-51290c8a4b33
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 18, 'num_chars': 101}
+Text: 
+
+
+# Cast as set to get unique values
+set(list1)
+
+
+# **clear:** removes all elements from the set
+
+# 
+
+
+Chunk 106:
+Document ID: 862875da-dcd5-4595-a2f5-9c872005f039
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 25, 'num_chars': 135}
+Text: 
+
+
+x.clear()
+print(x)
+
+
+# **copy:** returns a copy of the set. Note it is a copy, so changes to the original don't effect the copy.
+
+# 
+
+
+Chunk 107:
+Document ID: d6a045eb-e593-437f-9990-2083b3e1e7f6
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 31, 'num_chars': 197}
+Text: 
+
+
+s = {1,2,3}
+sc = s.copy()
+print(sc)
+
+s.add(4)
+print(s)
+
+
+# **difference:** difference returns the difference of two or more sets. 
+# 
+# The syntax is: set1.difference(set2)
+# 
+# For example:
+
+# 
+
+
+Chunk 108:
+Document ID: 24aa3fbf-e309-4efb-99b6-b579a20a8555
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 23, 'num_chars': 183}
+Text: 
+
+
+s.difference(sc)
+
+
+# 
+# **difference_update:**
+# 
+# difference_update syntax is: set1.difference_update(set2)
+# 
+# the method returns set1 after removing elements found in set2
+
+# 
+
+
+Chunk 109:
+Document ID: cffbaa57-814f-40f7-9a90-f2f748e28257
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 31, 'num_chars': 177}
+Text: 
+
+
+s1 = {1,2,3}
+s2 = {1,4,5}
+s1.difference_update(s2)
+print(s1)
+
+
+# **discard:** Removes an element from a set if it is a member. If the element is not a member, do nothing.
+
+# 
+
+
+Chunk 110:
+Document ID: 8975d45a-60de-4ff2-880d-37688dcc647f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 9}
+Text: 
+
+
+s
+
+
+# 
+
+
+Chunk 111:
+Document ID: 3d282b93-6d57-4be1-b592-945f27626389
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 28, 'num_chars': 184}
+Text: 
+
+
+s.discard(2)
+print(s)
+
+
+# **intersection and intersection_update:** Returns the intersection of two or more sets as a new set.(i.e. elements that are common to all of the sets.)
+
+# 
+
+
+Chunk 112:
+Document ID: 8b69e30b-611e-47f8-a1d8-7b62bdbc56a9
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 22, 'num_chars': 150}
+Text: 
+
+
+s1 = {1,2,3}
+s2 = {1,2,4}
+s1.intersection(s2)
+
+print(s1)
+
+
+# intersection_update will update a set with the intersection of itself and another.
+
+# 
+
+
+Chunk 113:
+Document ID: 8b37bbf8-9ad5-40ec-970b-3f9515e7f43a
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 29, 'num_chars': 176}
+Text: 
+
+
+s1.intersection_update(s2)
+print(s1)
+
+
+# **isdisjoint:** This method will return True if two sets have a null intersection.
+
+# In[ ]:
+
+
+s1 = {1,2}
+s2 = {1,2,4}
+s3 = {5}
+
+
+# 
+
+
+Chunk 114:
+Document ID: 7ca79f5a-583a-4ed4-a3a2-727c6ed16482
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 25}
+Text: 
+
+
+s1.isdisjoint(s2)
+
+
+# 
+
+
+Chunk 115:
+Document ID: 61566ea8-3d75-4c4a-82ba-a050e1a831b8
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 13, 'num_chars': 101}
+Text: 
+
+
+s1.isdisjoint(s3)
+
+
+# **issubset:** This method reports whether another set contains this set.
+
+# 
+
+
+Chunk 116:
+Document ID: b171fd1f-f06a-4a53-a472-c0e4fb7964ed
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 10}
+Text: 
+
+
+s1
+
+
+# 
+
+
+Chunk 117:
+Document ID: d1d2b6f6-b18c-4ef2-837d-f4d0330a5038
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 10}
+Text: 
+
+
+s2
+
+
+# 
+
+
+Chunk 118:
+Document ID: 87a75731-95d8-4100-a932-a989373507a2
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 14, 'num_chars': 105}
+Text: 
+
+
+s1.issubset(s2)
+
+
+# **issuperset:** This method will report whether this set contains another set.
+
+# 
+
+
+Chunk 119:
+Document ID: 8ac1ebf9-276a-4897-9ade-f4c4d594a82d
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 25}
+Text: 
+
+
+s2.issuperset(s1)
+
+
+# 
+
+
+Chunk 120:
+Document ID: df20f4a3-bc47-461d-90ec-e5faa539d9f0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 27, 'num_chars': 189}
+Text: 
+
+
+s1.issuperset(s2)
+
+
+# **symmetric_difference and symmetric_update:** Return the symmetric difference of two sets as a new set.(i.e. all elements that are in exactly one of the sets.)
+
+# 
+
+
+Chunk 121:
+Document ID: 328c6061-3171-49aa-8cab-8c3fb2728f5f
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 10}
+Text: 
+
+
+s1
+
+
+# 
+
+
+Chunk 122:
+Document ID: cc06f9c5-2ceb-4d1d-85d9-94b4ac47f82e
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 2, 'num_chars': 10}
+Text: 
+
+
+s2
+
+
+# 
+
+
+Chunk 123:
+Document ID: d4e9fded-a139-498a-86ac-0dcaeba13bee
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 18, 'num_chars': 123}
+Text: 
+
+
+s1.symmetric_difference(s2)
+
+
+# **union:** Returns the union of two sets (i.e. all elements that are in either set.)
+
+# 
+
+
+Chunk 124:
+Document ID: 1d2547e3-f39b-41ad-8e50-dc715870639d
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 14, 'num_chars': 85}
+Text: 
+
+
+s1.union(s2)
+
+
+# **update:** Update a set with the union of itself and others.
+
+# 
+
+
+Chunk 125:
+Document ID: 06e46834-657b-4041-a517-b39d561c67df
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 81, 'num_chars': 512}
+Text: 
+
+
+s1.update(s2)
+print(s1)
+
+
+# **This data structure is extremely useful and is underutilized by beginners, so try to keep it in mind!**
+
+# # 5. Exercises 
+
+# # Exercise 10.1: 
+# Write a function called nested_sum that takes a nested list of integers and add up the elements from all of the nested lists.
+# 
+
+# In[ ]:
+
+
+def nested_sum(nestedList):
+        '''
+        nestedList: list composed of nested lists containing int.
+        Returns the sum of all the int in the nested list
+        '''
+        newList 
+
+
+Chunk 126:
+Document ID: 06e46834-657b-4041-a517-b39d561c67df
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 34, 'num_chars': 511}
+Text: List = []
+        #Helper function to flatten the list
+        def flatlist(nestedList):
+                '''
+                Returns a flat list
+                '''
+                for i in range(len(nestedList)):
+                        if type(nestedList[i]) == int:
+                                newList.append(nestedList[i])
+                        else:
+                                flatlist(nestedList[i])
+                return newList
+
+        flatlist(nestedList)
+        print (sum(newList))
+
+
+# 
+
+
+Chunk 127:
+Document ID: 06e46834-657b-4041-a517-b39d561c67df
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 1, 'num_chars': 4}
+Text: 
+
+# 
+
+
+Chunk 128:
+Document ID: d4f01a06-3a90-4d3b-be5f-0b75214cdbd0
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 57, 'num_chars': 369}
+Text: 
+
+
+nestedList = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+nested_sum(nestedList)
+
+
+# # Exercise 10.3:
+# 
+# Write a function that takes a list of numbers and returns the cumulative sum.
+# 
+# 
+# 
+
+# In[ ]:
+
+
+def cumulative(list):
+    cumulative_sum = 0
+    new_list = []
+    for i in l:
+        cumulative_sum += i
+        new_list.append(cumulative_sum)
+    return new_list
+
+
+# 
+
+
+Chunk 129:
+Document ID: 3bc515f2-a76d-44ce-9b81-2c9738bb5a79
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 81, 'num_chars': 512}
+Text: 
+
+
+list = [1,2,3,4]
+
+cumulative(list)
+
+
+# # Exercise 11.1:
+# 
+# Write a function that reads the words in original_papers.txt and stores them as keys in a dictionary. It doesn’t matter what the values are. Then you can use the in operator as a fast way to check whether a string is in the dictionary.
+
+# In[ ]:
+
+
+fin = open('original_papers.txt')
+englishdict = dict()
+
+
+def create_diction():
+    counter = 0
+    dictionairy = dict()
+    for line in fin:
+        word = line.strip()
+        dictionairy[word] = cou
+
+
+Chunk 130:
+Document ID: 3bc515f2-a76d-44ce-9b81-2c9738bb5a79
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 8, 'num_chars': 58}
+Text: = counter
+        counter += 1
+    return dictionairy
+
+
+# 
+
+
+Chunk 131:
+Document ID: 7091a3a4-7bc4-45b0-91a4-8f3b50ac83a1
+Metadata: {'file_name': 'Lesson_two_example2.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example2.ipynb', 'num_tokens': 1, 'num_chars': 21}
+Text: 
+
+
+create_diction()
+
+
+
+
+Chunk 132:
+Document ID: fa4bdd17-9f36-4885-86af-1fe80adbe263
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 89, 'num_chars': 512}
+Text: 
+
+
+import time
+# time.time() return the time in seconds since the epoch as a floating point number
+
+def chour(t):
+	hour = t / 3600
+	print("The number of hours has passed since epoch is %f" % hour)
+
+def cminute(t):
+	minute = t / 60
+	print("The number of minutes has passed since epoch is %f" % minute)
+	
+def cseconds(t):
+	seconds = t
+	print("The number of seconds has passed since epoch is %f" % seconds)
+	
+def num_day():
+	sec = time.time()
+	num_day = sec / (60*60*24)
+	print("The number of days has passed since 
+
+
+Chunk 133:
+Document ID: fa4bdd17-9f36-4885-86af-1fe80adbe263
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 87, 'num_chars': 512}
+Text: ince epoch is %f" % num_day)
+
+num_day()
+chour(time.time())
+cminute(time.time())
+cseconds(time.time())
+
+
+# **Exercise 5.2.** Fermat’s Last Theorem says that there are no positive integers a, b, and c such that
+# 
+# >$a^n+b^n=c^n$
+# 
+# 
+# for any values of n greater than 2.
+# 
+# 1. Write a function named check_fermat that takes four parameters—a, b, c and n—and checks to see if Fermat’s theorem holds. If n is greater than 2 and
+# 
+# >$a^n+b^n=c^n$
+# 
+# the program should print, “Holy smokes, Fermat was wrong!
+
+
+Chunk 134:
+Document ID: fa4bdd17-9f36-4885-86af-1fe80adbe263
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 45, 'num_chars': 252}
+Text: rong!” Otherwise the program should
+# print, “No, that doesn’t work.”
+# 
+# 2. Write a function that prompts the user to input values for a, b, c and n, converts them to integers, and uses check_fermat to check whether they violate Fermat’s theorem.
+
+# 
+
+
+Chunk 135:
+Document ID: ca4ec5cc-5394-4ad2-b998-1a616bb2474f
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 79, 'num_chars': 512}
+Text: 
+
+
+import sys
+import os
+import math
+
+
+def check_fermat(a, b, c, n):
+    '''This function does the actual checking of Fermat's last theorem.
+    There should be no such integers such that
+    a^n + b^n = c^n
+    for n values greater than 2.
+    '''
+    left_side = pow(a, n) + pow(b, n)
+    right_side = pow(c, n)
+    if (n > 2) and (left_side == right_side):
+        print ("Holy Smokes, Fermat was wrong!")
+    else:
+        print ("No, that doesn't work.")
+
+
+def prompt_user():
+    '''Prompt the user to input 
+
+
+Chunk 136:
+Document ID: ca4ec5cc-5394-4ad2-b998-1a616bb2474f
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 72, 'num_chars': 512}
+Text: nput the required values
+    for Fermat's last theorem
+    Use a for loop to avoid repeated prompts
+    '''
+    parameters = []
+    # create general prompt
+    prompt = "Please enter "
+    for value in ['a', 'b', 'c', 'n']:
+        new_prompt = prompt + value + '\n'  # modify prompt for value in loop
+        my_input = input(new_prompt)  # get input
+        float_input = float(my_input)  # convert the entered value to float
+        parameters.append(float_input)
+    # call check_fermat function
+    a,b,c,n 
+
+
+Chunk 137:
+Document ID: ca4ec5cc-5394-4ad2-b998-1a616bb2474f
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 90, 'num_chars': 512}
+Text: ,c,n = parameters[0],parameters[1],parameters[2],parameters[3]
+    check_fermat(a, b, c, n)
+
+
+def main():
+    prompt_user()
+
+
+if __name__ == '__main__':
+    main()
+
+
+# **Exercise 5.3.** If you are given three sticks, you may or may not be able to arrange them in a triangle.
+# For example, if one of the sticks is 12 inches long and the other two are one inch long, you will not
+# be able to get the short sticks to meet in the middle. For any three lengths, there is a simple test to
+# see if it is possible to 
+
+
+Chunk 138:
+Document ID: ca4ec5cc-5394-4ad2-b998-1a616bb2474f
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 98, 'num_chars': 512}
+Text: e to form a triangle:
+# 
+# 
+# If any of the three lengths is greater than the sum of the other two, then you cannot form a triangle. Otherwise, you can. (If the sum of two lengths equals the third, they form what is called a “degenerate” triangle.)
+# 
+# 
+# 1. Write a function named is_triangle that takes three integers as arguments, and that prints either “Yes” or “No”, depending on whether you can or cannot form a triangle from sticks with the given lengths.
+# 
+# 2. Write a function that prompts the user t
+
+
+Chunk 139:
+Document ID: ca4ec5cc-5394-4ad2-b998-1a616bb2474f
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 27, 'num_chars': 155}
+Text: ser to input three stick lengths, converts them to integers,
+# and uses is_triangle to check whether sticks with the given lengths can form a triangle.
+
+# 
+
+
+Chunk 140:
+Document ID: c4ae38b2-dafc-45f5-99cf-15d12daed505
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 77, 'num_chars': 512}
+Text: 
+
+
+import sys
+import os
+
+def is_triangle(a,b,c):
+    if (a + b > c) and (a + c > b) and (b + c > a):
+        print ("Yes")
+    else:
+        print ("No")
+
+def prompt_user():
+    parameter_sides = []
+    prompt = "Please enter side "
+    for value in ['a', 'b', 'c']:
+        new_prompt = prompt + value +': ' # modify prompt for value in loop
+        my_input = input(new_prompt)   # get input
+        float_input = float(my_input)      # convert the entered value to float
+        parameter_sides.append(float_i
+
+
+Chunk 141:
+Document ID: c4ae38b2-dafc-45f5-99cf-15d12daed505
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 66, 'num_chars': 512}
+Text: oat_input)
+    print(parameter_sides)
+    x,y,z = int(parameter_sides[0]),int(parameter_sides[1]),int(parameter_sides[2])
+    is_triangle(x,y,z)
+
+def results():
+#     is_triangle(5,3,4)
+    # is_triangle(5,3,12)
+    prompt_user()
+
+if __name__ == '__main__':
+    results()
+
+
+# **Exercise 5.4.** What is the output of the following program? Draw a stack diagram that shows the
+# state of the program when it prints the result.
+# 
+# 
+# 
+# ```
+# def recurse(n, s):
+#   if n == 0:
+#      print(s)
+#   else:
+#     recu
+
+
+Chunk 142:
+Document ID: c4ae38b2-dafc-45f5-99cf-15d12daed505
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 48, 'num_chars': 258}
+Text:  recurse(n-1, n+s)
+# recurse(3, 0)
+# ```
+# 
+# 
+# 1. What would happen if you called this function like this: recurse(-1, 0)?
+# 
+# 2. Write a docstring that explains everything someone would need to know in order to use this
+# function (and nothing else).
+
+# 
+
+
+Chunk 143:
+Document ID: 4e033a95-9212-4630-9b44-c099267a2c12
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 14, 'num_chars': 97}
+Text: 
+
+
+def recurse(n, s):
+  if n == 0:
+     print(s)
+  else:
+    recurse(n-1, n+s)
+recurse(3, 0)
+
+
+# 
+
+
+Chunk 144:
+Document ID: cffb94bb-a588-4055-9459-1cef0e90afac
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 87, 'num_chars': 512}
+Text: 
+
+
+recurse(-1, 0) #Runtime error: maxmimum recursion depth exceeded
+
+'''
+input n (n>0) since n need to approach 0
+'''
+
+
+# **Exercise 5.5.** Read the following function and see if you can figure out what it does (see the examples in Chapter 4). Then run it and see if you got it right.
+# 
+# 
+
+# In[ ]:
+
+
+def draw(t, length, n):
+	if n == 0:
+		return
+	angle = 50 # initialize angle
+	t.fd(length * n)
+	t.lt(angle)
+	draw(t, length, n-1)  #recursive call
+	t.rt(2*angle)
+	draw(t, length, n-1)
+	t.lt(angle)
+	t.bk(length*
+
+
+Chunk 145:
+Document ID: cffb94bb-a588-4055-9459-1cef0e90afac
+Metadata: {'file_name': 'Lesson_two_example3.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example3.ipynb', 'num_tokens': 51, 'num_chars': 324}
+Text: ngth*n)
+
+from swampy.TurtleWorld import *
+import math
+
+if __name__ == '__main__':
+	world = TurtleWorld()    
+	bob = Turtle()
+	bob.delay = 0.001
+	draw(bob, 3, 30)
+	wait_for_user()
+  
+  # no display name and no $DISPLAY environment variable
+
+
+# Google colab do not have GUI, so
+# 
+# **This code will be showed on my labtop.**
+
+
+
+Chunk 146:
+Document ID: 59f7c8d6-fd11-407e-b0b8-411e53c96f15
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 12, 'num_chars': 103}
+Text: 
+
+
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+print(thisdict["brand"])
+
+
+# 
+
+
+Chunk 147:
+Document ID: 72b0daec-752c-490e-8124-66bd0289d676
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 36, 'num_chars': 218}
+Text: 
+
+
+# Adding an item to the dictionary is done by using a new index key and assigning a value to it
+
+
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+thisdict["color"] = "red"
+print(thisdict)
+
+
+# 
+
+
+Chunk 148:
+Document ID: 9e7f227e-2387-43c6-952f-ed6197532910
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 25, 'num_chars': 181}
+Text: 
+
+
+# The pop() method removes the item with the specified key name
+
+thisdict = {
+  "brand": "Ford",
+  "model": "Mustang",
+  "year": 1964
+}
+thisdict.pop("model")
+print(thisdict)
+
+
+# 
+
+
+Chunk 149:
+Document ID: c757c885-bafe-48c4-9123-bf9d6d9fa2be
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 19, 'num_chars': 191}
+Text: 
+
+
+# get keys, values, items
+
+sample_dict = {'a': 100, 'b':200, 'c':300}
+
+print(sample_dict.keys())
+print(sample_dict.values())
+print(sample_dict.items())
+
+
+# # Dictionaries comprehension
+
+# 
+
+
+Chunk 150:
+Document ID: ca267174-4c6c-44e9-a9ae-687691afa581
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 11, 'num_chars': 66}
+Text: 
+
+
+{x:x**2 for x in range(10)}
+
+
+# # Nesting with Dictionaries
+
+# 
+
+
+Chunk 151:
+Document ID: 87e95b8b-a518-4e82-a8dc-afee87037641
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 9, 'num_chars': 112}
+Text: 
+
+
+d = {'key1':{'nestkey':{'subnestkey':'value'}}}
+
+d['key1']['nestkey']['subnestkey']
+
+
+# # Lambda function
+
+# 
+
+
+Chunk 152:
+Document ID: e7300ec3-7e31-4710-afe3-516c7e457180
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 22, 'num_chars': 114}
+Text: 
+
+
+# Lambda function with if but without else.
+square = lambda x : x*x if (x > 0) else None
+
+print(square(6))
+
+
+# 
+
+
+Chunk 153:
+Document ID: 71678810-5b6c-4051-a2da-9fc7dca854c8
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 30, 'num_chars': 152}
+Text: 
+
+
+# Example of lambda function using if-else
+max = lambda a, b : a if(a > b) else b
+
+print(max(1, 2))
+print(max(10, 2))
+
+
+# # Factorial of a number
+
+# 
+
+
+Chunk 154:
+Document ID: 1eda18a3-4c14-4dab-80c9-964624c1e7d7
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 73, 'num_chars': 458}
+Text: 
+
+
+# To find the factorial of a given number
+
+def factorial(n):
+    if n < 0:
+        return 0
+    elif n == 0 or n == 1:
+        return 1
+    else:
+        fact = 1
+        while(n > 1):
+            fact *= n
+            n -= 1
+            #print(fact)
+            #if you want to see the result after each step
+        return fact
+
+# Example of 5!
+num = 5;
+print("Factorial of", num,"is", factorial(num))
+
+# This code is contributed by Dharmik Thakkar
+
+
+# 
+
+
+Chunk 155:
+Document ID: f9e4054f-e228-4b3a-ae1c-d8b8a1bc8691
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 45, 'num_chars': 289}
+Text: 
+
+
+def factorial(n):
+    if n < 0:
+        return 0
+    elif n == 0 or n == 1:
+        return 1
+    else:
+        result = n * factorial(n - 1)
+        #print(result)
+        return result
+
+# Example of 5!
+num = 5;
+print("Factorial of", num,"is", factorial(num))
+
+
+# # Fibonacci number
+
+# 
+
+
+Chunk 156:
+Document ID: ed17db31-5a7a-4890-8090-3b400f4c814e
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 56, 'num_chars': 378}
+Text: 
+
+
+# Function for nth Fibonacci number
+# Sequence: 0, 1, 1, 2, 3, 5, 8, 13
+
+def Fibonacci(n):
+    if n<= 0:
+        print("Incorrect input")
+    # First Fibonacci number is 0
+    elif n == 1:
+        return 0
+    # Second Fibonacci number is 1
+    elif n == 2:
+        return 1
+    else:
+        return Fibonacci(n-1)+Fibonacci(n-2)
+
+
+print(Fibonacci(10))
+
+
+# # Prime number
+
+# 
+
+
+Chunk 157:
+Document ID: a0522110-a5d6-4cde-89eb-111900052177
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 87, 'num_chars': 512}
+Text: 
+
+
+def is_prime(n):
+    # A prime number is greater than 1 and divisible only by 1 and itself
+    if n <= 1:
+        return False
+    # Check divisibility from 2 to the square root of n
+    for i in range(2, int(n**0.5) + 1):
+        if n % i == 0:
+            return False
+    return True
+
+# Example:
+number = 29
+result = is_prime(number)
+if result:
+    print(f"{number} is a prime number.")
+else:
+    print(f"{number} is not a prime number.")
+
+
+# # Practice Questions
+
+# # Q1.) What is the output of the follow
+
+
+Chunk 158:
+Document ID: a0522110-a5d6-4cde-89eb-111900052177
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 91, 'num_chars': 512}
+Text: ollowing code??
+
+# In[ ]:
+
+
+print(9/2)
+
+
+# In[ ]:
+
+
+print(int(9/2))
+
+
+# # Q2.) What will be the output of the following code snippet?
+
+# In[ ]:
+
+
+def func():
+   global value
+   value = "Local"
+
+value = "Global"
+func()
+print(value)
+
+
+# # Q3.) Short Circuiting
+# 
+# What is the output of the following programs?
+
+# In[ ]:
+
+
+l = [1, 2, 3]
+
+exp = ((1 == 0) and (l.append(4)))
+print(l)
+
+
+# Tip: If the first condition is False, Python does not evaluate the second condition, because the entire "and" expression will b
+
+
+Chunk 159:
+Document ID: a0522110-a5d6-4cde-89eb-111900052177
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 99, 'num_chars': 512}
+Text: ill be False regardless of the second condition.
+
+# In[ ]:
+
+
+l = [1, 2, 3]
+
+exp = ((1 != 0) or (l.append(4)))
+print(l)
+
+
+# Tip: If the first condition is True, Python does not evaluate the second condition, because the entire "or" expression will be True regardless of the second condition.
+
+# # Q4.) What is the python statement that will result output 6?
+
+# In[ ]:
+
+
+A = [[1, 2, 3],
+     [4, 5, 6],
+     [7, 8, 9]]
+
+'''
+a) A[2][1]
+b) A[1][2]
+c) A[3][2]
+d) A[2][3]
+
+'''
+
+
+# # Q5.)
+
+# Which method is best to use
+
+
+Chunk 160:
+Document ID: a0522110-a5d6-4cde-89eb-111900052177
+Metadata: {'file_name': 'Week_2_Code_Demo.ipynb', 'file_path': '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Week_2_Code_Demo.ipynb', 'num_tokens': 82, 'num_chars': 419}
+Text: o use when adding an item to the end of a list?
+# 
+# A. .insert()\
+# B. .pop()\
+# C. .append()\
+# D. .remove()
+
+# # Q6.) What will be the output of the following code snippet?
+
+# In[ ]:
+
+
+a = [1, 2, 3]
+a = tuple(a)
+a[0] = 2
+print(a)
+
+
+# # Q7.) How to get the unique elements from a list?
+# sample = [1,1,1,1,2,2,3,3,3,3,4,5]
+
+# In[ ]:
+
+
+sample = [1,1,1,1,2,2,3,3,3,3,4,5]
+set1 = set(sample)
+unique = list(set1)
+unique
+
+
+
+✅ ChromaDB initialized successfully.
+✅ 230 document nodes created and stored in ChromaDB.
+✅ Vector store index created successfully.
+✅ Index persisted to ./persisted_index
+Context information is below.
+---------------------
+file_path: /Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson two-Python Basic-Fall2024.pptx
+
+Image: a black and white photo of a clock on a wall
+
+
+ Image: a sign with a picture of a man and a clock
+
+
+
+Slide #4: 
+
+
+Python Indentation
+2025/3/6
+5
+Indentation refers to the spaces at the beginning of a code line.
+Python uses indentation to indicate a block of code.
+
+
+ Image: a collage of photographs of a person wearing a blue ribbon
+
+file_path: /Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2/Lesson_two_example1.ipynb
+
+# Python Indentations: Where in other programming languages the indentation in code is for readability only, in Python the indentation is very important. Python uses indentation to indicate a block of code.
+if 5 > 2:
+  print("Five is greater than two!")
+if(7<2):
+  print("Seven is not greater than 2? false")
+else: 
+  print("Ok, 7>2")
+---------------------
+Given the context information and not prior knowledge, answer the query.
+Query: What is Python Indentation?
+Answer: 

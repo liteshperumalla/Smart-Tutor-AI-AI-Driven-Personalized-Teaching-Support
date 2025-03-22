@@ -1,8 +1,6 @@
 import os
 import torch
 import re 
-import torch.multiprocessing
-torch.multiprocessing.set_start_method('spawn')
 from transformers import AutoModel, AutoTokenizer
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, get_response_synthesizer
@@ -13,7 +11,7 @@ from chromadb import PersistentClient
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.query_engine import CustomQueryEngine
 from llama_index.core.response_synthesizers import BaseSynthesizer
-
+#from llama_index.llms.ollama import Ollama
 try:
     model_name = "sentence-transformers/all-MiniLM-L6-v2"  # Keep it as a string
     Settings.embed_model = HuggingFaceEmbedding(model_name=model_name)  # Pass string
@@ -35,22 +33,30 @@ def preprocess_text(file_path, text):
     - Leaves code files untouched
     """
     # Define file extensions for code and text
+    code_extensions = {".py", ".java", ".cpp", ".js", ".c", ".cs", ".html", ".css", ".php", ".rb"}
     text_extensions = {".pdf", ".docx", ".pptx", ".txt"}
 
     # Check the file extension
     ext = os.path.splitext(file_path)[-1].lower()
 
-    # If it's a text file, remove punctuation
     if ext in text_extensions:
-        text = re.sub(r'[^A-Za-z0-9\s]', '', text)  # Keep words and spaces only
-        text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with a single space
+        # Remove lines starting with "Image:" and the content following it
+        text = re.sub(r"Image:.*?(\.jpg|\.png|\.jpeg|\.bmp|\.gif|photo|picture|on a wall).*", "", text)
+        text = re.sub(r"Image:\s*\(.*\)", "", text)  # Remove text within parentheses after "Image:"
+        text = re.sub(r"Image:.*", "", text)  # Remove any remaining image descriptions
+        
+        text = re.sub(r"\s+", " ", text)  # Replace multiple spaces with a single space
+        text = re.sub(r"\b\d{1,2}/\d{1,2}/\d{4}\b", "", text)  # Remove dates like 3/3/2025
+        text = re.sub(r"\b\d{5,}\s\d+\b", "", text)  # Remove page numbers like 332025 54
+    elif ext in code_extensions:
+        pass  # Do not modify code files
     
     return text
 
 # ------------------------------
 # LOAD DOCUMENTS & PREPROCESS
 # ------------------------------
-doc_path = "/Users/Guest/Downloads/Module 2"
+doc_path = '/Users/shoaibahmedmohammed/Downloads/Smart AI Tutor/Module 2'
 
 try:
     # Specify file extensions you want to read
@@ -71,14 +77,37 @@ except Exception as e:
     print(f"❌ Error loading documents: {e}")
     exit()
 
-# Apply metadata and preprocess text for documents in `docs`
+CHUNK_SIZE = 512
+CHUNK_OVERLAP = 5  # Optional: overlap between chunks for context
+
+# Function to split text into fixed-size chunks
+def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
+    chunks = []
+    for i in range(0, len(text), chunk_size - overlap):
+        chunk = text[i : i + chunk_size]
+        
+        chunks.append(chunk)
+    return chunks
+
+# Process each document
+processed_docs = []
 for doc in docs:
-    doc.metadata = {
-        "file_name": doc.metadata.get("file_name", ""),
-        "file_path": doc.metadata.get("file_path", "")
-    }
-    processed_text = preprocess_text(doc.metadata["file_path"], doc.get_content())
-    doc.set_content(processed_text)
+    text_chunks = chunk_text(doc.get_content())  # Split document text into chunks
+    for chunk in text_chunks:
+        metadata = {
+            "file_name": doc.metadata.get("file_name", ""),
+            "file_path": doc.metadata.get("file_path", ""),
+            "num_tokens": len(chunk.split()),  # Estimate tokens in each chunk
+            "num_chars": len(chunk),  # Ensure each chunk has a fixed number of characters
+        }
+        processed_docs.append({"doc_id": doc.doc_id, "text": chunk, "metadata": metadata, "category": "<category>"})
+
+# Print the processed documents with fixed-size chunks
+for i, doc in enumerate(processed_docs):
+    print(f"\nChunk {i + 1}:")
+    print(f"Document ID: {doc['doc_id']}")
+    print(f"Metadata: {doc['metadata']}")
+    print(f"Text: {doc['text']}\n")
 
 # ------------------------------
 # INITIALIZE CHROMADB VECTOR STORE
@@ -99,7 +128,7 @@ except Exception as e:
 # ------------------------------
 pipeline = IngestionPipeline(
     transformations=[
-        SentenceSplitter(chunk_size=100, chunk_overlap=10),
+        SentenceSplitter(chunk_size=128, chunk_overlap=10),
         Settings.embed_model
     ],
 )
