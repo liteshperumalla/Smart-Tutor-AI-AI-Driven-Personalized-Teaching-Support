@@ -1,6 +1,8 @@
 import os
 import torch
 import re
+import unicodedata
+import pdfplumber
 from pptx import Presentation
 from transformers import AutoModel, AutoTokenizer
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -16,12 +18,11 @@ from llama_index.llms.ollama import Ollama
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
 
-
 # ------------------------------
 # CUSTOM PPTX READER
 # ------------------------------
 class PPTXTextOnlyReader(BaseReader):
-    def load_data(self, file_path: str, extra_info=None) -> list[Document]:  # Added extra_info parameter
+    def load_data(self, file_path: str, extra_info=None) -> list[Document]:
         prs = Presentation(file_path)
         text_runs = []
 
@@ -30,11 +31,28 @@ class PPTXTextOnlyReader(BaseReader):
                 if hasattr(shape, "text"):
                     text = shape.text.strip()
                     if text:
-                        text_runs.append(text)
+                        cleaned_text = preprocess_text(file_path, text)  # Apply preprocessing
+                        text_runs.append(cleaned_text)
 
         full_text = "\n".join(text_runs)
-        return [Document(text=full_text, metadata={"file_path": str(file_path)})]  # Convert file_path to str
+        return [Document(text=full_text, metadata={"file_path": str(file_path)})]
 
+# ------------------------------
+# CUSTOM PDF READER
+# ------------------------------
+class PDFTextOnlyReader(BaseReader):
+    def load_data(self, file_path: str, extra_info=None) -> list[Document]:
+        text_runs = []
+
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    cleaned_text = preprocess_text(file_path, text)  # Apply preprocessing
+                    text_runs.append(cleaned_text)
+
+        full_text = "\n".join(text_runs)
+        return [Document(text=full_text, metadata={"file_path": str(file_path)})]
 
 # ------------------------------
 # MODEL & LLM SETTINGS
@@ -49,40 +67,61 @@ except Exception as e:
 
 Settings.llm = Ollama(model="llama3.1:latest", request_timeout=120.0)
 
-
 # ------------------------------
 # TEXT PREPROCESSING FUNCTION
 # ------------------------------
 def preprocess_text(file_path, text):
-    """
-    Preprocess text based on file type:
-    - Removes punctuation for non-code files.
-    - Leaves code files untouched.
-    """
     code_extensions = {".py", ".java", ".cpp", ".js", ".c", ".cs", ".html", ".css", ".php", ".rb"}
     text_extensions = {".pdf", ".docx", ".pptx", ".txt"}
 
     ext = os.path.splitext(file_path)[-1].lower()
 
     if ext in text_extensions:
-        text = re.sub(r'[^A-Za-z0-9\s]', '', text)
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r"\b\d{1,2}/\d{1,2}/\d{4}\b", "", text)
-        text = re.sub(r"\b\d{5,}\s\d+\b", "", text)
+        text = clean_text(text)
+    return text
+
+def clean_text(text):
+    text = unicodedata.normalize("NFKD", text)
+
+    # Preserve email addresses
+    email_pattern = r'([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})'
+    emails = re.findall(email_pattern, text)
+    for i, email in enumerate(emails):
+        text = text.replace(email, f'EMAIL_PLACEHOLDER_{i}')
+
+    # Preserve URLs
+    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+    urls = re.findall(url_pattern, text)
+    for i, url in enumerate(urls):
+        text = text.replace(url, f'URL_PLACEHOLDER_{i}')
+
+    # Remove table of contents artifacts (long sequences of dots)
+    text = re.sub(r'\.{5,}', ' ', text)  # Remove sequences of 5 or more dots
+
+    # Remove excessive spaces and unnecessary formatting
+    text = re.sub(r'\s+', ' ', text).strip()  
+
+    # Restore emails and URLs
+    for i, email in enumerate(emails):
+        text = text.replace(f'EMAIL_PLACEHOLDER_{i}', email)
+    for i, url in enumerate(urls):
+        text = text.replace(f'URL_PLACEHOLDER_{i}', url)
 
     return text
+
 
 
 # ------------------------------
 # LOAD DOCUMENTS & PREPROCESS
 # ------------------------------
-doc_path = "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Module 2"
+doc_path = "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/"
 
 try:
     reader = SimpleDirectoryReader(
         input_dir=doc_path,
-        required_exts=['.pptx', '.ipynb', '.docx', '.csv', '.jpeg', '.pdf', '.png'],
-        file_extractor={".pptx": PPTXTextOnlyReader()}
+        required_exts=['.pptx', '.ipynb', '.docx', '.csv', '.jpeg', '.pdf', '.png', '.py'],
+        file_extractor={".pptx": PPTXTextOnlyReader(), ".pdf": PDFTextOnlyReader()}, 
+        recursive=True
     )
     docs = reader.load_data()
 
@@ -96,31 +135,42 @@ except Exception as e:
     print(f"❌ Error loading documents: {e}")
     exit()
 
-
 # ------------------------------
-# CHUNKING FUNCTION
+# PROCESS DOCUMENTS & CHUNKING
 # ------------------------------
+processed_docs = []
 CHUNK_SIZE = 512
-CHUNK_OVERLAP = 5
+CHUNK_OVERLAP = 50
 
 def chunk_text(text, chunk_size=512, overlap=50):
-    """
-    Splits text into fixed-size chunks of `chunk_size` characters with `overlap` between consecutive chunks.
-    Ensures that no chunk exceeds `chunk_size`.
-    """
     chunks = []
     start = 0
     while start < len(text):
-        end = min(start + chunk_size, len(text))  # Ensure we don’t exceed text length
+        end = min(start + chunk_size, len(text))
         chunk = text[start:end]
-
         chunks.append(chunk)
-        start += chunk_size - overlap  # Move forward with overlap
-
+        start += chunk_size - overlap
     return chunks
 
+for doc in docs:
+    doc_text = preprocess_text(doc.metadata.get("file_path", ""), doc.get_content())
+    text_chunks = chunk_text(doc_text)
 
-
+    folder_name = os.path.basename(os.path.dirname(doc.metadata.get("file_path", "")))
+    for chunk in text_chunks:
+        metadata = {
+            "file_name": str(doc.metadata.get("file_name", "")),
+            "file_path": str(doc.metadata.get("file_path", "")),
+            "folder_name": str(folder_name),
+            "num_tokens": int(len(chunk.split())),
+            "num_chars": int(len(chunk)),
+        }
+        processed_docs.append({
+            "doc_id": doc.doc_id,
+            "text": chunk,
+            "metadata": metadata,
+            "category": "<category>"
+        })
 # ------------------------------
 # PROCESS DOCUMENTS
 # ------------------------------
