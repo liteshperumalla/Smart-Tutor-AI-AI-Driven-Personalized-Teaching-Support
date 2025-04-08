@@ -8,25 +8,19 @@ from llama_index.core.response_synthesizers import BaseSynthesizer
 from llama_index.llms.ollama import Ollama
 from llama_index.core import StorageContext, load_index_from_storage
 from sentence_transformers import SentenceTransformer
-from llama_index.core.schema import Document
+
 # Define the argument parsing function
 def parse_args():
     parser = argparse.ArgumentParser(description="Smart AI Tutor CLI")
-
-    # Subcommands
     subparsers = parser.add_subparsers(dest='command')
 
-    # Ingestion command
     ingestion_parser = subparsers.add_parser('ingest', help="Ingest data into the index")
     ingestion_parser.add_argument('data_path', type=str, help="Path to the data to ingest")
 
-    # Query command
     query_parser = subparsers.add_parser('query', help="Query the RAG model")
     query_parser.add_argument('query_text', type=str, help="Query text for the RAG model")
 
-    # Chat command (interactive mode)
     subparsers.add_parser('chat', help="Interactive chat with the AI tutor")
-
     return parser.parse_args()
 
 # Set up necessary models and directories
@@ -36,15 +30,14 @@ Settings.llm = Ollama(model="llama3.1:latest", request_timeout=120.0)
 
 persist_dir = "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/persisted_index"
 os.makedirs(persist_dir, exist_ok=True)
-
 storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
 
 # Define the custom prompt template
 template = (
-    "Given the context information and not prior knowledge,"
-    "You are a Teaching Assistant designed to assist users in answering queries."
-    "Explain concepts, solving coding doubts, and providing relevant resources from course modules."
-    "And also give a simple example to make student understand the concept.\n"
+    "Given the context information and not prior knowledge, "
+    "you are a Teaching Assistant designed to assist users in answering queries. "
+    "Explain concepts, solve coding doubts, and provide relevant resources from course modules. "
+    "Also, provide a simple example to help the student understand the concept.\n"
     "---------------------\n"
     "{context_str}\n"
     "---------------------\n"
@@ -52,7 +45,7 @@ template = (
 )
 qa_template = PromptTemplate(template)
 
-# Make sure RAGQueryEngine class is defined before you use it
+# Custom RAG Query Engine class with modifications
 class RAGQueryEngine(CustomQueryEngine):
     """RAG Query Engine for custom retrieval and response synthesis."""
 
@@ -61,33 +54,39 @@ class RAGQueryEngine(CustomQueryEngine):
 
     def custom_query(self, query_str: str):
         nodes = self.retriever.retrieve(query_str)
-        
-        # Ensure we only use TextNode objects to get text
-        context_str = "\n".join([node.get_text() for node in nodes if isinstance(node, Document) and node.get_text()])
-        
-        # Format the prompt with retrieved context
+        # Collect text from nodes that have a get_text() method and non-empty text
+        context_str = "\n".join(
+            [node.get_text() for node in nodes if hasattr(node, 'get_text') and node.get_text()]
+        )
+
+        # Debug: Print the relevant chunk used by the LLM
+        if context_str:
+            print("Relevant Chunk:")
+            print(context_str)
+        else:
+            print("No relevant text found in nodes. Debug info:")
+            for node in nodes:
+                text = node.get_text() if hasattr(node, 'get_text') else "No text attribute"
+                print(f"Node type: {type(node)}, Content: {text}")
+
         formatted_prompt = qa_template.format(context_str=context_str, query_str=query_str)
-        
-        # Generate response
         response_obj = self.response_synthesizer.synthesize(query=formatted_prompt, nodes=nodes)
         return response_obj
 
+    # Override the query method so that custom_query is used
+    def query(self, query_str: str):
+        return self.custom_query(query_str)
 
 # Function to handle the interactive chat
 def chat():
     print("Welcome to Smart AI Tutor! Type 'exit' to quit the chat.")
     while True:
-        # Get user input
         user_input = input("You: ")
-        
         if user_input.lower() == "exit":
             print("Goodbye!")
             break
-        
-        # Query the RAG model and return a response
+
         print(f"Running query: {user_input}")
-        
-        # Load index
         try:
             index = load_index_from_storage(storage_context)
             print("Index loaded successfully.")
@@ -98,20 +97,25 @@ def chat():
         retriever = index.as_retriever()
         synthesizer = get_response_synthesizer(response_mode="compact")
         query_engine = RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer)
-        
         response = query_engine.query(user_input)
         print("Assistant:", response)
+
+# Placeholder functions for ingestion and query commands
+def run_ingestion(data_path):
+    print(f"Ingestion function not implemented. Data path provided: {data_path}")
+
+def run_query(query_text):
+    print(f"Query function not implemented. Query text provided: {query_text}")
 
 # Main function to control CLI behavior
 def main():
     args = parse_args()
-
     if args.command == 'ingest':
         run_ingestion(args.data_path)
     elif args.command == 'query':
         run_query(args.query_text)
     elif args.command == 'chat':
-        chat()  # Start interactive chat mode
+        chat()
     else:
         print("Invalid command. Use -h for help.")
 

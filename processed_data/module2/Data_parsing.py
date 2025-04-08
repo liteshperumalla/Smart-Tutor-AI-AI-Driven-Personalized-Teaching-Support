@@ -109,8 +109,6 @@ def clean_text(text):
 
     return text
 
-
-
 # ------------------------------
 # LOAD DOCUMENTS & PREPROCESS
 # ------------------------------
@@ -152,6 +150,7 @@ def chunk_text(text, chunk_size=512, overlap=50):
         start += chunk_size - overlap
     return chunks
 
+# Preprocess and chunk the documents
 for doc in docs:
     doc_text = preprocess_text(doc.metadata.get("file_path", ""), doc.get_content())
     text_chunks = chunk_text(doc_text)
@@ -171,79 +170,48 @@ for doc in docs:
             "metadata": metadata,
             "category": "<category>"
         })
-# ------------------------------
-# PROCESS DOCUMENTS
-# ------------------------------
-processed_docs = []
-for doc in docs:
-    text_chunks = chunk_text(doc.get_content())
-    folder_name = os.path.basename(os.path.dirname(doc.metadata.get("file_path", "")))
-
-    for chunk in text_chunks:
-        metadata = {
-            "file_name": str(doc.metadata.get("file_name", "")),
-            "file_path": str(doc.metadata.get("file_path", "")),  # Ensure string type
-            "folder_name": str(folder_name),
-            "num_tokens": int(len(chunk.split())),
-            "num_chars": int(len(chunk)),
-        }
-        processed_docs.append({
-            "doc_id": doc.doc_id,
-            "text": chunk,
-            "metadata": metadata,
-            "category": "<category>"
-        })
-
-# Print processed chunks
-for i, doc in enumerate(processed_docs):
-    print(f"\nChunk {i + 1}:")
-    print(f"Document ID: {doc['doc_id']}")
-    print(f"Metadata: {doc['metadata']}")
-    print(f"Text: {doc['text']}\n")
-
 
 # ------------------------------
-# INITIALIZE CHROMADB VECTOR STORE
+# CONVERT PROCESSED DOCS TO DOCUMENT OBJECTS
 # ------------------------------
-chroma_path = "./chroma_db"
-try:
-    chroma_client = PersistentClient(path=chroma_path)
-    collection = chroma_client.get_or_create_collection("document_chunks")
-
-    vector_store = ChromaVectorStore(chroma_client, collection_name="document_chunks")
-    print("✅ ChromaDB initialized successfully.")
-except Exception as e:
-    print(f"❌ Error initializing ChromaDB: {e}")
-    exit()
-
+document_objects = []
+for doc in processed_docs:
+    document_objects.append(Document(text=doc["text"], metadata=doc["metadata"]))
 
 # ------------------------------
 # DOCUMENT PROCESSING PIPELINE
 # ------------------------------
 pipeline = IngestionPipeline(
     transformations=[
-        SentenceSplitter(chunk_size=128, chunk_overlap=10),
-        Settings.embed_model
+        Settings.embed_model  # Only apply the embedding model to pre-chunked text
     ],
 )
 
 try:
-    nodes = pipeline.run(documents=docs)
+    # Use the document_objects instead of processed_docs
+    nodes = pipeline.run(documents=document_objects)
+    
     if not nodes:
         print("❌ No nodes were created. Check document parsing.")
         exit()
     print(f"✅ {len(nodes)} document nodes created and stored in ChromaDB.")
 
+    # Add nodes to ChromaDB
+    chroma_path = "./chroma_db"
+    chroma_client = PersistentClient(path=chroma_path)
+    collection = chroma_client.get_or_create_collection("document_chunks")
+
+    vector_store = ChromaVectorStore(chroma_client, collection_name="document_chunks")
     for i, node in enumerate(nodes):
         collection.add(
             ids=[str(i)],
             documents=[node.text],
             metadatas=[node.metadata]
         )
+
 except Exception as e:
     print(f"❌ Error during ingestion pipeline: {e}")
     exit()
-
 
 # ------------------------------
 # CREATE VECTOR STORE INDEX
@@ -259,7 +227,6 @@ except Exception as e:
     print(f"❌ Error creating VectorStoreIndex: {e}")
     exit()
 
-
 # ------------------------------
 # CREATE CHAT ENGINE & PROCESS QUERY
 # ------------------------------
@@ -273,7 +240,6 @@ class RAGQueryEngine(CustomQueryEngine):
         nodes = self.retriever.retrieve(query_str)
         response_obj = self.response_synthesizer.synthesize(query_str, nodes)
         return response_obj
-
 
 retriever = index.as_retriever()
 synthesizer = get_response_synthesizer(response_mode="compact")
