@@ -1,5 +1,6 @@
 import os
 import argparse
+from typing import Optional
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings, get_response_synthesizer, PromptTemplate
 from llama_index.core.retrievers import BaseRetriever
@@ -73,51 +74,61 @@ UPLOADED_DOCS_TEMPLATE = PromptTemplate(
     "---------------------\n"
     "Question: {query_str}\n"
 )
+RESEARCH_TEMPLATE = """
+You are an intelligent academic assistant helping a student understand a topic based on the following course-related content.
+
+Context:
+{context_str}
+
+Task:
+Based on the above information, provide a well-researched, detailed answer to the following query. Include relevant facts, definitions, explanations, and examples where appropriate. Maintain a formal academic tone.
+
+Query:
+{query_str}
+
+Answer:
+"""
 
 
 class RAGQueryEngine:
     def __init__(self, retriever, response_synthesizer, mode="chat"):
-        """
-        mode: 'chat' for chat mode, 'quiz' for quiz mode.
-        """
         self.retriever = retriever
         self.response_synthesizer = response_synthesizer
         self.mode = mode
 
-    def custom_query(self, query_str: str, doc: Document = None) -> str:
-        """
-        Handles the query based on the mode:
-        - 'chat': For chat-based queries
-        - 'quiz': For quiz-based queries
-        - 'uploaded_doc': For queries based on uploaded documents
-        """
-        nodes = self.retriever.retrieve(query_str)
-
-        # Handle different modes
+    def custom_query(self, query_str: str, doc: Optional[Document] = None) -> str:
         if self.mode == "chat":
+            nodes = self.retriever.retrieve(query_str)
             context_str = "\n".join([node.get_text() for node in nodes if isinstance(node, Document)])
             formatted_prompt = qa_template.format(context_str=context_str, query_str=query_str)
-        
+
         elif self.mode == "quiz":
+            nodes = self.retriever.retrieve(query_str)
             context_str = "\n".join([node.get_text() for node in nodes if isinstance(node, Document)])
             formatted_prompt = QUESTION_TEMPLATE.format(context_str=context_str, query_str=query_str)
-        
+
         elif self.mode == "uploaded_doc" and doc:
-            # For uploaded documents, create a new index and retriever
             index = VectorStoreIndex.from_documents([doc])
             retriever = index.as_retriever()
             nodes = retriever.retrieve(query_str)
-            
+
             if not nodes or all(not node.get_text().strip() for node in nodes):
                 return "I'm sorry, I couldn't find an answer based on the uploaded document."
 
             context_str = "\n".join([node.get_text() for node in nodes])
             formatted_prompt = UPLOADED_DOCS_TEMPLATE.format(context_str=context_str, query_str=query_str)
 
-        # Synthesize the response
+        elif self.mode == "research":
+            nodes = self.retriever.retrieve(query_str)
+            context_str = "\n".join([node.get_text() for node in nodes if isinstance(node, Document)])
+            formatted_prompt = RESEARCH_TEMPLATE.format(context_str=context_str, query_str=query_str)
+
+        else:
+            raise ValueError(f"Unknown mode: {self.mode}")
+
         response_obj = self.response_synthesizer.synthesize(query=formatted_prompt, nodes=nodes)
         return str(response_obj).strip()
-    
+
     def get_correct_answer(self, question: str) -> str:
         nodes = self.retriever.retrieve(question)
         formatted_prompt = ANSWER_TEMPLATE.format(question=question)
@@ -129,11 +140,8 @@ class RAGQueryEngine:
         formatted_prompt = MODULE_TEMPLATE.format(question=question)
         response_obj = self.response_synthesizer.synthesize(query=formatted_prompt, nodes=nodes)
         return str(response_obj).strip()
-    
+
     def query_uploaded_docs(self, query_str: str, doc: Document) -> str:
-        """
-        Query method specifically for uploaded documents, independent of 'chat' or 'quiz' mode.
-        """
         index = VectorStoreIndex.from_documents([doc])
         retriever = index.as_retriever()
         nodes = retriever.retrieve(query_str)
@@ -142,7 +150,6 @@ class RAGQueryEngine:
             return "I'm sorry, I couldn't find an answer based on the uploaded document."
 
         context_str = "\n".join([node.get_text() for node in nodes])
-        
         formatted_prompt = UPLOADED_DOCS_TEMPLATE.format(context_str=context_str, query_str=query_str)
         synthesizer = get_response_synthesizer(response_mode="compact")
         return str(synthesizer.synthesize(query=formatted_prompt, nodes=nodes)).strip()

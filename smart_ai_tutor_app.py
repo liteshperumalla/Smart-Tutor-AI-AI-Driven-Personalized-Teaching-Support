@@ -24,6 +24,11 @@ import pyttsx3
 import tempfile
 import datetime
 from fpdf import FPDF
+from PIL import Image
+import pytesseract
+import requests
+from youtube_transcript_api import YouTubeTranscriptApi
+from bs4 import BeautifulSoup
 timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 # Import for speech recognition
@@ -42,6 +47,33 @@ if "history" not in st.session_state:
 # ─── Chat Persistence Helpers ───────────────────────────────────────────────
 PREV_CHAT_DIR = "previous_chats"
 os.makedirs(PREV_CHAT_DIR, exist_ok=True)
+
+def render_footer():
+    st.markdown(
+        """
+        <style>
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: #f1f1f1;
+            padding: 10px 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #555;
+            z-index: 999;
+            border-top: 1px solid #ccc;
+        }
+        </style>
+
+        <div class="footer">
+            Disclaimer: The Smart AI Tutor may occasionally make mistakes. Please verify important information independently.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def _safe_name(name: str) -> str:
     return re.sub(r'[^a-zA-Z0-9_-]', '_', name)
@@ -205,6 +237,34 @@ def convert_pptx_to_pdf(pptx_file, output_path):
     convert_text_to_pdf(text, output_path)
     return text
 
+def image_to_document(image_file):
+    image = Image.open(image_file)
+    text = pytesseract.image_to_string(image)
+    return Document(text=text)
+
+def url_to_document(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        text = soup.get_text()
+        return Document(text=text)
+    except Exception as e:
+        st.error(f"Error fetching URL content: {e}")
+        return Document(text="Error fetching URL content.")
+
+def youtube_to_document(video_id):
+    try:
+        transcript = YouTubeTranscriptApi.get_transcript(video_id)
+        text = " ".join([t["text"] for t in transcript])
+        return Document(text=text)
+    except Exception as e:
+        raise RuntimeError(f"Error fetching YouTube transcript: {e}")
+
+def extract_video_id(url):
+    if 'youtube.com/watch' in url:
+        return url.split("v=")[-1].split("&")[0]
+    raise ValueError("Invalid YouTube URL")
 # ---------- CSS STYLING ----------
 LIGHT_MODE_CSS = """
 <style>
@@ -422,9 +482,9 @@ def sidebar_content():
             ("home","Home"),("chat","Chat"),
             ("Research Mode", "Research Mode"),("quizgenerator","Quiz Generator"),
             ("scheduleappointment","Schedule Appointment"),
-            ("resources","Resources"),
+            ("Resources","Resources"),
             ("About","About"),
-            ("Feedback And Bug Report","Feedback and Bug Report"),
+            ("Feedback And Bug Report","Feedback And Bug Report"),
         ]:
             if st.button(label):
                 st.session_state.page = p
@@ -569,13 +629,8 @@ def home():
     </div>
     """,
     unsafe_allow_html=True)
-    st.markdown(
-        "<hr><p class='disclaimer'>"  # Apply the disclaimer class
-        "Disclaimer: The Smart AI Tutor may occasionally make mistakes. "
-        "Please verify all important information independently."
-        "</p>",
-        unsafe_allow_html=True
-    )
+    
+    render_footer()
 
 def chatbot():
     import re
@@ -758,7 +813,7 @@ def chatbot():
     """, unsafe_allow_html=True)
 
     # ─────────── Disclaimer ───────────
-    st.markdown("<p class='disclaimer'>The Smart AI Tutor may occasionally make mistakes. Please verify important information independently.</p>", unsafe_allow_html=True)
+    render_footer()
 
 def appointment_page():
     import smtplib
@@ -824,116 +879,120 @@ def appointment_page():
         st.info('📧 We will get back to you via email soon!')
 
     # ─────────── Footer Disclaimer ───────────
-    st.markdown("""
-    <hr>
-    <p class='disclaimer' style='text-align:center; font-size:0.8em; color:gray;'>
-    Disclaimer: Smart AI Tutor may occasionally make mistakes. Please verify critical information independently.
-    </p>
-    """, unsafe_allow_html=True)
+    render_footer()
 
-def document_upload_sidebar():
-    st.markdown("## 📄 Upload and Chat with Your Documents")
+def research_mode():
+    st.markdown("## Research Mode")
+    col1, col2, col3, col4 = st.columns(4)
 
-    uploaded_files = st.file_uploader("Upload DOCX, PPTX, TXT, or PDF files", type=["docx", "pptx", "txt", "pdf"], accept_multiple_files=True)
-    
-    all_texts = []
-    pdf_paths = []
+    documents = []
+    preview_blocks = []
 
-    if uploaded_files:
-        for uploaded_file in uploaded_files:
-            file_ext = uploaded_file.name.split('.')[-1].lower()
-            file_name = uploaded_file.name
-            st.markdown(f"**Uploaded:** `{file_name}`")
-
-            file_text = ""
+    with col1:
+        st.markdown("### Document")
+        uploaded_docs = st.file_uploader("Upload DOCX, PPTX, TXT, or PDF", type=["docx", "pptx", "txt", "pdf"], accept_multiple_files=True)
+        for doc in uploaded_docs or []:
+            file_ext = doc.name.split('.')[-1].lower()
             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{file_ext}") as tmp:
-                tmp.write(uploaded_file.getbuffer())
+                tmp.write(doc.getbuffer())
                 tmp_path = tmp.name
-
-            preview_pdf_path = tmp_path.replace(f".{file_ext}", ".pdf")
-
+            pdf_preview_path = tmp_path.replace(f".{file_ext}", ".pdf")
             if file_ext == "docx":
-                file_text = convert_docx_to_pdf(tmp_path, preview_pdf_path)
+                text = convert_docx_to_pdf(tmp_path, pdf_preview_path)
             elif file_ext == "pptx":
-                file_text = convert_pptx_to_pdf(tmp_path, preview_pdf_path)
+                text = convert_pptx_to_pdf(tmp_path, pdf_preview_path)
             elif file_ext == "txt":
-                file_text = uploaded_file.read().decode("utf-8")
-                convert_text_to_pdf(file_text, preview_pdf_path)
+                text = doc.read().decode("utf-8")
+                convert_text_to_pdf(text, pdf_preview_path)
             elif file_ext == "pdf":
-                preview_pdf_path = tmp_path
-                file_text = "PDF preview only – no text extracted."
+                text = "PDF preview only – no text extracted."
+                pdf_preview_path = tmp_path
 
-            # PDF Preview
-            with open(preview_pdf_path, "rb") as f:
-                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500px" type="application/pdf"></iframe>'
-                st.markdown(pdf_display, unsafe_allow_html=True)
+            documents.append(Document(text=text))
 
-            if file_text.strip() and file_ext != "pdf":
-                all_texts.append(file_text)
+            with open(pdf_preview_path, "rb") as f:
+                pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
+                preview_blocks.append(("pdf", f'<iframe src="data:application/pdf;base64,{pdf_base64}" width="100%" height="600px"></iframe>'))
 
-        # --- Chat Engine Setup ---
-        from llama_index.core import VectorStoreIndex, Document
-        from Tutor_chat import RAGQueryEngine, get_response_synthesizer
+    with col2:
+        st.markdown("### Image")
+        images = st.file_uploader("Upload Images", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
+        for img in images or []:
+            doc = image_to_document(img)
+            documents.append(doc)
+            image = Image.open(img)
+            preview_blocks.append(("image", image))
 
-        documents = [Document(text=txt) for txt in all_texts]
-        temp_index = VectorStoreIndex.from_documents(documents)
-        retriever = temp_index.as_retriever()
+    with col3:
+        st.markdown("### 🔗 Articles")
+        url = st.text_input("Enter a web page URL")
+        if url:
+            doc = url_to_document(url)
+            documents.append(doc)
+            preview_blocks.append(("article", doc.text[:3000]))  # Preview first 3000 chars
+
+    with col4:
+        st.markdown("### YouTube Link")
+        yt_url = st.text_input("Enter YouTube video URL")
+        if yt_url:
+            try:
+                video_id = extract_video_id(yt_url)
+                doc = youtube_to_document(video_id)
+                documents.append(doc)
+                preview_blocks.append(("youtube", f"https://www.youtube.com/watch?v={video_id}"))
+            except Exception as e:
+                st.error(str(e))
+
+    # Display all previews outside the columns - full width
+    if preview_blocks:
+        st.markdown("### 🔍 Preview")
+        for preview_type, content in preview_blocks:
+            if preview_type == "pdf":
+                st.markdown(content, unsafe_allow_html=True)
+            elif preview_type == "image":
+                st.image(content, caption="Uploaded Image", use_container_width=True)
+            elif preview_type == "article":
+                st.markdown("**Web Article Preview**")
+                st.text_area(label="", value=content, height=300)
+            elif preview_type == "youtube":
+                st.video(content)
+
+    # Chat section
+    if documents:
+        st.divider()
+        st.markdown("### 💬 Chat with Uploaded Content")
+
+        index = VectorStoreIndex.from_documents(documents)
+        retriever = index.as_retriever()
         synthesizer = get_response_synthesizer(response_mode="compact")
-        temp_engine = RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer, mode="uploaded_doc")
+        engine = RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer, mode="research")
 
-        # Chat Section
-        st.markdown("---")
-        st.markdown("### 💬 Ask questions about the document")
+        if "research_chat_history" not in st.session_state:
+            st.session_state.research_chat_history = []
 
-        # Top-right chat download
-        if "doc_chat_history" not in st.session_state:
-            st.session_state.doc_chat_history = []
-
-        if st.session_state.doc_chat_history:
-            export_text = "\n\n".join(f"{sender}: {msg}" for sender, msg in st.session_state.doc_chat_history)
-            with st.container():
-                st.download_button("📄 Download Chat", data=export_text, file_name="document_chat.txt", use_container_width=False)
-
-        # Input at bottom
-        user_input = st.chat_input("Ask something about this document...")
-        if user_input:
-            st.session_state.doc_chat_history.append(("You", user_input))
+        user_query = st.chat_input("Ask a question about your uploaded content")
+        if user_query:
+            st.session_state.research_chat_history.append(("You", user_query))
             with st.spinner("Thinking..."):
-                full_text = "\n".join(all_texts)
-                document = Document(text=full_text)
-                response = temp_engine.custom_query(query_str=user_input, doc=document)
-            st.session_state.doc_chat_history.append(("Assistant", response))
+                response = engine.custom_query(query_str=user_query, doc=None)
+            st.session_state.research_chat_history.append(("Assistant", response))
 
-            # Download button at top right
-            if st.session_state.doc_chat_history:
-                with st.container():
-                    col1, col2 = st.columns([0.85, 0.15])
-                    with col2:
-                        export_text = "\n\n".join(f"{sender}: {msg}" for sender, msg in st.session_state.doc_chat_history)
-                        st.download_button("📄 Download Chat", data=export_text, file_name="document_chat.txt", mime="text/plain")
+        for sender, msg in st.session_state.research_chat_history:
+            align = "right" if sender == "You" else "left"
+            bg = "#cce5ff" if sender == "You" else "#d4edda"
+            color = "#003366" if sender == "You" else "#155724"
+            st.markdown(
+                f"<div style='text-align:{align}; margin: 5px 0;'>"
+                f"<span style='background-color:{bg}; color:{color}; padding:10px 15px; border-radius:15px; display:inline-block; max-width:70%; word-wrap:break-word;'>"
+                f"{msg}</span></div>", unsafe_allow_html=True
+            )
 
-            # Styled Chat Messages
-            for sender, msg in st.session_state.doc_chat_history:
-                if sender == "You":
-                    st.markdown(
-                        f"""
-                        <div style='text-align:right; margin: 5px 0;'>
-                            <span style='background-color:#cce5ff; color:#003366; padding:10px 15px; border-radius:15px; display:inline-block; max-width:70%; word-wrap:break-word;'>{msg}</span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.markdown(
-                        f"""
-                        <div style='text-align:left; margin: 5px 0;'>
-                            <span style='background-color:#d4edda; color:#155724; padding:10px 15px; border-radius:15px; display:inline-block; max-width:70%; word-wrap:break-word;'>{msg}</span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
+        if st.session_state.research_chat_history:
+            export_text = "\n\n".join(f"{s}: {m}" for s, m in st.session_state.research_chat_history)
+            st.download_button("📄 Download Chat", data=export_text, file_name="research_chat.txt", mime="text/plain")
+    
+    render_footer()
+        
 
 def quiz_generator_sidebar():
     st.markdown("## Quiz Generator")
@@ -1011,7 +1070,9 @@ def quiz_generator_sidebar():
                     st.rerun()
             else:
                 st.rerun()
-
+                
+    render_footer()
+    
 def save_quiz_results():
     folder_path = "quiz_results"
     os.makedirs(folder_path, exist_ok=True)
@@ -1132,13 +1193,9 @@ def resources_page():
         with st.expander(f"📂 {topic}", expanded=False):
             for link in links:
                 st.markdown(f"- [{link['title']}]({link['url']})", unsafe_allow_html=True)
-    st.markdown(
-        "<hr><p class='disclaimer'>"  # Apply the disclaimer class
-        "Disclaimer: The Smart AI Tutor may occasionally make mistakes. "
-        "Please verify all important information independently."
-        "</p>",
-        unsafe_allow_html=True
-    )
+    
+    render_footer()
+    
 
 
 def about_page():
@@ -1177,13 +1234,8 @@ def about_page():
         ### 📢 Contact
         For feature requests, bug reports, or collaboration inquiries, visit the [Feedback Page](#) or email us at `liteshperumalla@gmail.com`.
     """)
-    st.markdown(
-        "<hr><p class='disclaimer'>"
-        "Disclaimer: The Smart AI Tutor may occasionally make mistakes. "
-        "Please verify all important information independently."
-        "</p>",
-        unsafe_allow_html=True
-    )
+    
+    render_footer()
     
 def feedback_and_bug_report():
 
@@ -1220,6 +1272,9 @@ def feedback_and_bug_report():
                 st.success("✅ Thanks for reporting the bug!")
             else:
                 st.error("⚠️ Please fill out the bug title and description.")
+    
+    render_footer()
+    
 
 def main():
     if 'dark_mode' not in st.session_state:
@@ -1242,15 +1297,15 @@ def main():
         chatbot()
     elif st.session_state.page=='scheduleappointment':
         appointment_page()
-    elif st.session_state.page=='Resource':
-        document_upload_sidebar()
+    elif st.session_state.page=='Research Mode':
+        research_mode()
     elif st.session_state.page=='quizgenerator':
         quiz_generator_sidebar()
-    elif st.session_state.page=='Research Mode':
+    elif st.session_state.page=='Resources':
         resources_page()
     elif st.session_state.page=='About':
         about_page()
-    elif st.session_state.page=='Feedback and Bug Report':
+    elif st.session_state.page=='Feedback And Bug Report':
         feedback_and_bug_report()
 
 if __name__=='__main__':
