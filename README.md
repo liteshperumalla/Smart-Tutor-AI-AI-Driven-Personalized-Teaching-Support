@@ -4,8 +4,8 @@
 University of North Texas, Spring 2025
 
 
-![RAG Pipeline Architecture](<img width="746" alt="RAG Pipeline" src="https://github.com/user-attachments/assets/856dca10-e7c4-42e5-ac78-f39ca13ee96a" />)
-
+![RAG Pipeline Architecture]
+<img width="746" alt="RAG Pipeline" src="https://github.com/user-attachments/assets/856dca10-e7c4-42e5-ac78-f39ca13ee96a" />
 ## Abstract
 
 Smart Tutor AI leverages Retrieval-Augmented Generation (RAG) and Large Language Models (LLMs) to provide personalized, context-aware teaching support. By combining course-specific materials with advanced language modeling, the system addresses the hallucination problem of traditional LLMs, ensuring more factual, relevant, and helpful student support.
