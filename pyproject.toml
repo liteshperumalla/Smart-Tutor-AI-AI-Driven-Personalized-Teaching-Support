@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "app.py"
+version = "0.1.0"
+description = "AI-Driven Personalized Teaching Support"
+authors = ["Litesh Perumalla <litesh@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+llama-index = "*"
+torch = "*"
+transformers = "*"
+numpy = "*"
+pandas = "*"
+scikit-learn = "*"
+openai = "*"
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+black = "*"
+flake8 = "*"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,134 @@
+[
+  {
+    "role": "user",
+    "content": "Explain what is for loop in python?",
+    "timestamp": "05:50 PM, May 25"
+  },
+  {
+    "role": "assistant",
+    "content": "A for loop in Python is used to iterate over a sequence (such as a list, tuple, or string) and execute a block of code for each item in the sequence. It allows you to access and manipulate each element individually, making it a powerful tool for data processing and manipulation. The general syntax of a for loop in Python is as follows:\n\n```\nfor variable in iterable:\n    # do something with variable\n    pass\n```\n\nIn this syntax, `variable` is the name given to the current item being processed, and `iterable` is the sequence or collection that you want to iterate over. The code inside the loop is executed for each item in the iterable.",
+    "sources": [
+      {
+        "file_name": "Week_2_Code_Demo.ipynb",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Week_2_Code_Demo.ipynb",
+        "page": null,
+        "slide": null,
+        "chunk_text": "estions\n\n# # Q1.) What is the output of the following code??\n\n# In[ ]:\n\n\nprint(9/2)\n\n\n# In[ ]:\n\n\nprint(int(9/2))\n\n\n# # Q2.) What will be the output of the following code snippet?\n\n# In[ ]:\n\n\ndef func():\n   global value\n   value = \"Local\"\n\nvalue = \"Global\"\nfunc()\nprint(value)\n\n\n# # Q3.) Short Circuit..."
+      },
+      {
+        "file_name": "Lesson two-Python Basic-Fall2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Lesson two-Python Basic-Fall2024.pptx",
+        "page": null,
+        "slide": 52,
+        "chunk_text": "Question: What's the difference between \"break\" and \"continue\" in Python?\nBreak: Jumps out of the closest enclosing loop (past the entire loop statement)\nContinue: Jumps to the top of the closest enclosing loop (to the loop’s header line)"
+      },
+      {
+        "file_name": "Lesson_two_example2.ipynb",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Lesson_two_example2.ipynb",
+        "page": null,
+        "slide": null,
+        "chunk_text": "\n\n\n# Grab first item of the first item in the matrix object\nmatrix[0][0]\n\n\n# # 1.5 List Comprehensions\n# \n# Python has an advanced feature called list comprehensions. They allow for quick construction of lists. To fully understand list comprehensions we need to understand for loops. So don't worry i..."
+      }
+    ],
+    "timestamp": "05:50 PM, May 25"
+  },
+  {
+    "role": "user",
+    "content": "What is While loop?",
+    "timestamp": "05:56 PM, May 25"
+  },
+  {
+    "role": "assistant",
+    "content": "A control structure that repeats a block of code as long as a certain condition is true.",
+    "sources": [
+      {
+        "file_name": "Lesson two-Python Basic-Fall2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Lesson two-Python Basic-Fall2024.pptx",
+        "page": null,
+        "slide": 52,
+        "chunk_text": "Question: What's the difference between \"break\" and \"continue\" in Python?\nBreak: Jumps out of the closest enclosing loop (past the entire loop statement)\nContinue: Jumps to the top of the closest enclosing loop (to the loop’s header line)"
+      },
+      {
+        "file_name": "Lesson two-Python Basic-Fall2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Lesson two-Python Basic-Fall2024.pptx",
+        "page": null,
+        "slide": 43,
+        "chunk_text": "Question: how to choose between for and while?\nUse a for loop if you know, before you start looping, the maximum number of times that you’ll need to execute the body.\nSo any problem like “iterate this weather model for 1000 cycles”, or “search this list of words”, “find all prime numbers up to 10000..."
+      },
+      {
+        "file_name": "Week_2_Code_Demo.ipynb",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Week_2_Code_Demo.ipynb",
+        "page": null,
+        "slide": null,
+        "chunk_text": "estions\n\n# # Q1.) What is the output of the following code??\n\n# In[ ]:\n\n\nprint(9/2)\n\n\n# In[ ]:\n\n\nprint(int(9/2))\n\n\n# # Q2.) What will be the output of the following code snippet?\n\n# In[ ]:\n\n\ndef func():\n   global value\n   value = \"Local\"\n\nvalue = \"Global\"\nfunc()\nprint(value)\n\n\n# # Q3.) Short Circuit..."
+      }
+    ],
+    "timestamp": "05:56 PM, May 25"
+  },
+  {
+    "role": "user",
+    "content": "What is Prompt Engineering?",
+    "timestamp": "06:11 PM, May 25"
+  },
+  {
+    "role": "assistant",
+    "content": "Prompt engineering is a crucial technique for guiding LLMs towards generating desired outputs. It involves crafting prompts that clearly define the task, allowing the model to understand what is expected of it. This enables the model to produce relevant and accurate responses. Effective prompt engineering requires a deep understanding of the task at hand, as well as the capabilities and limitations of the LLM being used. By carefully crafting high-quality prompts, users can harness the full potential of these powerful models and achieve their desired outcomes.",
+    "sources": [
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 55,
+        "slide": null,
+        "chunk_text": "quality of the external knowledge sources. Retrieval e\"ciency: Finding the most relevant information from a large database can be computationally expensive. Integration complexity: Combining two di!erent systems (retrieval and generation) introduces additional complexity in terms of design and imple..."
+      },
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 19,
+        "chunk_text": "Feature extraction refers to the process of transforming raw data into numerical features that can be processed while preserving the information in the original data set. Feature engineering is the process of selecting, manipulating and transforming raw data into features that can be used in supervi..."
+      },
+      {
+        "file_name": "Lesson 1-Orientation and Overview-Fall 2024-Updated on Aug 16-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Orientation and Overview-Fall 2024-Updated on Aug 16-2024.pptx",
+        "page": null,
+        "slide": 2,
+        "chunk_text": "1\n2\nHow to begin?\n3\n4\nWhat and why is Python?\nNatural Language Processing?\nAbout the course"
+      }
+    ],
+    "timestamp": "06:11 PM, May 25"
+  },
+  {
+    "role": "user",
+    "content": "What is POS tagging?",
+    "timestamp": "06:19 PM, May 25"
+  },
+  {
+    "role": "assistant",
+    "content": "POS tagging is a process that marks up words in text format according to their specific part of speech based on its definition. It assigns a category tag to each tokenized part of a sentence, identifying words as nouns, verbs, adjectives, and so on.",
+    "sources": [
+      {
+        "file_name": "Lesson 1-Computational Environment and Resources-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Computational Environment and Resources-2024.pptx",
+        "page": null,
+        "slide": 68,
+        "chunk_text": "8/16/24\n68\nPOS (Part-Of-Speech) Tagging & Chunking with NLTK POS Tagging (Parts of Speech Tagging) is a process to mark up the words in text format for a particular part of a speech based on its definition and context. It is responsible for text reading in a language and assigning some specific toke..."
+      },
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 13,
+        "chunk_text": "POS tagging consists of assigning a category tag to the tokenized parts of a sentence. The most popular POS tagging would be identifying words as nouns, verbs, adjectives, etc.\n8/21/24\n13"
+      },
+      {
+        "file_name": "Information Extraction - Methodologies and Applications.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 8/Information Extraction - Methodologies and Applications.pdf",
+        "page": 18,
+        "slide": null,
+        "chunk_text": "rvation sequence is considered to have been generated by a sequence of state transitions, beginning in some start state and ending when some pre-designated final state is reached. At each state an element of the observation sequence is stochastically generated, before moving to the next state. In th..."
+      }
+    ],
+    "timestamp": "06:19 PM, May 25"
+  }
+]

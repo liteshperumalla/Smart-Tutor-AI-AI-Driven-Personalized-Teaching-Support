@@ -1,0 +1,29 @@
+[
+  {
+    "role": "user",
+    "content": "What is Linear Regression?",
+    "timestamp": "2025-05-06 17:22:44",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "Linear regression is a linear model that predicts an output variable based on one or more input features. It uses the least squares method to minimize the difference between observed outputs and predicted outputs, resulting in a best-fit line that describes the relationship between inputs and outputs. This linear model can be further extended into non-linear models using various techniques, which are theoretically guaranteed to have small generalization errors when properly trained.",
+    "timestamp": "2025-05-06 17:23:00",
+    "sources": [
+      {
+        "file_name": "Information Extraction - Methodologies and Applications.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 8/Information Extraction - Methodologies and Applications.pdf",
+        "page": 12,
+        "slide": null,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "Data Evaluation and Improvement for Machine Learning-1.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 5/Data Evaluation and Improvement for Machine Learning-1.pptx",
+        "page": null,
+        "slide": 15,
+        "chunk_text": ""
+      }
+    ]
+  }
+]

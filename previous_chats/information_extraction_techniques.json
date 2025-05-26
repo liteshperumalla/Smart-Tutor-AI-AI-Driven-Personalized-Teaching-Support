@@ -1,0 +1,83 @@
+[
+  {
+    "role": "user",
+    "content": "What are some fundamental techniques commonly used for Information Extraction?",
+    "timestamp": "2025-05-01 12:47:37",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "Information extraction is often achieved through various approaches that involve processing unstructured data to extract meaningful information. Some of these methods include rule-based systems, machine learning algorithms, and deep learning techniques. The choice of technique depends on the complexity and nature of the data being processed.\n\nThese techniques can be applied using a combination of natural language processing (NLP) and computer vision, allowing for the extraction of relevant information from various sources such as text documents, images, and videos.",
+    "timestamp": "2025-05-01 12:47:56",
+    "sources": [
+      {
+        "file_name": "Information Extraction - Methodologies and Applications.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 8/Information Extraction - Methodologies and Applications.pdf",
+        "page": 3,
+        "slide": null,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 23,
+        "chunk_text": ""
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "explain about prompt engineering",
+    "timestamp": "2025-05-01 12:49:05",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "Prompt engineering is a crucial technique for guiding language models towards generating desired outputs. It involves crafting prompts that clearly define the task, specify what the model should accomplish, and provide relevant context to ensure accurate and relevant responses are generated. Effective prompt engineering requires careful consideration of the task requirements, the capabilities of the language model, and the potential biases or limitations of the data used to train it.",
+    "timestamp": "2025-05-01 12:49:17",
+    "sources": [
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 55,
+        "slide": null,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 19,
+        "chunk_text": ""
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "can you give a example on few shot prompting.",
+    "timestamp": "2025-05-01 12:50:07",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "To illustrate the concept of few-shot prompting, let's consider a scenario where we're trying to generate text about a specific topic. Suppose we want to write about the benefits of meditation for students during exam season.\n\nIn this case, instead of providing a lengthy description or examples, we could simply give the model a few relevant instances and ask it to continue in a similar vein. For instance:\n\n* \"Meditation helps reduce stress levels.\"\n* \"Regular meditation improves focus and concentration.\"\n* \"Meditation boosts mood and overall well-being.\"\n\nBy providing these examples, we're essentially giving the model a \"shot\" at understanding what we mean by few-shot prompting. The idea is that it can then generate relevant text based on these examples, rather than requiring extensive training or context.\n\nDoes this help clarify things?",
+    "timestamp": "2025-05-01 12:50:23",
+    "sources": [
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 55,
+        "slide": null,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "INFO5731_Syllabus_Sping2025_updated_01142025.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/INFO5731_Syllabus_Sping2025_updated_01142025.pdf",
+        "page": 10,
+        "slide": null,
+        "chunk_text": ""
+      }
+    ]
+  }
+]

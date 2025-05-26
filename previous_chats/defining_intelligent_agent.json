@@ -1,0 +1,29 @@
+[
+  {
+    "role": "user",
+    "content": "What is AI Agent?",
+    "timestamp": "2025-05-13 09:47:58",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "An AI Agent refers to an autonomous entity that can perceive its environment, reason about it, and take actions to achieve its goals. It's essentially a software program designed to simulate intelligent behavior, often by interacting with humans or other digital entities.\n\nThink of an AI agent like a virtual representative of your organization or a user in a game. Its primary objective is to make decisions, respond to inputs, and adapt to changing situations based on the data it has been trained on.\n\nFor instance, consider a simple chatbot that can understand natural language input and provide personalized responses. This chatbot can be seen as an AI agent, working autonomously to engage with users like you, answering questions, and providing assistance when needed.\n\nIn essence, an AI agent is a fundamental component of many applications, including virtual assistants, customer service platforms, and autonomous systems that require decision-making capabilities.",
+    "timestamp": "2025-05-13 09:48:10",
+    "sources": [
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 36,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 31,
+        "slide": null,
+        "chunk_text": ""
+      }
+    ]
+  }
+]
