@@ -45,7 +45,7 @@ Our architecture consists of the following steps (see the diagram above):
 7. **Evaluation**  
    - Human evaluation: Fluency, coherence, factuality, and relevance (Likert scale).
    - Automated evaluation: [Evidently AI](https://www.evidentlyai.com/) for context quality and faithfulness.
-
+   - Real-time Evaluation: [langfuse](https://langfuse.com/) for real time evaluation tracing using LLM as Judge.
 ---
 
 ## Getting Started
@@ -58,6 +58,7 @@ Our architecture consists of the following steps (see the diagram above):
 - [ChromaDB](https://www.trychroma.com/)
 - [Streamlit](https://streamlit.io/)
 - [Evidently AI](https://www.evidentlyai.com/)
+- [Langfuse](https://langfuse.com/)
 
 Install dependencies:
 ```bash
