@@ -47,6 +47,32 @@ Our architecture consists of the following steps (see the diagram above):
    - Automated evaluation: [Evidently AI](https://www.evidentlyai.com/) for context quality and faithfulness.
    - Real-time Evaluation: [langfuse](https://langfuse.com/) for real time evaluation tracing using LLM as Judge.
 ---
+## Features
+
+1. Conversational Teaching Assistant Chatbot
+24/7 Student Support: Engage in natural language conversations to clarify concepts, provide summaries, and answer questions directly from course-specific materials.
+Context-Aware Responses: Utilizes advanced retrieval-augmented generation (RAG) pipeline, ensuring answers are grounded in the latest course content.
+
+3. Research Mode
+Multi-Format Document Upload: Students and instructors can upload and index various materials (PDFs, PPTX, DOCX, TXT) for enhanced Q&A.
+Article Integration: Add links of scholarly articles, research papers, and supplementary readings to the knowledge base for deeper learning and richer queries.
+Image Understanding: Upload relevant diagrams, screenshots, and visual course content. The system can extract text and context from images to support visual learning.
+YouTube & Video Support: Submit YouTube video links; transcripts and extracted audio content are indexed, enabling users to ask questions about lecture or tutorial videos.
+
+5. Automated Quiz Generator
+On-Demand Quiz Creation: Generate quizzes to test understanding of uploaded course materials or user-selected topics.
+Adaptive Questions: Topic coverage can be adjusted; generates multiple-choice, short answer.
+Immediate Feedback: Provides instant grading and explanations.
+
+7. Metadata Tagging & Smart Retrieval
+Automated Metadata Extraction: Each document, chunk, or resource is tagged with relevant metadata (source, upload date, topic/module, file type, etc.).
+
+9. Material Download & Resource Sharing
+Downloadable Content: Users can download original or processed course materials, generated quizzes, and annotated notes directly from the chat interface.
+
+11. Feedback & Continuous Improvement
+User Feedback Collection: Built-in thumbs up/down feedback on each answer to refine chatbot accuracy and performance.
+Human and Automated Evaluation: Combines user feedback with Evidently AI analysis to enhance faithfulness, relevance, and factuality of responses and Real time Evaluation using Langfuse.
 
 ## Getting Started
 
@@ -54,6 +80,7 @@ Our architecture consists of the following steps (see the diagram above):
 
 - Python 3.9+
 - [LlamaIndex](https://www.llamaindex.ai/)
+- [ollama](https://ollama/)
 - [HuggingFace Transformers](https://huggingface.co/)
 - [ChromaDB](https://www.trychroma.com/)
 - [Streamlit](https://streamlit.io/)
