@@ -1,0 +1,36 @@
+{
+  "score": 0,
+  "total": 5,
+  "questions": [
+    {
+      "question": "Here's a quiz question:\n\nWhat is one key requirement for the final presentation in a project, as mentioned in the guidelines?\n\nA) It should be long and detailed\nB) It should concisely and effectively communicate key components of the project\nC) It should only focus on methodology\nD) It should have many diagrams",
+      "your_answer": "B",
+      "correct_answer": "B) It should concisely and effectively communicate key components of the project.",
+      "related_module": "For the final presentation, students are expected to \"conconcise and effectively communicate\" the key components of the project. This means presenting the main points clearly and concisely, without unnecessary details or extraneous information."
+    },
+    {
+      "question": "Here is your quiz question:\n\nWhat should be included in the final presentation of a project, according to the guidelines? \n\n(Consider the various components that are mentioned as being part of the key components of the project.)",
+      "your_answer": "B",
+      "correct_answer": "A. problem definition, methodology, results, key insights, and potential future work",
+      "related_module": "Here is the correct answer:\n\nThe final presentation (10%) should concisely and effectively communicate the key components of the project, including the problem definition, methodology, results, key insights, and potential future work."
+    },
+    {
+      "question": "Here's an example of a quiz question that covers the topic of project presentation:\n\nWhat is the primary goal of a final presentation in a research project?\n\nA) To present the methodology used\nB) To effectively communicate key components of the project\nC) To discuss potential future work\nD) To analyze the results and conclusions\n\nAnswer: B) To effectively communicate key components of the project",
+      "your_answer": "B",
+      "correct_answer": "B) To effectively communicate key components of the project.",
+      "related_module": "The final presentation (10%) should concisely and effectively communicate the key components of the project, including the problem definition, methodology, results, key insights, and potential future work. \n\nThis snippet highlights that the primary goal of a final presentation is not just to present one aspect of the project, but rather to comprehensively convey all its essential parts, making option B) To effectively communicate key components of the project the correct answer."
+    },
+    {
+      "question": "Here's a sample quiz question that requires students to demonstrate their understanding of a key concept:\n\nQuestion: What is the main purpose of a final presentation in a research project?\n\nA) To discuss background and methodology\nB) To concisely communicate key components, including problem definition, methodology, results, and insights\nC) To analyze data and draw conclusions\nD) To conduct discussions with peers\n\nCorrect answer: B) To concisely communicate key components, including problem definition, methodology, results, and insights",
+      "your_answer": "C",
+      "correct_answer": "B) To concisely communicate key components, including problem definition, methodology, results, and insights.",
+      "related_module": "The final presentation should concisely and effectively communicate the key components of the project, including the problem definition, methodology, results, key insights, and potential future work. This indicates that the main purpose of a final presentation is to clearly summarize and present the essential parts of the research project in an easy-to-understand manner."
+    },
+    {
+      "question": "Here's a sample quiz question to assess understanding of project presentation skills:\n\nWhat is the primary goal of the final presentation in a research project?",
+      "your_answer": "A",
+      "correct_answer": "C. To concisely and effectively communicate the key components of the project, including the problem definition, methodology, results, key insights, and potential future work.",
+      "related_module": "The primary goal of the final presentation in a research project is to concisely and effectively communicate the key components of the project, including the problem definition, methodology, results, key insights, and potential future work."
+    }
+  ]
+}

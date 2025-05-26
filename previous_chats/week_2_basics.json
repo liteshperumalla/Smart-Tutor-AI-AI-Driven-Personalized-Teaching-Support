@@ -1,0 +1,29 @@
+[
+  {
+    "role": "user",
+    "content": "What are the commonly used data types in python in week 2?",
+    "timestamp": "2025-04-30 23:36:33",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "In week 2 of a typical Python programming course, students usually learn about basic data types such as integers, floats, and strings. These data types are fundamental to working with numbers and text in Python. The teaching assistant can provide resources from the module on \"Python Basic\" that cover these topics in more detail.",
+    "timestamp": "2025-04-30 23:36:43",
+    "sources": [
+      {
+        "file_name": "Lesson 1-Computational Environment and Resources-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Computational Environment and Resources-2024.pptx",
+        "page": null,
+        "slide": 33,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "Lesson two-Python Basic-Fall2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 2/Lesson two-Python Basic-Fall2024.pptx",
+        "page": null,
+        "slide": 16,
+        "chunk_text": ""
+      }
+    ]
+  }
+]

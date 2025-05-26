@@ -1,0 +1,51 @@
+[
+  {
+    "role": "user",
+    "content": "What is LLM"
+  },
+  {
+    "role": "assistant",
+    "content": "Large Language Models are a type of artificial intelligence that can process and generate human-like text in response to various prompts and questions. They're trained on massive datasets of text and code, allowing them to perform tasks like generating different types of creative content or answering complex, open-ended questions with information accuracy. This technology is being explored for its potential applications across numerous fields.",
+    "sources": [
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 54,
+        "slide": null
+      },
+      {
+        "file_name": "LLM Overview Slides | LLM & RAG Guide.pdf",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 14/LLM Overview Slides | LLM & RAG Guide.pdf",
+        "page": 1,
+        "slide": null
+      }
+    ]
+  },
+  {
+    "role": "user",
+    "content": "What is POS tagging which is mentioned in week 6 module?",
+    "timestamp": "2025-04-28 20:39:52",
+    "sources": []
+  },
+  {
+    "role": "assistant",
+    "content": "**Understanding POS Tagging**\n\n* POS tagging is a process to mark up words in text format for a particular part of speech based on its definition and context.\n* It involves assigning specific tokens (Parts of Speech) to each word, which enables text reading and comprehension in a language.\n* POS tagging is also known as grammatical tagging.\n* Chunking in NLP is related to POS tagging, but it involves grouping small pieces of information into large units.",
+    "timestamp": "2025-04-28 20:40:11",
+    "sources": [
+      {
+        "file_name": "Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Core Concepts-Fall 2024- Updated on Aug 21-2024.pptx",
+        "page": null,
+        "slide": 13,
+        "chunk_text": ""
+      },
+      {
+        "file_name": "Lesson 1-Computational Environment and Resources-2024.pptx",
+        "file_path": "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/Module 1/Lesson 1-Computational Environment and Resources-2024.pptx",
+        "page": null,
+        "slide": 68,
+        "chunk_text": ""
+      }
+    ]
+  }
+]
