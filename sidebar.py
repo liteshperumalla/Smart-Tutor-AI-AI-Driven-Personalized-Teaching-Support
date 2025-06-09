@@ -161,11 +161,39 @@ def sidebar_content():
                                 st.rerun()
         
         st.markdown("<hr>", unsafe_allow_html=True)
-        st.checkbox("Dark Mode", key="dark_mode")
+        # The "Dark Mode" checkbox here might conflict with user's saved theme preference.
+        # For now, we keep it, but its interaction with profile theme settings should be considered.
+        # Ideally, this checkbox should read from and update st.session_state.dark_mode,
+        # and the profile page does the same.
+        # A more robust solution might involve a callback on this checkbox to also update user_data.
+        is_dark = st.session_state.get('dark_mode', False)
+        if st.checkbox("Dark Mode", value=is_dark, key="sidebar_dark_mode_toggle"):
+            if not is_dark: # If it was false and now checked true
+                st.session_state.dark_mode = True
+                # Optionally, update user preference in backend if user is logged in
+                # from user_management import update_user_profile
+                # if st.session_state.get('authenticated', False):
+                #    update_user_profile(st.session_state.user_name, {'theme': 'dark'})
+                st.rerun()
+            else: # If it was true and now unchecked (false)
+                st.session_state.dark_mode = False
+                # Optionally, update user preference
+                # if st.session_state.get('authenticated', False):
+                #    update_user_profile(st.session_state.user_name, {'theme': 'light'})
+                st.rerun()
+
 
         st.markdown("<hr>", unsafe_allow_html=True)
         if st.session_state.get('authenticated', False):
-            st.write(f"Logged in as: {st.session_state.user_name}")
+            st.write(f"Logged in as: **{st.session_state.user_name}**")
+            # Profile button for authenticated users
+            if st.button("Profile", key="nav_profile_auth"):
+                st.session_state.page = 'profile'
+                st.rerun()
             display_logout_button()
         else:
             st.write("Status: Guest")
+            # Optionally, add a "Login" button here if desired, though app.py handles redirect
+            # if st.button("Login to Get Started", key="login_prompt_sidebar"):
+            #    st.session_state.auth_page = 'login'
+            #    st.rerun()
