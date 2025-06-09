@@ -6,6 +6,7 @@ import logging
 import json
 import re
 from pathlib import Path
+import datetime # Added for timestamping quiz results
 import auth
 auth.initialize_session()
 
@@ -238,6 +239,46 @@ def render():
         else: st.warning("Good effort. Reviewing your answers might help!")
 
         if total > 0:
+            # --- Save Quiz Results ---
+            try:
+                questions_details_list = []
+                for i in range(total):
+                    # Ensure all lists are accessible and have the index
+                    if (i < len(st.session_state.quiz_questions_list) and
+                        i < len(st.session_state.quiz_options_list) and
+                        i < len(st.session_state.quiz_user_answers_list) and
+                        i < len(st.session_state.quiz_correct_answers_list) and
+                        i < len(st.session_state.quiz_feedback_list)):
+
+                        questions_details_list.append({
+                            "question_text": st.session_state.quiz_questions_list[i],
+                            "options": st.session_state.quiz_options_list[i],
+                            "user_answer": st.session_state.quiz_user_answers_list[i],
+                            "correct_answer": st.session_state.quiz_correct_answers_list[i],
+                            "explanation": st.session_state.quiz_feedback_list[i]
+                        })
+                    else:
+                        # Fallback if data is somehow misaligned for a question
+                        questions_details_list.append({
+                            "question_text": f"Data missing for question index {i}",
+                            "options": [], "user_answer": "N/A", "correct_answer": "N/A", "explanation": "N/A"
+                        })
+
+                quiz_data_to_save = {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "score": score,
+                    "total_questions": total,
+                    "percentage_score": percentage,
+                    "selected_quiz_content_sources": st.session_state.get('quiz_folder_select', []),
+                    "questions_details": questions_details_list
+                }
+                save_quiz_results(quiz_data_to_save)
+                # logging.info("Quiz results saved successfully.") # Optional: log success
+            except Exception as e_save:
+                logging.error(f"Failed to save quiz results: {e_save}", exc_info=True)
+                st.toast("Error: Could not save quiz results.", icon="⚠️")
+
+
             st.markdown("---")
             st.subheader("Review Your Answers:")
             for i in range(total):

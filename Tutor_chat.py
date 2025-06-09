@@ -24,25 +24,36 @@ langfuse_callback_handler = None
 langfuse_client = None
 
 try:
-    langfuse_callback_handler = LlamaIndexCallbackHandler(
-        public_key="pk-lf-206a6716-2d0d-490b-8fdc-4057c92234b8",
-        secret_key="sk-lf-fbec8985-d86a-4d50-9d1e-96b1ac785bc1",
-        host="https://cloud.langfuse.com"
-    )
-    Settings.callback_manager = CallbackManager([langfuse_callback_handler])
-    logging.info("Langfuse callback handler initialized successfully.")
+    # Attempt to load Langfuse keys from environment variables
+    langfuse_public_key = os.getenv("LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key = os.getenv("LANGFUSE_SECRET_KEY")
+    langfuse_host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com") # Default host if not set
+
+    if langfuse_public_key and langfuse_secret_key:
+        langfuse_callback_handler = LlamaIndexCallbackHandler(
+            public_key=langfuse_public_key,
+            secret_key=langfuse_secret_key,
+            host=langfuse_host
+        )
+        Settings.callback_manager = CallbackManager([langfuse_callback_handler])
+        logging.info("Langfuse callback handler initialized successfully using environment variables.")
+    else:
+        logging.warning("Langfuse environment variables (LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY) not fully set. Langfuse LlamaIndex callback handler will not be initialized.")
+        langfuse_callback_handler = None
 except ImportError:
-    logging.error("Failed to import LlamaIndexCallbackHandler. Please check Langfuse SDK version.")
-    langfuse_callback_handler = None 
+    logging.error("Failed to import LlamaIndexCallbackHandler. Please check Langfuse SDK version. Langfuse integration disabled.")
+    langfuse_callback_handler = None
 except Exception as e:
-    logging.error(f"Failed to initialize Langfuse callback handler: {e}")
+    logging.error(f"Failed to initialize Langfuse callback handler using environment variables: {e}. Langfuse integration disabled.")
+    logging.error(f"Failed to initialize Langfuse callback handler using environment variables: {e}. Langfuse integration disabled.")
     langfuse_callback_handler = None
 
 try:
+    # Langfuse client will also use environment variables if public_key/secret_key are not explicitly passed
     langfuse_client = Langfuse() 
-    logging.info("Langfuse client initialized (will use env vars if set).")
+    logging.info("Langfuse client initialized (will use environment variables if LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST are set).")
 except Exception as e:
-    logging.error(f"Failed to initialize Langfuse client: {e}. Tracing might be partially or fully disabled.")
+    logging.error(f"Failed to initialize Langfuse client: {e}. Tracing might be partially or fully disabled. Ensure environment variables are set if not passing keys directly.")
     langfuse_client = None 
 
 # --- Argument Parser ---
@@ -59,10 +70,12 @@ def parse_args():
 # --- Model Settings ---
 embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# --- Constants ---
+DEFAULT_MIN_SCORE_FOR_HYBRID_RETRIEVAL = 0.20
 Settings.llm = Ollama(model="llama3.2:latest", request_timeout=120.0)
 
 # --- Directories ---
-persist_dir = "./persisted_index"
+persist_dir = os.getenv("PERSIST_DIR", "./persisted_index")
 os.makedirs(persist_dir, exist_ok=True)
 
 # --- Prompt Templates ---
@@ -94,9 +107,6 @@ QUESTION_TEMPLATE = PromptTemplate(
     "{\"question\": \"What is the primary function of a constructor in Python?\", \"options\": [\"To destroy an object\", \"To initialize the state of an object\", \"To perform a calculation\", \"To return a value\"], \"correct_answer_letter\": \"B\"}\n\n"
     "Now, generate a new, unique question based on the context provided.\n\n"
     "JSON OUTPUT:"
-)
-ANSWER_TEMPLATE = PromptTemplate(
-    "Review the following quiz question and provide the letter of the correct option (A, B, C, or D).\nQuestion: {question}"
 )
 MODULE_TEMPLATE = PromptTemplate(
     "A student answered the following question incorrectly. Provide a brief, helpful explanation based on the provided context to clarify the concept.\n"
@@ -133,21 +143,9 @@ RESEARCH_TEMPLATE = PromptTemplate(
 # --- CrossEncoder for Reranking ---
 re_ranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
-def rerank_nodes(query, nodes: List[NodeWithScore], top_k=6):
-    query_embedding = embedding_model.encode(query, convert_to_tensor=True)
-    scored_nodes = []
-    for node_obj in nodes:
-        node_text = node_obj.node.get_text()
-        node_text_embedding = embedding_model.encode(node_text, convert_to_tensor=True)
-        score = util.cos_sim(query_embedding, node_text_embedding).item()
-        scored_nodes.append((score, node_obj.node))
-    ranked_nodes_with_scores = sorted(scored_nodes, key=lambda x: x[0], reverse=True)
-    return [node for _, node in ranked_nodes_with_scores[:top_k]]
-
-def get_hybrid_retriever(index, documents: List[Document], similarity_top_k=6, rerank_top_k=5):
+def get_hybrid_retriever(index, similarity_top_k=6):
     dense_retriever = index.as_retriever(similarity_top_k=similarity_top_k)
     sparse_retriever = BM25Retriever.from_defaults(index, similarity_top_k=similarity_top_k)
-    MIN_SCORE = 0.20
 
     class HybridRetriever(BaseRetriever):
         def _retrieve(self, query_str: str) -> List[NodeWithScore]:
@@ -177,7 +175,7 @@ def get_hybrid_retriever(index, documents: List[Document], similarity_top_k=6, r
                     reverse=True,
                 )
                 # Filter by minimum score
-                final_nodes = [x for x in reranked_final_nodes_with_scores if x.score >= MIN_SCORE]
+                final_nodes = [x for x in reranked_final_nodes_with_scores if x.score >= DEFAULT_MIN_SCORE_FOR_HYBRID_RETRIEVAL]
                 if not final_nodes:
                     final_nodes = reranked_final_nodes_with_scores[:1]  # fallback: best one
                 return final_nodes
@@ -274,16 +272,6 @@ class RAGQueryEngine(CustomQueryEngine):
                 return json.dumps({"error": f"Failed to generate question: {str(e)}"})
             return f"Error processing query: {str(e)}"
 
-    def get_correct_answer(self, question: str) -> str:
-        try:
-            retrieved_items = self.retriever.retrieve(question)
-            formatted_prompt = ANSWER_TEMPLATE.format(question=question)
-            response_obj = self.response_synthesizer.synthesize(query=formatted_prompt, nodes=retrieved_items)
-            return str(response_obj).strip()
-        except Exception as e:
-            logging.error(f"Error in get_correct_answer: {e}")
-            return f"Error: {str(e)}"
-
     def get_related_module(self, question: str) -> str:
         try:
             retrieved_items = self.retriever.retrieve(question)
@@ -321,11 +309,11 @@ def chat():
         cli_storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
         index = load_index_from_storage(cli_storage_context)
         print("Index loaded successfully for CLI chat.")
-        documents_from_index = list(index.docstore.docs.values()) 
     except Exception as e:
         print(f"Error loading index for CLI chat: {e}")
         return
-    retriever = get_hybrid_retriever(index, documents_from_index) 
+    # Note: The 'documents_from_index' argument was removed from get_hybrid_retriever
+    retriever = get_hybrid_retriever(index)
     synthesizer = get_response_synthesizer(response_mode="compact")
     query_engine = RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer, mode="chat")
     while True:
