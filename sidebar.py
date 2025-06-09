@@ -3,9 +3,7 @@ import os
 import json
 import re
 from utils import load_chat_sessions, save_chat_session, sanitize_filename
-import auth
-auth.initialize_session()
-auth.display_logout_button()
+from auth import display_logout_button # Import directly
 
 def sidebar_content():
     """Renders the sidebar content and handles navigation."""
@@ -164,3 +162,10 @@ def sidebar_content():
         
         st.markdown("<hr>", unsafe_allow_html=True)
         st.checkbox("Dark Mode", key="dark_mode")
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+        if st.session_state.get('authenticated', False):
+            st.write(f"Logged in as: {st.session_state.user_name}")
+            display_logout_button()
+        else:
+            st.write("Status: Guest")
