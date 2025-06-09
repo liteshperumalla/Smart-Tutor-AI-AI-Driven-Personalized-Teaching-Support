@@ -89,6 +89,11 @@ def render():
 
                 with st.spinner(f"Generating {num_questions} unique questions & explanations... This may take a moment."):
                     try:
+                        storage_context = get_storage_context()
+                        if storage_context is None:
+                            st.error("Failed to initialize storage context. Cannot generate quiz.")
+                            return
+
                         files_for_quiz = [file for folder in selected_folders for file in kb_structure.get(folder, [])]
                         if not files_for_quiz:
                             st.error("Selected folders do not contain any indexed files.")
@@ -112,7 +117,7 @@ def render():
 
                         while generated_q_count < num_questions and attempts < total_attempts_overall:
                             attempts += 1
-                            
+
                             # 1. Call custom_query to get question, options, and context
                             # This query_str is for initial context retrieval by RAGQueryEngine
                             quiz_item_data = query_engine_quiz.custom_query(
