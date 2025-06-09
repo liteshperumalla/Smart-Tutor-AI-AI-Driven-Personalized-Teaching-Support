@@ -1,8 +1,9 @@
 import streamlit as st
 from sidebar import sidebar_content
 from utils import BASE_CSS, LIGHT_MODE_CSS, DARK_MODE_CSS, load_chat_sessions
-from views import home, chat, appointment, research, quiz, resources, about, feedback
+from views import home, chat, appointment, research, quiz, resources, about, feedback, profile as profile_view # Added profile_view
 from auth import initialize_session, display_login_page, display_signup_page
+from user_management import get_user # Added get_user
 
 def main():
     st.set_page_config(page_title="Smart AI Tutor", page_icon="🎓", layout="wide")
@@ -18,9 +19,7 @@ def main():
 
     # Apply base CSS - should be applied regardless of auth state for consistency
     st.markdown(BASE_CSS, unsafe_allow_html=True)
-    # Apply light/dark mode CSS - also global
-    st.markdown(DARK_MODE_CSS if st.session_state.dark_mode else LIGHT_MODE_CSS,
-                unsafe_allow_html=True)
+    # NOTE: Light/dark mode CSS application is moved down, after theme preference is loaded.
 
     # Authentication Check
     if not st.session_state.get('authenticated', False):
@@ -50,8 +49,28 @@ def main():
     # --- END OF CHAT SESSION INITIALIZATION ---
 
     # Render sidebar and handle navigation (Only if authenticated)
-    sidebar_content()
+    sidebar_content() # sidebar_content itself will call display_logout_button
 
+    # Initialize dark_mode from user preference IF NOT ALREADY SET by theme toggle on profile page
+    # This flag ensures that if a user toggles the theme on the profile page,
+    # it's not immediately overridden by their saved preference on the next rerun within that session.
+    # The flag is reset on new login (in auth.py) to load the preference for the new user.
+    if 'dark_mode_initialized_from_user_preference' not in st.session_state and st.session_state.get('authenticated', False):
+        current_username = st.session_state.get("user_name")
+        if current_username:
+            user_data = get_user(current_username)
+            if user_data:
+                user_theme = user_data.get('theme', 'light')
+                st.session_state.dark_mode = (user_theme == 'dark')
+                st.session_state.dark_mode_initialized_from_user_preference = True
+            else: # User data couldn't be fetched, default to light and don't set flag
+                st.session_state.dark_mode = False
+        else: # No username, default to light and don't set flag
+            st.session_state.dark_mode = False
+
+    # Apply light/dark mode CSS - now uses potentially user-set theme
+    st.markdown(DARK_MODE_CSS if st.session_state.get('dark_mode', False) else LIGHT_MODE_CSS,
+                unsafe_allow_html=True)
 
     # Page routing (Only if authenticated)
     if st.session_state.page == 'home':
@@ -70,6 +89,8 @@ def main():
         about.render()
     elif st.session_state.page == 'Feedback And Bug Report':
         feedback.render()
+    elif st.session_state.page == 'profile': # Added profile route
+        profile_view.render()
 
 if __name__ == '__main__':
     main()
