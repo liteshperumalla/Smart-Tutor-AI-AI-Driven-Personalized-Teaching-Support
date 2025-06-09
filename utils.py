@@ -146,10 +146,6 @@ BASE_CSS = """
 """
 
 # --- Helper Functions ---
-# Ensure necessary imports for load_chat_sessions
-from datetime import datetime, timezone # Ensure timezone is available
-from typing import Dict, List, Any # Ensure these are available for type hinting
-
 def render_footer():
     """Render a footer with disclaimer"""
     st.markdown(
@@ -184,64 +180,26 @@ def _chat_path(name: str) -> str:
     """Get full path for chat session file"""
     return os.path.join(PREV_CHAT_DIR, f"{_safe_name(name)}.json")
 
-def load_chat_sessions() -> Dict[str, Dict[str, Any]]: # Adjusted return type
-    """Load all chat sessions from disk with enhanced info like last message timestamp."""
-    sessions_data: Dict[str, Dict[str, Any]] = {}
+def load_chat_sessions() -> Dict[str, List]:
+    """Load all chat sessions from disk"""
+    sessions = {}
     
     if not os.path.exists(PREV_CHAT_DIR):
         os.makedirs(PREV_CHAT_DIR)
-        return sessions_data
-
-    current_year = datetime.now().year
+        return sessions
 
     for fname in os.listdir(PREV_CHAT_DIR):
         if not fname.endswith(".json"):
             continue
-
-        session_name = fname[:-5]
         path = os.path.join(PREV_CHAT_DIR, fname)
-
         try:
             with open(path, "r", encoding="utf-8") as f:
-                history = json.load(f)
-
-            last_message_timestamp = datetime.min # Default to very old, naive datetime
-
-            if history and isinstance(history, list):
-                for msg_entry in reversed(history): # Check from the newest message
-                    timestamp_str = None
-                    # Handle current dict format
-                    if isinstance(msg_entry, dict) and "timestamp" in msg_entry:
-                        timestamp_str = msg_entry["timestamp"]
-                    # Handle potential older tuple formats (optional, based on actual data)
-                    elif isinstance(msg_entry, (list, tuple)):
-                        if len(msg_entry) == 3 and isinstance(msg_entry[2], str): # (role, text, timestamp_str)
-                            timestamp_str = msg_entry[2]
-                        elif len(msg_entry) == 4 and isinstance(msg_entry[3], str): # (role, text, sources, timestamp_str)
-                            timestamp_str = msg_entry[3]
-
-                    if timestamp_str:
-                        try:
-                            # Expected format: "01:23 PM, Nov 16"
-                            dt_obj = datetime.strptime(timestamp_str, "%I:%M %p, %b %d")
-                            dt_obj = dt_obj.replace(year=current_year) # Add current year
-                            last_message_timestamp = dt_obj
-                            break # Found the last valid timestamp
-                        except ValueError as ve:
-                            logging.warning(f"Could not parse timestamp '{timestamp_str}' in session '{session_name}': {ve}")
-                            # Continue to the previous message if this one has a bad timestamp
-
-            sessions_data[session_name] = {
-                "history": history,
-                "last_message_timestamp": last_message_timestamp
-            }
-
-        except json.JSONDecodeError as e_json:
-            logging.error(f"Error decoding JSON for chat session {fname}: {e_json}")
-        except Exception as e_gen:
-            logging.error(f"Error loading chat session {fname}: {e_gen}")
-
-    return sessions_data
+                session_name = fname[:-5]  # Remove .json extension
+                sessions[session_name] = json.load(f)
+        except Exception as e:
+            logging.error(f"Error loading chat session {fname}: {e}")
+    
+    return sessions
 
 def save_chat_session(name: str, history: List) -> None:
     """Save chat session to disk"""
