@@ -44,7 +44,7 @@ def render():
         st.markdown("""
             **Litesh Perumalla** *Master's Student in Data Science, University of North Texas* An enthusiastic AI practitioner with a passion for developing intelligent solutions to real-world problems. My expertise lies in Python, Machine Learning, Natural Language Processing, and building RAG-based applications. I am dedicated to exploring the frontiers of AI to create impactful and user-centric tools.
             
-            - 📧 **Email:** `liteshperumalla@my.unt.edu` (or your preferred contact)
+            - 📧 **Email:** `liteshperumalla@my.unt.edu`
             - 🔗 **GitHub:** [github.com/liteshperumalla](https://github.com/liteshperumalla)
             - 🌐 **LinkedIn:** [linkedin.com/in/perumalla-litesh](https://www.linkedin.com/in/perumalla-litesh/)
         """)

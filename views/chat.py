@@ -127,24 +127,18 @@ def render():
     if "assistant_sources_final" not in st.session_state: 
         st.session_state.assistant_sources_final = None
 
-    # Access history list from the new rich session structure
-    current_chat_data = st.session_state.chat_sessions[st.session_state.current_chat]
-    history = current_chat_data['history']
+    history = st.session_state.chat_sessions[st.session_state.current_chat]
     
     # Callback when user submits input
     def on_user_input():
         query = st.session_state.chat_input_widget_key
         if query and query.strip():
-            user_timestamp = time.strftime("%I:%M %p, %b %d", time.localtime())
-            # Append to the 'history' list within the session_state structure
-            st.session_state.chat_sessions[st.session_state.current_chat]['history'].append({
+            user_timestamp = time.strftime("%I:%M %p, %b %d", time.localtime()) 
+            history.append({
                 "role": "user", 
                 "content": query.strip(), 
                 "timestamp": user_timestamp
             })
-            # Also update the last_message_timestamp for the current chat
-            st.session_state.chat_sessions[st.session_state.current_chat]['last_message_timestamp'] = datetime.now(timezone.utc) # Added import for datetime, timezone
-
             st.session_state.user_query_to_process = query.strip()
             st.session_state.assistant_response_streaming = True
             st.session_state.assistant_response_final = None 
@@ -253,19 +247,15 @@ def render():
             
             # Add to chat history
             assistant_timestamp = time.strftime("%I:%M %p, %b %d", time.localtime())
-            st.session_state.chat_sessions[st.session_state.current_chat]['history'].append({
+            history.append({
                 "role": "assistant", 
                 "content": collected_response_text, 
                 "sources": sources_from_llm, 
                 "timestamp": assistant_timestamp
             })
-            # Also update the last_message_timestamp for the current chat
-            st.session_state.chat_sessions[st.session_state.current_chat]['last_message_timestamp'] = datetime.now(timezone.utc) # Added import for datetime, timezone
             
             # Handle session renaming and saving
-            # Pass the actual history list to handle_session_management
-            current_history_list = st.session_state.chat_sessions[st.session_state.current_chat]['history']
-            handle_session_management(current_history_list)
+            handle_session_management(history)
             
         except Exception as e:
             st.error(f"Error processing query: {str(e)}")
@@ -349,78 +339,41 @@ def display_source_buttons(sources, msg_idx, seen_file_paths):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def handle_session_management(current_history_list: list): # Parameter 'history' is now the direct list of messages
+def handle_session_management(history):
     """Handle session renaming and saving logic."""
     current_chat_name = st.session_state.current_chat
     sessions = st.session_state.chat_sessions
     
     # Check if we should rename the session
     should_rename = (
-        (current_chat_name == "Default" and len(current_history_list) >= 3) or
-        (current_chat_name.startswith("Session ") and len(current_history_list) >= 3)
+        (current_chat_name == "Default" and len(history) >= 3) or 
+        (current_chat_name.startswith("Session ") and len(history) >= 3)
     )
     
     if should_rename:
-        new_title_candidate = make_session_title(current_history_list) # make_session_title expects a list of messages
+        new_title_candidate = make_session_title(history)
         if (new_title_candidate and 
             new_title_candidate != current_chat_name and 
             new_title_candidate not in sessions):
             
-            sanitized_new_filename = sanitize_filename(new_title_candidate)
-            collision_detected = False
-            for existing_raw_title in sessions.keys():
-                # Only check against *other* sessions. If current_chat_name itself sanitizes
-                # to sanitized_new_filename, it's not a collision with *another* session.
-                if existing_raw_title == current_chat_name:
-                    continue
-
-                existing_sanitized_filename = sanitize_filename(existing_raw_title)
-                if sanitized_new_filename == existing_sanitized_filename:
-                    collision_detected = True
-                    logging.warning(
-                        f"Sanitized title collision: New title '{new_title_candidate}' "
-                        f"(sanitized: '{sanitized_new_filename}') conflicts with existing session "
-                        f"'{existing_raw_title}' (sanitized: '{existing_sanitized_filename}'). "
-                        f"Renaming aborted for this attempt."
-                    )
-                    st.toast(
-                        f"Auto-title '{new_title_candidate}' conflicts. Chat more for a unique title or rename manually.",
-                        icon="⚠️"
-                    )
-                    break
-
-            if collision_detected:
-                # If collision, do not proceed with rename. Save under current name instead.
-                # current_history_list is the history for the current_chat_name
-                save_chat_session(sanitize_filename(current_chat_name), current_history_list)
-            else:
-                # Original renaming logic
-                old_chat_path = Path(f"previous_chats/{sanitize_filename(current_chat_name)}.json")
-
-                # Rename session in st.session_state
-                # sessions.pop(current_chat_name) returns the rich dict {'history': ..., 'timestamp': ...}
-                session_data_to_move = sessions.pop(current_chat_name)
-                sessions[new_title_candidate] = session_data_to_move    # Assign the rich dict to new title
-                st.session_state.current_chat = new_title_candidate
-
-                # Save new session file - save_chat_session expects only the history list
-                save_chat_session(sanitized_new_filename, sessions[new_title_candidate]['history'])
-
-                # Clean up old file if its sanitized name is different from the new one
-                if (old_chat_path.exists() and
-                    sanitize_filename(current_chat_name) != sanitized_new_filename):
-                    try:
-                        old_chat_path.unlink()
-                    except OSError as e:
-                        logging.warning(f"Could not delete old chat file {old_chat_path}: {e}")
+            # Handle old chat file cleanup
+            old_chat_path = Path(f"previous_chats/{sanitize_filename(current_chat_name)}.json")
+            
+            # Rename session
+            sessions[new_title_candidate] = sessions.pop(current_chat_name)
+            st.session_state.current_chat = new_title_candidate
+            
+            # Save new session
+            save_chat_session(sanitize_filename(new_title_candidate), sessions[new_title_candidate])
+            
+            # Clean up old file if different
+            if (old_chat_path.exists() and 
+                sanitize_filename(current_chat_name) != sanitize_filename(new_title_candidate)):
+                try: 
+                    old_chat_path.unlink()
+                except OSError as e: 
+                    logging.warning(f"Could not delete old chat file {old_chat_path}: {e}")
         else:
-            # This 'else' corresponds to:
-            # 1. make_session_title returned empty or same as current_chat_name
-            # 2. new_title_candidate was already a key in sessions (raw title collision)
-            # In these cases, just save the current session with its current name.
-            # current_history_list is the history for the current_chat_name
-            save_chat_session(sanitize_filename(current_chat_name), current_history_list)
+            save_chat_session(sanitize_filename(current_chat_name), history)
     else:
-        # Not enough messages to trigger rename, just save current session.
-        # current_history_list is the history for the current_chat_name
-        save_chat_session(sanitize_filename(current_chat_name), current_history_list)
+        save_chat_session(sanitize_filename(current_chat_name), history)
