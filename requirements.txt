@@ -1,0 +1,2 @@
+bcrypt
+# streamlit-oauth (or similar, for Google Sign-In)
