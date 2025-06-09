@@ -6,7 +6,6 @@ import logging
 import json
 import re
 from pathlib import Path
-import datetime # Added for timestamping quiz results
 import auth
 auth.initialize_session()
 
@@ -89,17 +88,12 @@ def render():
 
                 with st.spinner(f"Generating {num_questions} unique questions & explanations... This may take a moment."):
                     try:
-                        storage_context = get_storage_context()
-                        if storage_context is None:
-                            st.error("Failed to initialize storage context. Cannot generate quiz.")
-                            return
-
                         files_for_quiz = [file for folder in selected_folders for file in kb_structure.get(folder, [])]
                         if not files_for_quiz:
                             st.error("Selected folders do not contain any indexed files.")
                             return
                         
-                        index = load_index_from_storage(storage_context)
+                        index = load_index_from_storage(get_storage_context())
                         filters = MetadataFilters(filters=[ExactMatchFilter(key="file_path", value=path) for path in files_for_quiz], condition="or")
                         
                         filtered_retriever = index.as_retriever(filters=filters, similarity_top_k=3) # Context for question & explanation
@@ -117,69 +111,49 @@ def render():
 
                         while generated_q_count < num_questions and attempts < total_attempts_overall:
                             attempts += 1
-
-                            # 1. Call custom_query to get question, options, and context
-                            # This query_str is for initial context retrieval by RAGQueryEngine
-                            quiz_item_data = query_engine_quiz.custom_query(
-                                "Generate a unique, high-quality multiple-choice question and its options based on the provided context."
+                            llm_response_str = query_engine_quiz.custom_query(
+                                "Generate a unique, high-quality multiple-choice question with four options based on the provided context."
                             )
+                            
+                            try:
+                                json_match = re.search(r'\{[\s\S]*\}', llm_response_str)
+                                if not json_match:
+                                    logging.warning(f"Attempt {attempts}: No JSON found in LLM response: {llm_response_str}")
+                                    continue
+                                
+                                quiz_item_str = json_match.group(0)
+                                quiz_item = json.loads(quiz_item_str)
 
-                            # 2. Error Handling & Validation for custom_query response
-                            if isinstance(quiz_item_data, dict) and "error" in quiz_item_data:
-                                logging.error(f"Quiz Gen (Attempt {attempts}): Error from custom_query: {quiz_item_data['error']}")
-                                continue # Try generating another question
-
-                            if not (isinstance(quiz_item_data, dict) and
-                                    "question_text" in quiz_item_data and
-                                    "generated_options" in quiz_item_data and
-                                    "context_used" in quiz_item_data and
-                                    isinstance(quiz_item_data["question_text"], str) and quiz_item_data["question_text"].strip() and
-                                    isinstance(quiz_item_data["generated_options"], list) and
-                                    len(quiz_item_data["generated_options"]) == 4 and
-                                    all(isinstance(opt, str) and opt.strip() for opt in quiz_item_data["generated_options"])):
-                                logging.warning(f"Quiz Gen (Attempt {attempts}): Invalid data structure from custom_query: {quiz_item_data}")
-                                continue # Try generating another question
-
-                            question_text = quiz_item_data["question_text"]
-                            generated_options = quiz_item_data["generated_options"] # Raw list of option strings
-                            context_used_for_q = quiz_item_data["context_used"]
-
-                            # 3. Check for Question Uniqueness
-                            if question_text not in st.session_state.session_generated_question_texts:
-                                # 4. Call get_correct_answer
-                                correct_answer_letter = query_engine_quiz.get_correct_answer(
-                                    question_text,
-                                    generated_options,
-                                    context_used_for_q
-                                )
-                                if not correct_answer_letter: # Assuming get_correct_answer returns "" on failure
-                                    logging.warning(f"Quiz Gen (Attempt {attempts}): Failed to get correct answer letter for: {question_text[:30]}...")
-                                    continue # Try generating another question
-
-                                # 5. Call get_related_module (for explanation)
-                                # This uses its own context retrieval based on the question_text
-                                explanation_text = query_engine_quiz.get_related_module(question_text)
-
-                                # 6. Store in Session State
-                                st.session_state.quiz_questions_list.append(question_text)
-
-                                # Format options for display (A, B, C, D labels)
-                                formatted_options_display = [f"{chr(ord('A') + i)}) {opt}" for i, opt in enumerate(generated_options)]
-                                st.session_state.quiz_options_list.append(formatted_options_display)
-
-                                st.session_state.quiz_correct_answers_list.append(correct_answer_letter)
-                                st.session_state.quiz_feedback_list.append(explanation_text if explanation_text else "No specific explanation generated.")
-                                st.session_state.session_generated_question_texts.add(question_text)
-                                generated_q_count += 1
-                                logging.info(f"Successfully generated question {generated_q_count}/{num_questions}: {question_text[:30]}...")
-                            else:
-                                logging.info(f"Quiz Gen (Attempt {attempts}): Duplicate question discarded: {question_text[:30]}...")
-                                # No need to increment attempts here again as it's done at the start of the loop.
-                                # This 'continue' just skips to the next iteration.
-                                continue
+                                if all(k in quiz_item for k in ['question', 'options', 'correct_answer_letter']) and \
+                                   isinstance(quiz_item.get('question'), str) and quiz_item['question'].strip() and \
+                                   isinstance(quiz_item.get('options'), list) and len(quiz_item['options']) == 4 and \
+                                   all(isinstance(opt, str) and opt.strip() for opt in quiz_item['options']) and \
+                                   quiz_item.get('correct_answer_letter') in ['A', 'B', 'C', 'D']:
+                                    
+                                    if quiz_item['question'] not in st.session_state.session_generated_question_texts:
+                                        st.session_state.quiz_questions_list.append(quiz_item['question'])
+                                        formatted_options = [f"{chr(ord('A') + i)}) {opt}" for i, opt in enumerate(quiz_item['options'])]
+                                        st.session_state.quiz_options_list.append(formatted_options)
+                                        st.session_state.quiz_correct_answers_list.append(quiz_item['correct_answer_letter'])
+                                        
+                                        # --- Generate and store dynamic explanation/feedback ---
+                                        # The query_engine_quiz uses the filtered_retriever, so context is relevant.
+                                        explanation_text = query_engine_quiz.get_related_module(quiz_item['question'])
+                                        st.session_state.quiz_feedback_list.append(explanation_text if explanation_text else "No specific explanation generated.")
+                                        
+                                        st.session_state.session_generated_question_texts.add(quiz_item['question'])
+                                        generated_q_count += 1
+                                    else:
+                                        logging.info(f"Attempt {attempts}: Duplicate question discarded: {quiz_item['question'][:30]}...")
+                                else:
+                                    logging.warning(f"Attempt {attempts}: Invalid JSON structure: {quiz_item}")
+                            except json.JSONDecodeError as e_json:
+                                logging.error(f"Attempt {attempts}: JSON parse error: {e_json}\nResponse: {llm_response_str}")
+                            except Exception as e_val:
+                                 logging.error(f"Attempt {attempts}: Error validating JSON: {e_val}\nItem: {quiz_item if 'quiz_item' in locals() else 'N/A'}")
 
                         if generated_q_count < num_questions:
-                            st.warning(f"Managed to generate {generated_q_count} unique valid questions out of {num_questions} requested. Consider selecting more diverse content, increasing the number of attempts, or trying fewer questions.")
+                            st.warning(f"Managed to generate {generated_q_count} unique valid questions out of {num_questions} requested. Try selecting more diverse content or fewer questions.")
 
                         if generated_q_count > 0:
                             st.session_state.quiz_user_answers_list = [None] * generated_q_count
@@ -264,46 +238,6 @@ def render():
         else: st.warning("Good effort. Reviewing your answers might help!")
 
         if total > 0:
-            # --- Save Quiz Results ---
-            try:
-                questions_details_list = []
-                for i in range(total):
-                    # Ensure all lists are accessible and have the index
-                    if (i < len(st.session_state.quiz_questions_list) and
-                        i < len(st.session_state.quiz_options_list) and
-                        i < len(st.session_state.quiz_user_answers_list) and
-                        i < len(st.session_state.quiz_correct_answers_list) and
-                        i < len(st.session_state.quiz_feedback_list)):
-
-                        questions_details_list.append({
-                            "question_text": st.session_state.quiz_questions_list[i],
-                            "options": st.session_state.quiz_options_list[i],
-                            "user_answer": st.session_state.quiz_user_answers_list[i],
-                            "correct_answer": st.session_state.quiz_correct_answers_list[i],
-                            "explanation": st.session_state.quiz_feedback_list[i]
-                        })
-                    else:
-                        # Fallback if data is somehow misaligned for a question
-                        questions_details_list.append({
-                            "question_text": f"Data missing for question index {i}",
-                            "options": [], "user_answer": "N/A", "correct_answer": "N/A", "explanation": "N/A"
-                        })
-
-                quiz_data_to_save = {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "score": score,
-                    "total_questions": total,
-                    "percentage_score": percentage,
-                    "selected_quiz_content_sources": st.session_state.get('quiz_folder_select', []),
-                    "questions_details": questions_details_list
-                }
-                save_quiz_results(quiz_data_to_save)
-                # logging.info("Quiz results saved successfully.") # Optional: log success
-            except Exception as e_save:
-                logging.error(f"Failed to save quiz results: {e_save}", exc_info=True)
-                st.toast("Error: Could not save quiz results.", icon="⚠️")
-
-
             st.markdown("---")
             st.subheader("Review Your Answers:")
             for i in range(total):
