@@ -1,6 +1,6 @@
 import streamlit as st
 import bcrypt
-from user_management import add_user, get_user, USERS_FILE
+from user_management import add_user, get_user, USERS_FILE, update_last_login # Added update_last_login
 
 def initialize_session():
     """Initializes the user session state related to authentication."""
@@ -57,8 +57,16 @@ def display_login_page():
                 if user_data:
                     hashed_password_from_db = user_data['hashed_password'].encode('utf-8')
                     if bcrypt.checkpw(password.encode('utf-8'), hashed_password_from_db):
+                        # Update last login time
+                        if not update_last_login(username):
+                            # Optional: Log an error or display a non-critical error to the user
+                            # For now, we'll proceed even if this fails to not block login
+                            print(f"Warning: Failed to update last login time for user {username}")
+                            # st.warning("Could not update last login time, but proceeding with login.")
+
                         st.session_state.authenticated = True
                         st.session_state.user_name = username
+                        st.session_state.pop('dark_mode_initialized_from_user_preference', None) # Reset flag for new login
                         # No longer setting current_page here, app.py will handle it
                         st.rerun()
                     else:
