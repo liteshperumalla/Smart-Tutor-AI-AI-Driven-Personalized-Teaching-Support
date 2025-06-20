@@ -1,10 +1,8 @@
-
 import os
 import json
 import argparse
 import logging
-from typing import Optional, List
-
+from typing import Optional, List, Dict, Any
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings, get_response_synthesizer, PromptTemplate
 from llama_index.core.retrievers import BaseRetriever
@@ -19,6 +17,32 @@ from llama_index.retrievers.bm25 import BM25Retriever
 from langfuse import Langfuse
 from llama_index.core.callbacks import CallbackManager
 from langfuse.llama_index import LlamaIndexCallbackHandler
+from llama_index.agent.openai import OpenAIAgent
+from dotenv import load_dotenv
+from llama_index.core.tools import QueryEngineTool, ToolMetadata
+from llama_index.core.agent import ReActAgent
+
+# SerpAPI integration
+try:
+    from serpapi import GoogleSearch
+    SERPAPI_AVAILABLE = True
+except ImportError:
+    SERPAPI_AVAILABLE = False
+    logging.warning("SerpAPI not available. Web search will use fallback method.")
+
+try:
+    import requests
+    from bs4 import BeautifulSoup
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    logging.warning("Requests/BeautifulSoup not available. Web search disabled.")
+    
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.3"))
+MAX_WEB_RESULTS = int(os.getenv("MAX_WEB_RESULTS", "3"))
+
 
 # --- Langfuse Setup ---
 langfuse_callback_handler = None
@@ -83,6 +107,33 @@ qa_template = PromptTemplate(
     "USER'S QUESTION: {query_str}\n\n"
     "YOUR ASSISTANT RESPONSE:"
 )
+web_search_template = PromptTemplate(
+    "You are an expert Teaching Assistant for a university course. "
+    "You are providing information from web search results since the information was not available in the course materials. "
+    "Based ONLY on the web search results provided below, answer the user's question. "
+    "IMPORTANT: Always start your response with: '🌐 **Information from web search** (not found in course materials)\\n\\n' "
+    "Your explanation should be clear, concise, and aimed at a university student. "
+    "Please find the most accurate and up-to-date web information about the following"
+    "Provide accurate information based on the search results and include relevant examples if available.\n\n"
+    "WEB SEARCH RESULTS:\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n\n"
+    "USER'S QUESTION: {query_str}\n\n"
+    "YOUR ASSISTANT RESPONSE:"
+)
+agent_decision_template = PromptTemplate(
+    "You are a smart routing agent that decides whether to search the web based on the quality of retrieved context. "
+    "Analyze the context below and determine if it adequately answers the user's question. "
+    "If the context is insufficient, incomplete, or doesn't contain relevant information, respond with 'SEARCH_WEB'. "
+    "If the context is adequate to answer the question, respond with 'USE_CONTEXT'.\n\n"
+    "CONTEXT:\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n\n"
+    "USER'S QUESTION: {query_str}\n\n"
+    "DECISION (SEARCH_WEB or USE_CONTEXT):"
+)
 QUESTION_TEMPLATE = PromptTemplate(
     "You are a precise and reliable quiz generation engine. Your task is to create a single, valid multiple-choice question based ONLY on the provided context. "
     "You MUST return the output in a single, valid JSON object. Do not add any text before or after the JSON object. "
@@ -131,6 +182,155 @@ RESEARCH_TEMPLATE = PromptTemplate(
     "Answer:"
 )
 
+# --- Web Search Implementation ---
+class WebSearchAgent:
+    def __init__(self):
+        self.serpapi_available = SERPAPI_AVAILABLE and SERPAPI_API_KEY
+        self.requests_available = REQUESTS_AVAILABLE
+        
+    def search_web(self, query: str, max_results: int = MAX_WEB_RESULTS) -> List[Dict[str, Any]]:
+        """Search the web using available methods"""
+        if self.serpapi_available:
+            return self._search_with_serpapi(query, max_results)
+        elif self.requests_available:
+            return self._search_with_requests(query, max_results)
+        else:
+            logging.error("No web search method available")
+            return []
+    
+    def _search_with_serpapi(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        """Search using SerpAPI Google Search"""
+        try:
+            if not SERPAPI_API_KEY:
+                logging.error("SerpAPI API key is missing")
+                return []
+            
+            # Configure SerpAPI search parameters
+            search_params = {
+                "q": query,
+                "engine": "google",
+                "api_key": SERPAPI_API_KEY,
+                "num": max_results,
+                "start": 0,
+                "safe": "active",
+                "hl": "en",
+                "gl": "us"
+            }
+            
+            # Perform the search
+            search = GoogleSearch(search_params)
+            results = search.get_dict()
+            
+            formatted_results = []
+            
+            # Process organic results
+            if "organic_results" in results:
+                for i, result in enumerate(results["organic_results"][:max_results]):
+                    formatted_results.append({
+                        'title': result.get('title', 'No title'),
+                        'content': result.get('snippet', 'No content'),
+                        'url': result.get('link', ''),
+                        'score': 1.0 - (i * 0.1),  # Decreasing score based on position
+                        'published_date': result.get('date', ''),
+                        'source': 'Google Search'
+                    })
+            
+            # Also check for featured snippet or answer box
+            if "answer_box" in results:
+                answer_box = results["answer_box"]
+                formatted_results.insert(0, {
+                    'title': answer_box.get('title', 'Featured Answer'),
+                    'content': answer_box.get('answer', answer_box.get('snippet', 'No content')),
+                    'url': answer_box.get('link', ''),
+                    'score': 1.0,
+                    'published_date': '',
+                    'source': 'Google Featured Answer'
+                })
+            
+            # Check for knowledge graph information
+            if "knowledge_graph" in results:
+                kg = results["knowledge_graph"]
+                if "description" in kg:
+                    formatted_results.insert(0, {
+                        'title': kg.get('title', 'Knowledge Graph'),
+                        'content': kg.get('description', 'No content'),
+                        'url': kg.get('website', ''),
+                        'score': 0.95,
+                        'published_date': '',
+                        'source': 'Google Knowledge Graph'
+                    })
+            
+            return formatted_results
+            
+        except Exception as e:
+            logging.error(f"SerpAPI search error: {e}")
+            return []
+    
+    def _search_with_requests(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        """Enhanced fallback search with multiple sources"""
+        try:
+            results = []
+            
+            # Try multiple search engines for better coverage
+            search_engines = [
+                {
+                    'name': 'DuckDuckGo',
+                    'url': 'https://html.duckduckgo.com/html/',
+                    'params': {'q': query}
+                },
+                {
+                    'name': 'Bing',
+                    'url': 'https://www.bing.com/search',
+                    'params': {'q': query}
+                }
+            ]
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            for engine in search_engines[:1]:  # Use first available engine
+                try:
+                    response = requests.get(
+                        engine['url'], 
+                        params=engine['params'], 
+                        headers=headers, 
+                        timeout=10
+                    )
+                    response.raise_for_status()
+                    
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    
+                    # Extract results based on search engine
+                    if 'duckduckgo' in engine['url']:
+                        search_results = soup.find_all('div', class_='result')[:max_results]
+                        for result in search_results:
+                            title_elem = result.find('a', class_='result__a')
+                            snippet_elem = result.find('a', class_='result__snippet')
+                            
+                            if title_elem and snippet_elem:
+                                results.append({
+                                    'title': title_elem.get_text(strip=True),
+                                    'content': snippet_elem.get_text(strip=True),
+                                    'url': title_elem.get('href', ''),
+                                    'score': 0.8,
+                                    'source': engine['name']
+                                })
+                    
+                    if results:
+                        break  # Stop if we got results from first engine
+                        
+                except Exception as e:
+                    logging.warning(f"Error with {engine['name']}: {e}")
+                    continue
+            
+            return results
+            
+        except Exception as e:
+            logging.error(f"Enhanced requests search error: {e}")
+            return []
+
+        
 # --- CrossEncoder for Reranking ---
 re_ranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
@@ -208,11 +408,12 @@ def extract_node_text(node_or_item):
     except Exception as e:
         logging.error(f"Error extracting text from node: {e}")
         return ""
-
+    
 class RAGQueryEngine(CustomQueryEngine):
     retriever: BaseRetriever
     response_synthesizer: BaseSynthesizer
     mode: str = "chat"
+    web_search_agent: Optional[WebSearchAgent] = None
 
     def __init__(self, retriever: BaseRetriever, response_synthesizer: BaseSynthesizer, mode: str = "chat", **kwargs):
         init_data = {
@@ -225,6 +426,53 @@ class RAGQueryEngine(CustomQueryEngine):
         self.retriever = retriever
         self.response_synthesizer = response_synthesizer
         self.mode = mode
+        self.web_search_agent = WebSearchAgent() if WEB_SEARCH_ENABLED else None
+
+    def _should_search_web(self, query_str: str, context_str: str) -> bool:
+        """Determine if web search is needed based on context quality"""
+        if not self.web_search_agent or not WEB_SEARCH_ENABLED:
+            return False
+        
+        # Simple heuristics to determine if context is insufficient
+        if not context_str or len(context_str.strip()) < 50:
+            return True
+        
+        # Use LLM to make decision
+        try:
+            decision_prompt = agent_decision_template.format(
+                context_str=context_str,
+                query_str=query_str
+            )
+            decision_response = Settings.llm.complete(decision_prompt)
+            decision = str(decision_response).strip().upper()
+            return "SEARCH_WEB" in decision
+        except Exception as e:
+            logging.error(f"Error in web search decision: {e}")
+            return len(context_str.strip()) < 100  # Fallback heuristic
+
+    def _search_and_format_web_results(self, query_str: str) -> str:
+        """Search web and format results for LLM"""
+        if not self.web_search_agent:
+            return ""
+        
+        try:
+            search_results = self.web_search_agent.search_web(query_str, MAX_WEB_RESULTS)
+            if not search_results:
+                return ""
+            
+            formatted_context = []
+            for i, result in enumerate(search_results, 1):
+                formatted_context.append(
+                    f"Source {i}: {result['title']}\n"
+                    f"URL: {result['url']}\n"
+                    f"Content: {result['content']}\n"
+                    f"Source Type: {result.get('source', 'Web Search')}\n"
+                )
+            
+            return "\n\n".join(formatted_context)
+        except Exception as e:
+            logging.error(f"Error in web search: {e}")
+            return ""
 
     def custom_query(self, query_str: str, doc: Optional[Document] = None, forced_context_str: Optional[str] = None) -> str:
         current_template = None
@@ -239,6 +487,8 @@ class RAGQueryEngine(CustomQueryEngine):
 
         nodes_for_synthesis = []
         context_str_for_prompt = ""
+        used_web_search = False
+        
         try:
             if forced_context_str is not None:
                 context_str_for_prompt = forced_context_str
@@ -252,13 +502,29 @@ class RAGQueryEngine(CustomQueryEngine):
                 context_str_for_prompt = "\n\n".join(filter(None, context_parts))
                 nodes_for_synthesis = retrieved_items 
             else:
+                # First, try to retrieve from local index
                 retrieved_items = self.retriever.retrieve(query_str)
                 context_parts = [extract_node_text(item) for item in retrieved_items]
                 context_str_for_prompt = "\n\n".join(filter(None, context_parts))
                 nodes_for_synthesis = retrieved_items
+                
+                # Check if we should search the web
+                if self._should_search_web(query_str, context_str_for_prompt):
+                    logging.info(f"Searching web for query: {query_str}")
+                    web_context = self._search_and_format_web_results(query_str)
+                    if web_context:
+                        context_str_for_prompt = web_context
+                        current_template = web_search_template
+                        used_web_search = True
+                        logging.info("Using web search results")
+                    else:
+                        logging.warning("Web search failed, using local context")
+
             print("--------CONTEXT PASSED TO LLM--------")
+            print(f"Web search used: {used_web_search}")
             print(context_str_for_prompt)
             print("--------------------------------------")
+            
             if self.mode == "quiz" and (not context_str_for_prompt or len(context_str_for_prompt) < 30):
                 if not forced_context_str:
                     logging.warning(f"Warning: Context for quiz question generation is short or empty. Query: '{query_str}'")
@@ -268,7 +534,15 @@ class RAGQueryEngine(CustomQueryEngine):
 
             final_prompt_for_llm = current_template.format(context_str=context_str_for_prompt, query_str=query_str)
             response_obj = self.response_synthesizer.synthesize(query=final_prompt_for_llm, nodes=nodes_for_synthesis)
-            return str(response_obj).strip()
+            
+            response_text = str(response_obj).strip()
+            
+            # Add metadata about source
+            if used_web_search and not response_text.startswith("🌐"):
+                response_text = f"🌐 **Information from web search** (not found in course materials)\n\n{response_text}"
+            
+            return response_text
+            
         except Exception as e:
             logging.error(f"Error in custom_query: {e}")
             if self.mode == "quiz":
@@ -315,9 +589,13 @@ class RAGQueryEngine(CustomQueryEngine):
             logging.error(f"Error in query_uploaded_docs: {e}")
             return f"Error processing uploaded document: {str(e)}"
 
-
 def chat():
-    print("Welcome to Smart AI Tutor! Type 'exit' to quit the chat.")
+    print("Welcome to Smart AI Tutor with Web Search! Type 'exit' to quit the chat.")
+    if WEB_SEARCH_ENABLED:
+        print("🌐 Web search is enabled - I'll search the internet when information isn't available locally.")
+    else:
+        print(" Using local knowledge base only.")
+    
     try:
         cli_storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
         index = load_index_from_storage(cli_storage_context)
@@ -326,9 +604,11 @@ def chat():
     except Exception as e:
         print(f"Error loading index for CLI chat: {e}")
         return
+    
     retriever = get_hybrid_retriever(index, documents_from_index) 
     synthesizer = get_response_synthesizer(response_mode="compact")
     query_engine = RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer, mode="chat")
+    
     while True:
         user_input = input("You: ")
         if user_input.lower() in ["exit", "quit"]:
@@ -342,8 +622,6 @@ def chat():
             print("Assistant:", response)
         except Exception as e:
             print(f"Error: {e}")
-
-
 
 def main():
     args = parse_args()
