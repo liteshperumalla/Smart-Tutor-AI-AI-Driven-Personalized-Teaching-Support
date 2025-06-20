@@ -1,7 +1,9 @@
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()
 from sidebar import sidebar_content
 from utils import BASE_CSS, LIGHT_MODE_CSS, DARK_MODE_CSS, load_chat_sessions
-from views import home, chat, appointment, research, quiz, resources, about, feedback, profile as profile_view # Added profile_view
+from views import home, chat, appointment, research, quiz, resources, about, feedback, profile as profile_view, code # Added profile_view
 from auth import initialize_session, display_login_page, display_signup_page
 from user_management import get_user # Added get_user
 
@@ -26,12 +28,14 @@ def main():
         auth_page_to_display = st.session_state.get('auth_page', 'login')
         if auth_page_to_display == 'login':
             display_login_page()
+            st.stop()  # ✅ STOP right after showing login page
         elif auth_page_to_display == 'signup':
             display_signup_page()
-        else: # Default to login if auth_page is invalid
+            st.stop()  # ✅ STOP here too
+        else:
             st.session_state.auth_page = 'login'
             display_login_page()
-        st.stop() # Stop further rendering if not authenticated
+            st.stop()  # ✅ And stop in fallback case too
 
     # --- Authenticated App Content ---
     # --- CHAT SESSION INITIALIZATION (Moved here, only for authenticated users) ---
@@ -77,6 +81,8 @@ def main():
         home.render()
     elif st.session_state.page == 'chat':
         chat.render()
+    elif st.session_state.page == 'code':
+        code.render()
     elif st.session_state.page == 'scheduleappointment':
         appointment.render()
     elif st.session_state.page == 'Research Mode':

@@ -1,0 +1,23 @@
+DETAILED CHUNK ANALYSIS
+================================================================================
+
+FILE TYPE DISTRIBUTION:
+  application/vnd.openxmlformats-officedocument.wordprocessingml.document: 2 chunks (0.1%)
+  notebook: 239 chunks (17.0%)
+  pdf: 560 chunks (39.9%)
+  pptx: 585 chunks (41.7%)
+  text/x-python: 17 chunks (1.2%)
+
+FOLDER DISTRIBUTION:
+  Module 12: 33 chunks (2.4%)
+  Module 2: 122 chunks (8.7%)
+  Module 3: 36 chunks (2.6%)
+  Module 4: 5 chunks (0.4%)
+  Module 5: 35 chunks (2.5%)
+  Module 8: 8 chunks (0.6%)
+  unknown: 1164 chunks (83.0%)
+
+CHUNK SIZE DISTRIBUTION:
+  small (<200 chars, 200-800 chars, >800 chars): 718 chunks (51.2%)
+  medium (<200 chars, 200-800 chars, >800 chars): 529 chunks (37.7%)
+  large (<200 chars, 200-800 chars, >800 chars): 156 chunks (11.1%)
