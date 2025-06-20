@@ -6,6 +6,8 @@ from pathlib import Path
 import os 
 import logging
 import streamlit.components.v1 as components # For st.components.v1.iframe
+from user_management import get_user_dir
+import datetime
 import auth
 auth.initialize_session()
 
@@ -269,7 +271,17 @@ def render():
 
         if st.session_state.research_chat_history:
             export_text = "\n\n".join(f"{entry['role']}: {entry['content']}" for entry in st.session_state.research_chat_history)
-            st.download_button("📄 Download Chat", data=export_text, file_name="research_chat_log.txt", mime="text/plain", key="download_research_chat_final")
+            file_name = f"research_chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            user_id = st.session_state.get("user_name")
+            if user_id:
+                research_dir = os.path.join(get_user_dir(user_id), "research")
+                os.makedirs(research_dir, exist_ok=True)
+                file_path = os.path.join(research_dir, file_name)
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(export_text)
+                st.success(f"Chat log saved to your research folder as {file_name}.")
+
+            st.download_button("📄 Download Chat", data=export_text, file_name=file_name, mime="text/plain", key="download_research_chat_final")
 
     elif not st.session_state.research_items_for_preview_and_indexing: 
         st.info("Upload or add content using the sections above to start your research session.")

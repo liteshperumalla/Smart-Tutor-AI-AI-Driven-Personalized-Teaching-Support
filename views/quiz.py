@@ -6,16 +6,17 @@ import logging
 import json
 import re
 from pathlib import Path
+from datetime import datetime
 import auth
 auth.initialize_session()
-
 
 from llama_index.core import load_index_from_storage, get_response_synthesizer
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter
 from llama_index.core.schema import Document as LlamaDocument
 
 from Tutor_chat import RAGQueryEngine
-from utils import get_storage_context, render_footer, save_quiz_results
+from utils import get_storage_context, render_footer
+from user_management import get_user_dir, save_user_file, load_user_file
 
 @st.cache_data(ttl=600)
 def get_knowledge_base_structure():
@@ -40,19 +41,76 @@ def get_knowledge_base_structure():
         logging.error(f"Failed to get knowledge base structure: {e}", exc_info=True)
         return {}
 
+def save_quiz_result(user_id, score, total_questions, selected_folders, questions_data):
+    """Save quiz result as a unique file in the user's quiz folder."""
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        quiz_dir = os.path.join(get_user_dir(user_id), "quiz")
+        os.makedirs(quiz_dir, exist_ok=True)
+        filename = f"quiz_{timestamp}.json"
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "score": score,
+            "total_questions": total_questions,
+            "percentage": (score / total_questions * 100) if total_questions > 0 else 0,
+            "selected_folders": selected_folders,
+            "questions_data": questions_data
+        }
+        with open(os.path.join(quiz_dir, filename), "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        logging.error(f"Error saving quiz result for user {user_id}: {e}", exc_info=True)
+        return False
+def load_all_quiz_results(user_id):
+    """Load all quiz results for a user from their quiz folder."""
+    quiz_dir = os.path.join(get_user_dir(user_id), "quiz")
+    if not os.path.exists(quiz_dir):
+        return []
+    results = []
+    for fname in sorted(os.listdir(quiz_dir), reverse=True):
+        if fname.endswith(".json"):
+            try:
+                with open(os.path.join(quiz_dir, fname), "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    results.append(data)
+            except Exception as e:
+                logging.warning(f"Could not load quiz result {fname}: {e}")
+    return results
+
 def render():
     st.title("🧠 Quiz Generator")
     st.markdown("Test your knowledge! Select folders, choose the number of questions, and start your quiz.")
+
+    # Get user ID for file management
+    user_id = st.session_state.get("user_name")
+    if not user_id:
+        st.error("Please login to access the quiz feature.")
+        return
+
+    # Load user's quiz history
+    quiz_results = load_all_quiz_results(user_id)
 
     quiz_states = {
         "quiz_questions_list": [], "quiz_options_list": [], "quiz_correct_answers_list": [],
         "quiz_user_answers_list": [], "quiz_feedback_list": [], "quiz_current_q_index": 0,
         "quiz_score": 0, "quiz_started": False, "quiz_completed": False,
-        "session_generated_question_texts": set()
+        "session_generated_question_texts": set(), "quiz_selected_folders": []
     }
     for key, default_value in quiz_states.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
+
+    # Display quiz history if available
+    if quiz_results and not st.session_state.quiz_started:
+        with st.expander("📊 Your Quiz History", expanded=False):
+            st.write(f"**Total Quizzes Taken:** {len(quiz_results)}")
+            recent_results = quiz_results[:5]  # Show last 5 results
+            for i, result in enumerate(recent_results):
+                timestamp = datetime.fromisoformat(result["timestamp"]).strftime("%Y-%m-%d %H:%M")
+                st.write(f"**{timestamp}:** {result['score']}/{result['total_questions']} ({result['percentage']:.1f}%)")
+    if not quiz_results:
+        st.info("You haven't taken any quizzes yet. Start your first quiz now!")
 
     if not st.session_state.quiz_started:
         st.subheader("1. Select Folders for Your Quiz")
@@ -85,6 +143,7 @@ def render():
                 for key in quiz_states:
                     st.session_state[key] = quiz_states[key] 
                 st.session_state.session_generated_question_texts = set()
+                st.session_state.quiz_selected_folders = selected_folders  # Store selected folders
 
                 with st.spinner(f"Generating {num_questions} unique questions & explanations... This may take a moment."):
                     try:
@@ -236,6 +295,28 @@ def render():
         elif percentage == 100: st.success("Perfect score! 🌟")
         elif percentage >= 70: st.info("Great job! You have a good grasp.")
         else: st.warning("Good effort. Reviewing your answers might help!")
+
+        # Save quiz result using new user file management system
+        if total > 0:
+            questions_data = []
+            for i in range(total):
+                if i < len(st.session_state.quiz_questions_list) and \
+                   i < len(st.session_state.quiz_user_answers_list) and \
+                   i < len(st.session_state.quiz_correct_answers_list) and \
+                   i < len(st.session_state.quiz_feedback_list):
+                    questions_data.append({
+                        "question": st.session_state.quiz_questions_list[i],
+                        "user_answer": st.session_state.quiz_user_answers_list[i],
+                        "correct_answer": st.session_state.quiz_correct_answers_list[i],
+                        "feedback": st.session_state.quiz_feedback_list[i],
+                        "options": st.session_state.quiz_options_list[i] if i < len(st.session_state.quiz_options_list) else []
+                    })
+            
+            selected_folders = st.session_state.get("quiz_selected_folders", [])
+            save_success = save_quiz_result(user_id, score, total, selected_folders, questions_data)
+            
+            if not save_success:
+                st.warning("Quiz completed but results could not be saved to your profile.")
 
         if total > 0:
             st.markdown("---")

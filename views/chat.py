@@ -82,19 +82,31 @@ def render():
         40% { transform: scale(1.0); } 
     }
 
-    .source-buttons-group { 
-        margin-top: 8px; margin-left: 10px; clear: both; text-align: left; 
+    .source-buttons-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 10px 0;
+        align-items: flex-start;
     }
-    .source-button, .stDownloadButton button { 
-        margin-right: 8px !important; margin-bottom: 8px !important;
-        font-size: 0.85em !important; padding: 5px 10px !important; 
-        display: inline-block !important; vertical-align: middle;
+    
+    .source-button-container {
+        flex: 0 1 auto;
+        min-width: 200px;
+        max-width: 300px;
     }
-    .source-button { 
-        background-color:#ffd54f; border:none; border-radius:8px; 
-        cursor:pointer; color: #333 !important; 
+    
+    /* Ensure buttons have consistent styling */
+    .stDownloadButton > button {
+        width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.85rem;
+        padding: 0.25rem 0.5rem;
+        height: auto;
+        min-height: 2.5rem;
     }
-    .source-button:hover { background-color:#ffca28; }
 
     /* Clear floats after chat messages */
     .chat-message-container::after {
@@ -298,43 +310,83 @@ def process_text_with_code_blocks(text_content):
 
 
 def display_source_buttons(sources, msg_idx, seen_file_paths):
-    """Display source buttons for a message."""
+    """Display source buttons for a message in an organized layout."""
     if not sources:
         return
-        
     st.markdown("<div class='source-buttons-group'>", unsafe_allow_html=True)
     
-    # Create columns for source buttons
-    num_cols = min(len(sources), 3)  # Max 3 buttons per row
-    if num_cols > 0:
-        cols = st.columns(num_cols)
-        
-        for src_idx, src_data in enumerate(sources):
-            col = cols[src_idx % num_cols]
+    # Filter out duplicate file paths first
+    unique_sources = []
+    processed_paths = set()
+    
+    for src_data in sources:
+        fpath = src_data.get("file_path", "")
+        if fpath and fpath not in processed_paths and fpath not in seen_file_paths:
+            unique_sources.append(src_data)
+            processed_paths.add(fpath)
+    
+    # Create organized layout with proper columns
+    if unique_sources:
+        # Calculate optimal number of columns (2-4 depending on number of sources)
+        num_sources = len(unique_sources)
+        if num_sources <= 2:
+            num_cols = num_sources
+        elif num_sources <= 4:
+            num_cols = 2
+        else:
+            num_cols = 3
             
-            with col:
-                fname = src_data.get("file_name", "source.file")
-                fpath = src_data.get("file_path", "") 
-                chunk_text = src_data.get("chunk_text", "")
-
-                # Download button
-                if fpath and os.path.exists(fpath) and fpath not in seen_file_paths:
-                    try:
-                        with open(fpath, "rb") as fp_read: 
-                            file_bytes = fp_read.read()
-                        dl_key = f"dl_{msg_idx}_{src_idx}_{sanitize_filename(fname)}"
-                        display_name = fname[:20] + ('...' if len(fname) > 20 else '')
-                        st.download_button(
-                            label=f"📄 {display_name}", 
-                            data=file_bytes, 
-                            file_name=fname, 
-                            mime="application/octet-stream", 
-                            key=dl_key, 
-                            help=f"Download: {fname}"
-                        )
-                        seen_file_paths.add(fpath)
-                    except Exception as e: 
-                        logging.error(f"Download error for {fpath}: {e}")
+        # Create rows of columns
+        sources_per_row = num_cols
+        for row_start in range(0, len(unique_sources), sources_per_row):
+            row_sources = unique_sources[row_start:row_start + sources_per_row]
+            cols = st.columns(len(row_sources))
+            
+            for col_idx, src_data in enumerate(row_sources):
+                with cols[col_idx]:
+                    fname = src_data.get("file_name", "source.file")
+                    fpath = src_data.get("file_path", "")
+                    
+                    # Create download button
+                    if fpath and os.path.exists(fpath):
+                        try:
+                            with open(fpath, "rb") as fp_read:
+                                file_bytes = fp_read.read()
+                            
+                            # Create unique key
+                            src_idx = row_start + col_idx
+                            dl_key = f"dl_{msg_idx}_{src_idx}_{sanitize_filename(fname)}"
+                            
+                            # Format display name
+                            display_name = fname[:25] + ('...' if len(fname) > 25 else '')
+                            
+                            # Add container div for consistent styling
+                            st.markdown("<div class='source-button-container'>", unsafe_allow_html=True)
+                            
+                            st.download_button(
+                                label=f"📄 {display_name}",
+                                data=file_bytes,
+                                file_name=fname,
+                                mime="application/octet-stream",
+                                key=dl_key,
+                                help=f"Download: {fname}",
+                                use_container_width=True
+                            )
+                            
+                            st.markdown("</div>", unsafe_allow_html=True)
+                            
+                            # Mark as processed
+                            seen_file_paths.add(fpath)
+                            
+                        except Exception as e:
+                            logging.error(f"Download error for {fpath}: {e}")
+                            # Show error state button
+                            st.button(
+                                f"❌ {fname[:20]}...",
+                                disabled=True,
+                                help=f"Error loading: {fname}",
+                                use_container_width=True
+                            )
     
     st.markdown("</div>", unsafe_allow_html=True)
 
