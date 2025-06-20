@@ -82,7 +82,7 @@ litestar==2.15.1
 litestar-htmx==0.4.1
 llama-cloud==0.1.14
 llama-cloud-services==0.6.5
-llama-index==0.12.24
+llama-index==0.12.28
 llama-index-agent-openai==0.4.6
 llama-index-cli==0.4.1
 llama-index-core==0.12.24.post1
