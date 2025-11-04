@@ -4,6 +4,7 @@ Provides validation for user inputs, passwords, files, and security checks
 """
 
 import re
+import bleach
 import os
 from typing import Optional, List, Tuple
 from pathlib import Path
@@ -316,17 +317,8 @@ class XSSValidator:
         Returns:
             Sanitized text
         """
-        # Remove script tags and their content
-        text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL | re.IGNORECASE)
-
-        # Remove event handlers
-        text = re.sub(r'\s*on\w+\s*=\s*["\'][^"\']*["\']', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\s*on\w+\s*=\s*\S+', '', text, flags=re.IGNORECASE)
-
-        # Remove javascript: protocol
-        text = re.sub(r'javascript:', '', text, flags=re.IGNORECASE)
-
-        return text
+        # Use bleach to sanitize HTML properly, stripping all tags
+        return bleach.clean(text, tags=[], attributes={}, protocols=[], strip=True)
 
 
 # Rate Limiting Validator
