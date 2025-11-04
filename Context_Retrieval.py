@@ -28,7 +28,8 @@ embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
 Settings.llm = Ollama(model="llama3.1:latest", request_timeout=120.0)
 
-persist_dir = "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/persisted_index"
+# Use relative path instead of hardcoded absolute path
+persist_dir = os.getenv("PERSIST_DIR", "./persisted_index")
 os.makedirs(persist_dir, exist_ok=True)
 storage_context = StorageContext.from_defaults(persist_dir=persist_dir)
 

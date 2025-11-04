@@ -50,7 +50,8 @@ def preprocess_text(file_path, text):
 # ------------------------------
 # LOAD DOCUMENTS & PREPROCESS
 # ------------------------------
-doc_path = "/Users/Guest/Downloads/Module 2"
+# Use relative path or environment variable instead of hardcoded path
+doc_path = os.getenv("DOC_PATH", "./data/Module_2")
 
 try:
     # Specify file extensions you want to read
