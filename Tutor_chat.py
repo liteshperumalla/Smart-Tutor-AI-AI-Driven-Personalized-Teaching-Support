@@ -45,30 +45,51 @@ MAX_WEB_RESULTS = int(os.getenv("MAX_WEB_RESULTS", "3"))
 
 
 # --- Langfuse Setup ---
+# Load configuration from environment variables
+try:
+    from backend.config import config as app_config
+    LANGFUSE_ENABLED = app_config.LANGFUSE_ENABLED
+    LANGFUSE_PUBLIC_KEY = app_config.LANGFUSE_PUBLIC_KEY
+    LANGFUSE_SECRET_KEY = app_config.LANGFUSE_SECRET_KEY
+    LANGFUSE_HOST = app_config.LANGFUSE_HOST
+except ImportError:
+    logging.warning("Backend config not available, using environment variables directly")
+    LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+    LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+
 langfuse_callback_handler = None
 langfuse_client = None
 
-try:
-    langfuse_callback_handler = LlamaIndexCallbackHandler(
-        public_key="pk-lf-206a6716-2d0d-490b-8fdc-4057c92234b8",
-        secret_key="sk-lf-fbec8985-d86a-4d50-9d1e-96b1ac785bc1",
-        host="https://cloud.langfuse.com"
-    )
-    Settings.callback_manager = CallbackManager([langfuse_callback_handler])
-    logging.info("Langfuse callback handler initialized successfully.")
-except ImportError:
-    logging.error("Failed to import LlamaIndexCallbackHandler. Please check Langfuse SDK version.")
-    langfuse_callback_handler = None 
-except Exception as e:
-    logging.error(f"Failed to initialize Langfuse callback handler: {e}")
-    langfuse_callback_handler = None
+if LANGFUSE_ENABLED and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+    try:
+        langfuse_callback_handler = LlamaIndexCallbackHandler(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY,
+            host=LANGFUSE_HOST
+        )
+        Settings.callback_manager = CallbackManager([langfuse_callback_handler])
+        logging.info("Langfuse callback handler initialized successfully.")
+    except ImportError:
+        logging.error("Failed to import LlamaIndexCallbackHandler. Please check Langfuse SDK version.")
+        langfuse_callback_handler = None
+    except Exception as e:
+        logging.error(f"Failed to initialize Langfuse callback handler: {e}")
+        langfuse_callback_handler = None
 
-try:
-    langfuse_client = Langfuse() 
-    logging.info("Langfuse client initialized (will use env vars if set).")
-except Exception as e:
-    logging.error(f"Failed to initialize Langfuse client: {e}. Tracing might be partially or fully disabled.")
-    langfuse_client = None 
+    try:
+        langfuse_client = Langfuse(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY,
+            host=LANGFUSE_HOST
+        )
+        logging.info("Langfuse client initialized.")
+    except Exception as e:
+        logging.error(f"Failed to initialize Langfuse client: {e}. Tracing might be partially or fully disabled.")
+        langfuse_client = None
+else:
+    logging.info("Langfuse monitoring is disabled. Enable it by setting LANGFUSE_ENABLED=true and providing API keys.") 
 
 # --- Argument Parser ---
 def parse_args():
