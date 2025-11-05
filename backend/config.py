@@ -61,9 +61,19 @@ class Config:
     RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "5"))
     MIN_RERANK_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0.20"))
 
-    # Query Expansion Settings
+    # Query Expansion Settings (Phase 1)
     QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "true").lower() == "true"
     QUERY_EXPANSION_NUM = int(os.getenv("QUERY_EXPANSION_NUM", "3"))  # Generate 3 query variations
+
+    # Phase 2: Advanced RAG Settings
+    # Query Rewriting - Optimize queries before retrieval (+22 NDCG@3)
+    QUERY_REWRITING_ENABLED = os.getenv("QUERY_REWRITING_ENABLED", "true").lower() == "true"
+
+    # Self-RAG - Reflection mechanism for quality assessment (-52% hallucinations)
+    SELF_RAG_ENABLED = os.getenv("SELF_RAG_ENABLED", "true").lower() == "true"
+
+    # Corrective RAG (CRAG) - Enhanced quality threshold for web search triggering
+    CRAG_QUALITY_THRESHOLD = float(os.getenv("CRAG_QUALITY_THRESHOLD", "0.5"))  # 0.0-1.0 scale
 
     # Evaluation Settings
     EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
