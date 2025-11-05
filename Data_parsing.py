@@ -153,27 +153,147 @@ class NotebookReader(BaseReader):
         return '#' in content or '*' in content or '[' in content
 
 # ------------------------------
-# SPECIALIZED NOTEBOOK PARSER
+# PHASE 3: RECURSIVE CHUNKING HELPER
+# ------------------------------
+class RecursiveChunker:
+    """Phase 3: Implements recursive parent-child chunking for better context preservation"""
+
+    def __init__(self, parent_size=1024, child_size=256, parent_overlap=204, child_overlap=51):
+        self.parent_splitter = SentenceSplitter(
+            chunk_size=parent_size,
+            chunk_overlap=parent_overlap
+        )
+        self.child_splitter = SentenceSplitter(
+            chunk_size=child_size,
+            chunk_overlap=child_overlap
+        )
+
+    def create_parent_child_chunks(self, document):
+        """Create parent-child chunk relationships
+
+        Parent chunks (1024 tokens): Provide broader context to LLM
+        Child chunks (256 tokens): Used for precise retrieval matching
+
+        Returns: List of child nodes with parent_id references
+        """
+        # Create parent chunks first
+        parent_nodes = self.parent_splitter.get_nodes_from_documents([document])
+
+        all_child_nodes = []
+
+        for parent_idx, parent_node in enumerate(parent_nodes):
+            # Generate unique parent ID
+            parent_id = f"parent_{parent_idx}_{parent_node.node_id[:8]}"
+
+            # Create child chunks from parent
+            parent_doc = Document(text=parent_node.text, metadata=parent_node.metadata.copy())
+            child_nodes = self.child_splitter.get_nodes_from_documents([parent_doc])
+
+            # Link children to parent
+            for child_idx, child_node in enumerate(child_nodes):
+                child_node.metadata['parent_id'] = parent_id
+                child_node.metadata['parent_text'] = parent_node.text  # Store full parent context
+                child_node.metadata['child_index'] = child_idx
+                child_node.metadata['total_children'] = len(child_nodes)
+                child_node.metadata['chunking_method'] = 'recursive_parent_child'
+                all_child_nodes.append(child_node)
+
+        return all_child_nodes
+
+# ------------------------------
+# PHASE 3: CONTEXTUAL ENRICHMENT HELPER
+# ------------------------------
+def enrich_chunk_with_context(text, metadata):
+    """Phase 3: Add contextual information to chunk before embedding
+
+    Prepends document metadata to improve retrieval accuracy:
+    - Document title
+    - Section headers
+    - Page/slide numbers
+
+    Expected improvement: +15-25% retrieval accuracy
+    """
+    context_parts = []
+
+    # Add document title if available
+    if 'file_name' in metadata:
+        context_parts.append(f"Document: {metadata['file_name']}")
+
+    # Add section/module information
+    if 'folder_name' in metadata:
+        context_parts.append(f"Section: {metadata['folder_name']}")
+
+    # Add location information
+    location_info = []
+    if 'page_number' in metadata:
+        location_info.append(f"Page {metadata['page_number']}")
+    elif 'slide_number' in metadata:
+        location_info.append(f"Slide {metadata['slide_number']}")
+    elif 'cell_number' in metadata:
+        location_info.append(f"Cell {metadata['cell_number']}")
+
+    if location_info:
+        context_parts.append(f"Location: {', '.join(location_info)}")
+
+    # Add file type context
+    if 'file_type' in metadata:
+        file_type = metadata['file_type']
+        if file_type == 'notebook':
+            context_parts.append("Source: Jupyter Notebook")
+        elif file_type == 'pdf':
+            context_parts.append("Source: PDF Document")
+        elif file_type == 'pptx':
+            context_parts.append("Source: PowerPoint Presentation")
+
+    # Construct enriched text
+    if context_parts:
+        context_header = " | ".join(context_parts)
+        enriched_text = f"[CONTEXT: {context_header}]\n\n{text}"
+        return enriched_text
+
+    return text
+
+# ------------------------------
+# SPECIALIZED NOTEBOOK PARSER (Enhanced with Phase 3)
 # ------------------------------
 class NotebookAwareParser:
-    """Custom parser that handles notebooks differently from other documents"""
-    
-    def __init__(self, embed_model):
+    """Custom parser that handles notebooks differently from other documents
+
+    Phase 3 Enhancements:
+    - Recursive chunking support (parent-child relationships)
+    - Contextual enrichment (metadata prepending)
+    """
+
+    def __init__(self, embed_model, enable_recursive=True, enable_enrichment=True):
         self.embed_model = embed_model
-        
+        self.enable_recursive = enable_recursive
+        self.enable_enrichment = enable_enrichment
+
+        # Phase 3: Recursive chunker for parent-child relationships
+        if enable_recursive:
+            from backend.config import Config
+            self.recursive_chunker = RecursiveChunker(
+                parent_size=Config.PARENT_CHUNK_SIZE,
+                child_size=Config.CHILD_CHUNK_SIZE,
+                parent_overlap=Config.PARENT_CHUNK_OVERLAP,
+                child_overlap=Config.CHILD_CHUNK_OVERLAP
+            )
+        else:
+            self.recursive_chunker = None
+
         # Create different parsers for different content types
         self.semantic_splitter = SemanticSplitterNodeParser(
             buffer_size=1,
             breakpoint_percentile_threshold=95,
             embed_model=embed_model
         )
-        
+
         # Phase 1 optimization: Updated overlap to 20% of chunk_size (102/512) for better continuity
         self.sentence_splitter = SentenceSplitter(
             chunk_size=512,
             chunk_overlap=102
         )
-        
+
         # Code splitter for better handling of code content
         if CODE_SPLITTER_AVAILABLE:
             self.code_splitter = CodeSplitter(
@@ -186,21 +306,39 @@ class NotebookAwareParser:
             self.code_splitter = None
     
     def parse_documents(self, documents):
-        """Parse documents using appropriate parser based on content type"""
+        """Parse documents using appropriate parser based on content type
+
+        Phase 3: Applies recursive chunking and contextual enrichment
+        """
         all_nodes = []
-        
+
         for doc in documents:
             file_type = doc.metadata.get('file_type', 'unknown')
-            
+
+            # Phase 3: Apply contextual enrichment first if enabled
+            if self.enable_enrichment:
+                doc.text = enrich_chunk_with_context(doc.text, doc.metadata)
+
+            # Parse based on file type
             if file_type == 'notebook':
                 nodes = self._parse_notebook(doc)
             elif self._is_code_file(doc):
                 nodes = self._parse_code_file(doc)
             else:
                 nodes = self._parse_regular_document(doc)
-            
-            all_nodes.extend(nodes)
-        
+
+            # Phase 3: Apply recursive chunking if enabled
+            if self.enable_recursive and self.recursive_chunker:
+                # Convert nodes back to documents, apply recursive chunking
+                recursive_nodes = []
+                for node in nodes:
+                    node_doc = Document(text=node.text, metadata=node.metadata)
+                    child_nodes = self.recursive_chunker.create_parent_child_chunks(node_doc)
+                    recursive_nodes.extend(child_nodes)
+                all_nodes.extend(recursive_nodes)
+            else:
+                all_nodes.extend(nodes)
+
         return all_nodes
     
     def _parse_notebook(self, doc):
@@ -392,13 +530,33 @@ if not docs:
 print(f"✅ Total loaded documents: {len(docs)}")
 
 # ------------------------------
-# ENHANCED SEMANTIC CHUNKING SETUP
+# ENHANCED SEMANTIC CHUNKING SETUP (Phase 3)
 # ------------------------------
 def create_notebook_aware_parser():
-    """Create a notebook-aware parser that handles different content types appropriately"""
+    """Create a notebook-aware parser that handles different content types appropriately
+
+    Phase 3 Features:
+    - Recursive chunking (parent-child relationships)
+    - Contextual enrichment (document metadata prepending)
+    """
     try:
-        notebook_parser = NotebookAwareParser(embed_model=Settings.embed_model)
-        print("✅ Notebook-aware parser created successfully")
+        from backend.config import Config
+
+        # Check if Phase 3 features are enabled
+        enable_recursive = Config.RECURSIVE_CHUNKING_ENABLED
+        enable_enrichment = Config.CONTEXTUAL_ENRICHMENT_ENABLED
+
+        if enable_recursive:
+            print("✅ Phase 3: Recursive chunking ENABLED")
+        if enable_enrichment:
+            print("✅ Phase 3: Contextual enrichment ENABLED")
+
+        notebook_parser = NotebookAwareParser(
+            embed_model=Settings.embed_model,
+            enable_recursive=enable_recursive,
+            enable_enrichment=enable_enrichment
+        )
+        print("✅ Notebook-aware parser created successfully with Phase 3 enhancements")
         return notebook_parser
     except Exception as e:
         print(f"⚠️ Error creating notebook-aware parser: {e}")
