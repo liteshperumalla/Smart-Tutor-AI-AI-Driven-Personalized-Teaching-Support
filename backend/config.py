@@ -42,7 +42,9 @@ class Config:
     # RAG & AI Settings
     PERSIST_DIR = os.getenv("PERSIST_DIR", "./persisted_index")
     CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
-    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    # Updated to BAAI/bge-small-en-v1.5 for better retrieval performance (Phase 1 improvement)
+    # Previous: sentence-transformers/all-MiniLM-L6-v2
+    EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
     LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:latest")
     LLM_REQUEST_TIMEOUT = float(os.getenv("LLM_REQUEST_TIMEOUT", "120.0"))
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -50,8 +52,22 @@ class Config:
     # Retrieval Settings
     SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "3"))
     CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.3"))
-    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "100"))
-    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "10"))
+    # Optimized chunking: increased from 100 to 512 chars for better context (Phase 1 improvement)
+    CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
+    # Optimized overlap: increased to 20% of chunk size (102/512) for better continuity
+    CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "102"))
+
+    # Advanced Retrieval Settings (Phase 1 additions)
+    RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "5"))
+    MIN_RERANK_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0.20"))
+
+    # Query Expansion Settings
+    QUERY_EXPANSION_ENABLED = os.getenv("QUERY_EXPANSION_ENABLED", "true").lower() == "true"
+    QUERY_EXPANSION_NUM = int(os.getenv("QUERY_EXPANSION_NUM", "3"))  # Generate 3 query variations
+
+    # Evaluation Settings
+    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
+    EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
 
     # Web Search Settings
     WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
