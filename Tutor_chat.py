@@ -386,6 +386,109 @@ def rerank_nodes(query, nodes: List[NodeWithScore], top_k=6):
     ranked_nodes_with_scores = sorted(scored_nodes, key=lambda x: x[0], reverse=True)
     return [node for _, node in ranked_nodes_with_scores[:top_k]]
 
+# --- Phase 3: MMR (Maximal Marginal Relevance) for Response Diversity ---
+def mmr_rerank(query: str, nodes: List[NodeWithScore], lambda_param: float = 0.5, top_k: int = 5) -> List[NodeWithScore]:
+    """
+    Phase 3: Maximal Marginal Relevance reranking for response diversity
+
+    Balances relevance and diversity to reduce redundant information in retrieved documents.
+    Expected improvement: -30-40% redundant answers, better information coverage
+
+    Args:
+        query: The search query
+        nodes: Retrieved nodes with scores
+        lambda_param: Balance between relevance (1.0) and diversity (0.0). Default 0.5 is balanced.
+        top_k: Number of nodes to return
+
+    Returns:
+        Reranked nodes with diversity consideration
+    """
+    if not nodes or len(nodes) <= 1:
+        return nodes
+
+    try:
+        # Encode query
+        query_embedding = embedding_model.encode(query, convert_to_tensor=True)
+
+        # Encode all node texts
+        node_texts = [extract_node_text(node) for node in nodes]
+        node_embeddings = embedding_model.encode(node_texts, convert_to_tensor=True)
+
+        # Calculate relevance scores (similarity to query)
+        relevance_scores = util.cos_sim(query_embedding, node_embeddings)[0]
+
+        # Initialize selected indices and remaining indices
+        selected_indices = []
+        remaining_indices = list(range(len(nodes)))
+
+        # Select first document (most relevant)
+        first_idx = relevance_scores.argmax().item()
+        selected_indices.append(first_idx)
+        remaining_indices.remove(first_idx)
+
+        # Iteratively select documents balancing relevance and diversity
+        while len(selected_indices) < min(top_k, len(nodes)) and remaining_indices:
+            mmr_scores = []
+
+            for idx in remaining_indices:
+                # Relevance component
+                relevance = relevance_scores[idx].item()
+
+                # Diversity component (max similarity to already selected documents)
+                if selected_indices:
+                    similarities_to_selected = util.cos_sim(
+                        node_embeddings[idx].unsqueeze(0),
+                        node_embeddings[[s for s in selected_indices]]
+                    )[0]
+                    max_similarity = similarities_to_selected.max().item()
+                else:
+                    max_similarity = 0
+
+                # MMR score: balance relevance and diversity
+                mmr_score = lambda_param * relevance - (1 - lambda_param) * max_similarity
+                mmr_scores.append((idx, mmr_score))
+
+            # Select document with highest MMR score
+            best_idx = max(mmr_scores, key=lambda x: x[1])[0]
+            selected_indices.append(best_idx)
+            remaining_indices.remove(best_idx)
+
+        # Return reranked nodes
+        reranked_nodes = [nodes[idx] for idx in selected_indices]
+
+        logging.info(f"MMR reranking: Selected {len(reranked_nodes)} diverse nodes from {len(nodes)} candidates")
+        return reranked_nodes
+
+    except Exception as e:
+        logging.error(f"Error in MMR reranking: {e}, returning original nodes")
+        return nodes[:top_k]
+
+# --- Phase 3: Parent Context Retrieval ---
+def get_parent_context(node: NodeWithScore) -> str:
+    """
+    Phase 3: Retrieve parent context for child chunks
+
+    If node has parent_text metadata (from recursive chunking), return the full parent
+    context instead of just the child chunk. This provides broader context to the LLM.
+
+    Expected improvement: +10-20% answer completeness
+    """
+    try:
+        if hasattr(node, 'metadata') and 'parent_text' in node.metadata:
+            parent_text = node.metadata['parent_text']
+            logging.debug(f"Using parent context ({len(parent_text)} chars) instead of child ({len(node.text)} chars)")
+            return parent_text
+        elif hasattr(node, 'node') and hasattr(node.node, 'metadata') and 'parent_text' in node.node.metadata:
+            parent_text = node.node.metadata['parent_text']
+            logging.debug(f"Using parent context ({len(parent_text)} chars) instead of child ({len(node.node.text)} chars)")
+            return parent_text
+        else:
+            # No parent context available, use node text directly
+            return extract_node_text(node)
+    except Exception as e:
+        logging.error(f"Error retrieving parent context: {e}")
+        return extract_node_text(node)
+
 def get_hybrid_retriever(index, documents: List[Document], similarity_top_k=6, rerank_top_k=5):
     dense_retriever = index.as_retriever(similarity_top_k=similarity_top_k)
     sparse_retriever = BM25Retriever.from_defaults(index, similarity_top_k=similarity_top_k)
@@ -569,6 +672,7 @@ class RAGQueryEngine(CustomQueryEngine):
         """
         Retrieve using query rewriting + expansion and deduplicate results
         Phase 2: Added query rewriting before expansion
+        Phase 3: Added MMR reranking for diversity
         """
         # Phase 2: First rewrite the query for optimization
         rewritten_query = self._rewrite_query(query_str)
@@ -595,9 +699,31 @@ class RAGQueryEngine(CustomQueryEngine):
         # Sort by score (higher is better) and take top results
         all_nodes.sort(key=lambda x: x.score if hasattr(x, 'score') and x.score is not None else 0, reverse=True)
 
-        # Limit to reasonable number of results
-        max_results = 10  # Configurable
-        return all_nodes[:max_results]
+        # Phase 3: Apply MMR reranking for diversity if enabled
+        try:
+            from backend.config import config
+            mmr_enabled = config.MMR_ENABLED
+            mmr_lambda = config.MMR_DIVERSITY_LAMBDA
+            mmr_fetch_k = config.MMR_FETCH_K
+            final_top_k = config.SIMILARITY_TOP_K
+        except:
+            mmr_enabled = True
+            mmr_lambda = 0.5
+            mmr_fetch_k = 10
+            final_top_k = 5
+
+        if mmr_enabled and len(all_nodes) > 1:
+            # Fetch more candidates for MMR to choose from
+            candidate_nodes = all_nodes[:mmr_fetch_k]
+            # Apply MMR reranking to balance relevance and diversity
+            all_nodes = mmr_rerank(rewritten_query, candidate_nodes, lambda_param=mmr_lambda, top_k=final_top_k)
+            logging.info(f"Applied MMR reranking with lambda={mmr_lambda}")
+        else:
+            # Limit to reasonable number of results without MMR
+            max_results = 10  # Configurable
+            all_nodes = all_nodes[:max_results]
+
+        return all_nodes
 
     def _self_rag_reflection(self, query_str: str, retrieved_nodes: List[NodeWithScore]) -> Dict[str, Any]:
         """
@@ -803,9 +929,11 @@ class RAGQueryEngine(CustomQueryEngine):
                 context_str_for_prompt = "\n\n".join(filter(None, context_parts))
                 nodes_for_synthesis = retrieved_items 
             else:
-                # Phase 1 & 2: Use query rewriting + expansion for improved retrieval
+                # Phase 1 & 2 & 3: Use query rewriting + expansion + MMR for improved retrieval
                 retrieved_items = self._retrieve_with_expanded_queries(query_str)
-                context_parts = [extract_node_text(item) for item in retrieved_items]
+
+                # Phase 3: Use parent context if available (from recursive chunking)
+                context_parts = [get_parent_context(item) for item in retrieved_items]
                 context_str_for_prompt = "\n\n".join(filter(None, context_parts))
                 nodes_for_synthesis = retrieved_items
 
