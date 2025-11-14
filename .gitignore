@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
+# User Data & Databases
+users.json
+user_data/
+previous_chats/
+quiz_results/
+chat_history/
+chroma_db/
+persisted_index/
+
+# Application Specific
+Ollama.app/
+
+# Generated/Temporary Files
+*.log
+*.tmp
+*.cache
+output.txt
+chunk_analysis.txt
+chunks_output.txt
+query_log.txt
+previous_chats-2
+
+# Test Results
+test_results*.json
+demo_test_results.py
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Data Processing Output
+chunks_by_type/*.txt
