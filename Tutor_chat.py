@@ -2,11 +2,20 @@ import os
 import json
 import argparse
 import logging
+import hashlib
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Import caching layer
+try:
+    from backend.cache import rag_cache, embedding_cache
+    CACHE_AVAILABLE = True
+except ImportError:
+    CACHE_AVAILABLE = False
+    logging.warning("Cache layer not available. Caching disabled.")
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings, get_response_synthesizer, PromptTemplate
 from llama_index.core.retrievers import BaseRetriever
@@ -901,6 +910,25 @@ class RAGQueryEngine(CustomQueryEngine):
             return ""
 
     def custom_query(self, query_str: str, doc: Optional[Document] = None, forced_context_str: Optional[str] = None) -> str:
+        # Check cache first (for chat mode only, not quiz/research/uploaded_doc)
+        cache_key = None
+        if CACHE_AVAILABLE and self.mode == "chat" and not doc and not forced_context_str:
+            try:
+                from backend.config import config
+                if config.CACHE_ENABLED:
+                    # Generate cache key from query and mode
+                    cache_data = f"{self.mode}:{query_str}"
+                    cache_key = f"rag_query:{hashlib.md5(cache_data.encode()).hexdigest()}"
+
+                    # Try to get from cache
+                    cached_response = rag_cache.get(cache_key)
+                    if cached_response is not None:
+                        logging.info(f"Cache hit for query: {query_str[:50]}...")
+                        return cached_response
+                    logging.debug(f"Cache miss for query: {query_str[:50]}...")
+            except Exception as e:
+                logging.warning(f"Cache lookup failed: {e}")
+
         # Phase 1: Track metrics for evaluation
         retrieval_start = time.time()
         generation_start = None
@@ -1004,8 +1032,19 @@ class RAGQueryEngine(CustomQueryEngine):
                 except Exception as e:
                     logging.warning(f"Failed to log evaluation metrics: {e}")
 
+            # Cache the response (for chat mode only)
+            if CACHE_AVAILABLE and cache_key is not None:
+                try:
+                    from backend.config import config
+                    if config.CACHE_ENABLED:
+                        # Cache for 10 minutes by default
+                        rag_cache.set(cache_key, response_text, ttl=600)
+                        logging.debug(f"Cached response for query: {query_str[:50]}...")
+                except Exception as e:
+                    logging.warning(f"Failed to cache response: {e}")
+
             return response_text
-            
+
         except Exception as e:
             logging.error(f"Error in custom_query: {e}")
             if self.mode == "quiz":

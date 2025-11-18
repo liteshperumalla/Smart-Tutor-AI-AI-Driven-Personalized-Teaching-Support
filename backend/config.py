@@ -75,31 +75,31 @@ class Config:
     # Corrective RAG (CRAG) - Enhanced quality threshold for web search triggering
     CRAG_QUALITY_THRESHOLD = float(os.getenv("CRAG_QUALITY_THRESHOLD", "0.5"))  # 0.0-1.0 scale
 
-    # Evaluation Settings
-    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
+    # Evaluation Settings (Enabled by default for monitoring)
+    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "true").lower() == "true"
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
 
-    # Phase 3: Context & Quality Improvements (2025-11-05) - DISABLED
+    # Phase 3: Context & Quality Improvements (2025-11-18) - ENABLED
     # Recursive Chunking - Parent-child relationships for better context preservation
-    RECURSIVE_CHUNKING_ENABLED = os.getenv("RECURSIVE_CHUNKING_ENABLED", "false").lower() == "true"
+    RECURSIVE_CHUNKING_ENABLED = os.getenv("RECURSIVE_CHUNKING_ENABLED", "true").lower() == "true"
     PARENT_CHUNK_SIZE = int(os.getenv("PARENT_CHUNK_SIZE", "1024"))  # Larger parent chunks (500-2000 tokens)
     CHILD_CHUNK_SIZE = int(os.getenv("CHILD_CHUNK_SIZE", "256"))     # Smaller child chunks (100-500 tokens)
     PARENT_CHUNK_OVERLAP = int(os.getenv("PARENT_CHUNK_OVERLAP", "204"))  # 20% of parent size
     CHILD_CHUNK_OVERLAP = int(os.getenv("CHILD_CHUNK_OVERLAP", "51"))     # 20% of child size
 
     # Contextual Enrichment - Add document metadata to chunks
-    CONTEXTUAL_ENRICHMENT_ENABLED = os.getenv("CONTEXTUAL_ENRICHMENT_ENABLED", "false").lower() == "true"
+    CONTEXTUAL_ENRICHMENT_ENABLED = os.getenv("CONTEXTUAL_ENRICHMENT_ENABLED", "true").lower() == "true"
     INCLUDE_DOC_TITLE = os.getenv("INCLUDE_DOC_TITLE", "true").lower() == "true"
     INCLUDE_SECTION_HEADERS = os.getenv("INCLUDE_SECTION_HEADERS", "true").lower() == "true"
     INCLUDE_PAGE_NUMBERS = os.getenv("INCLUDE_PAGE_NUMBERS", "true").lower() == "true"
 
     # Response Diversity - MMR for reducing redundancy
-    MMR_ENABLED = os.getenv("MMR_ENABLED", "false").lower() == "true"
+    MMR_ENABLED = os.getenv("MMR_ENABLED", "true").lower() == "true"
     MMR_DIVERSITY_LAMBDA = float(os.getenv("MMR_DIVERSITY_LAMBDA", "0.5"))  # 0.0=max diversity, 1.0=max relevance
     MMR_FETCH_K = int(os.getenv("MMR_FETCH_K", "10"))  # Fetch more candidates for MMR reranking
 
     # Agentic Chunking - LLM-determined semantic boundaries (Experimental)
-    AGENTIC_CHUNKING_ENABLED = os.getenv("AGENTIC_CHUNKING_ENABLED", "false").lower() == "true"
+    AGENTIC_CHUNKING_ENABLED = os.getenv("AGENTIC_CHUNKING_ENABLED", "true").lower() == "true"
     AGENTIC_CHUNK_MIN_SIZE = int(os.getenv("AGENTIC_CHUNK_MIN_SIZE", "200"))
     AGENTIC_CHUNK_MAX_SIZE = int(os.getenv("AGENTIC_CHUNK_MAX_SIZE", "800"))
 
@@ -130,6 +130,15 @@ class Config:
     CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
     CACHE_TTL = int(os.getenv("CACHE_TTL", "300"))  # 5 minutes default
     CACHE_MAX_SIZE = int(os.getenv("CACHE_MAX_SIZE", "1000"))
+
+    # Redis Cache Settings (optional, falls back to in-memory if not available)
+    REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+    REDIS_SSL = os.getenv("REDIS_SSL", "false").lower() == "true"
+    REDIS_CONNECTION_TIMEOUT = int(os.getenv("REDIS_CONNECTION_TIMEOUT", "5"))  # seconds
 
     # Rate Limiting
     RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
