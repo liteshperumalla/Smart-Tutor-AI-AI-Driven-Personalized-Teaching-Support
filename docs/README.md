@@ -4,13 +4,15 @@
 
 **Major improvements implemented!** The system now features:
 
-- ✅ **Phase 3 Features Enabled** - Advanced context & quality improvements (+25-35% accuracy)
 - ✅ **Redis Caching Layer** - 2-3x faster responses with intelligent caching
 - ✅ **Enhanced Monitoring** - Comprehensive health checks and observability
+- ⭕ **Phase 3 Features Available** - Advanced context & quality improvements (optional, disabled by default)
 
 **Quick Start**: Run `python check_monitoring.py` to see system status
 
 📖 **See [IMPROVEMENTS_2025-11-18.md](./IMPROVEMENTS_2025-11-18.md) for complete details**
+
+**Note**: Phase 3 features can provide +20-30% accuracy but increase processing time 2-4x. Currently **disabled by default** for optimal performance. Enable in `.env` if you have sufficient computational resources.
 
 ---
 

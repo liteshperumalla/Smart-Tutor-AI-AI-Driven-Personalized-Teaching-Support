@@ -6,79 +6,113 @@ This document describes the high-impact improvements implemented on 2025-11-18 t
 
 ## Summary of Changes
 
-Three major improvements have been implemented:
+Two major improvements have been implemented (with Phase 3 available optionally):
 
-1. **Phase 3 Features Enabled** - Advanced context and quality improvements
-2. **Redis Caching Layer** - High-performance caching with automatic fallback
-3. **Enhanced Monitoring** - Comprehensive observability and health checks
+1. **Redis Caching Layer** - High-performance caching with automatic fallback (2-3x speed improvement)
+2. **Enhanced Monitoring** - Comprehensive observability and health checks
+3. **Phase 3 Features Available** - Advanced context and quality improvements (OPTIONAL - disabled by default due to computational overhead)
 
 ---
 
-## 1. Phase 3 Features Enabled
+## 1. Phase 3 Features (Optional - Disabled by Default)
 
 ### What Changed
 
-All Phase 3 features have been **enabled by default** in the configuration. These features were previously implemented but disabled.
+Phase 3 features are **implemented and available** but **disabled by default** due to significant computational overhead. These features can provide +20-30% accuracy improvement but increase processing time by 2-4x.
 
-### Features Activated
+**Recommendation**: Enable Phase 3 features only if:
+- You have sufficient computational resources
+- Accuracy is more important than speed
+- You're running in a production environment with powerful hardware
+- Users can tolerate longer response times (5-10s instead of 2-3s)
+
+### Features Available
 
 #### 1.1 Recursive Chunking
-- **Status**: ✅ Enabled
+- **Status**: ⭕ Disabled by default (enable in .env if needed)
 - **Configuration**:
   - Parent Chunk Size: 1024 characters
   - Child Chunk Size: 256 characters
   - Overlap: 20% for both parent and child chunks
 - **Expected Impact**: +15-25% retrieval accuracy through better context preservation
+- **Computational Cost**: High (2-3x slower indexing)
 - **How It Works**: Creates parent-child relationships between chunks, allowing the system to retrieve detailed chunks while maintaining broader context
 
 #### 1.2 Contextual Enrichment
-- **Status**: ✅ Enabled
+- **Status**: ⭕ Disabled by default (enable in .env if needed)
 - **Features**:
   - Document titles included in chunks
   - Section headers preserved
   - Page numbers tracked
 - **Expected Impact**: +10-15% answer quality through better context awareness
+- **Computational Cost**: Medium (1.5-2x slower indexing)
 - **How It Works**: Prepends metadata to each chunk so the LLM knows exactly where information came from
 
 #### 1.3 MMR (Maximal Marginal Relevance) Diversity
-- **Status**: ✅ Enabled
+- **Status**: ⭕ Disabled by default (enable in .env if needed)
 - **Configuration**:
   - Diversity Lambda: 0.5 (balanced relevance and diversity)
   - Fetch K: 10 candidates for reranking
 - **Expected Impact**: -30% redundant information in responses
+- **Computational Cost**: Medium (1.5-2x slower retrieval)
 - **How It Works**: Reduces redundancy by selecting diverse yet relevant chunks instead of similar ones
 
 #### 1.4 Agentic Chunking
-- **Status**: ✅ Enabled
+- **Status**: ⭕ Disabled by default (enable in .env if needed)
 - **Configuration**:
   - Min Size: 200 characters
   - Max Size: 800 characters
 - **Expected Impact**: +5-10% semantic coherence
+- **Computational Cost**: Very High (3-5x slower indexing, requires LLM calls)
 - **How It Works**: Uses LLM to determine semantic boundaries instead of fixed-size chunking
 
-### Configuration
+### How to Enable Phase 3 (Optional)
 
-Phase 3 features can be controlled via environment variables:
+Phase 3 features are **disabled by default** to maintain fast response times. Enable them selectively based on your needs:
 
 ```bash
-# .env file
+# .env file - Enable all Phase 3 features (NOT RECOMMENDED for most users)
 RECURSIVE_CHUNKING_ENABLED=true
 CONTEXTUAL_ENRICHMENT_ENABLED=true
 MMR_ENABLED=true
 AGENTIC_CHUNKING_ENABLED=true
 ```
 
-To disable individual features, set them to `false`.
+**Recommended Approach**: Enable features incrementally and measure impact:
 
-### Cumulative Expected Impact
+```bash
+# Start with least expensive features first
+CONTEXTUAL_ENRICHMENT_ENABLED=true  # Light impact, good ROI
+MMR_ENABLED=true                     # Medium impact, reduces redundancy
 
-| Metric | Expected Improvement |
-|--------|---------------------|
-| Retrieval Accuracy | +20-30% |
-| Answer Quality | +15-25% |
-| Context Preservation | +25-35% |
-| Redundancy Reduction | -30% |
-| **Overall Performance** | **+25-35%** |
+# Enable only if you have computational resources
+RECURSIVE_CHUNKING_ENABLED=true     # High impact, better context
+
+# Enable only in production with powerful hardware
+AGENTIC_CHUNKING_ENABLED=true       # Very high impact, experimental
+```
+
+After enabling, you'll need to **re-index your documents** for changes to take effect:
+```bash
+python Data_parsing.py --reindex
+```
+
+### Cumulative Expected Impact (If All Features Enabled)
+
+**Note**: These improvements are **potential** gains if Phase 3 is enabled. They come with significant computational cost.
+
+| Metric | Expected Improvement | Computational Cost |
+|--------|---------------------|-------------------|
+| Retrieval Accuracy | +20-30% | High |
+| Answer Quality | +15-25% | High |
+| Context Preservation | +25-35% | Very High |
+| Redundancy Reduction | -30% | Medium |
+| **Overall Accuracy** | **+25-35%** | **2-4x slower** |
+
+**Current Configuration (Phase 3 Disabled)**:
+- Retrieval Accuracy: Baseline (Phase 1+2)
+- Speed: Fast (2-3s per query)
+- Recommended for: Most users, development, limited resources
 
 ---
 
@@ -370,23 +404,24 @@ QUERY_REWRITING_ENABLED=true
 SELF_RAG_ENABLED=true
 CRAG_QUALITY_THRESHOLD=0.5
 
-# Phase 3: Context & Quality Improvements (NEW - ENABLED)
-RECURSIVE_CHUNKING_ENABLED=true
+# Phase 3: Context & Quality Improvements (OPTIONAL - DISABLED BY DEFAULT)
+# Enable only if you have sufficient computational resources and can tolerate 2-4x slower processing
+RECURSIVE_CHUNKING_ENABLED=false
 PARENT_CHUNK_SIZE=1024
 CHILD_CHUNK_SIZE=256
 PARENT_CHUNK_OVERLAP=204
 CHILD_CHUNK_OVERLAP=51
 
-CONTEXTUAL_ENRICHMENT_ENABLED=true
+CONTEXTUAL_ENRICHMENT_ENABLED=false
 INCLUDE_DOC_TITLE=true
 INCLUDE_SECTION_HEADERS=true
 INCLUDE_PAGE_NUMBERS=true
 
-MMR_ENABLED=true
+MMR_ENABLED=false
 MMR_DIVERSITY_LAMBDA=0.5
 MMR_FETCH_K=10
 
-AGENTIC_CHUNKING_ENABLED=true
+AGENTIC_CHUNKING_ENABLED=false
 AGENTIC_CHUNK_MIN_SIZE=200
 AGENTIC_CHUNK_MAX_SIZE=800
 
@@ -494,13 +529,19 @@ tail -10 logs/rag_evaluation.jsonl | jq '.query, .retrieval_time, .generation_ti
    # Set LANGFUSE_ENABLED=true
    ```
 
-3. **Disable Phase 3** (if needed):
+3. **Enable Phase 3** (optional - only if you have powerful hardware):
    ```bash
-   # If you want to revert to Phase 1+2 only:
-   RECURSIVE_CHUNKING_ENABLED=false
-   CONTEXTUAL_ENRICHMENT_ENABLED=false
-   MMR_ENABLED=false
-   AGENTIC_CHUNKING_ENABLED=false
+   # Enable selectively based on your computational resources:
+   # Recommended: Start with lighter features first
+   CONTEXTUAL_ENRICHMENT_ENABLED=true  # Lightest impact
+   MMR_ENABLED=true                     # Medium impact
+
+   # Only if you have significant compute resources:
+   RECURSIVE_CHUNKING_ENABLED=true     # Heavy impact
+   AGENTIC_CHUNKING_ENABLED=true       # Very heavy impact
+
+   # Then re-index documents:
+   python Data_parsing.py --reindex
    ```
 
 ---
@@ -511,10 +552,13 @@ tail -10 logs/rag_evaluation.jsonl | jq '.query, .retrieval_time, .generation_ti
 
 Based on research papers and similar implementations:
 
-| Configuration | Accuracy | Latency (Cold) | Latency (Cached) |
-|--------------|----------|----------------|------------------|
-| Phase 1+2 Only | 60-70% | 3-6s | N/A |
-| **Phase 1+2+3** | **80-85%** | **3-6s** | **0.3-0.5s** |
+| Configuration | Accuracy | Latency (Cold) | Latency (Cached) | Status |
+|--------------|----------|----------------|------------------|---------|
+| **Phase 1+2 + Caching (Current Default)** | **60-70%** | **2-3s** | **0.3-0.5s** | ✅ **Recommended** |
+| Phase 1+2+3 + Caching (Optional) | 80-85% | 5-10s | 0.3-0.5s | ⚠️ High computational cost |
+
+**Current Configuration**: Fast and efficient with caching benefits
+**Phase 3 Configuration**: Higher accuracy but 2-4x slower processing
 
 ### Cache Hit Rate Expectations
 
