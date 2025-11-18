@@ -79,22 +79,22 @@ class Config:
     EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
 
-    # Phase 3: Context & Quality Improvements (2025-11-05)
+    # Phase 3: Context & Quality Improvements (2025-11-05) - DISABLED
     # Recursive Chunking - Parent-child relationships for better context preservation
-    RECURSIVE_CHUNKING_ENABLED = os.getenv("RECURSIVE_CHUNKING_ENABLED", "true").lower() == "true"
+    RECURSIVE_CHUNKING_ENABLED = os.getenv("RECURSIVE_CHUNKING_ENABLED", "false").lower() == "true"
     PARENT_CHUNK_SIZE = int(os.getenv("PARENT_CHUNK_SIZE", "1024"))  # Larger parent chunks (500-2000 tokens)
     CHILD_CHUNK_SIZE = int(os.getenv("CHILD_CHUNK_SIZE", "256"))     # Smaller child chunks (100-500 tokens)
     PARENT_CHUNK_OVERLAP = int(os.getenv("PARENT_CHUNK_OVERLAP", "204"))  # 20% of parent size
     CHILD_CHUNK_OVERLAP = int(os.getenv("CHILD_CHUNK_OVERLAP", "51"))     # 20% of child size
 
     # Contextual Enrichment - Add document metadata to chunks
-    CONTEXTUAL_ENRICHMENT_ENABLED = os.getenv("CONTEXTUAL_ENRICHMENT_ENABLED", "true").lower() == "true"
+    CONTEXTUAL_ENRICHMENT_ENABLED = os.getenv("CONTEXTUAL_ENRICHMENT_ENABLED", "false").lower() == "true"
     INCLUDE_DOC_TITLE = os.getenv("INCLUDE_DOC_TITLE", "true").lower() == "true"
     INCLUDE_SECTION_HEADERS = os.getenv("INCLUDE_SECTION_HEADERS", "true").lower() == "true"
     INCLUDE_PAGE_NUMBERS = os.getenv("INCLUDE_PAGE_NUMBERS", "true").lower() == "true"
 
     # Response Diversity - MMR for reducing redundancy
-    MMR_ENABLED = os.getenv("MMR_ENABLED", "true").lower() == "true"
+    MMR_ENABLED = os.getenv("MMR_ENABLED", "false").lower() == "true"
     MMR_DIVERSITY_LAMBDA = float(os.getenv("MMR_DIVERSITY_LAMBDA", "0.5"))  # 0.0=max diversity, 1.0=max relevance
     MMR_FETCH_K = int(os.getenv("MMR_FETCH_K", "10"))  # Fetch more candidates for MMR reranking
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import re
 import unicodedata
@@ -24,7 +25,9 @@ from llama_index.core.response_synthesizers import BaseSynthesizer
 from llama_index.llms.ollama import Ollama
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
-from llama_index.readers.file import IPYNBReader
+
+# Add current directory to path for backend imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # ------------------------------
 # CUSTOM PPTX READER
@@ -79,14 +82,40 @@ class PDFTextOnlyReader(BaseReader):
 # ------------------------------
 class NotebookReader(BaseReader):
     def __init__(self, include_outputs=True, include_metadata=True):
-        self.ipynb_reader = IPYNBReader()
         self.include_outputs = include_outputs
         self.include_metadata = include_metadata
-    
+
     def load_data(self, file_path: str, extra_info=None) -> list[Document]:
         try:
-            # Use LlamaIndex's built-in IPYNB reader
-            docs = self.ipynb_reader.load_data(file_path)
+            # Read notebook as JSON to avoid nbconvert template issues
+            import json
+            with open(file_path, 'r', encoding='utf-8') as f:
+                notebook = json.load(f)
+
+            # Extract text from cells
+            text_parts = []
+            for cell in notebook.get('cells', []):
+                cell_type = cell.get('cell_type', '')
+                if cell_type == 'markdown' or cell_type == 'code':
+                    source = cell.get('source', [])
+                    if isinstance(source, list):
+                        text_parts.append(''.join(source))
+                    else:
+                        text_parts.append(source)
+
+                # Include outputs if requested
+                if self.include_outputs and cell_type == 'code':
+                    outputs = cell.get('outputs', [])
+                    for output in outputs:
+                        if 'text' in output:
+                            text_data = output['text']
+                            if isinstance(text_data, list):
+                                text_parts.append(''.join(text_data))
+                            else:
+                                text_parts.append(str(text_data))
+
+            full_text = '\n\n'.join(text_parts)
+            docs = [Document(text=full_text, metadata={'source': file_path})]
             
             # Enhanced processing for notebook content
             processed_docs = []
@@ -296,12 +325,17 @@ class NotebookAwareParser:
 
         # Code splitter for better handling of code content
         if CODE_SPLITTER_AVAILABLE:
-            self.code_splitter = CodeSplitter(
-                language="python",
-                chunk_lines=40,
-                chunk_lines_overlap=15,
-                max_chars=1500
-            )
+            try:
+                self.code_splitter = CodeSplitter(
+                    language="python",
+                    chunk_lines=40,
+                    chunk_lines_overlap=15,
+                    max_chars=1500
+                )
+            except Exception as e:
+                print(f"⚠️ CodeSplitter initialization failed: {e}")
+                print("⚠️ Falling back to sentence splitter for code files")
+                self.code_splitter = None
         else:
             self.code_splitter = None
     
@@ -317,7 +351,9 @@ class NotebookAwareParser:
 
             # Phase 3: Apply contextual enrichment first if enabled
             if self.enable_enrichment:
-                doc.text = enrich_chunk_with_context(doc.text, doc.metadata)
+                enriched_text = enrich_chunk_with_context(doc.text, doc.metadata)
+                # Create a new document with enriched text (Document.text is read-only)
+                doc = Document(text=enriched_text, metadata=doc.metadata.copy())
 
             # Parse based on file type
             if file_type == 'notebook':
@@ -515,9 +551,17 @@ def load_documents_from_directories(directories, file_extensions=None):
 # Define your directories - modify these paths as needed
 doc_directories = [
     "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/Modules/",
-    # Add more directories here as needed
-    # "/path/to/notebooks/directory1/",
-    # "/path/to/notebooks/directory2/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_1/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_2/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_3/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_4/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_5/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_6/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_8/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_10/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_12/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_13/",
+    "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/data/modules/module_14/",
 ]
 
 # Load documents from all directories
@@ -557,10 +601,15 @@ def create_notebook_aware_parser():
             enable_enrichment=enable_enrichment
         )
         print("✅ Notebook-aware parser created successfully with Phase 3 enhancements")
+        print(f"✅ Parser type: {type(notebook_parser).__name__}")
+        print(f"✅ Has parse_documents method: {hasattr(notebook_parser, 'parse_documents')}")
         return notebook_parser
     except Exception as e:
         print(f"⚠️ Error creating notebook-aware parser: {e}")
+        import traceback
+        traceback.print_exc()
         # Fallback to basic semantic splitter
+        print("⚠️ USING FALLBACK PARSER - Phase 3 features will NOT be available")
         return SemanticSplitterNodeParser(
             buffer_size=1,
             breakpoint_percentile_threshold=95,
@@ -930,16 +979,20 @@ def save_chunks_by_type(chunks, output_dir="chunks_by_type"):
     """Save chunks grouped by file type in separate files"""
     try:
         os.makedirs(output_dir, exist_ok=True)
-        
+
         chunks_by_type = {}
         for chunk in chunks:
             file_type = chunk.metadata.get('file_type', 'unknown')
             if file_type not in chunks_by_type:
                 chunks_by_type[file_type] = []
             chunks_by_type[file_type].append(chunk)
-        
+
         for file_type, type_chunks in chunks_by_type.items():
-            output_file = os.path.join(output_dir, f"{file_type}_chunks.txt")
+            # Replace slashes with underscores to avoid subdirectory issues
+            safe_file_type = file_type.replace('/', '_')
+            output_file = os.path.join(output_dir, f"{safe_file_type}_chunks.txt")
+            # Ensure the parent directory exists
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
             with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(f"CHUNKS FROM {file_type.upper()} FILES\n")
                 f.write("="*60 + "\n")

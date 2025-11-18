@@ -312,21 +312,21 @@ def render():
             <div class='announcement-header'>
                 📢 Latest Announcements
             </div>
-            
+
             <div class='announcement-item'>
-                <div class='announcement-date'>April 8, 2025:</div>
-                <div style='margin-top: 0.5rem;'>Assignment 3 has been released. Please submit by April 15th. Check Canvas for detailed requirements.</div>
+                <div class='announcement-date'>Welcome!</div>
+                <div style='margin-top: 0.5rem;'>Welcome to Smart AI Tutor! Your personalized learning assistant is ready to help you succeed.</div>
             </div>
-            
+
             <div class='reminder-item pulse'>
-                <div style='font-weight: 600; margin-bottom: 0.5rem;'>🔔 Reminder - Extra Credit Opportunity</div>
-                <div><strong>Health Informatics Lecture Series:</strong> <em>Cybersecurity in Modern Healthcare</em></div>
-                <div style='margin-top: 0.5rem; font-size: 0.9rem;'>📅 April 9, 2025 | Don't miss this valuable learning opportunity!</div>
+                <div style='font-weight: 600; margin-bottom: 0.5rem;'>💡 Getting Started</div>
+                <div><strong>Explore the features:</strong> <em>Ask questions, generate quizzes, and access course materials</em></div>
+                <div style='margin-top: 0.5rem; font-size: 0.9rem;'>📚 Check out the Resources tab for additional learning materials!</div>
             </div>
-            
+
             <div class='announcement-item'>
-                <div class='announcement-date'>April 5, 2025:</div>
-                <div style='margin-top: 0.5rem;'>Lecture notes have been updated with additional examples and clarifications.</div>
+                <div class='announcement-date'>Stay Updated:</div>
+                <div style='margin-top: 0.5rem;'>Check back regularly for new announcements and course updates.</div>
             </div>
         </div>
         """, unsafe_allow_html=True)

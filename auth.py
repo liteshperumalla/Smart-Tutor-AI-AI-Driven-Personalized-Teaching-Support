@@ -62,18 +62,26 @@ def display_login_page():
             else:
                 user_data = get_user(username)
                 if user_data:
-                    hashed_password_from_db = user_data['hashed_password'].encode('utf-8')
-                    if bcrypt.checkpw(password.encode('utf-8'), hashed_password_from_db):
-                        if not update_last_login(username):
-                            print(f"Warning: Failed to update last login time for user {username}")
+                    hashed_password_from_db = user_data.get('hashed_password', '')
 
-                        st.session_state.authenticated = True
-                        get_user_dir(st.session_state.user_name)
-                        st.session_state.user_name = username
-                        st.session_state.pop('dark_mode_initialized_from_user_preference', None)
-                        st.rerun()
+                    # Check if user has a password (not OAuth-only account)
+                    if not hashed_password_from_db:
+                        st.error("This account uses Google Sign-In only. Please use the 'Sign in with Google' button below.")
                     else:
-                        st.error("Invalid username or password.")
+                        try:
+                            if bcrypt.checkpw(password.encode('utf-8'), hashed_password_from_db.encode('utf-8')):
+                                if not update_last_login(username):
+                                    print(f"Warning: Failed to update last login time for user {username}")
+
+                                st.session_state.authenticated = True
+                                get_user_dir(st.session_state.user_name)
+                                st.session_state.user_name = username
+                                st.session_state.pop('dark_mode_initialized_from_user_preference', None)
+                                st.rerun()
+                            else:
+                                st.error("Invalid username or password.")
+                        except ValueError:
+                            st.error("Invalid username or password.")
                 else:
                     st.error("Invalid username or password.")
 
@@ -87,12 +95,16 @@ def display_login_page():
 
 def display_google_signin():
     # Get credentials from Streamlit secrets
-    client_id = st.secrets.get("google_oauth", {}).get("client_id")
-    client_secret = st.secrets.get("google_oauth", {}).get("client_secret")
-    redirect_uri = st.secrets.get("google_oauth", {}).get("redirect_uri")
+    try:
+        client_id = st.secrets.get("google_oauth", {}).get("client_id")
+        client_secret = st.secrets.get("google_oauth", {}).get("client_secret")
+        redirect_uri = st.secrets.get("google_oauth", {}).get("redirect_uri")
+    except (FileNotFoundError, KeyError):
+        st.info("Google Sign-In is not configured. Please use username/password login.")
+        return
 
     if not client_id or not client_secret or not redirect_uri:
-        st.warning("Google OAuth credentials missing in st.secrets.")
+        st.info("Google OAuth credentials missing. Please use username/password login.")
         return
 
     # Step 1: Render Google Sign-In Button

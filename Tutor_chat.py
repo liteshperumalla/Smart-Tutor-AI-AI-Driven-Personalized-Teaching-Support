@@ -3,6 +3,10 @@ import json
 import argparse
 import logging
 from typing import Optional, List, Dict, Any
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core import Settings, get_response_synthesizer, PromptTemplate
 from llama_index.core.retrievers import BaseRetriever
@@ -16,8 +20,8 @@ from llama_index.core import VectorStoreIndex
 from llama_index.retrievers.bm25 import BM25Retriever
 from langfuse import Langfuse
 from llama_index.core.callbacks import CallbackManager
-from langfuse.llama_index import LlamaIndexCallbackHandler
-from llama_index.agent.openai import OpenAIAgent
+from llama_index.callbacks.langfuse import langfuse_callback_handler as create_langfuse_handler
+# from llama_index.agent.openai import OpenAIAgent  # Commented out due to version incompatibility
 from dotenv import load_dotenv
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.core.agent import ReActAgent
@@ -65,16 +69,16 @@ langfuse_client = None
 
 if LANGFUSE_ENABLED and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
     try:
-        langfuse_callback_handler = LlamaIndexCallbackHandler(
+        handler = create_langfuse_handler(
             public_key=LANGFUSE_PUBLIC_KEY,
             secret_key=LANGFUSE_SECRET_KEY,
             host=LANGFUSE_HOST
         )
-        Settings.callback_manager = CallbackManager([langfuse_callback_handler])
+        Settings.callback_manager = CallbackManager([handler])
         logging.info("Langfuse callback handler initialized successfully.")
     except ImportError:
-        logging.error("Failed to import LlamaIndexCallbackHandler. Please check Langfuse SDK version.")
-        langfuse_callback_handler = None
+        logging.error("Failed to import langfuse callback handler. Please check Langfuse SDK version.")
+        handler = None
     except Exception as e:
         logging.error(f"Failed to initialize Langfuse callback handler: {e}")
         langfuse_callback_handler = None
