@@ -1,62 +1,99 @@
 import streamlit as st
-from utils import render_footer # Assuming render_footer is in utils.py
+from utils import render_footer
 import auth
 auth.initialize_session()
 
 def render():
     """Renders the About page for the Smart AI Tutor."""
-    st.title("ℹ️ About Smart AI Tutor")
-
-
-    st.markdown("""
-        ### 🎯 Purpose of the Application
-        **Smart AI Tutor** is an intelligent, interactive platform meticulously designed to revolutionize the way students learn, engage with educational content, and assess their understanding. Leveraging the power of cutting-edge Artificial Intelligence and Retrieval-Augmented Generation (RAG) technology, this application aims to provide a personalized and effective learning experience.
-
-        Key features include:
-        - 📄 **Interactive Document Chat:** Engage in conversations with your uploaded documents (PDF, DOCX, PPTX, TXT), ask questions, and get summaries.
-        - 🧠 **Custom Quiz Generation:** Create quizzes from course materials or uploaded content to test your knowledge and identify areas for improvement.
-        - 💡 **Personalized Tutoring:** Experience AI-driven tutoring that adapts to your learning pace and style. (Future Enhancement)
-        - 🗂️ **Resource Hub:** Access a curated list of relevant course materials, external links, and academic resources.
-        - 📅 **Appointment Scheduling:** Easily schedule appointments with professors or teaching assistants.
-
-        Our overarching goal is to make education more accessible, engaging, and tailored to the individual needs of students, educators, and lifelong learners. We believe in harnessing AI to augment human potential and foster a deeper understanding of complex subjects.
-
-        ---
-        ### 🛠️ Technology Stack
-        This application is built using a modern stack of technologies:
-        -   **Frontend:** [Streamlit](https://streamlit.io/) - For creating a beautiful and interactive web application with Python.
-        -   **Backend & AI Core:** Python, [LlamaIndex](https://www.llamaindex.ai/) - For data indexing, retrieval, and RAG pipeline.
-        -   **Language Models (LLM):** Powered by [Ollama](https://ollama.ai/) for local LLM serving (e.g., Llama 3.2).
-        -   **File Processing:** Libraries such as `PyMuPDF` (for PDFs), `python-pptx` (for PowerPoint), `python-docx` (for Word documents), `Pillow` & `pytesseract` (for OCR).
-        -   **Chat & NLP:** Core NLP tasks handled by LlamaIndex and the underlying LLM.
-
-        ---
-        ### 👨‍💻 Developer Profile
-    """)
-
-    # Developer Info Columns
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        # Placeholder for a profile picture if you have one
-        st.image("/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/1744122201330.jpeg", width=150)
-
-    with col2:
-        st.markdown("""
-            **Litesh Perumalla** *Master's Student in Data Science, University of North Texas* An enthusiastic AI practitioner with a passion for developing intelligent solutions to real-world problems. My expertise lies in Python, Machine Learning, Natural Language Processing, and building RAG-based applications. I am dedicated to exploring the frontiers of AI to create impactful and user-centric tools.
-            
-            - 📧 **Email:** `liteshperumalla@my.unt.edu`
-            - 🔗 **GitHub:** [github.com/liteshperumalla](https://github.com/liteshperumalla)
-            - 🌐 **LinkedIn:** [linkedin.com/in/perumalla-litesh](https://www.linkedin.com/in/perumalla-litesh/)
-        """)
     
+    # Header
     st.markdown("""
-        ---
-        ### 📢 Contact & Contributions
-        We welcome your feedback, feature requests, and bug reports! 
-        - For **feedback or to report a bug**, please use the dedicated "Feedback and Bug Report" page in the sidebar.
-        - For **collaboration inquiries or direct contact**, please reach out via the email address listed above.
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="margin-bottom: 0.5rem;">ℹ️ About Smart AI Tutor</h1>
+        <div class="subtitle">Empowering education with Artificial Intelligence</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-        This project is a continuous effort, and contributions or suggestions for improvement are always appreciated.
-    """)
+    # Purpose Section
+    st.markdown("""
+    <div class="custom-card" style="margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1rem;">🎯 Purpose of the Application</h3>
+        <p>
+            <strong>Smart AI Tutor</strong> is an intelligent, interactive platform meticulously designed to revolutionize the way students learn, engage with educational content, and assess their understanding. Leveraging the power of cutting-edge Artificial Intelligence and Retrieval-Augmented Generation (RAG) technology, this application aims to provide a personalized and effective learning experience.
+        </p>
+        <div style="margin-top: 1.5rem;">
+            <h4 style="margin-bottom: 0.5rem;">Key Features:</h4>
+            <ul style="list-style-type: none; padding-left: 0;">
+                <li style="margin-bottom: 0.5rem;">📄 <strong>Interactive Document Chat:</strong> Engage in conversations with your uploaded documents.</li>
+                <li style="margin-bottom: 0.5rem;">🧠 <strong>Custom Quiz Generation:</strong> Create quizzes from course materials to test your knowledge.</li>
+                <li style="margin-bottom: 0.5rem;">💡 <strong>Personalized Tutoring:</strong> Experience AI-driven tutoring that adapts to your learning pace.</li>
+                <li style="margin-bottom: 0.5rem;">🗂️ <strong>Resource Hub:</strong> Access a curated list of relevant course materials.</li>
+                <li style="margin-bottom: 0.5rem;">📅 <strong>Appointment Scheduling:</strong> Easily schedule appointments with professors.</li>
+            </ul>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Technology Stack
+    st.markdown("""
+    <div class="custom-card" style="margin-bottom: 2rem;">
+        <h3 style="margin-bottom: 1rem;">🛠️ Technology Stack</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div style="padding: 1rem; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 1px solid var(--border-color);">
+                <strong>Frontend</strong><br>Streamlit
+            </div>
+            <div style="padding: 1rem; background: rgba(16, 185, 129, 0.05); border-radius: 8px; border: 1px solid var(--border-color);">
+                <strong>Backend & AI Core</strong><br>Python, LlamaIndex
+            </div>
+            <div style="padding: 1rem; background: rgba(245, 158, 11, 0.05); border-radius: 8px; border: 1px solid var(--border-color);">
+                <strong>LLM</strong><br>Ollama (Llama 3.2)
+            </div>
+            <div style="padding: 1rem; background: rgba(139, 92, 246, 0.05); border-radius: 8px; border: 1px solid var(--border-color);">
+                <strong>File Processing</strong><br>PyMuPDF, python-pptx
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Developer Profile
+    st.markdown("""
+    <div class="custom-card">
+        <h3 style="margin-bottom: 1.5rem;">👨‍💻 Developer Profile</h3>
+        <div style="display: flex; gap: 2rem; align-items: start; flex-wrap: wrap;">
+            <div style="flex: 0 0 150px;">
+                <img src="https://github.com/liteshperumalla.png" style="width: 150px; height: 150px; border-radius: 50%; border: 3px solid var(--accent-color); object-fit: cover;" alt="Litesh Perumalla">
+            </div>
+            <div style="flex: 1; min-width: 300px;">
+                <h4 style="margin-bottom: 0.5rem; font-size: 1.5rem;">Litesh Perumalla</h4>
+                <div style="color: var(--text-secondary); margin-bottom: 1rem;">Master's Student in Data Science, University of North Texas</div>
+                <p style="margin-bottom: 1.5rem;">
+                    An enthusiastic AI practitioner with a passion for developing intelligent solutions to real-world problems. My expertise lies in Python, Machine Learning, Natural Language Processing, and building RAG-based applications. I am dedicated to exploring the frontiers of AI to create impactful and user-centric tools.
+                </p>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <a href="mailto:liteshperumalla@my.unt.edu" style="text-decoration: none; color: var(--text-primary); background: rgba(0,0,0,0.05); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem;">
+                        📧 liteshperumalla@my.unt.edu
+                    </a>
+                    <a href="https://github.com/liteshperumalla" target="_blank" style="text-decoration: none; color: var(--text-primary); background: rgba(0,0,0,0.05); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem;">
+                        🔗 GitHub
+                    </a>
+                    <a href="https://www.linkedin.com/in/perumalla-litesh/" target="_blank" style="text-decoration: none; color: var(--text-primary); background: rgba(0,0,0,0.05); padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.9rem;">
+                        🌐 LinkedIn
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Contact Section
+    st.markdown("""
+    <div style="margin-top: 2rem; text-align: center; padding: 2rem; background: rgba(59, 130, 246, 0.05); border-radius: 12px;">
+        <h4 style="margin-bottom: 1rem;">📢 Contact & Contributions</h4>
+        <p style="margin-bottom: 1rem;">We welcome your feedback, feature requests, and bug reports!</p>
+        <div style="font-size: 0.9rem; color: var(--text-secondary);">
+            For feedback, please use the "Feedback and Bug Report" page in the sidebar.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     render_footer()

@@ -2,7 +2,8 @@ import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()
 from sidebar import sidebar_content
-from utils import BASE_CSS, LIGHT_MODE_CSS, DARK_MODE_CSS, load_chat_sessions
+from styles import apply_custom_styles
+from utils import load_chat_sessions
 from views import home, chat, appointment, research, quiz, resources, about, feedback, profile as profile_view, code # Added profile_view
 from auth import initialize_session, display_login_page, display_signup_page
 from user_management import get_user # Added get_user
@@ -19,8 +20,7 @@ def main():
         st.session_state.page = 'home'
 
 
-    # Apply base CSS - should be applied regardless of auth state for consistency
-    st.markdown(BASE_CSS, unsafe_allow_html=True)
+    # Apply custom styles
     # NOTE: Light/dark mode CSS application is moved down, after theme preference is loaded.
 
     # Authentication Check
@@ -73,8 +73,7 @@ def main():
             st.session_state.dark_mode = False
 
     # Apply light/dark mode CSS - now uses potentially user-set theme
-    st.markdown(DARK_MODE_CSS if st.session_state.get('dark_mode', False) else LIGHT_MODE_CSS,
-                unsafe_allow_html=True)
+    apply_custom_styles(st.session_state.get('dark_mode', False))
 
     # Page routing (Only if authenticated)
     if st.session_state.page == 'home':

@@ -1,15 +1,19 @@
 import streamlit as st
-from utils import render_footer # Assuming render_footer is in utils.py
+from utils import render_footer
 import auth
-auth.initialize_session()
 
 def render():
     """Displays the resources page with categorized links."""
-    st.title("📚 Course Resources")
-    st.markdown("Find helpful links, documentation, and external materials related to the course.")
+    
+    # Header
+    st.markdown("""
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="margin-bottom: 0.5rem;">📚 Course Resources</h1>
+        <div class="subtitle">Curated materials to support your learning journey</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # Define resource categories and their links
-    # Using a more structured approach for easier management
     resource_categories = {
         "Python Fundamentals": [
             {"title": "Official Python Documentation (Python 3)", "url": "https://docs.python.org/3/"},
@@ -29,7 +33,7 @@ def render():
         ],
         "Python Tutorials & Courses (General)": [
             {"title": "Data-Flair: Python Tutorial for Beginners", "url": "https://data-flair.training/blogs/python-tutorial/"},
-            {"title": "Learn Python Programming (YouTube Channel - Programming with Mosh)", "url": "https://www.youtube.com/watch?v=rfscVS0vtbw"}, # Placeholder for actual YouTube link if known
+            {"title": "Learn Python Programming (YouTube Channel - Programming with Mosh)", "url": "https://www.youtube.com/watch?v=rfscVS0vtbw"},
             {"title": "Awesome Generative AI: Coding Assistants", "url": "https://github.com/steven2358/awesome-generative-ai?tab=readme-ov-file#coding"}
         ],
         "Natural Language Processing (NLP)": [
@@ -69,11 +73,11 @@ def render():
         "Web Scraping & Automation": [
             {"title": "Twitter API v2 Quick Start Guide", "url": "https://developer.x.com/en/docs/tutorials/step-by-step-guide-to-making-your-first-request-to-the-twitter-api-v2"},
             {"title": "Web Scraping 101 with Python (Greg Reda's Blog)", "url": "https://gregreda.com/2013/03/03/web-scraping-101-with-python/"},
-            {"title": "Build a Python Web Crawler with ChatGPT (YouTube)", "url": "https://www.youtube.com/watch?v=B89Cf4pLNds"}, # Placeholder
-            {"title": "GPT-4 Vision + Puppeteer for Web Automation (YouTube)", "url": "https://www.youtube.com/watch?v=VeQR17k7fiU"} # Placeholder
+            {"title": "Build a Python Web Crawler with ChatGPT (YouTube)", "url": "https://www.youtube.com/watch?v=B89Cf4pLNds"},
+            {"title": "GPT-4 Vision + Puppeteer for Web Automation (YouTube)", "url": "https://www.youtube.com/watch?v=VeQR17k7fiU"}
         ],
         "MLOps & Deployment": [
-            {"title": "From Model-centric to Data-centric AI (Andrew Ng - YouTube)", "url": "https://www.youtube.com/watch?v=06-AZXmwHjo"} # Placeholder
+            {"title": "From Model-centric to Data-centric AI (Andrew Ng - YouTube)", "url": "https://www.youtube.com/watch?v=06-AZXmwHjo"}
         ],
         "Transformers & Conference Recordings (UNT Zoom)": [
             {"title": "Transformers - Session 1 (Recording)", "url": "https://unt.zoom.us/rec/share/L8-Zo_aX6QVsiOCcgZ84uNJRTNwybrNFv_WPZlZQWQr5d4NuQrBW5clscSxUbLtB.ryHtoLFwndhO6591"},
@@ -91,22 +95,36 @@ def render():
         ],
         "Generative AI Practices": [
             {"title": "Generative AI Best Practices (GitHub Pages)", "url": "https://runawayhorse001.github.io/GenAI_Best_Practices/html/index.html"},
-            {"title": "ArXiv Preprint: Generative AI (Example)", "url": "https://arxiv.org/abs/2301.09223"} # Example, replace with actual relevant paper
+            {"title": "ArXiv Preprint: Generative AI (Example)", "url": "https://arxiv.org/abs/2301.09223"}
         ],
         "Python for Social Sciences": [
             {"title": "Python Tutorials for Social Scientists (Neal Caren)", "url": "https://nealcaren.github.io/python-tutorials/"}
         ]
     }
 
-    # Display resources using expanders for each category
+    # Display resources using custom cards
     for category, links in resource_categories.items():
-        with st.expander(f"📂 {category}", expanded=False):
-            for link_info in links:
-                # Ensure URL is a string and not None before creating markdown
-                if link_info.get("url") and isinstance(link_info.get("url"), str):
-                    st.markdown(f"- [{link_info['title']}]({link_info['url']})", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"- {link_info['title']} (URL not available)")
+        st.markdown(f"""
+        <div class="custom-card" style="margin-bottom: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                📂 {category}
+            </h3>
+        """, unsafe_allow_html=True)
+        
+        for link_info in links:
+            url = link_info.get("url", "#")
+            title = link_info.get("title", "Untitled")
+            
+            st.markdown(f"""
+            <div style="margin-bottom: 0.5rem; padding-left: 0.5rem;">
+                <a href="{url}" target="_blank" style="text-decoration: none; color: var(--accent-color); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>🔗</span>
+                    <span style="font-weight: 500;">{title}</span>
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("---")
     st.info("Note: External links are provided for informational purposes. Content on external sites is not controlled by this platform.")

@@ -21,100 +21,13 @@ except ImportError:
     langfuse_client = None
 
 def render():
-    st.markdown("<h1 style='text-align:center; margin-bottom:0.2em;'>Smart AI Tutor 🎓</h1>", unsafe_allow_html=True)
-    st.markdown("<p class='chat-subtitle' style='text-align:center;'>Ask your questions:</p>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:right;'>-Powered by Ollama.</p>", unsafe_allow_html=True)
-
-    # --- CSS (Includes bubble styles, typing indicator, button styles, fixed input) ---
+    # Header
     st.markdown("""
-    <style>
-    /* Chat bubble and general styling */
-    .user-bubble { 
-        background:#cce5ff; padding:10px 15px; border-radius:15px; 
-        margin:5px 10px; max-width:70%; text-align:left; 
-        float:right; clear:both; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-        word-wrap: break-word; 
-    }
-    .assistant-bubble { 
-        background:#d4edda; padding:10px 15px; border-radius:15px; 
-        margin:5px 10px; max-width:70%; text-align:left; 
-        float:left; clear:both; box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
-        word-wrap: break-word; 
-    }
-    .typing-indicator-bubble { 
-        background:#e0e0e0; color: #555;
-        padding:10px 15px; border-radius:15px; margin:5px 10px; 
-        max-width:fit-content; text-align:left; float:left; clear:both; 
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .timestamp { 
-        font-size:0.7em; color:gray; margin-top:3px; display:block; 
-    }
-    .timestamp-user { 
-        text-align:right; margin-right:10px; margin-bottom: 5px;
-    }
-    .timestamp-assistant { 
-        text-align:left; margin-left:10px; margin-bottom: 5px;
-    }
-    pre { 
-        background:#282c34 !important; color:#abb2bf !important; 
-        padding:10px !important; border-radius:8px !important; 
-        overflow-x:auto !important; font-family: 'Courier New', Courier, monospace; 
-        font-size: 0.9em; 
-    }
-    code { 
-        background:#282c34 !important; color:#abb2bf !important; 
-        padding:2px 4px !important; border-radius:4px !important; 
-        font-family: 'Courier New', Courier, monospace;
-    }
-    
-    .typing-indicator span {
-        height: 8px; width: 8px; margin: 0 1px;
-        background-color: #707070; border-radius: 50%;
-        display: inline-block;
-        animation: typing-bounce 1.4s infinite both;
-    }
-    .typing-indicator span:nth-child(1) { animation-delay: 0.0s; }
-    .typing-indicator span:nth-child(2) { animation-delay: 0.4s; }
-    .typing-indicator span:nth-child(3) { animation-delay: 0.8s; }
-    @keyframes typing-bounce { 
-        0%, 80%, 100% { transform: scale(0); } 
-        40% { transform: scale(1.0); } 
-    }
-
-    .source-buttons-group {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 10px 0;
-        align-items: flex-start;
-    }
-    
-    .source-button-container {
-        flex: 0 1 auto;
-        min-width: 200px;
-        max-width: 300px;
-    }
-    
-    /* Ensure buttons have consistent styling */
-    .stDownloadButton > button {
-        width: 100%;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 0.85rem;
-        padding: 0.25rem 0.5rem;
-        height: auto;
-        min-height: 2.5rem;
-    }
-
-    /* Clear floats after chat messages */
-    .chat-message-container::after {
-        content: "";
-        display: table;
-        clear: both;
-    }
-    </style>
+    <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="margin-bottom: 0.5rem;">Smart AI Tutor 🎓</h1>
+        <div class="subtitle">Ask your questions</div>
+        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem;">Powered by Ollama</div>
+    </div>
     """, unsafe_allow_html=True)
 
     # --- Session State & History Initialization ---
