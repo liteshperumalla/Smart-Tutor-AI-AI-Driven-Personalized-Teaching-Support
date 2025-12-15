@@ -20,7 +20,10 @@ from llama_index.core import VectorStoreIndex
 from llama_index.retrievers.bm25 import BM25Retriever
 from langfuse import Langfuse
 from llama_index.core.callbacks import CallbackManager
-from llama_index.callbacks.langfuse import langfuse_callback_handler as create_langfuse_handler
+try:
+    from llama_index.callbacks.langfuse import langfuse_callback_handler as create_langfuse_handler
+except ImportError:  # pragma: no cover - optional dependency
+    create_langfuse_handler = None
 # from llama_index.agent.openai import OpenAIAgent  # Commented out due to version incompatibility
 from dotenv import load_dotenv
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
@@ -68,20 +71,24 @@ langfuse_callback_handler = None
 langfuse_client = None
 
 if LANGFUSE_ENABLED and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
-    try:
-        handler = create_langfuse_handler(
-            public_key=LANGFUSE_PUBLIC_KEY,
-            secret_key=LANGFUSE_SECRET_KEY,
-            host=LANGFUSE_HOST
+    if create_langfuse_handler is None:
+        logging.warning(
+            "Langfuse callback handler not available in current llama-index build. "
+            "Upgrade llama-index or disable LANGFUSE_ENABLED."
         )
-        Settings.callback_manager = CallbackManager([handler])
-        logging.info("Langfuse callback handler initialized successfully.")
-    except ImportError:
-        logging.error("Failed to import langfuse callback handler. Please check Langfuse SDK version.")
-        handler = None
-    except Exception as e:
-        logging.error(f"Failed to initialize Langfuse callback handler: {e}")
-        langfuse_callback_handler = None
+    else:
+        try:
+            handler = create_langfuse_handler(
+                public_key=LANGFUSE_PUBLIC_KEY,
+                secret_key=LANGFUSE_SECRET_KEY,
+                host=LANGFUSE_HOST
+            )
+            Settings.callback_manager = CallbackManager([handler])
+            langfuse_callback_handler = handler
+            logging.info("Langfuse callback handler initialized successfully.")
+        except Exception as e:
+            logging.error(f"Failed to initialize Langfuse callback handler: {e}")
+            langfuse_callback_handler = None
 
     try:
         langfuse_client = Langfuse(
@@ -556,6 +563,39 @@ def extract_node_text(node_or_item):
     except Exception as e:
         logging.error(f"Error extracting text from node: {e}")
         return ""
+
+def summarize_node_for_metrics(node_or_item, max_chars: int = 400) -> Dict[str, Any]:
+    """Build a lightweight summary of a retrieved node for diagnostics"""
+    try:
+        node = node_or_item.node if hasattr(node_or_item, 'node') else node_or_item
+        combined_metadata: Dict[str, Any] = {}
+
+        if hasattr(node_or_item, 'metadata') and isinstance(node_or_item.metadata, dict):
+            combined_metadata.update(node_or_item.metadata)
+        if hasattr(node, 'metadata') and isinstance(node.metadata, dict):
+            combined_metadata.update(node.metadata)
+
+        filtered_metadata = {}
+        for key, value in combined_metadata.items():
+            if key in {"parent_text", "text", "content"}:
+                continue
+            if isinstance(value, (str, int, float, bool)):
+                filtered_metadata[key] = value
+
+        text = extract_node_text(node_or_item) or ""
+        text_excerpt = text[:max_chars]
+
+        return {
+            "node_id": getattr(node, 'node_id', None),
+            "score": getattr(node_or_item, 'score', None),
+            "source": filtered_metadata.get("file_name") or filtered_metadata.get("module") or filtered_metadata.get("source"),
+            "metadata": filtered_metadata,
+            "text_excerpt": text_excerpt,
+            "text_length": len(text)
+        }
+    except Exception as exc:
+        logging.warning(f"Failed to summarize node for metrics: {exc}")
+        return {"node_id": None, "score": None, "metadata": {}, "text_excerpt": ""}
     
 class RAGQueryEngine(CustomQueryEngine):
     retriever: BaseRetriever
@@ -575,6 +615,8 @@ class RAGQueryEngine(CustomQueryEngine):
         self.response_synthesizer = response_synthesizer
         self.mode = mode
         self.web_search_agent = WebSearchAgent() if WEB_SEARCH_ENABLED else None
+        self._last_retrieval_details: Dict[str, Any] = {}
+        self._last_run_diagnostics: Optional[Dict[str, Any]] = None
 
     def _rewrite_query(self, query_str: str) -> str:
         """
@@ -683,6 +725,11 @@ class RAGQueryEngine(CustomQueryEngine):
 
         # Then expand the rewritten query into variations
         query_variations = self._expand_query(rewritten_query)
+        self._last_retrieval_details = {
+            "rewritten_query": rewritten_query,
+            "query_variations": query_variations,
+            "mmr_applied": False
+        }
 
         all_nodes = []
         seen_node_ids = set()
@@ -722,10 +769,20 @@ class RAGQueryEngine(CustomQueryEngine):
             # Apply MMR reranking to balance relevance and diversity
             all_nodes = mmr_rerank(rewritten_query, candidate_nodes, lambda_param=mmr_lambda, top_k=final_top_k)
             logging.info(f"Applied MMR reranking with lambda={mmr_lambda}")
+            self._last_retrieval_details.update({
+                "mmr_applied": True,
+                "mmr_lambda": mmr_lambda,
+                "mmr_fetch_k": mmr_fetch_k,
+                "final_top_k": final_top_k
+            })
         else:
             # Limit to reasonable number of results without MMR
             max_results = 10  # Configurable
             all_nodes = all_nodes[:max_results]
+            self._last_retrieval_details.update({
+                "mmr_applied": False,
+                "final_top_k": len(all_nodes)
+            })
 
         return all_nodes
 
@@ -931,7 +988,13 @@ class RAGQueryEngine(CustomQueryEngine):
                     return "I'm sorry, I couldn't find relevant information in the uploaded document for your query."
                 context_parts = [extract_node_text(item) for item in retrieved_items]
                 context_str_for_prompt = "\n\n".join(filter(None, context_parts))
-                nodes_for_synthesis = retrieved_items 
+                nodes_for_synthesis = retrieved_items
+                self._last_retrieval_details = {
+                    "mode": "uploaded_doc",
+                    "rewritten_query": query_str,
+                    "query_variations": [query_str],
+                    "mmr_applied": False
+                }
             else:
                 # Phase 1 & 2 & 3: Use query rewriting + expansion + MMR for improved retrieval
                 retrieved_items = self._retrieve_with_expanded_queries(query_str)
@@ -979,6 +1042,46 @@ class RAGQueryEngine(CustomQueryEngine):
 
             response_text = str(response_obj).strip()
 
+            scores = [
+                item.score if hasattr(item, 'score') and item.score is not None else 0.0
+                for item in nodes_for_synthesis
+            ]
+
+            diagnostics_payload = {
+                "query": query_str,
+                "retrieval": {
+                    "time_seconds": round(retrieval_time, 4),
+                    "num_retrieved": len(nodes_for_synthesis),
+                    "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+                    "min_score": round(min(scores), 4) if scores else 0.0,
+                    "max_score": round(max(scores), 4) if scores else 0.0,
+                    "context_chars": len(context_str_for_prompt),
+                    "rewritten_query": self._last_retrieval_details.get("rewritten_query"),
+                    "query_variations": self._last_retrieval_details.get("query_variations", []),
+                    "mmr": {
+                        "applied": self._last_retrieval_details.get("mmr_applied", False),
+                        "lambda": self._last_retrieval_details.get("mmr_lambda"),
+                        "fetch_k": self._last_retrieval_details.get("mmr_fetch_k"),
+                        "final_top_k": self._last_retrieval_details.get("final_top_k"),
+                    },
+                    "documents": [summarize_node_for_metrics(item) for item in nodes_for_synthesis]
+                },
+                "generation": {
+                    "time_seconds": round(generation_time, 4),
+                    "response_length_chars": len(response_text),
+                    "response_length_words": len(response_text.split())
+                },
+                "end_to_end": {
+                    "total_time_seconds": round(retrieval_time + generation_time, 4)
+                },
+                "metadata": {
+                    "mode": self.mode,
+                    "web_search_used": used_web_search,
+                    "reflection": reflection_result if reflection_result else {}
+                }
+            }
+            self._last_run_diagnostics = diagnostics_payload
+
             # Add metadata about source
             if used_web_search and not response_text.startswith("🌐"):
                 response_text = f"🌐 **Information from web search** (not found in course materials)\n\n{response_text}"
@@ -998,7 +1101,9 @@ class RAGQueryEngine(CustomQueryEngine):
                             "web_search_used": used_web_search,
                             "num_context_chars": len(context_str_for_prompt),
                             # Phase 2: Include reflection results
-                            "reflection": reflection_result if reflection_result else {}
+                            "reflection": reflection_result if reflection_result else {},
+                            "rewritten_query": self._last_retrieval_details.get("rewritten_query"),
+                            "query_variations": self._last_retrieval_details.get("query_variations", [])
                         }
                     )
                 except Exception as e:
@@ -1021,6 +1126,10 @@ class RAGQueryEngine(CustomQueryEngine):
         except Exception as e:
             logging.error(f"Error in get_correct_answer: {e}")
             return f"Error: {str(e)}"
+
+    def get_last_run_diagnostics(self) -> Optional[Dict[str, Any]]:
+        """Expose diagnostic details for the most recent query execution"""
+        return self._last_run_diagnostics
 
     def get_related_module(self, question: str) -> str:
         try:

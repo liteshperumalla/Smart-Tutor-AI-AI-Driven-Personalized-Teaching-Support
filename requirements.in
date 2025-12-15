@@ -1,0 +1,15 @@
+langfuse==2.60.5
+     llama-index>=0.13
+     llama-index-core>=0.13
+     llama-index-callbacks-langfuse>=0.4.1
+     llama-index-llms-ollama
+     llama-index-embeddings-huggingface
+     llama-index-readers-llama-parse
+     llama-index-vector-stores-chroma
+     llama-index-retrievers-bm25
+     llama-index-tools-google
+     llama-index-tools-tavily-research
+     llama-index-workflows
+     llama-index-cli
+     llama-cloud
+     llama-cloud-services

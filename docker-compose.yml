@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for user data
+  postgres:
+    image: postgres:15-alpine
+    container_name: smart-tutor-postgres
+    environment:
+      POSTGRES_DB: smart_tutor
+      POSTGRES_USER: smart_tutor_user
+      POSTGRES_PASSWORD: dev_password_change_in_prod
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smart_tutor_user -d smart_tutor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # DynamoDB Local for chat sessions
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: smart-tutor-dynamodb
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    ports:
+      - "8001:8000"
+    working_dir: /home/dynamodblocal
+
+  # Redis for caching (Phase 3)
+  redis:
+    image: redis:7-alpine
+    container_name: smart-tutor-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  dynamodb_data:
+  redis_data:

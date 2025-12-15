@@ -1,0 +1,49 @@
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { SiteChrome } from "@/components/site-chrome";
+import { ThemeProvider } from "@/context/theme-context";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Smart AI Tutor",
+  description: "Modern FastAPI + Next.js experience for INFO 5731",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  const navLinks = [
+    { href: "/", label: "Home" },
+    { href: "/chat", label: "Chat" },
+    { href: "/quiz", label: "Quiz" },
+    { href: "/research", label: "Research" },
+    { href: "/evaluation", label: "Evaluation" },
+    { href: "/appointments", label: "Appointments" },
+    { href: "/resources", label: "Resources" },
+    { href: "/about", label: "About" },
+    { href: "/feedback", label: "Feedback" },
+    { href: "/profile", label: "Profile" },
+  ];
+
+  return (
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <ThemeProvider>
+          <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}

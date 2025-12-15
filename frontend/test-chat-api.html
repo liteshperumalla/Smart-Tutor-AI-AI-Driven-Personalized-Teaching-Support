@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Chat API</title>
+</head>
+<body>
+    <h1>Chat API Test</h1>
+    <button onclick="testLogin()">1. Login</button>
+    <button onclick="testSessions()">2. Get Chat Sessions</button>
+    <button onclick="clearStorage()">Clear Storage</button>
+    <pre id="output" style="background: #f0f0f0; padding: 20px; margin-top: 20px;"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:8010';
+        let token = '';
+
+        function log(msg) {
+            const output = document.getElementById('output');
+            output.textContent += msg + '\n';
+        }
+
+        async function testLogin() {
+            document.getElementById('output').textContent = '';
+            log('Testing login...');
+            try {
+                const resp = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'liteshperumalla@gmail.com',
+                        password: 'Litesh@#12345'
+                    })
+                });
+                const data = await resp.json();
+                token = data.access_token;
+                log('✓ Login successful');
+                log(`Token: ${token.substring(0, 50)}...`);
+                log(`Algorithm in token header: ${JSON.parse(atob(token.split('.')[0])).alg}`);
+            } catch (err) {
+                log(`✗ Error: ${err.message}`);
+            }
+        }
+
+        async function testSessions() {
+            if (!token) {
+                log('Please login first');
+                return;
+            }
+            log('\nTesting chat sessions...');
+            try {
+                const resp = await fetch(`${API_BASE}/chat/sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await resp.json();
+                log(`✓ Retrieved ${data.sessions.length} sessions`);
+                log('\nFirst 10 sessions:');
+                data.sessions.slice(0, 10).forEach((s, i) => {
+                    log(`${i+1}. ${s.title} (${s.messages.length} messages)`);
+                });
+            } catch (err) {
+                log(`✗ Error: ${err.message}`);
+            }
+        }
+
+        function clearStorage() {
+            localStorage.clear();
+            document.cookie.split(";").forEach(c => {
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+            log('✓ Cleared localStorage and cookies');
+        }
+    </script>
+</body>
+</html>

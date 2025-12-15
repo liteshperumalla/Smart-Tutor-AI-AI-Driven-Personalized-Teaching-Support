@@ -23,10 +23,16 @@ class UserRegistration(BaseModel):
 
     @validator('username')
     def validate_username(cls, v):
-        """Validate username format"""
-        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
-            raise ValueError('Username can only contain letters, numbers, underscores, and hyphens')
-        return v
+        """Validate username format and normalize common characters"""
+        if not isinstance(v, str):
+            raise ValueError("Username must be a string")
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Username cannot be empty")
+        normalized = re.sub(r'\s+', '_', cleaned)
+        if not re.match(r'^[a-zA-Z0-9_.@-]+$', normalized):
+            raise ValueError('Username can only contain letters, numbers, underscores, hyphens, periods, or @ symbols')
+        return normalized
 
     @validator('confirm_password')
     def passwords_match(cls, v, values):

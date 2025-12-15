@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import statistics
+import math
+import re
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -23,6 +25,139 @@ try:
 except ImportError:
     EVALUATION_AVAILABLE = False
     print("⚠️ Evaluation framework not available")
+
+
+def percentile(values: List[float], pct: float) -> float:
+    """Simple percentile helper (pct as 0-1 float)"""
+    if not values:
+        return 0.0
+    pct = min(max(pct, 0.0), 1.0)
+    sorted_vals = sorted(values)
+    index = int(round(pct * (len(sorted_vals) - 1)))
+    return sorted_vals[index]
+
+
+def compute_retrieval_metrics_for_case(
+    retrieval_diag: Optional[Dict[str, Any]],
+    expected_topics: List[str],
+    expected_retrieval_count: Optional[int] = None
+) -> Dict[str, Any]:
+    """Compute retrieval metrics (precision@k, recall@k, MRR, NDCG) using diagnostic data"""
+    normalized_topics = [topic.lower() for topic in expected_topics]
+    expected_topic_count = len(set(normalized_topics))
+    topic_lookup = {topic.lower(): topic for topic in expected_topics}
+
+    documents = (retrieval_diag or {}).get("documents", []) if retrieval_diag else []
+    doc_topic_sets: List[set] = []
+    doc_hits: List[int] = []
+
+    for doc in documents:
+        text = (doc.get("text_excerpt") or "").lower()
+        hits = {topic for topic in normalized_topics if topic in text}
+        doc_topic_sets.append(hits)
+        doc_hits.append(1 if hits else 0)
+
+    def precision_at_k(k: int) -> float:
+        if not doc_hits:
+            return 0.0
+        considered = doc_hits[:k]
+        denom = min(k, len(doc_hits))
+        if denom == 0:
+            return 0.0
+        return sum(considered) / denom
+
+    def recall_at_k(k: int) -> float:
+        if not normalized_topics:
+            return 0.0
+        topics_found = set()
+        for hits in doc_topic_sets[:k]:
+            topics_found.update(hits)
+        return len(topics_found) / len(normalized_topics)
+
+    def mean_reciprocal_rank() -> float:
+        for idx, hit in enumerate(doc_hits):
+            if hit:
+                return 1.0 / (idx + 1)
+        return 0.0
+
+    def ndcg() -> float:
+        if not doc_hits:
+            return 0.0
+        dcg = 0.0
+        for idx, rel in enumerate(doc_hits):
+            dcg += (2 ** rel - 1) / math.log2(idx + 2)
+        ideal_hits = sorted(doc_hits, reverse=True)
+        idcg = 0.0
+        for idx, rel in enumerate(ideal_hits):
+            idcg += (2 ** rel - 1) / math.log2(idx + 2)
+        return dcg / idcg if idcg else 0.0
+
+    total_topics_found = set().union(*doc_topic_sets) if doc_topic_sets else set()
+    friendly_topics_found = sorted(
+        {topic_lookup.get(topic, topic) for topic in total_topics_found},
+        key=lambda topic: expected_topics.index(topic) if topic in expected_topics else topic
+    )
+    missing_topics = [topic for topic in expected_topics if topic.lower() not in total_topics_found]
+
+    expected_count = expected_retrieval_count or 0
+    retrieved_count = len(documents)
+    p3 = precision_at_k(3)
+    p5 = precision_at_k(5)
+    r3 = recall_at_k(3)
+    r5 = recall_at_k(5)
+    mrr_score = mean_reciprocal_rank()
+    ndcg_score = ndcg()
+
+    return {
+        "precision_at_3": round(p3, 3),
+        "precision_at_5": round(p5, 3),
+        "recall_at_3": round(r3, 3),
+        "recall_at_5": round(r5, 3),
+        "mrr": round(mrr_score, 3),
+        "ndcg": round(ndcg_score, 3),
+        "topics_found": friendly_topics_found,
+        "missing_topics": missing_topics,
+        "retrieved_topic_coverage": round(len(total_topics_found) / expected_topic_count, 3) if expected_topic_count else 0.0,
+        "relevant_doc_ratio": round(sum(doc_hits) / len(doc_hits), 3) if doc_hits else 0.0,
+        "retrieved_count": retrieved_count,
+        "expected_retrieval_count": expected_count,
+        "retrieval_count_delta": retrieved_count - expected_count if expected_count else retrieved_count,
+        "retrieval_success": r3 >= 0.5 or p3 >= 0.5
+    }
+
+
+def compute_generation_metrics_for_case(response_text: str, expected_topics: List[str]) -> Dict[str, Any]:
+    """Heuristic generation metrics aligned with evaluation rubric"""
+    response_lower = response_text.lower()
+    normalized_topics = [(topic, topic.lower()) for topic in expected_topics]
+
+    covered_topics = [topic for topic, token in normalized_topics if token in response_lower]
+    missing_topics = [topic for topic, token in normalized_topics if token not in response_lower]
+    coverage = len(covered_topics) / len(expected_topics) if expected_topics else 0.0
+
+    words = [word for word in response_text.split() if word]
+    sentences = [s for s in re.split(r"[.!?]+", response_text) if s.strip()]
+    avg_sentence_length = len(words) / max(1, len(sentences))
+    clarity_score = max(1.0, min(5.0, round(5.5 - 0.1 * avg_sentence_length, 2)))
+
+    relevance_score = round(min(5.0, max(1.0, coverage * 5)), 2)
+    completeness = coverage >= 0.75
+    hallucination_flag = coverage < 0.6
+
+    return {
+        "topic_coverage": round(coverage, 3),
+        "covered_topics": covered_topics,
+        "missing_topics": missing_topics,
+        "relevance_score": relevance_score,
+        "completeness": completeness,
+        "accuracy_proxy": round(1.0 if coverage >= 0.5 else 0.5, 2),
+        "clarity_score": clarity_score,
+        "hallucination_flag": hallucination_flag,
+        "hallucination_proxy": round(max(0.0, min(1.0, 1 - coverage)), 3),
+        "response_length_chars": len(response_text),
+        "response_length_words": len(words),
+        "avg_sentence_length": round(avg_sentence_length, 2)
+    }
 
 
 class RAGTester:
@@ -102,8 +237,23 @@ class RAGTester:
 
             # Run query
             response = query_engine.custom_query(query)
+            diagnostics = query_engine.get_last_run_diagnostics() if hasattr(query_engine, "get_last_run_diagnostics") else None
 
             total_time = time.time() - start_time
+            retrieval_diag = diagnostics.get("retrieval") if diagnostics else None
+            generation_diag = diagnostics.get("generation") if diagnostics else None
+
+            retrieval_metrics = compute_retrieval_metrics_for_case(
+                retrieval_diag,
+                test_case['expected_topics'],
+                test_case.get('expected_retrieval_count')
+            )
+            generation_metrics = compute_generation_metrics_for_case(response, test_case['expected_topics'])
+            end_to_end_metrics = {
+                "total_time_seconds": round(total_time, 3),
+                "retrieval_time_seconds": retrieval_diag.get("time_seconds") if retrieval_diag else None,
+                "generation_time_seconds": generation_diag.get("time_seconds") if generation_diag else None
+            }
 
             # Analyze response
             result = {
@@ -116,7 +266,11 @@ class RAGTester:
                 "total_time": round(total_time, 3),
                 "expected_topics": test_case['expected_topics'],
                 "config": config.copy(),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "retrieval_metrics": retrieval_metrics,
+                "generation_metrics": generation_metrics,
+                "end_to_end_metrics": end_to_end_metrics,
+                "diagnostics": diagnostics
             }
 
             # Check topic coverage
@@ -127,12 +281,14 @@ class RAGTester:
                     covered_topics.append(topic)
 
             result['covered_topics'] = covered_topics
-            result['topic_coverage'] = len(covered_topics) / len(test_case['expected_topics'])
+            result['topic_coverage'] = generation_metrics['topic_coverage']
 
             print(f"\n📊 Results:")
             print(f"   Time: {total_time:.2f}s")
             print(f"   Response length: {len(response)} chars")
             print(f"   Topic coverage: {result['topic_coverage']*100:.1f}% ({len(covered_topics)}/{len(test_case['expected_topics'])})")
+            print(f"   Retrieval precision@3: {retrieval_metrics['precision_at_3']*100:.1f}% | Recall@3: {retrieval_metrics['recall_at_3']*100:.1f}%")
+            print(f"   Hallucination flag: {'⚠️' if generation_metrics['hallucination_flag'] else '✅'} | Clarity score: {generation_metrics['clarity_score']:.2f}")
             print(f"   Covered: {', '.join(covered_topics[:3])}{'...' if len(covered_topics) > 3 else ''}")
 
             return result
@@ -182,6 +338,9 @@ class RAGTester:
         times = [r['total_time'] for r in valid_results]
         coverages = [r['topic_coverage'] for r in valid_results]
         response_lengths = [r['response_length'] for r in valid_results]
+        retrieval_metrics_list = [r.get('retrieval_metrics') for r in valid_results if r.get('retrieval_metrics')]
+        generation_metrics_list = [r.get('generation_metrics') for r in valid_results if r.get('generation_metrics')]
+        latency_metrics_list = [r.get('end_to_end_metrics') for r in valid_results if r.get('end_to_end_metrics')]
 
         by_difficulty = {}
         for r in valid_results:
@@ -197,17 +356,72 @@ class RAGTester:
                 by_category[cat] = []
             by_category[cat].append(r['topic_coverage'])
 
+        def avg_metric(metrics: List[Dict[str, Any]], key: str, decimals: int = 3) -> float:
+            values = [m[key] for m in metrics if key in m and m[key] is not None]
+            return round(statistics.mean(values), decimals) if values else 0.0
+
+        retrieval_times = [
+            m.get("retrieval_time_seconds")
+            for m in latency_metrics_list
+            if m and m.get("retrieval_time_seconds") is not None
+        ]
+        generation_times = [
+            m.get("generation_time_seconds")
+            for m in latency_metrics_list
+            if m and m.get("generation_time_seconds") is not None
+        ]
+
+        latency_analysis = {
+            "avg_retrieval_time_seconds": round(statistics.mean(retrieval_times), 3) if retrieval_times else 0.0,
+            "avg_generation_time_seconds": round(statistics.mean(generation_times), 3) if generation_times else 0.0,
+            "avg_total_time_seconds": round(statistics.mean(times), 3) if times else 0.0,
+            "p95_total_time_seconds": round(percentile(times, 0.95), 3) if times else 0.0,
+            "p95_retrieval_time_seconds": round(percentile(retrieval_times, 0.95), 3) if retrieval_times else 0.0,
+        }
+
+        retrieval_analysis = {
+            "precision_at_3": avg_metric(retrieval_metrics_list, "precision_at_3"),
+            "precision_at_5": avg_metric(retrieval_metrics_list, "precision_at_5"),
+            "recall_at_3": avg_metric(retrieval_metrics_list, "recall_at_3"),
+            "recall_at_5": avg_metric(retrieval_metrics_list, "recall_at_5"),
+            "mrr": avg_metric(retrieval_metrics_list, "mrr"),
+            "ndcg": avg_metric(retrieval_metrics_list, "ndcg"),
+            "retrieval_success_rate": round(
+                sum(1 for m in retrieval_metrics_list if m.get("retrieval_success")) / len(retrieval_metrics_list),
+                3
+            ) if retrieval_metrics_list else 0.0,
+            "avg_relevant_doc_ratio": avg_metric(retrieval_metrics_list, "relevant_doc_ratio"),
+            "avg_retrieved_topic_coverage": avg_metric(retrieval_metrics_list, "retrieved_topic_coverage"),
+        }
+
+        generation_analysis = {
+            "avg_topic_coverage": round(statistics.mean(coverages), 3),
+            "median_topic_coverage": round(statistics.median(coverages), 3),
+            "coverage_above_80": sum(1 for c in coverages if c >= 0.8) / len(coverages),
+            "coverage_above_60": sum(1 for c in coverages if c >= 0.6) / len(coverages),
+            "avg_relevance_score": avg_metric(generation_metrics_list, "relevance_score", 2),
+            "avg_clarity_score": avg_metric(generation_metrics_list, "clarity_score", 2),
+            "hallucination_rate": round(
+                sum(1 for m in generation_metrics_list if m.get("hallucination_flag")) / len(generation_metrics_list),
+                3
+            ) if generation_metrics_list else 0.0,
+            "completeness_rate": round(
+                sum(1 for m in generation_metrics_list if m.get("completeness")) / len(generation_metrics_list),
+                3
+            ) if generation_metrics_list else 0.0,
+        }
+
         analysis = {
             "total_tests": len(results),
             "successful_tests": len(valid_results),
             "failed_tests": len(results) - len(valid_results),
             "avg_response_time": round(statistics.mean(times), 3),
             "median_response_time": round(statistics.median(times), 3),
-            "p95_response_time": round(sorted(times)[int(len(times) * 0.95)], 3) if len(times) > 1 else times[0],
-            "avg_topic_coverage": round(statistics.mean(coverages), 3),
-            "median_topic_coverage": round(statistics.median(coverages), 3),
-            "coverage_above_80": sum(1 for c in coverages if c >= 0.8) / len(coverages),
-            "coverage_above_60": sum(1 for c in coverages if c >= 0.6) / len(coverages),
+            "p95_response_time": latency_analysis["p95_total_time_seconds"],
+            "avg_topic_coverage": generation_analysis["avg_topic_coverage"],
+            "median_topic_coverage": generation_analysis["median_topic_coverage"],
+            "coverage_above_80": generation_analysis["coverage_above_80"],
+            "coverage_above_60": generation_analysis["coverage_above_60"],
             "avg_response_length": round(statistics.mean(response_lengths), 1),
             "by_difficulty": {
                 k: {
@@ -222,7 +436,10 @@ class RAGTester:
                     "count": len(v)
                 }
                 for k, v in sorted(by_category.items(), key=lambda x: statistics.mean(x[1]), reverse=True)[:5]
-            }
+            },
+            "retrieval_analysis": retrieval_analysis,
+            "generation_analysis": generation_analysis,
+            "latency_analysis": latency_analysis
         }
 
         return analysis
@@ -256,6 +473,8 @@ class RAGTester:
         print(f"   Avg response time: {analysis['avg_response_time']}s")
         print(f"   Median response time: {analysis['median_response_time']}s")
         print(f"   P95 response time: {analysis['p95_response_time']}s")
+        latency = analysis.get("latency_analysis", {})
+        print(f"   Avg retrieval vs generation: {latency.get('avg_retrieval_time_seconds', 0):.2f}s / {latency.get('avg_generation_time_seconds', 0):.2f}s")
 
         print(f"\n🎯 Quality Metrics:")
         print(f"   Avg topic coverage: {analysis['avg_topic_coverage']*100:.1f}%")
@@ -263,6 +482,20 @@ class RAGTester:
         print(f"   Coverage ≥80%: {analysis['coverage_above_80']*100:.1f}%")
         print(f"   Coverage ≥60%: {analysis['coverage_above_60']*100:.1f}%")
         print(f"   Avg response length: {analysis['avg_response_length']:.0f} chars")
+
+        retrieval = analysis.get("retrieval_analysis", {})
+        print(f"\n📚 Retrieval Quality:")
+        print(f"   Precision@3: {retrieval.get('precision_at_3', 0)*100:.1f}%  | Recall@3: {retrieval.get('recall_at_3', 0)*100:.1f}%")
+        print(f"   Precision@5: {retrieval.get('precision_at_5', 0)*100:.1f}%  | Recall@5: {retrieval.get('recall_at_5', 0)*100:.1f}%")
+        print(f"   MRR: {retrieval.get('mrr', 0):.3f} | NDCG: {retrieval.get('ndcg', 0):.3f}")
+        print(f"   Retrieval success rate: {retrieval.get('retrieval_success_rate', 0)*100:.1f}%")
+
+        generation = analysis.get("generation_analysis", {})
+        print(f"\n🧠 Generation Quality:")
+        print(f"   Avg relevance score: {generation.get('avg_relevance_score', 0):.2f} / 5")
+        print(f"   Avg clarity score: {generation.get('avg_clarity_score', 0):.2f} / 5")
+        print(f"   Completeness rate: {generation.get('completeness_rate', 0)*100:.1f}%")
+        print(f"   Hallucination rate (coverage <60%): {generation.get('hallucination_rate', 0)*100:.1f}%")
 
         print(f"\n📈 By Difficulty:")
         for diff, stats in sorted(analysis['by_difficulty'].items()):

@@ -1,18 +1,15 @@
 {
-    "liteshperumalla": {
-        "hashed_password": "$2b$12$1oEhdF6bazBDC1PV244PUefM2Vjm2VNiW7pg9lxOoSEsxq7/GDBg2",
-        "email": "liteshperumalla@gmail.com",
-        "last_login": "2025-06-13T18:18:41.121040"
-    },
     "liteshperumalla@gmail.com": {
-        "hashed_password": "",
+        "hashed_password": "$2b$12$HYDbKiR5dCBVwsS34LSGbetyTLAHS/1quQa1pPmyjnZb6S5SpxftO",
         "email": "liteshperumalla@gmail.com",
         "display_name": "litesh perumalla",
         "phone_number": "",
         "role": "User",
-        "last_login": "",
+        "last_login": "2025-12-12T14:24:25.950211",
         "theme": "light",
         "notes": "",
-        "profile_picture_path": ""
+        "profile_picture_path": "",
+        "login_attempts": 0,
+        "updated_at": "2025-12-12T14:24:25.950257"
     }
 }

@@ -34,6 +34,45 @@ streamlit run app.py
 # Access the application at http://localhost:8501
 ```
 
+### Run with Docker
+```bash
+# Build image
+docker build -t smart-ai-tutor .
+
+# Start container (exposes Streamlit on localhost:8501)
+docker run --env-file .env -p 8501:8501 smart-ai-tutor
+
+# Start FastAPI backend instead of Streamlit
+docker run --env-file .env -e APP_MODE=fastapi -p 8000:8000 smart-ai-tutor
+```
+
+### Run Next.js Frontend
+```bash
+cd frontend
+cp .env.local.example .env.local   # update API base URL if needed
+npm install
+npm run dev -- --port 4000
+# open http://localhost:4000
+```
+
+### LLM Setup (Ollama)
+```bash
+# Install once (macOS)
+brew install --cask ollama
+
+# Start the local service (keep it running in its own terminal tab)
+ollama serve
+
+# Pull the model referenced in .env (defaults to llama3.2:latest)
+ollama pull llama3.2:latest
+```
+The app pings `OLLAMA_BASE_URL` (defaults to `http://localhost:11434`). If the “LLM Service” card on the home page shows “Offline,” start the service and rerun the Streamlit script.
+
+### In-App Productivity Boosts
+- **System Snapshot** cards on the home page surface knowledge-base size, evaluation readiness, and Ollama connectivity so you can spot issues without opening a terminal.
+- **Quick Actions** let you jump directly into Chat, Quiz Generator, or Research Mode with a single click.
+- **Recent Conversations** appear on the right rail for instant context switching across chat sessions.
+
 ## Results & Metrics
 - **24/7 Availability**: Continuous student support with context-aware responses
 - **Multi-format Support**: Processes PDFs, presentations, documents, images, and video content

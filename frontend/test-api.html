@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Test</h1>
+    <button onclick="testLogin()">Test Login</button>
+    <button onclick="testSessions()">Test Chat Sessions</button>
+    <pre id="output"></pre>
+
+    <script>
+        const API_BASE = 'http://localhost:8010';
+        let token = '';
+
+        async function testLogin() {
+            const output = document.getElementById('output');
+            try {
+                const resp = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'liteshperumalla@gmail.com',
+                        password: 'Litesh@#12345'
+                    })
+                });
+                const data = await resp.json();
+                token = data.access_token;
+                output.textContent = 'Login Success!\n' + JSON.stringify(data, null, 2);
+            } catch (err) {
+                output.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        async function testSessions() {
+            const output = document.getElementById('output');
+            if (!token) {
+                output.textContent = 'Please login first';
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_BASE}/chat/sessions`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await resp.json();
+                output.textContent = 'Chat Sessions:\n' + JSON.stringify(data, null, 2);
+            } catch (err) {
+                output.textContent = 'Error: ' + err.message;
+            }
+        }
+    </script>
+</body>
+</html>

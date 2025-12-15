@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import json
 import re
-from utils import load_chat_sessions, save_chat_session, sanitize_filename
+from utils import load_chat_sessions, save_chat_session, sanitize_filename, get_system_status
 from auth import display_logout_button # Import directly
 
 def sidebar_content():
@@ -161,6 +161,33 @@ def sidebar_content():
                                 st.rerun()
         
         st.markdown("<hr>", unsafe_allow_html=True)
+
+        system_status = get_system_status()
+        system_healthy = len(system_status.get("issues", [])) == 0
+        badge_color = "#10b981" if system_healthy else "#f97316"
+        badge_text = "Healthy" if system_healthy else "Needs attention"
+        st.markdown(
+            f"""
+            <div style="
+                padding:0.75rem 1rem;
+                border-radius:10px;
+                border:1px solid rgba(255,255,255,0.1);
+                background:rgba(16,24,40,0.04);
+                border-left:4px solid {badge_color};
+                font-size:0.9rem;">
+                🩺 <strong>System:</strong> <span style="color:{badge_color};">{badge_text}</span><br>
+                <span style="font-size:0.8rem; color:var(--text-secondary);">
+                    {system_status['knowledge_base'].get('document_count', 0)} chunks •
+                    {system_status['knowledge_base'].get('source_count', 0)} sources
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        kb_updated = system_status["knowledge_base"].get("last_updated_display")
+        if kb_updated:
+            st.caption(f"Index updated {kb_updated}")
+
         # The "Dark Mode" checkbox here might conflict with user's saved theme preference.
         # For now, we keep it, but its interaction with profile theme settings should be considered.
         # Ideally, this checkbox should read from and update st.session_state.dark_mode,

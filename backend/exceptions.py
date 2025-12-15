@@ -27,8 +27,13 @@ class SmartTutorException(Exception):
 # Authentication & Authorization Exceptions
 class AuthenticationError(SmartTutorException):
     """Base authentication error"""
-    def __init__(self, message: str = "Authentication failed", details: Optional[Dict[str, Any]] = None):
-        super().__init__(message, "AUTH_ERROR", details)
+    def __init__(
+        self,
+        message: str = "Authentication failed",
+        code: str = "AUTH_ERROR",
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(message, code, details)
 
 
 class InvalidCredentialsError(AuthenticationError):

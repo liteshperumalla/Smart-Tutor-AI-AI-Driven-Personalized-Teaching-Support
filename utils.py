@@ -3,20 +3,33 @@ import os
 import re
 import base64
 import json
+import textwrap
 from pathlib import Path
 import logging
 import smtplib
 from email.message import EmailMessage
 import time
 import datetime
+from functools import lru_cache
 from typing import Optional, List, Dict, Any, Union, Tuple
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from bs4 import BeautifulSoup
+from backend.services.status_service import (
+    get_knowledge_base_stats,
+    get_system_status,
+    check_ollama_status,
+)
 
 # LlamaIndex imports
-from llama_index.core import StorageContext, load_index_from_storage, get_response_synthesizer, VectorStoreIndex
-from llama_index.core.schema import Document, TextNode
+from llama_index.core import (
+    StorageContext,
+    load_index_from_storage,
+    get_response_synthesizer,
+    VectorStoreIndex,
+    PromptTemplate,
+)
+from llama_index.core.schema import Document, TextNode, NodeWithScore
 
 # File processing imports
 from pptx import Presentation
@@ -25,6 +38,11 @@ import mammoth
 from fpdf import FPDF
 from PIL import Image
 import pytesseract
+
+try:
+    from serpapi import GoogleSearch
+except ImportError:
+    GoogleSearch = None
 
 # Import langfuse for tracing
 try:
@@ -47,6 +65,157 @@ logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %
 # --- LlamaIndex Setup ---
 PERSIST_DIR = "./persisted_index"
 os.makedirs(PERSIST_DIR, exist_ok=True)
+CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+
+WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
+SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "").strip()
+MAX_WEB_RESULTS = int(os.getenv("MAX_WEB_RESULTS", "3"))
+
+
+CHAT_QA_TEMPLATE = PromptTemplate(
+    (
+        "You are Smart AI Tutor, a knowledgeable teaching assistant for graduate students. "
+        "Using only the provided context, craft a brief yet thorough explanation that defines the idea, "
+        "highlights why it matters, and includes a concrete example or analogy students can relate to. "
+        "Cite relevant facts from context when possible and clearly state when information is missing. "
+        "Never reply with a single number, bullet label, or one-word answer—always respond in at least "
+        "three complete sentences.\n"
+        "---------------------\n"
+        "{context_str}\n"
+        "---------------------\n"
+        "Question: {query_str}\n"
+        "Answer:"
+    )
+)
+
+WEB_SEARCH_TEMPLATE = PromptTemplate(
+    (
+        "You are Smart AI Tutor, and you are providing information from web search results because "
+        "the coursework materials did not contain the answer. "
+        "Always open with the sentence: 'Information from web search (not found in course materials)' "
+        "followed by a blank line. Summarize the results in clear academic language, cite the most relevant "
+        "facts, and note when multiple sources agree or disagree. "
+        "---------------------\n"
+        "{context_str}\n"
+        "---------------------\n"
+        "Question: {query_str}\n"
+        "Answer:"
+    )
+)
+
+
+def _should_search_web(query: str, context: str, sources: List[Dict[str, Any]]) -> bool:
+    """Return True when retrieved coursework context looks insufficient."""
+    if not WEB_SEARCH_ENABLED:
+        return False
+    if not context or not context.strip():
+        return True
+    normalized_query = " ".join(query.lower().split())
+    context_text = context.lower()
+    if normalized_query and normalized_query not in context_text:
+        return True
+    tokens = [token for token in re.findall(r"[a-zA-Z0-9]+", query.lower()) if len(token) > 3]
+    if not tokens:
+        return False
+    hits = sum(1 for token in tokens if token in context_text)
+    coverage = hits / len(tokens)
+    unique_sources = {src.get("file_name") for src in sources if src.get("file_name")}
+    if coverage < 0.4:
+        return True
+    if len(unique_sources) <= 1 and coverage < 0.75:
+        return True
+    return False
+
+
+def _search_with_serpapi(query: str, max_results: int):
+    if not SERPAPI_API_KEY or GoogleSearch is None:
+        return []
+    try:
+        search = GoogleSearch(
+            {
+                "q": query,
+                "engine": "google",
+                "api_key": SERPAPI_API_KEY,
+                "num": max_results,
+                "safe": "active",
+                "hl": "en",
+                "gl": "us",
+            }
+        )
+        result = search.get_dict()
+        formatted = []
+        if "answer_box" in result:
+            box = result["answer_box"]
+            formatted.append(
+                {
+                    "title": box.get("title", "Featured Answer"),
+                    "content": box.get("answer") or box.get("snippet", ""),
+                    "url": box.get("link", ""),
+                    "score": 1.0,
+                    "source": "Google Featured Answer",
+                }
+            )
+        for idx, entry in enumerate(result.get("organic_results", [])[:max_results]):
+            formatted.append(
+                {
+                    "title": entry.get("title") or "Result",
+                    "content": entry.get("snippet", ""),
+                    "url": entry.get("link", ""),
+                    "score": 0.9 - (idx * 0.1),
+                    "source": entry.get("source", "Google Search"),
+                }
+            )
+        return [res for res in formatted if res["content"]]
+    except Exception as exc:
+        logging.error(f"SerpAPI search failed: {exc}")
+        return []
+
+
+def _search_with_duckduckgo(query: str, max_results: int):
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36"
+            )
+        }
+        resp = requests.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": query},
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.content, "html.parser")
+        results = []
+        for entry in soup.find_all("div", class_="result")[:max_results]:
+            title_el = entry.find("a", class_="result__a")
+            snippet_el = entry.find("a", class_="result__snippet")
+            if not title_el or not snippet_el:
+                continue
+            results.append(
+                {
+                    "title": title_el.get_text(strip=True) or "Result",
+                    "content": snippet_el.get_text(strip=True),
+                    "url": title_el.get("href", ""),
+                    "score": 0.7,
+                    "source": "DuckDuckGo",
+                }
+            )
+        return results
+    except Exception as exc:
+        logging.error(f"DuckDuckGo search failed: {exc}")
+        return []
+
+
+def search_web_results(query: str, max_results: int = MAX_WEB_RESULTS):
+    """Fetch web search snippets using SerpAPI when available, otherwise DuckDuckGo."""
+    if not WEB_SEARCH_ENABLED:
+        return []
+    results = _search_with_serpapi(query, max_results)
+    if results:
+        return results
+    return _search_with_duckduckgo(query, max_results)
 
 def get_storage_context():
     """Get storage context with proper error handling"""
@@ -201,6 +370,47 @@ def load_chat_sessions() -> Dict[str, List]:
     
     return sessions
 
+def get_recent_chat_summaries(limit: int = 3) -> List[Dict[str, Any]]:
+    """Return lightweight metadata for the most recent chat sessions."""
+    sessions = load_chat_sessions()
+    summaries: List[Dict[str, Any]] = []
+
+    for name, history in sessions.items():
+        preview_text = ""
+        if history:
+            for entry in reversed(history):
+                if isinstance(entry, dict):
+                    preview_text = entry.get("content", "") or ""
+                elif isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                    preview_text = entry[1] or ""
+                if preview_text:
+                    preview_text = preview_text.strip()
+                    if preview_text:
+                        break
+
+        file_path = Path(_chat_path(name))
+        try:
+            updated_at = file_path.stat().st_mtime
+        except OSError:
+            updated_at = 0
+
+        if updated_at:
+            updated_display = datetime.datetime.fromtimestamp(updated_at).strftime("%b %d, %I:%M %p")
+        else:
+            updated_display = "Not saved yet"
+
+        summaries.append({
+            "name": name,
+            "preview": textwrap.shorten(preview_text, width=110, placeholder="...") if preview_text else "No messages yet",
+            "updated_at": updated_at,
+            "updated_display": updated_display,
+        })
+
+    summaries.sort(key=lambda item: item["updated_at"], reverse=True)
+    if limit is None or limit <= 0:
+        return summaries
+    return summaries[:limit]
+
 def save_chat_session(name: str, history: List) -> None:
     """Save chat session to disk"""
     formatted_history = []
@@ -344,34 +554,101 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
         idx = load_index_from_storage(storage_context)
         retriever = idx.as_retriever(similarity_top_k=3)
         retrieved_nodes = retriever.retrieve(query)
-        
+
+        local_sources = []
         for n_ws in retrieved_nodes:
             node = n_ws.node
             source_text = node.get_text() if hasattr(node, 'get_text') else (node.text if hasattr(node, 'text') else "")
             
             fp = node.metadata.get("file_path")
-            response_sources.append({
+            local_sources.append({
                 "file_name": os.path.basename(fp) if fp else "Unknown Source",
                 "file_path": fp,
                 "page": node.metadata.get("page_number"),
                 "slide": node.metadata.get("slide_number"),
                 "chunk_text": source_text[:300] + "..." if len(source_text) > 300 else source_text
             })
-        context_str = "\n\n".join([
-            n_ws.node.get_text() if hasattr(n_ws.node, 'get_text') else (n_ws.node.text if hasattr(n_ws.node, 'text') else "")
-            for n_ws in retrieved_nodes
-        ])
+        nodes_for_prompt = retrieved_nodes
+        context_str = "\n\n".join(
+            [
+                n_ws.node.get_text()
+                if hasattr(n_ws.node, "get_text")
+                else (n_ws.node.text if hasattr(n_ws.node, "text") else "")
+                for n_ws in nodes_for_prompt
+            ]
+        )
+        response_sources = local_sources
+        template_for_response = CHAT_QA_TEMPLATE
+        used_web_search = False
+
+        if _should_search_web(query, context_str, local_sources):
+            web_results = search_web_results(query)
+            if web_results:
+                used_web_search = True
+                template_for_response = WEB_SEARCH_TEMPLATE
+                response_sources = []
+                web_nodes = []
+                for idx, result in enumerate(web_results):
+                    snippet = result.get("content", "")
+                    clean_snippet = snippet[:300] + "..." if len(snippet) > 300 else snippet
+                    response_sources.append(
+                        {
+                            "file_name": result.get("title") or "Web result",
+                            "file_path": None,
+                            "external_url": result.get("url"),
+                            "chunk_text": clean_snippet,
+                            "source": result.get("source"),
+                        }
+                    )
+                    text_payload = "\n".join(
+                        filter(
+                            None,
+                            [
+                                result.get("title"),
+                                snippet,
+                                f"Source: {result.get('url', '')}",
+                            ],
+                        )
+                    )
+                    node = TextNode(
+                        id_=f"web-{idx}",
+                        text=text_payload,
+                        metadata={"source": result.get("url"), "title": result.get("title", "Web result")},
+                    )
+                    web_nodes.append(
+                        NodeWithScore(
+                            node=node,
+                            score=float(result.get("score", 0.7) or 0.7),
+                        )
+                    )
+                if web_nodes:
+                    nodes_for_prompt = web_nodes
+                    context_str = "\n\n".join(n.node.get_text() for n in nodes_for_prompt)
+            else:
+                used_web_search = False
+                response_sources = local_sources
+                template_for_response = CHAT_QA_TEMPLATE
+                nodes_for_prompt = retrieved_nodes
+
         print("--------CONTEXT PASSED TO LLM--------")
         print(context_str)
         print("--------------------------------------")
-        synth = get_response_synthesizer(response_mode="compact", streaming=True)
-        streaming_response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
+        synth = get_response_synthesizer(
+            response_mode="compact",
+            streaming=True,
+            text_qa_template=template_for_response,
+        )
+        streaming_response_obj = synth.synthesize(
+            query=query,
+            nodes=nodes_for_prompt,
+        )
         response_text_generator = streaming_response_obj.response_gen
         
         if main_trace:
             main_trace.update(metadata={
                 "num_retrieved_sources": len(response_sources),
-                "retrieved_source_sample": [s['file_name'] for s in response_sources[:2]]
+                "retrieved_source_sample": [s['file_name'] for s in response_sources[:2]],
+                "web_search_used": used_web_search,
             })
         
         return response_text_generator, response_sources

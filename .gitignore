@@ -81,3 +81,6 @@ demo_test_results.py
 
 # Data Processing Output
 chunks_by_type/*.txt
+
+# JWT RSA Keys (keep private!)
+keys/jwt_private.pem

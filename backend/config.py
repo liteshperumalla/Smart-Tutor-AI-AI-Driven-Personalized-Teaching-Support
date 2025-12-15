@@ -33,11 +33,49 @@ class Config:
     PASSWORD_REQUIRE_DIGIT = os.getenv("PASSWORD_REQUIRE_DIGIT", "true").lower() == "true"
     PASSWORD_REQUIRE_SPECIAL = os.getenv("PASSWORD_REQUIRE_SPECIAL", "true").lower() == "true"
 
+    # JWT Settings
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)  # Separate key for JWT signing
+    JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")  # HS256 (symmetric) or RS256 (asymmetric)
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "30"))  # 30 minutes
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))  # 7 days
+    JWT_ISSUER = os.getenv("JWT_ISSUER", "smart-ai-tutor")
+    JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "smart-ai-tutor-api")
+
+    # RSA Keys for RS256 (asymmetric signing)
+    JWT_PRIVATE_KEY_PATH = os.getenv("JWT_PRIVATE_KEY_PATH", "keys/jwt_private.pem")
+    JWT_PUBLIC_KEY_PATH = os.getenv("JWT_PUBLIC_KEY_PATH", "keys/jwt_public.pem")
+
     # Database Settings
+    STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "filesystem")  # Options: filesystem, postgres, dynamodb
     USER_DATA_ROOT = os.getenv("USER_DATA_ROOT", "user_data")
     USERS_FILE = os.getenv("USERS_FILE", "users.json")
     PREV_CHAT_DIR = os.getenv("PREV_CHAT_DIR", "previous_chats")
     QUIZ_RESULTS_DIR = os.getenv("QUIZ_RESULTS_DIR", "quiz_results")
+
+    # PostgreSQL Settings (Phase 2)
+    POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB = os.getenv("POSTGRES_DB", "smart_tutor")
+    POSTGRES_USER = os.getenv("POSTGRES_USER", "smart_tutor_user")
+    POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "dev_password_change_in_prod")
+    POSTGRES_MIN_CONNECTIONS = int(os.getenv("POSTGRES_MIN_CONNECTIONS", "2"))
+    POSTGRES_MAX_CONNECTIONS = int(os.getenv("POSTGRES_MAX_CONNECTIONS", "10"))
+
+    # DynamoDB Settings (Phase 2)
+    DYNAMODB_ENDPOINT = os.getenv("DYNAMODB_ENDPOINT", "http://localhost:8001")  # Local DynamoDB
+    DYNAMODB_REGION = os.getenv("DYNAMODB_REGION", "us-east-1")
+    DYNAMODB_TABLE_CHAT_SESSIONS = os.getenv("DYNAMODB_TABLE_CHAT_SESSIONS", "smart-tutor-chat-sessions")
+    AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID", "")  # For production
+    AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")  # For production
+
+    # Redis Settings (Phase 3)
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6380"))  # Using 6380 for local dev
+    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")  # For production
+    REDIS_SSL = os.getenv("REDIS_SSL", "false").lower() == "true"
+    REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
+    USE_REDIS_CACHE = os.getenv("USE_REDIS_CACHE", "false").lower() == "true"  # Switch to enable Redis
 
     # RAG & AI Settings
     PERSIST_DIR = os.getenv("PERSIST_DIR", "./persisted_index")
@@ -78,6 +116,7 @@ class Config:
     # Evaluation Settings
     EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
+    EVALUATION_DATASET_FILE = os.getenv("EVALUATION_DATASET_FILE", "evaluation_dataset.json")
 
     # Phase 3: Context & Quality Improvements (2025-11-05) - DISABLED
     # Recursive Chunking - Parent-child relationships for better context preservation

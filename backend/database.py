@@ -262,6 +262,14 @@ class UserDatabase:
         except UserNotFoundError:
             return 0
 
+    def reset_login_attempts(self, username: str) -> None:
+        """Reset failed login attempts to zero"""
+        try:
+            self.update_user(username, {'login_attempts': 0})
+            logger.debug(f"Reset login attempts for user: {username}")
+        except UserNotFoundError:
+            pass
+
     def lock_account(self, username: str, until: datetime) -> None:
         """Lock user account until specified time"""
         try:
@@ -403,11 +411,27 @@ _user_db = None
 _chat_db = None
 
 
-def get_user_db() -> UserDatabase:
-    """Get singleton user database instance"""
+def get_user_db():
+    """
+    Get user database instance - returns appropriate backend based on config
+
+    Returns:
+        UserDatabase (legacy) or HybridStorageBackend (production)
+    """
     global _user_db
     if _user_db is None:
-        _user_db = UserDatabase()
+        # Check if we should use the new hybrid backend
+        if config.STORAGE_BACKEND == "hybrid":
+            try:
+                from .services.storage.hybrid import get_hybrid_backend
+                _user_db = get_hybrid_backend()
+                logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
+                _user_db = UserDatabase()
+        else:
+            # Use legacy filesystem backend
+            _user_db = UserDatabase()
     return _user_db
 
 
