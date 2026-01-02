@@ -67,11 +67,13 @@ Ollama.app/
 *.log
 *.tmp
 *.cache
+*.pid
 output.txt
 chunk_analysis.txt
 chunks_output.txt
 query_log.txt
 previous_chats-2
+logs/*.pid
 
 # Test Results
 test_results*.json
