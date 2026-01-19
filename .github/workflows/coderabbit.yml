@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run CodeRabbit
-        uses: coderabbitai/coderabbit-action@v2
+        uses: coderabbitai/coderabbit-action@main
         with:
           config_path: .coderabbit.yaml
         env:
