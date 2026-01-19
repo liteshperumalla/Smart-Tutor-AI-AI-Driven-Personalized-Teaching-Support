@@ -1,55 +1,23 @@
-# CodeRabbit Configuration File
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# CodeRabbit Configuration
 # https://docs.coderabbit.ai/
 
-version: "2"
-
-engines:
-  reviews:
-    path: .coderabbit/coderabbit_reviews.yaml
-
-# Configuration for Python (backend)
-languages:
-  python:
-    path_filters:
-      - "backend/**"
-    review_status: true
-    allow_comments: true
-    high_level_summary: true
-    auto_title-placeholder: "[Python]"
-    collapsewalkthrough: false
-
-  typescript:
-    path_filters:
-      - "frontend/**"
-    review_status: true
-    allow_comments: true
-    high_level_summary: true
-    auto_title-placeholder: "[TypeScript]"
-    collapsewalkthrough: false
-
-# Code review settings
 reviews:
-  profile: "chill"  # balanced between thoroughness and speed
+  profile: chill
   request_changes_workflow: true
   high_level_summary: true
-  auto_title-placeholder: true
+  auto_title_placeholder: "[Review]"
   review_status: true
   poem: false
   collapse_walkthrough: false
   sequence_diagrams: true
 
-# What to review
-review:
   show_variable_types: true
   show_constants: true
   show_function_arguments: true
   show_timing: true
 
-# AI-specific settings
-chat:
-  auto_reply: true
-
-# Categories of checks
 categories:
   security:
     enabled: true
@@ -66,7 +34,12 @@ categories:
   test_coverage:
     enabled: true
 
-# Ignore certain files/directories
+path_filters:
+  python:
+    - backend/**
+  typescript:
+    - frontend/**
+
 ignore:
   - "**/node_modules/**"
   - "**/venv/**"
@@ -74,5 +47,3 @@ ignore:
   - "**/__pycache__/**"
   - "**/dist/**"
   - "**/build/**"
-  - "**/*.min.js"
-  - "**/*.min.css"
