@@ -8,15 +8,33 @@
 
 ## Overview
 
-Smart Tutor AI solves the problem of generic, hallucination-prone AI responses by grounding answers in course-specific materials using Retrieval-Augmented Generation (RAG). Students receive accurate, context-aware responses from verified course content.
+Smart Tutor AI solves the problem of generic, hallucination-prone AI responses by grounding answers in course-specific materials using Retrieval-Augmented Generation (RAG).
+
+### Approach
+
+Leverages Retrieval-Augmented Generation (RAG) with Large Language Models to provide context-aware, personalized teaching support. Combines course-specific materials with advanced language modeling to eliminate LLM hallucinations and ensure factual, relevant responses through a multi-step pipeline:
+
+1. **Document Parsing** - Multi-format support (PDF, PPT, DOCX, CSV, images, YouTube videos)
+2. **Vector Embeddings** - Generate semantic representations using Titan embeddings
+3. **Similarity Search** - Find relevant context from 12,760+ indexed chunks
+4. **Response Generation** - Generate accurate, context-aware responses using AWS Bedrock
+
+### RAG Pipeline
+
+![RAG Pipeline](https://github.com/user-attachments/assets/856dca10-e7c4-42e5-ac78-f39ca13ee96a)
 
 ### Key Capabilities
 
-- **Conversational AI**: Context-aware Q&A using RAG with 12,760+ indexed chunks
-- **Code Sandbox**: AI-powered code generation, explanation, and debugging
-- **Assessment Tools**: Automated quiz generation from course materials
-- **Research Mode**: Multi-format document ingestion and indexing
-- **Collaboration**: Shareable chat links for study groups
+| Feature | Description |
+|---------|-------------|
+| **Conversational AI** | Context-aware Q&A using RAG with 12,760+ indexed chunks |
+| **Code Sandbox** | AI-powered code generation, explanation, and debugging |
+| **Assessment Tools** | Automated quiz generation from course materials |
+| **Research Mode** | Multi-format document ingestion and indexing |
+| **Collaboration** | Shareable chat links for study groups |
+| **Smart Retrieval** | Metadata tagging and context-aware search |
+| **Content Download** | Access to processed materials and generated content |
+| **Continuous Improvement** | Built-in feedback collection and evaluation |
 
 ## Tech Stack
 
@@ -24,10 +42,12 @@ Smart Tutor AI solves the problem of generic, hallucination-prone AI responses b
 |-----------|------------|
 | Frontend | Next.js 16, Tailwind CSS, Lucide React Icons |
 | Backend | FastAPI (Python 3.11), Uvicorn |
-| LLM | AWS Bedrock (Llama 3.2 11B/90B) |
+| LLM Provider | AWS Bedrock (Llama 3.2 11B/90B) |
+| ML/AI | LlamaIndex, HuggingFace Transformers (all-MiniLM-L6-v2) |
 | Vector Store | LlamaIndex with S3 persistence |
 | Database | PostgreSQL (users), DynamoDB (sessions) |
 | Cache | Redis |
+| Evaluation | Evidently AI, Langfuse for real-time evaluation |
 | Infrastructure | Docker Compose, AWS Secrets Manager |
 | Code Review | CodeRabbit AI |
 
@@ -53,7 +73,9 @@ docker compose up -d
 |---------|-----|-------------|
 | Frontend | http://localhost:4000 | Next.js application |
 | Backend API | http://localhost:8010 | FastAPI endpoints |
+| API Docs | http://localhost:8010/docs | Swagger documentation |
 | Health Check | http://localhost:8010/health | Service status |
+| Metrics | http://localhost:8010/metrics | Prometheus metrics |
 | Grafana | http://localhost:3001 | Monitoring dashboards |
 
 ## Project Structure
@@ -67,16 +89,17 @@ smart-tutor-ai/
 │   │   └── main.py            # Application entry
 │   ├── config.py              # Configuration management
 │   ├── bedrock_llm.py         # AWS Bedrock adapter
+│   ├── s3_retriever.py        # S3 vector store
 │   └── Dockerfile
 ├── frontend/                   # Next.js 16 application
 │   ├── src/
-│   │   ├── app/               # App Router pages
-│   │   ├── components/        # React components
+│   │   ├── app/               # App Router pages (chat, quiz, code, etc.)
+│   │   ├── components/        # React components (site-chrome, etc.)
 │   │   ├── hooks/             # Custom hooks (useAuthToken)
-│   │   └── lib/               # API utilities
+│   │   └── lib/               # API utilities, auth
 │   └── Dockerfile
 ├── data/
-│   └── modules/               # Chunked course materials
+│   └── modules/               # Chunked course materials (12,760+ chunks)
 ├── .github/
 │   └── workflows/             # CI/CD pipelines
 ├── docker-compose.yml
@@ -111,17 +134,32 @@ POST /code/explain
 # Debug code
 POST /code/debug
 {"code": "def div(a, b): return a / b", "language": "python"}
+
+# Coding assistant chat
+POST /code/chat
+{"message": "How do I optimize this Python code?", "history": [...]}
+
+# Supported languages
+GET /code/languages
+# Response: {"languages": ["python", "javascript", "java"]}
 ```
 
 ### Chat with Sharing
 
 ```bash
+# List sessions
+GET /chat/sessions
+
 # Create session
 POST /chat/sessions
 {"title": "RAG Pipeline Discussion", "model_id": "bedrock"}
 
-# Share session
-POST /chat/sessions/{id}/share?expires_in_hours=24
+# Add message
+POST /chat/sessions/{session_id}/messages
+{"query": "What is RAG?", "mode": "normal"}
+
+# Share session (expires in 24 hours)
+POST /chat/sessions/{session_id}/share?expires_in_hours=24
 
 # Access shared (no auth required)
 GET /shared/{share_id}
@@ -139,8 +177,8 @@ AWS_REGION=us-east-1
 
 # Application
 SECRET_KEY=...
-DATABASE_URL=...
-REDIS_URL=...
+DATABASE_URL=postgresql://user:pass@localhost:5432/smart_tutor
+REDIS_URL=redis://localhost:6380
 ```
 
 ### Code Execution Safety
@@ -151,7 +189,7 @@ Code execution is **disabled by default** for security. To enable locally:
 export ENABLE_CODE_EXECUTION=true
 ```
 
-Safety measures include:
+**Safety measures:**
 - Rate limiting: 30 requests/min, 10 executions/hour per user
 - Code size limits: 10KB input, 100KB output
 - Dangerous pattern detection (blocks `os`, `subprocess`, `eval`, etc.)
@@ -163,11 +201,13 @@ Safety measures include:
 
 Every PR automatically receives AI-powered reviews covering:
 
-- **Security**: Secrets exposure, injection vulnerabilities
-- **Performance**: Inefficient patterns, resource leaks
-- **Best Practices**: Type hints, docstrings, context managers
-- **Bug Detection**: Edge cases, null handling
-- **Style**: Naming conventions, code organization
+| Category | Checks |
+|----------|--------|
+| **Security** | Secrets exposure, injection vulnerabilities |
+| **Performance** | Inefficient patterns, resource leaks |
+| **Best Practices** | Type hints, docstrings, context managers |
+| **Bug Detection** | Edge cases, null handling |
+| **Style** | Naming conventions, code organization |
 
 ### Pre-commit Hooks
 
@@ -215,27 +255,40 @@ docker compose logs -f backend
                     │  (localhost:8010)   │
                     └──────────┬──────────┘
                                │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-    ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-    │  RAG Pipeline│ │ Code Sandbox │ │  Auth Layer  │
-    │ LlamaIndex   │ │ Bedrock Llama│ │  JWT/Cookies │
-    │ S3 Vectors   │ │ 3.2 (11B)    │ │              │
-    └──────────────┘ └──────────────┘ └──────────────┘
-              │                │
-              └────────────────┼────────────────┘
-                               │
-                    ┌──────────┴──────────┐
-                    │                     │
-                    ▼                     ▼
-         ┌──────────────────┐  ┌──────────────────┐
-         │  AWS Bedrock     │  │  Data Stores     │
-         │  Llama 3.2 90B   │  │  PostgreSQL      │
-         │                  │  │  Redis           │
-         └──────────────────┘  │  DynamoDB        │
-                               └──────────────────┘
+               ┌────────────────┼────────────────┐
+               │                │                │
+               ▼                ▼                ▼
+     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+     │  RAG Pipeline│ │ Code Sandbox │ │  Auth Layer  │
+     │ LlamaIndex   │ │ Bedrock Llama│ │  JWT/Cookies │
+     │ S3 Vectors   │ │ 3.2 (11B)    │ │              │
+     │ 12,760+      │ │ Python/JS/   │ │ Rate limiting│
+     │ chunks       │ │ Java support │ │              │
+     └──────────────┘ └──────────────┘ └──────────────┘
+               │                │
+               └────────────────┼────────────────┘
+                                │
+                     ┌──────────┴──────────┐
+                     │                     │
+                     ▼                     ▼
+          ┌──────────────────┐  ┌──────────────────┐
+          │  AWS Bedrock     │  │  Data Stores     │
+          │  Llama 3.2 90B   │  │  PostgreSQL      │
+          │  (Chat Responses)│  │  Redis           │
+          └──────────────────┘  │  DynamoDB        │
+                                │  S3              │
+                                └──────────────────┘
 ```
+
+## Results & Metrics
+
+| Metric | Value |
+|--------|-------|
+| Document Chunks | 12,760+ indexed |
+| Data Sources | 43 course materials |
+| Formats Supported | PDF, PPTX, DOCX, IPYNB, HTML |
+| Availability | 24/7 continuous support |
+| Academic Deployment | INFO 5731, University of North Texas |
 
 ## Contributing
 
@@ -253,4 +306,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Built for INFO 5731 - Computational Methods for Information Systems at University of North Texas*
+*Built for INFO 5731 - Computational Methods for Information Systems at University of North Texas | Spring 2025*
