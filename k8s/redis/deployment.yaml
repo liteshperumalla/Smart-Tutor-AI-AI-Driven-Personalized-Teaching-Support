@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: smart-ai-tutor
+    component: redis
+    tier: cache
+spec:
+  replicas: 1  # Single instance (use Redis Sentinel for HA in production)
+  selector:
+    matchLabels:
+      app: smart-ai-tutor
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: smart-ai-tutor
+        component: redis
+        tier: cache
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - redis-server
+            - /etc/redis/redis.conf
+
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+
+          # Environment variables
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secrets
+                  key: REDIS_PASSWORD
+
+          # HEALTH CHECKS
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $REDIS_PASSWORD ping | grep PONG
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - redis-cli -a $REDIS_PASSWORD ping | grep PONG
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # RESOURCES
+          resources:
+            requests:
+              cpu: 250m      # 0.25 CPU
+              memory: 512Mi  # 512 MB
+            limits:
+              cpu: 1000m     # 1 CPU max
+              memory: 2Gi    # 2 GB max
+
+          # VOLUME MOUNTS
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+            - name: redis-config
+              mountPath: /etc/redis/redis.conf
+              subPath: redis.conf
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        # Redis Exporter for Prometheus metrics
+        - name: redis-exporter
+          image: oliver006/redis_exporter:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: metrics
+              containerPort: 9121
+              protocol: TCP
+
+          env:
+            - name: REDIS_ADDR
+              value: "redis://localhost:6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secrets
+                  key: REDIS_PASSWORD
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+      # VOLUMES
+      volumes:
+        - name: redis-data
+          emptyDir: {}  # For development; use PVC for production
+        - name: redis-config
+          configMap:
+            name: redis-config

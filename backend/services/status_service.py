@@ -13,6 +13,14 @@ from typing import Any, Dict, Optional
 
 import requests
 
+try:
+    import boto3
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    HAS_BOTO3 = True
+except ImportError:
+    HAS_BOTO3 = False
+
 from backend.config import config
 
 logger = logging.getLogger(__name__)
@@ -51,7 +59,8 @@ def _load_docstore_stats_cached(docstore_mtime: int) -> Dict[str, Any]:
         for entry in entries.values():
             payload = entry.get("__data__", entry)
             metadata = payload.get("metadata", {})
-            file_path = metadata.get("file_path")
+            # Check both file_path (ChromaDB) and source_file (S3)
+            file_path = metadata.get("file_path") or metadata.get("source_file")
             if file_path:
                 file_paths.add(file_path)
 
@@ -65,8 +74,82 @@ def _load_docstore_stats_cached(docstore_mtime: int) -> Dict[str, Any]:
     return stats
 
 
+def _get_s3_knowledge_base_stats() -> Dict[str, Any]:
+    """Get knowledge base stats from S3 when using S3-based vector storage."""
+    import time
+
+    stats: Dict[str, Any] = {
+        "document_count": 0,
+        "source_count": 0,
+        "sample_sources": [],
+        "last_updated": None,
+        "last_updated_display": None,
+        "path": config.S3_DOCUMENTS_BUCKET,
+    }
+
+    if not HAS_BOTO3:
+        stats["error"] = "boto3 not installed"
+        return stats
+
+    try:
+        s3_client = boto3.client("s3")
+        bucket = config.S3_DOCUMENTS_BUCKET
+
+        paginator = s3_client.get_paginator("list_objects_v2")
+        source_files = set()
+        total_objects = 0
+        latest_mtime = 0
+
+        for page in paginator.paginate(Bucket=bucket):
+            for obj in page.get("Contents", []):
+                total_objects += 1
+                key = obj.get("Key", "")
+
+                if key.startswith("chunks/") and key.endswith(".json"):
+                    parts = key.split("/")
+                    if len(parts) >= 3:
+                        source_path = "/".join(parts[1:3])
+                        source_files.add(source_path)
+
+                mtime = obj.get("LastModified", obj.get("LastModified", 0))
+                if isinstance(mtime, datetime.datetime):
+                    mtime_ts = mtime.timestamp()
+                else:
+                    mtime_ts = 0
+                if mtime_ts > latest_mtime:
+                    latest_mtime = mtime_ts
+
+        stats["document_count"] = total_objects
+        stats["source_count"] = len(source_files)
+        stats["sample_sources"] = sorted(list(source_files))[:5]
+        stats["ready"] = total_objects > 0
+
+        if latest_mtime > 0:
+            last_dt = datetime.datetime.fromtimestamp(latest_mtime)
+            stats["last_updated"] = last_dt.isoformat()
+            stats["last_updated_display"] = last_dt.strftime("%b %d, %I:%M %p")
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        if error_code == "NoSuchBucket":
+            stats["error"] = f"Bucket '{bucket}' does not exist"
+        elif error_code == "AccessDenied":
+            stats["error"] = f"Access denied to bucket '{bucket}'"
+        else:
+            stats["error"] = f"S3 error: {error_code}"
+        stats["ready"] = False
+    except Exception as exc:
+        stats["error"] = str(exc)
+        stats["ready"] = False
+
+    return stats
+
+
 def get_knowledge_base_stats() -> Dict[str, Any]:
     """Return persisted index insights consumed by dashboards."""
+    if config.USE_S3_VECTORS:
+        return _get_s3_knowledge_base_stats()
+
     if not DOCSTORE_FILE.exists():
         return {
             "ready": False,
@@ -152,7 +235,9 @@ def check_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
     """Ping the Ollama service (cached every 30 seconds) with Docker-friendly fallbacks."""
     bucket = int(time.time() // 30)
 
-    configured = (base_url or os.getenv("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL).rstrip("/")
+    configured = (
+        base_url or os.getenv("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL
+    ).rstrip("/")
     candidate_hosts = []
 
     def _push(endpoint: str) -> None:
@@ -175,7 +260,9 @@ def check_ollama_status(base_url: Optional[str] = None) -> Dict[str, Any]:
             return status
         attempt_messages.append(f"{endpoint} -> {status.get('error') or 'unreachable'}")
 
-    failure_detail = "; ".join(attempt_messages) if attempt_messages else "No endpoints attempted"
+    failure_detail = (
+        "; ".join(attempt_messages) if attempt_messages else "No endpoints attempted"
+    )
     return {
         "ready": False,
         "models": [],
@@ -190,18 +277,60 @@ def get_system_status() -> Dict[str, Any]:
     kb_stats = get_knowledge_base_stats()
     chroma_ready = _directory_has_files(CHROMA_DB_PATH)
     eval_summary = _get_eval_dataset_summary()
-    ollama_status = check_ollama_status()
+
+    # Only check Ollama if it's the configured LLM provider
+    llm_provider = config.LLM_PROVIDER.lower()
+    ollama_status = None
+    llm_status = {"ready": True, "provider": llm_provider}
+
+    if llm_provider == "ollama":
+        ollama_status = check_ollama_status()
+        llm_status = {
+            "ready": ollama_status.get("ready", False),
+            "provider": "ollama",
+            "models": ollama_status.get("models", []),
+            "error": ollama_status.get("error"),
+        }
+    elif llm_provider == "bedrock":
+        # Bedrock uses IAM credentials - check if configured
+        if not HAS_BOTO3:
+            llm_status = {
+                "ready": False,
+                "provider": "bedrock",
+                "error": "boto3 not installed",
+            }
+        else:
+            try:
+                region = getattr(config, "BEDROCK_REGION", config.AWS_REGION)
+                # Quick validation - don't actually call AWS to avoid timeouts
+                llm_status = {
+                    "ready": bool(region and config.BEDROCK_MODEL_ID),
+                    "provider": "bedrock",
+                    "region": region,
+                    "model": config.BEDROCK_MODEL_ID,
+                }
+            except Exception as e:
+                llm_status = {"ready": False, "provider": "bedrock", "error": str(e)}
 
     issues = []
-    if not kb_stats.get("ready"):
-        issues.append("Persisted index is empty or missing.")
-    if not chroma_ready:
-        issues.append("ChromaDB directory is empty.")
+    # Only check local indexes if NOT using S3 vectors
+    if not config.USE_S3_VECTORS:
+        if not kb_stats.get("ready"):
+            issues.append("Persisted index is empty or missing.")
+        if not chroma_ready:
+            issues.append("ChromaDB directory is empty.")
+    # If using S3 vectors, skip local index checks (they're not needed)
+
     if not eval_summary.get("ready"):
         issues.append("Evaluation dataset is missing or empty.")
-    if not ollama_status.get("ready"):
-        error_detail = ollama_status.get("error")
-        issues.append(f"Ollama unavailable: {error_detail}" if error_detail else "Ollama service not reachable.")
+    if not llm_status.get("ready"):
+        error_detail = llm_status.get("error")
+        provider_name = llm_status.get("provider", "LLM").upper()
+        issues.append(
+            f"{provider_name} unavailable: {error_detail}"
+            if error_detail
+            else f"{provider_name} service not reachable."
+        )
 
     return {
         "knowledge_base": kb_stats,
@@ -210,7 +339,8 @@ def get_system_status() -> Dict[str, Any]:
         "evaluation_ready": eval_summary.get("ready", False),
         "evaluation_cases": eval_summary.get("cases", 0),
         "evaluation": eval_summary,
-        "ollama": ollama_status,
+        "llm": llm_status,
+        "ollama": ollama_status,  # Keep for backward compatibility
         "issues": issues,
     }
 

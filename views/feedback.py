@@ -1,13 +1,30 @@
 import streamlit as st
 import datetime # For timestamping feedback and bug reports
+import json # For user feedback entries
 import os # For file operations
 from utils import render_footer # Assuming render_footer is in utils.py
 import auth
+from user_management import get_user_dir
 auth.initialize_session()
 
 # Define paths for storing feedback and bug reports
 FEEDBACK_LOG_FILE = "feedback_log.txt"
 BUG_REPORTS_LOG_FILE = "bug_reports_log.txt"
+
+def _save_user_feedback_entry(username, entry):
+    if not username or username == "Guest":
+        return
+    try:
+        user_dir = get_user_dir(username)
+        feedback_dir = os.path.join(user_dir, "feedback")
+        os.makedirs(feedback_dir, exist_ok=True)
+        ts_safe = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
+        entry_type = entry.get("type", "feedback")
+        filename = f"{entry_type}_{ts_safe}.json"
+        with open(os.path.join(feedback_dir, filename), "w", encoding="utf-8") as f:
+            json.dump(entry, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Warning: Failed to save user feedback entry: {e}")
 
 def render():
     """Renders the Feedback and Bug Report page."""
@@ -51,6 +68,17 @@ def render():
                             f.write(f"Category: {feedback_category}\n")
                             f.write(f"Feedback:\n{feedback_text}\n")
                             f.write(f"--- End of Entry ---\n")
+                        _save_user_feedback_entry(
+                            st.session_state.get("user_name"),
+                            {
+                                "timestamp": datetime.datetime.utcnow().isoformat(),
+                                "type": "feedback",
+                                "message": feedback_text,
+                                "category": feedback_category,
+                                "name": feedback_name or "",
+                                "email": feedback_email or "",
+                            },
+                        )
                         st.success("✅ Thank you for your valuable feedback! It has been submitted.")
                     except Exception as e:
                         st.error(f"⚠️ An error occurred while saving your feedback: {e}")
@@ -109,6 +137,19 @@ def render():
                             if steps_to_reproduce.strip():
                                 f.write(f"Steps to Reproduce:\n{steps_to_reproduce}\n")
                             f.write(f"--- End of Entry ---\n")
+                        _save_user_feedback_entry(
+                            st.session_state.get("user_name"),
+                            {
+                                "timestamp": datetime.datetime.utcnow().isoformat(),
+                                "type": "bug",
+                                "message": bug_description,
+                                "page_feature": bug_page_feature,
+                                "severity": bug_severity,
+                                "steps": steps_to_reproduce or "",
+                                "name": bug_reporter_name or "",
+                                "email": bug_reporter_email or "",
+                            },
+                        )
                         st.success("✅ Thank you for reporting the bug! We'll look into it.")
                     except Exception as e:
                         st.error(f"⚠️ An error occurred while saving your bug report: {e}")

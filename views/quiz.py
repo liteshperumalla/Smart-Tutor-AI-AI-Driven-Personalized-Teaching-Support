@@ -28,7 +28,11 @@ def get_knowledge_base_structure():
     try:
         index = load_index_from_storage(storage_context)
         docstore = index.docstore
-        all_file_paths = [doc.metadata.get("file_path") for doc in docstore.docs.values() if doc.metadata.get("file_path")]
+        all_file_paths = [
+            doc.metadata.get("file_path") or doc.metadata.get("source_file")
+            for doc in docstore.docs.values()
+            if doc.metadata.get("file_path") or doc.metadata.get("source_file")
+        ]
         for file_path_str in all_file_paths:
             p = Path(file_path_str)
             folder = str(p.parent)
@@ -95,7 +99,8 @@ def render():
         "quiz_questions_list": [], "quiz_options_list": [], "quiz_correct_answers_list": [],
         "quiz_user_answers_list": [], "quiz_feedback_list": [], "quiz_current_q_index": 0,
         "quiz_score": 0, "quiz_started": False, "quiz_completed": False,
-        "session_generated_question_texts": set(), "quiz_selected_folders": []
+        "session_generated_question_texts": set(), "quiz_selected_folders": [],
+        "quiz_result_saved": False
     }
     for key, default_value in quiz_states.items():
         if key not in st.session_state:
@@ -152,8 +157,20 @@ def render():
                             st.error("Selected folders do not contain any indexed files.")
                             return
                         
-                        index = load_index_from_storage(get_storage_context())
-                        filters = MetadataFilters(filters=[ExactMatchFilter(key="file_path", value=path) for path in files_for_quiz], condition="or")
+                        storage_context = get_storage_context()
+                        if not storage_context:
+                            st.error("Storage context is not available for loading the index.")
+                            return
+                        index = load_index_from_storage(storage_context)
+                        filters = MetadataFilters(
+                            filters=[
+                                ExactMatchFilter(key="file_path", value=path) for path in files_for_quiz
+                            ]
+                            + [
+                                ExactMatchFilter(key="source_file", value=path) for path in files_for_quiz
+                            ],
+                            condition="or",
+                        )
                         
                         filtered_retriever = index.as_retriever(filters=filters, similarity_top_k=3) # Context for question & explanation
                         synthesizer = get_response_synthesizer(response_mode="compact")
@@ -297,7 +314,7 @@ def render():
         else: st.warning("Good effort. Reviewing your answers might help!")
 
         # Save quiz result using new user file management system
-        if total > 0:
+        if total > 0 and not st.session_state.get("quiz_result_saved"):
             questions_data = []
             for i in range(total):
                 if i < len(st.session_state.quiz_questions_list) and \
@@ -314,9 +331,11 @@ def render():
             
             selected_folders = st.session_state.get("quiz_selected_folders", [])
             save_success = save_quiz_result(user_id, score, total, selected_folders, questions_data)
-            
+
             if not save_success:
                 st.warning("Quiz completed but results could not be saved to your profile.")
+            else:
+                st.session_state.quiz_result_saved = True
 
         if total > 0:
             st.markdown("---")

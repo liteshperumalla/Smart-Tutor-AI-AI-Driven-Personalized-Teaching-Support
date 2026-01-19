@@ -18,10 +18,11 @@ from .logger import get_logger
 from .database import get_user_db
 from .validators import PasswordValidator, UserLogin, UserRegistration
 from .jwt_service import get_jwt_service
+from .jwt_blacklist import init_jwt_blacklist
 from .exceptions import (
     InvalidCredentialsError, UserAlreadyExistsError,
     AccountLockedError, PasswordValidationError,
-    RateLimitError, SessionExpiredError
+    RateLimitError, SessionExpiredError, TokenInvalidError
 )
 
 logger = get_logger(__name__)
@@ -35,6 +36,21 @@ class AuthService:
         self.sessions: Dict[str, Dict[str, Any]] = {}  # Keep for backward compatibility during migration
         self._rate_limiter: Dict[str, list] = {}
         self.jwt_service = get_jwt_service()
+
+        # Initialize JWT blacklist with Redis if available
+        try:
+            if config.USE_REDIS_CACHE:
+                from .redis_cache import RedisCache
+                redis_cache = RedisCache()
+                self.jwt_blacklist = init_jwt_blacklist(redis_cache=redis_cache)
+                logger.info("JWT Blacklist initialized with Redis support")
+            else:
+                self.jwt_blacklist = init_jwt_blacklist(redis_cache=None)
+                logger.warning("JWT Blacklist initialized without Redis (in-memory fallback)")
+        except Exception as e:
+            logger.error(f"Failed to initialize JWT Blacklist: {e}")
+            self.jwt_blacklist = init_jwt_blacklist(redis_cache=None)
+            logger.warning("JWT Blacklist initialized with in-memory fallback")
 
     def _check_rate_limit(self, identifier: str) -> None:
         """
@@ -120,7 +136,8 @@ class AuthService:
             logger.warning(f"Account locked due to failed attempts: {username}")
 
     def register_user(self, username: str, password: str,
-                     confirm_password: str, email: Optional[str] = None) -> Dict[str, Any]:
+                     confirm_password: str, email: Optional[str] = None,
+                     full_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Register a new user
 
@@ -129,6 +146,7 @@ class AuthService:
             password: Password
             confirm_password: Password confirmation
             email: Optional email address
+            full_name: Optional full name
 
         Returns:
             User data (without password)
@@ -160,14 +178,15 @@ class AuthService:
         # Create user
         user = self.user_db.create_user(
             username=username,
-            hashed_password=hashed_password,
-            email=email or ''
+            password_hash=hashed_password,
+            email=email or '',
+            full_name=full_name or username
         )
 
         logger.info(f"User registered successfully: {username}")
 
         # Return user data without password
-        safe_user = {k: v for k, v in user.items() if k != 'hashed_password'}
+        safe_user = {k: v for k, v in user.items() if k not in ['password_hash', 'hashed_password']}
         safe_user['username'] = username
         return safe_user
 
@@ -204,7 +223,8 @@ class AuthService:
             raise InvalidCredentialsError()
 
         # Verify password
-        if not self._verify_password(password, user['hashed_password']):
+        password_hash = user.get("password_hash") or user.get("hashed_password")
+        if not password_hash or not self._verify_password(password, password_hash):
             logger.warning(f"Invalid password for user: {username}")
             self._handle_failed_login(username)
             raise InvalidCredentialsError()
@@ -223,7 +243,7 @@ class AuthService:
         logger.info(f"User logged in successfully: {username}")
 
         # Return tokens and user data without password
-        safe_user = {k: v for k, v in user.items() if k != 'hashed_password'}
+        safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
         safe_user['username'] = username
 
         tokens = {
@@ -270,6 +290,9 @@ class AuthService:
             logger.error(f"Failed to verify Google ID token: {exc}")
             raise InvalidCredentialsError("Invalid Google ID token.")
 
+        if not id_info.get("email_verified"):
+            raise InvalidCredentialsError("Google account email is not verified.")
+
         email = id_info.get("email")
         username = email or f"google_{id_info.get('sub')}"
         if not username:
@@ -279,7 +302,7 @@ class AuthService:
             hashed_password = self._hash_password(secrets.token_urlsafe(16))
             self.user_db.create_user(
                 username=username,
-                hashed_password=hashed_password,
+                password_hash=hashed_password,
                 email=email or "",
             )
             logger.info(f"Created new Google-linked user: {username}")
@@ -291,7 +314,7 @@ class AuthService:
         refresh_token = self.jwt_service.create_refresh_token(username=username, email=email or "")
 
         user = self.user_db.get_user(username)
-        safe_user = {k: v for k, v in user.items() if k != 'hashed_password'}
+        safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
         safe_user['username'] = username
 
         tokens = {
@@ -327,6 +350,11 @@ class AuthService:
         """
         # First try JWT validation
         try:
+            # Check if token is blacklisted (logged out)
+            if self.jwt_blacklist and self.jwt_blacklist.is_blacklisted(session_token):
+                logger.warning("Attempt to use blacklisted (logged out) token")
+                raise SessionExpiredError("Token has been revoked")
+
             payload = self.jwt_service.verify_token(session_token, token_type="access")
             username = payload.get("sub")
 
@@ -338,7 +366,7 @@ class AuthService:
             if not user:
                 raise SessionExpiredError("User not found")
 
-            safe_user = {k: v for k, v in user.items() if k != 'hashed_password'}
+            safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
             safe_user['username'] = username
             safe_user['email'] = payload.get("email", "")
             return safe_user
@@ -358,7 +386,7 @@ class AuthService:
             username = session['username']
             user = self.user_db.get_user(username)
 
-            safe_user = {k: v for k, v in user.items() if k != 'hashed_password'}
+            safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
             safe_user['username'] = username
             return safe_user
 
@@ -390,21 +418,45 @@ class AuthService:
             raise SessionExpiredError("Invalid refresh token")
 
     def logout(self, session_token: str) -> None:
-        """Logout and invalidate session"""
-        # For JWT tokens, we can't truly invalidate them without a token blacklist
-        # For now, we just remove legacy sessions if they exist
+        """
+        Logout and invalidate session.
+        Adds JWT token to blacklist to prevent further use.
+        """
+        # Remove legacy sessions if they exist
         if session_token in self.sessions:
             username = self.sessions[session_token]['username']
             del self.sessions[session_token]
-            logger.info(f"User logged out: {username}")
-        else:
-            # Try to extract username from JWT for logging
-            try:
-                payload = self.jwt_service.verify_token(session_token, token_type="access")
-                username = payload.get("sub", "unknown")
-                logger.info(f"User logged out: {username}")
-            except:
-                logger.info("User logged out (token already expired or invalid)")
+            logger.info(f"User logged out (legacy session): {username}")
+            return
+
+        # For JWT tokens, add to blacklist
+        try:
+            # Verify the token first to get its expiration
+            payload = self.jwt_service.verify_token(session_token, token_type="access")
+            username = payload.get("sub", "unknown")
+
+            # Calculate remaining time until token expiration
+            exp = payload.get("exp")
+            if exp:
+                expiry_seconds = max(int(exp - datetime.now().timestamp()), 0)
+            else:
+                # Default to access token expiry if not found
+                expiry_seconds = config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+
+            # Add to blacklist
+            if self.jwt_blacklist:
+                self.jwt_blacklist.blacklist_token(session_token, expiry_seconds)
+                logger.info(f"User logged out and token blacklisted: {username}")
+            else:
+                logger.warning(f"JWT blacklist not available, token not revoked for: {username}")
+
+        except SessionExpiredError:
+            # Token already expired, no need to blacklist
+            logger.info("User logged out (token already expired)")
+        except Exception as e:
+            # Log error but don't fail the logout
+            logger.error(f"Error during logout: {e}")
+            logger.info("User logged out (token may not be blacklisted)")
 
     def change_password(self, username: str, old_password: str, new_password: str) -> None:
         """
@@ -421,7 +473,8 @@ class AuthService:
         """
         # Verify old password
         user = self.user_db.get_user(username)
-        if not self._verify_password(old_password, user['hashed_password']):
+        password_hash = user.get("password_hash") or user.get("hashed_password")
+        if not password_hash or not self._verify_password(old_password, password_hash):
             logger.warning(f"Failed password change attempt for: {username}")
             raise InvalidCredentialsError("Current password is incorrect")
 
@@ -430,7 +483,7 @@ class AuthService:
 
         # Hash and update
         hashed_password = self._hash_password(new_password)
-        self.user_db.update_user(username, {'hashed_password': hashed_password})
+        self.user_db.update_user(username, {'password_hash': hashed_password})
 
         logger.info(f"Password changed successfully for: {username}")
 
@@ -445,21 +498,216 @@ class AuthService:
 
         Note: Reset token validation should be implemented based on your requirements
         """
-        # TODO: Implement token validation
-        # For now, this is a placeholder
+        # Validate reset token
+        user = self.user_db.get_user_safe(username)
+        if not user:
+            raise TokenInvalidError("Invalid password reset token")
+
+        metadata = user.get("metadata") or {}
+        token_info = metadata.get("password_reset") if isinstance(metadata, dict) else None
+        if not token_info:
+            raise TokenInvalidError("Invalid password reset token")
+
+        token_hash = token_info.get("token_hash")
+        expires_at = token_info.get("expires_at")
+        if not token_hash or not expires_at:
+            raise TokenInvalidError("Invalid password reset token")
+
+        try:
+            expires_dt = datetime.fromisoformat(expires_at)
+        except Exception:
+            raise TokenInvalidError("Invalid password reset token")
+
+        if datetime.utcnow() > expires_dt:
+            raise TokenInvalidError("Password reset token has expired")
+
+        provided_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
+        if not secrets.compare_digest(provided_hash, token_hash):
+            raise TokenInvalidError("Invalid password reset token")
 
         # Validate new password
         PasswordValidator.validate_or_raise(new_password)
 
         # Hash and update
         hashed_password = self._hash_password(new_password)
+        if isinstance(metadata, dict):
+            metadata.pop("password_reset", None)
+
         self.user_db.update_user(username, {
-            'hashed_password': hashed_password,
+            'password_hash': hashed_password,
             'login_attempts': 0,
-            'locked_until': None
+            'locked_until': None,
+            'metadata': metadata if isinstance(metadata, dict) else {},
         })
 
         logger.info(f"Password reset for: {username}")
+
+    def create_password_reset_token(self, username: str) -> str:
+        """Generate and store a password reset token."""
+        user = self.user_db.get_user_safe(username)
+        if not user:
+            raise InvalidCredentialsError("User not found")
+
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        expires_at = (datetime.utcnow() + timedelta(seconds=config.PASSWORD_RESET_TOKEN_TTL_SECONDS)).isoformat()
+
+        metadata = user.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata["password_reset"] = {
+            "token_hash": token_hash,
+            "expires_at": expires_at,
+        }
+
+        self.user_db.update_user(username, {"metadata": metadata})
+        return token
+
+    def request_password_reset(
+        self,
+        username: Optional[str] = None,
+        email: Optional[str] = None,
+        redirect_url: Optional[str] = None,
+    ) -> None:
+        """Generate a reset token and send it via email (if possible)."""
+        user = self._resolve_user_for_reset(username=username, email=email)
+        if not user:
+            return
+
+        user_email = user.get("email") or ""
+        if not user_email:
+            logger.warning("Password reset requested but no email is set for user")
+            return
+
+        token = self.create_password_reset_token(user["username"])
+        self._send_password_reset_email(
+            to_email=user_email,
+            username=user["username"],
+            token=token,
+            redirect_url=redirect_url,
+        )
+
+    def _resolve_user_for_reset(
+        self, username: Optional[str], email: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
+        if username:
+            user = self.user_db.get_user_safe(username)
+            if user:
+                user["username"] = username
+                if email and user.get("email") and user.get("email") != email:
+                    return None
+                return user
+            return None
+
+        if email:
+            user = None
+            lookup = getattr(self.user_db, "get_user_by_email", None)
+            if callable(lookup):
+                user = lookup(email)
+            if user and "username" in user:
+                return user
+        return None
+
+    def _send_password_reset_email(
+        self,
+        to_email: str,
+        username: str,
+        token: str,
+        redirect_url: Optional[str],
+    ) -> None:
+        if not config.SMTP_SERVER or not config.SMTP_USERNAME or not config.SMTP_PASSWORD:
+            raise RuntimeError("SMTP is not configured")
+
+        from_email = config.EMAIL_FROM or config.SMTP_USERNAME
+        expires_minutes = int(config.PASSWORD_RESET_TOKEN_TTL_SECONDS / 60)
+        reset_link = ""
+        if redirect_url:
+            from urllib.parse import urlparse
+            parsed_url = urlparse(redirect_url)
+            if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in config.ALLOWED_REDIRECT_DOMAINS:
+                separator = "&" if "?" in redirect_url else "?"
+                reset_link = f"{redirect_url}{separator}token={token}&username={username}"
+            else:
+                logger.warning(f"Invalid redirect_url provided for password reset: {redirect_url}")
+
+        subject = "Smart AI Tutor Password Reset"
+        if reset_link:
+            body = (
+                f"Hello {username},\n\n"
+                "We received a request to reset your Smart AI Tutor password.\n"
+                f"Reset your password using this link (expires in {expires_minutes} minutes):\n"
+                f"{reset_link}\n\n"
+                "If you didn't request this, you can ignore this email."
+            )
+            html_body = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; background: #ffffff; color: #000000; padding: 24px;">
+                <div style="max-width: 600px; margin: 0 auto; border: 1px solid #000000; padding: 24px;">
+                  <h2 style="margin: 0 0 12px;">Reset your Smart AI Tutor password</h2>
+                  <p style="margin: 0 0 16px;">Hi {username},</p>
+                  <p style="margin: 0 0 16px;">
+                    We received a request to reset your password. This link expires in {expires_minutes} minutes.
+                  </p>
+                  <p style="margin: 0 0 24px;">
+                    <a href="{reset_link}" style="background: #000000; color: #ffffff; padding: 12px 18px; text-decoration: none;">
+                      Reset password
+                    </a>
+                  </p>
+                  <p style="margin: 0 0 8px; font-size: 12px; color: #000000;">
+                    If the button does not work, copy and paste this link:
+                  </p>
+                  <p style="margin: 0 0 16px; font-size: 12px; color: #000000; word-break: break-all;">
+                    {reset_link}
+                  </p>
+                  <p style="margin: 0; font-size: 12px; color: #000000;">
+                    If you did not request this, you can ignore this email.
+                  </p>
+                </div>
+              </body>
+            </html>
+            """
+        else:
+            body = (
+                f"Hello {username},\n\n"
+                "We received a request to reset your Smart AI Tutor password.\n"
+                f"Use the token below (expires in {expires_minutes} minutes):\n"
+                f"{token}\n\n"
+                "If you didn't request this, you can ignore this email."
+            )
+            html_body = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; background: #ffffff; color: #000000; padding: 24px;">
+                <div style="max-width: 600px; margin: 0 auto; border: 1px solid #000000; padding: 24px;">
+                  <h2 style="margin: 0 0 12px;">Reset your Smart AI Tutor password</h2>
+                  <p style="margin: 0 0 16px;">Hi {username},</p>
+                  <p style="margin: 0 0 16px;">
+                    Use the token below within {expires_minutes} minutes:
+                  </p>
+                  <p style="margin: 0 0 24px; font-size: 20px; font-weight: 600; letter-spacing: 0.04em;">
+                    {token}
+                  </p>
+                  <p style="margin: 0; font-size: 12px; color: #000000;">
+                    If you did not request this, you can ignore this email.
+                  </p>
+                </div>
+              </body>
+            </html>
+            """
+
+        from email.message import EmailMessage
+        import smtplib
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = from_email
+        msg["To"] = to_email
+        msg.set_content(body)
+        msg.add_alternative(html_body, subtype="html")
+
+        with smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT) as server:
+            server.starttls()
+            server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
+            server.send_message(msg)
 
     def clean_expired_sessions(self) -> int:
         """Clean up expired sessions"""

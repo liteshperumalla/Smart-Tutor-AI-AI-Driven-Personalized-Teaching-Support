@@ -21,6 +21,10 @@ import {
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import { PageShell } from "@/components/page-shell";
+import {
+  User, Camera, Mail, Phone, Calendar, Trophy, Clock,
+  MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote
+} from "lucide-react";
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -35,7 +39,11 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [profileForm, setProfileForm] = useState({
+  const [profileForm, setProfileForm] = useState<{
+    display_name: string;
+    phone_number: string;
+    theme: "light" | "dark";
+  }>({
     display_name: "",
     phone_number: "",
     theme: "light",
@@ -246,8 +254,72 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <PageShell as="section">
-        <p className="text-sm text-zinc-600">Loading your profile…</p>
+      <PageShell className="max-w-5xl" contentClassName="gap-8">
+        <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-pulse">
+          <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+          <div className="relative z-10 space-y-4">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300 mb-4">
+              <div className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
+              <div className="h-4 w-20 bg-indigo-200 dark:bg-indigo-800 rounded"></div>
+            </div>
+            <div className="h-10 w-64 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+            <div className="h-6 w-96 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+          </div>
+        </header>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
+            <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2"></div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="h-32 w-32 rounded-full bg-zinc-200 dark:bg-zinc-700"></div>
+              <div className="h-10 w-full bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+            </div>
+          </article>
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
+            <div className="h-4 w-32 bg-zinc-100 dark:bg-zinc-800 rounded mb-4"></div>
+            <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2"></div>
+            <div className="h-4 w-3/4 bg-zinc-100 dark:bg-zinc-800 rounded mb-4"></div>
+            <div className="h-4 w-24 bg-zinc-100 dark:bg-zinc-800 rounded"></div>
+          </article>
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
+            <div className="grid gap-3 text-sm">
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                <div className="h-3 w-16 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
+                <div className="h-6 w-12 bg-zinc-300 dark:bg-zinc-500 rounded"></div>
+              </div>
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
+                <div className="h-6 w-12 bg-zinc-300 dark:bg-zinc-500 rounded"></div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                  <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
+                  <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-700 rounded"></div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                  <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
+                  <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-700 rounded"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </PageShell>
     );
   }
@@ -268,9 +340,22 @@ export default function ProfilePage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8">
-      <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Profile</p>
-        <h1 className="text-3xl font-semibold text-zinc-950">Manage your Smart AI Tutor account</h1>
+      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300 mb-4">
+            <User className="h-4 w-4" />
+            Profile
+          </div>
+          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+            Manage your account
+          </h1>
+          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            Update your profile, track your progress, and manage your settings
+          </p>
+        </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
@@ -305,73 +390,80 @@ export default function ProfilePage() {
               {pictureStatus.success && <p className="text-xs text-emerald-500">{pictureStatus.success}</p>}
               <button
                 type="submit"
-                className="w-full rounded-full border border-zinc-200 px-4 py-2 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-600 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900"
+                className="w-full btn-secondary text-xs disabled:opacity-60 disabled:hover:scale-100"
                 disabled={pictureStatus.loading}
               >
-                {pictureStatus.loading ? "Uploading…" : "Save photo"}
+                {pictureStatus.loading ? (
+                  <><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Uploading…</>
+                ) : (
+                  "Save photo"
+                )}
               </button>
             </form>
           </div>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-zinc-900">Account overview</h2>
-              <p className="text-sm text-zinc-500">Signed in as {profile.user.username}</p>
+              <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Account overview</h2>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">Signed in as {profile.user.username}</p>
             </div>
-            <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white">
+            <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white dark:bg-white dark:text-zinc-900">
               {profile.user.role}
             </span>
           </div>
-          <dl className="mt-4 space-y-2 text-sm text-zinc-600">
+          <dl className="mt-4 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
             <div className="flex justify-between">
-              <dt className="text-zinc-500">Email</dt>
-              <dd className="font-medium text-zinc-900">{profile.user.email || "Not set"}</dd>
+              <dt className="text-zinc-500 dark:text-zinc-400">Email</dt>
+              <dd className="font-medium text-zinc-900 dark:text-white">{profile.user.email || "Not set"}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-zinc-500">Last login</dt>
-              <dd className="font-medium text-zinc-900">{formattedLastLogin}</dd>
+              <dt className="text-zinc-500 dark:text-zinc-400">Last login</dt>
+              <dd className="font-medium text-zinc-900 dark:text-white">{formattedLastLogin}</dd>
             </div>
           </dl>
-          <Link href="/" className="mt-6 inline-flex items-center text-sm font-medium text-blue-600">
+          <Link href="/" className="mt-6 inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
             Back to home →
           </Link>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-zinc-900">Recent highlights</h2>
-          <div className="mt-4 grid gap-3 text-sm text-zinc-600">
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Quizzes</p>
-              <p className="text-2xl font-semibold text-zinc-900">{profile.recent_quizzes.length}</p>
-              <p className="text-xs text-zinc-500">Stored results in the last uploads folder.</p>
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Recent highlights</h2>
+          <div className="mt-4 grid gap-3 text-sm text-zinc-600 dark:text-zinc-400">
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">Quizzes</p>
+              <p className="text-2xl font-semibold text-zinc-900 dark:text-white">{profile.recent_quizzes.length}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">Stored results in the last uploads folder.</p>
             </div>
-            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400">Appointments</p>
-              <p className="text-2xl font-semibold text-zinc-900">{profile.recent_appointments.length}</p>
-              <p className="text-xs text-zinc-500">Showing the five most recent requests.</p>
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">Appointments</p>
+              <p className="text-2xl font-semibold text-zinc-900 dark:text-white">{profile.recent_appointments.length}</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">Showing the five most recent requests.</p>
             </div>
           </div>
         </article>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900">Full quiz history</h2>
-            <span className="text-xs text-zinc-500">{quizHistory.length} total</span>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Full quiz history</h2>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">{quizHistory.length} total</span>
           </div>
           <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
-            {quizHistory.length === 0 && <p className="text-sm text-zinc-500">No quiz attempts recorded.</p>}
+            {quizHistory.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No quiz attempts recorded.</p>}
             {quizHistory.map((quiz) => (
-              <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm">
-                <p className="font-semibold text-zinc-900">
+              <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <p className="font-semibold text-zinc-900 dark:text-white">
                   {quiz.score}/{quiz.total_questions} · {quiz.percentage.toFixed(1)}%
                 </p>
-                <p className="text-xs text-zinc-500">{formatDate(quiz.created_at)}</p>
-                {quiz.metadata?.selected_folders && Array.isArray(quiz.metadata.selected_folders) && (
-                  <p className="text-xs text-zinc-500">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(quiz.created_at)}</p>
+                {quiz.metadata &&
+                  "selected_folders" in quiz.metadata &&
+                  Array.isArray(quiz.metadata.selected_folders) &&
+                  quiz.metadata.selected_folders.every((item: unknown) => typeof item === "string") && (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     Folders: {(quiz.metadata.selected_folders as string[]).join(", ")}
                   </p>
                 )}
@@ -380,61 +472,61 @@ export default function ProfilePage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-900">All appointment requests</h2>
-            <span className="text-xs text-zinc-500">{appointmentHistory.length} total</span>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">All appointment requests</h2>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">{appointmentHistory.length} total</span>
           </div>
           <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
-            {appointmentHistory.length === 0 && <p className="text-sm text-zinc-500">No appointments submitted.</p>}
+            {appointmentHistory.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No appointments submitted.</p>}
             {appointmentHistory.map((appt) => (
-              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm">
-                <p className="font-semibold text-zinc-900">
+              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <p className="font-semibold text-zinc-900 dark:text-white">
                   {appt.preferred_date} · {appt.preferred_time}
                 </p>
-                <p className="text-xs text-zinc-500">{appt.appointment_with}</p>
-                <p className="text-xs text-zinc-500">Reason: {appt.primary_reason}</p>
-                <p className="text-xs text-zinc-500">Status: {appt.status}</p>
-                {appt.additional_details && <p className="text-xs text-zinc-500">{appt.additional_details}</p>}
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">{appt.appointment_with}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Reason: {appt.primary_reason}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">Status: {appt.status}</p>
+                {appt.additional_details && <p className="text-xs text-zinc-500 dark:text-zinc-400">{appt.additional_details}</p>}
               </div>
             ))}
           </div>
         </article>
       </section>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">Feedback submissions</h2>
-          <Link href="/feedback" className="text-sm font-medium text-blue-600">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Feedback submissions</h2>
+          <Link href="/feedback" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
             Share more feedback
           </Link>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">General feedback</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">General feedback</p>
             <div className="mt-2 space-y-3 max-h-[260px] overflow-auto pr-1">
-              {feedbackHistory.feedback.length === 0 && <p className="text-sm text-zinc-500">No submissions yet.</p>}
+              {feedbackHistory.feedback.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No submissions yet.</p>}
               {feedbackHistory.feedback.map((entry, index) => (
-                <div key={`fb-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm">
-                  <p className="font-semibold text-zinc-900">{entry.category}</p>
-                  <p className="text-xs text-zinc-500">{formatDate(entry.created_at)}</p>
-                  <p className="text-xs text-zinc-600">{entry.message}</p>
+                <div key={`fb-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                  <p className="font-semibold text-zinc-900 dark:text-white">{entry.category}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(entry.created_at)}</p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300">{entry.message}</p>
                 </div>
               ))}
             </div>
           </div>
           <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Bug reports</p>
+            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">Bug reports</p>
             <div className="mt-2 space-y-3 max-h-[260px] overflow-auto pr-1">
-              {feedbackHistory.bugs.length === 0 && <p className="text-sm text-zinc-500">No bugs reported.</p>}
+              {feedbackHistory.bugs.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No bugs reported.</p>}
               {feedbackHistory.bugs.map((entry, index) => (
-                <div key={`bug-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm">
-                  <p className="font-semibold text-zinc-900">{entry.feature}</p>
-                  <p className="text-xs text-zinc-500">
+                <div key={`bug-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                  <p className="font-semibold text-zinc-900 dark:text-white">{entry.feature}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     Severity: {entry.severity} · {formatDate(entry.created_at)}
                   </p>
-                  <p className="text-xs text-zinc-600">{entry.description}</p>
-                  {entry.steps && <p className="text-xs text-zinc-500">Steps: {entry.steps}</p>}
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300">{entry.description}</p>
+                  {entry.steps && <p className="text-xs text-zinc-500 dark:text-zinc-400">Steps: {entry.steps}</p>}
                 </div>
               ))}
             </div>
@@ -443,8 +535,8 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-zinc-900">Contact details & theme</h2>
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Contact details & theme</h2>
           <form className="mt-4 space-y-4" onSubmit={handleProfileSubmit}>
             <input
               name="display_name"
@@ -464,25 +556,29 @@ export default function ProfilePage() {
               name="theme"
               className="input"
               value={profileForm.theme}
-              onChange={(event) => setProfileForm((prev) => ({ ...prev, theme: event.target.value }))}
+              onChange={(event) => setProfileForm((prev) => ({ ...prev, theme: event.target.value as "light" | "dark" }))}
             >
               <option value="light">Light mode</option>
               <option value="dark">Dark mode</option>
             </select>
-            {profileStatus.error && <p className="text-sm text-red-600">{profileStatus.error}</p>}
-            {profileStatus.message && <p className="text-sm text-emerald-600">{profileStatus.message}</p>}
+            {profileStatus.error && <p className="text-sm text-red-600 dark:text-red-400">{profileStatus.error}</p>}
+            {profileStatus.message && <p className="text-sm text-emerald-600 dark:text-emerald-400">{profileStatus.message}</p>}
             <button
               type="submit"
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="btn-primary disabled:opacity-60 disabled:hover:scale-100"
               disabled={profileStatus.saving}
             >
-              {profileStatus.saving ? "Saving…" : "Save changes"}
+              {profileStatus.saving ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Saving…</>
+              ) : (
+                "Save changes"
+              )}
             </button>
           </form>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-zinc-900">Personal notes</h2>
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Personal notes</h2>
           <form className="mt-4 space-y-3" onSubmit={handleNotesSave}>
             <textarea
               className="input min-h-[200px]"
@@ -490,30 +586,34 @@ export default function ProfilePage() {
               onChange={(event) => setNotes(event.target.value)}
               placeholder="Jot down reminders or references—stored locally under your user folder."
             />
-            {notesStatus.error && <p className="text-sm text-red-600">{notesStatus.error}</p>}
-            {notesStatus.message && <p className="text-sm text-emerald-600">{notesStatus.message}</p>}
+            {notesStatus.error && <p className="text-sm text-red-600 dark:text-red-400">{notesStatus.error}</p>}
+            {notesStatus.message && <p className="text-sm text-emerald-600 dark:text-emerald-400">{notesStatus.message}</p>}
             <button
               type="submit"
-              className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white disabled:opacity-60"
+              className="btn-secondary disabled:opacity-60 disabled:hover:scale-100"
               disabled={notesStatus.saving}
             >
-              {notesStatus.saving ? "Saving…" : "Save notes"}
+              {notesStatus.saving ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Saving…</>
+              ) : (
+                "Save notes"
+              )}
             </button>
           </form>
         </article>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-zinc-900">Recent quiz history</h2>
-            <Link href="/quiz" className="text-sm font-medium text-blue-600">
+            <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Recent quiz history</h2>
+            <Link href="/quiz" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
               Open quiz builder
             </Link>
           </div>
           <div className="mt-4 space-y-3">
             {profile.recent_quizzes.length === 0 && (
-              <p className="text-sm text-zinc-500">No quiz submissions yet.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">No quiz submissions yet.</p>
             )}
             {profile.recent_quizzes.map((quiz) => {
               const selectedFolders =
@@ -521,13 +621,13 @@ export default function ProfilePage() {
                   ? (quiz.metadata["selected_folders"] as string[])
                   : null;
               return (
-                <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700">
-                  <p className="font-semibold text-zinc-900">
+                <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  <p className="font-semibold text-zinc-900 dark:text-white">
                     {quiz.score}/{quiz.total_questions} · {quiz.percentage.toFixed(1)}%
                   </p>
-                  <p className="text-xs text-zinc-500">{formatDate(quiz.created_at)}</p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(quiz.created_at)}</p>
                   {selectedFolders && selectedFolders.length > 0 && (
-                    <p className="mt-1 text-xs text-zinc-500">Folders: {selectedFolders.join(", ")}</p>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Folders: {selectedFolders.join(", ")}</p>
                   )}
                 </div>
               );
@@ -535,24 +635,24 @@ export default function ProfilePage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-zinc-900">Recent appointment requests</h2>
-            <Link href="/appointments" className="text-sm font-medium text-blue-600">
+            <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Recent appointment requests</h2>
+            <Link href="/appointments" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
               Schedule time
             </Link>
           </div>
           <div className="mt-4 space-y-3">
             {profile.recent_appointments.length === 0 && (
-              <p className="text-sm text-zinc-500">No appointments logged yet.</p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">No appointments logged yet.</p>
             )}
             {profile.recent_appointments.map((appt) => (
-              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700">
-                <p className="font-semibold text-zinc-900">{appt.appointment_with}</p>
-                <p className="text-xs text-zinc-500">
+              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                <p className="font-semibold text-zinc-900 dark:text-white">{appt.appointment_with}</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
                   {appt.preferred_date} at {appt.preferred_time} · {appt.primary_reason}
                 </p>
-                {appt.additional_details && <p className="mt-1 text-xs text-zinc-500">{appt.additional_details}</p>}
+                {appt.additional_details && <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{appt.additional_details}</p>}
               </div>
             ))}
           </div>
@@ -560,8 +660,8 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-zinc-900">Password & security</h2>
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+          <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Password & security</h2>
           <form className="mt-4 space-y-3" onSubmit={handlePasswordSubmit}>
             <input
               type="password"
@@ -590,37 +690,45 @@ export default function ProfilePage() {
               onChange={(event) => setPasswordForm((prev) => ({ ...prev, confirm: event.target.value }))}
               required
             />
-            {passwordStatus.error && <p className="text-sm text-red-600">{passwordStatus.error}</p>}
-            {passwordStatus.message && <p className="text-sm text-emerald-600">{passwordStatus.message}</p>}
+            {passwordStatus.error && <p className="text-sm text-red-600 dark:text-red-400">{passwordStatus.error}</p>}
+            {passwordStatus.message && <p className="text-sm text-emerald-600 dark:text-emerald-400">{passwordStatus.message}</p>}
             <button
               type="submit"
-              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="btn-primary disabled:opacity-60 disabled:hover:scale-100"
               disabled={passwordStatus.saving}
             >
-              {passwordStatus.saving ? "Updating…" : "Update password"}
+              {passwordStatus.saving ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Updating…</>
+              ) : (
+                "Update password"
+              )}
             </button>
           </form>
         </article>
 
-        <article className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-red-900">Danger zone</h2>
-          <p className="mt-2 text-sm text-red-700">
+        <article className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-900/50 dark:bg-red-900/20">
+          <h2 className="text-xl font-semibold text-red-900 dark:text-red-400">Danger zone</h2>
+          <p className="mt-2 text-sm text-red-700 dark:text-red-400/80">
             Deleting your account removes stored chat logs, quizzes, and research files from the local filesystem.
           </p>
           <form className="mt-4 space-y-3" onSubmit={handleDeleteAccount}>
             <input
-              className="input border-red-200 bg-white/80"
+              className="input border-red-200 bg-white/80 dark:border-red-900/50 dark:bg-red-900/20 dark:text-white"
               placeholder="Type your username to confirm"
               value={deleteConfirm}
               onChange={(event) => setDeleteConfirm(event.target.value)}
             />
-            {deleteStatus.error && <p className="text-sm text-red-700">{deleteStatus.error}</p>}
+            {deleteStatus.error && <p className="text-sm text-red-700 dark:text-red-400">{deleteStatus.error}</p>}
             <button
               type="submit"
-              className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="rounded-full bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:scale-105 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               disabled={deleteStatus.loading}
             >
-              {deleteStatus.loading ? "Deleting…" : "Delete account"}
+              {deleteStatus.loading ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Deleting…</>
+              ) : (
+                "Delete account"
+              )}
             </button>
           </form>
         </article>

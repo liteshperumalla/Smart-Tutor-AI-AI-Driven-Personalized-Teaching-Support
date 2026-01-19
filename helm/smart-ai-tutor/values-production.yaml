@@ -1,0 +1,195 @@
+# Production environment values
+# Full production configuration with all features enabled
+
+global:
+  environment: production
+  domain: smart-ai-tutor.com
+
+# Use production container registry
+image:
+  registry: <PRODUCTION_REGISTRY>  # e.g., AWS ECR, GCR, ACR
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - regcred
+
+# Backend - full production scale
+backend:
+  enabled: true
+  replicaCount: 3
+
+  image:
+    tag: "1.0.0"  # Use specific version in production
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  env:
+    ENVIRONMENT: production
+    LOG_LEVEL: INFO
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
+    SESSION_TIMEOUT: "900"
+    PASSWORD_MIN_LENGTH: "12"
+    RATE_LIMIT_ENABLED: "true"
+    POSTGRES_SSL_MODE: require
+    ENABLE_METRICS: "true"
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+# Frontend - full production scale
+frontend:
+  enabled: true
+  replicaCount: 3
+
+  image:
+    tag: "1.0.0"
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  env:
+    NODE_ENV: production
+    NEXT_TELEMETRY_DISABLED: "1"
+    NEXT_PUBLIC_ENVIRONMENT: production
+
+# PostgreSQL - use AWS RDS Multi-AZ
+postgres:
+  enabled: false  # Use external RDS
+
+  external:
+    enabled: true
+    host: prod-smart-tutor-db.xxxx.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: smart_tutor
+    username: smart_tutor_user
+
+# Redis - use AWS ElastiCache Redis Cluster
+redis:
+  enabled: false  # Use external ElastiCache
+
+  external:
+    enabled: true
+    host: prod-smart-tutor-redis.xxxx.cache.amazonaws.com
+    port: 6379
+
+# Ingress - AWS ALB with production domain
+ingress:
+  enabled: true
+  className: alb
+
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-2017-01
+    alb.ingress.kubernetes.io/load-balancer-attributes: |
+      idle_timeout.timeout_seconds=60,
+      routing.http2.enabled=true,
+      deletion_protection.enabled=true
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+
+  tls:
+    enabled: true
+    certificateArn: "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/PROD_CERT_ID"
+
+  hosts:
+    - host: smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+    - host: api.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend-api
+          port: 8000
+    - host: www.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+
+# Network policies - strictly enforced
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+
+# Resource quotas - production limits
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "20"
+    requests.memory: "40Gi"
+    limits.cpu: "40"
+    limits.memory: "80Gi"
+    pods: "100"
+    services: "50"
+    persistentvolumeclaims: "20"
+
+# Monitoring - full monitoring stack
+monitoring:
+  enabled: true
+  prometheus:
+    scrape: true
+    port: 8000
+    path: /metrics
+
+# AWS - production resources
+aws:
+  region: us-east-1
+  s3:
+    bucket: prod-smart-ai-tutor-storage
+  dynamodb:
+    tablePrefix: prod-smart-tutor
+  bedrock:
+    region: us-east-1
+    modelId: anthropic.claude-3-sonnet-20240229-v1:0
+
+# Secrets - use External Secrets Operator
+secrets:
+  externalSecrets:
+    enabled: true
+    backend: secretsManager
+    region: us-east-1
+
+# Service account with IRSA (IAM Roles for Service Accounts)
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/smart-ai-tutor-prod-role"

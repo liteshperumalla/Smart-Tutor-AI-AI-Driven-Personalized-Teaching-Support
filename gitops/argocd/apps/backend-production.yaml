@@ -1,0 +1,108 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-production
+  namespace: argocd
+  # Add finalizer to ensure proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  # Annotations for ArgoCD notifications
+  annotations:
+    notifications.argoproj.io/subscribe.on-deployed.slack: deployments-channel
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: alerts-channel
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts-channel
+spec:
+  # Project association
+  project: smart-ai-tutor
+
+  # Source configuration
+  source:
+    repoURL: https://github.com/your-org/smart-ai-tutor
+    targetRevision: main
+    path: helm/smart-ai-tutor
+
+    # Helm-specific configuration
+    helm:
+      # Use values file for production
+      valueFiles:
+        - values-production.yaml
+
+      # Override specific values
+      parameters:
+        - name: backend.image.tag
+          value: "latest"  # This will be updated by CI/CD
+        - name: environment
+          value: "production"
+
+      # Pass secrets from external secret management
+      valuesObject:
+        backend:
+          enabled: true
+          replicaCount: 5
+          autoscaling:
+            enabled: true
+            minReplicas: 5
+            maxReplicas: 20
+
+  # Destination cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+
+  # Sync policy
+  syncPolicy:
+    # Automated sync settings
+    automated:
+      # Auto-sync when Git repo changes
+      prune: true      # Delete resources that are no longer defined
+      selfHeal: true   # Force cluster state to match Git
+      allowEmpty: false # Don't apply empty manifests
+
+    # Sync options
+    syncOptions:
+      - CreateNamespace=true  # Create namespace if it doesn't exist
+      - PrunePropagationPolicy=foreground  # Ensure proper deletion order
+      - PruneLast=true  # Prune resources after new ones are healthy
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true  # Only sync out-of-sync resources
+
+    # Retry strategy for failed syncs
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences in certain fields
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore replicas (managed by HPA)
+    - group: ""
+      kind: Secret
+      jsonPointers:
+        - /data  # Ignore secret data (managed externally)
+
+  # Health assessment
+  revisionHistoryLimit: 10
+
+  # Info section for display in UI
+  info:
+    - name: Environment
+      value: Production
+    - name: Maintainer
+      value: devops@your-domain.com
+    - name: Documentation
+      value: https://docs.your-domain.com/deployment
+
+  # Metrics for deployment success rate
+  metrics:
+    - name: deployment_success_rate
+      type: Prometheus
+      spec:
+        query: |
+          sum(rate(http_requests_total{job="backend",code!~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="backend"}[5m]))

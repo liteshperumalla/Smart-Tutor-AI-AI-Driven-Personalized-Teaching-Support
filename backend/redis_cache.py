@@ -22,12 +22,12 @@ class RedisCache:
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 6379,
-        db: int = 0,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        db: Optional[int] = None,
         password: Optional[str] = None,
-        ssl: bool = False,
-        max_connections: int = 50,
+        ssl: Optional[bool] = None,
+        max_connections: Optional[int] = None,
         default_ttl: int = 300,
     ):
         """
@@ -46,6 +46,15 @@ class RedisCache:
         self._hits = 0
         self._misses = 0
         self._lock = RLock()
+
+        # Use config values if not provided
+        host = host or config.REDIS_HOST
+        port = port or config.REDIS_PORT
+        db = db if db is not None else config.REDIS_DB
+        # Only use password if explicitly provided and non-empty
+        password = password if password else (config.REDIS_PASSWORD if config.REDIS_PASSWORD else None)
+        ssl = ssl if ssl is not None else config.REDIS_SSL
+        max_connections = max_connections or config.REDIS_MAX_CONNECTIONS
 
         # Create connection pool
         pool_kwargs = {

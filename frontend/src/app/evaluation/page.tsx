@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { BarChart3, Play, RotateCcw, Filter, Clock, Target, Brain, Trash2 } from "lucide-react";
 
 export default function EvaluationDashboard() {
   const { token } = useAuthToken();
@@ -26,40 +27,29 @@ export default function EvaluationDashboard() {
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logMessage, setLogMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
-    fetchEvaluationCases({ token })
-      .then((data) => {
+    setLoading(true);
+    Promise.all([
+      fetchEvaluationCases({ token }),
+      fetchEvaluationLogSummary(token)
+    ])
+      .then(([casesData, summaryData]) => {
         if (!cancelled) {
-          setCases(data);
+          setCases(casesData);
+          setLogSummary(summaryData);
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Unable to load cases");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    fetchEvaluationLogSummary(token)
-      .then((summary) => {
-        if (!cancelled) {
-          setLogSummary(summary);
+          setError(err instanceof Error ? err.message : "Unable to load evaluation data");
         }
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setLogSummary({ error: err instanceof Error ? err.message : "Unable to load summary" });
-        }
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -127,12 +117,22 @@ export default function EvaluationDashboard() {
 
   return (
     <PageShell contentClassName="gap-8">
-      <header className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Evaluation</p>
-        <h1 className="text-3xl font-semibold text-zinc-950 dark:text-white">RAG test harness</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Test and evaluate the Retrieval-Augmented Generation (RAG) pipeline performance.
-        </p>
+      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-blue-400/20 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-cyan-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-medium text-blue-700 backdrop-blur dark:border-blue-800 dark:bg-zinc-900/80 dark:text-blue-300 mb-4">
+            <BarChart3 className="h-4 w-4" />
+            Evaluation
+          </div>
+          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+            RAG test harness
+          </h1>
+          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            Test and evaluate the Retrieval-Augmented Generation (RAG) pipeline performance
+          </p>
+        </div>
       </header>
 
       {analysis && (
@@ -167,17 +167,40 @@ export default function EvaluationDashboard() {
           <h2 className="pt-2 text-xl font-semibold text-zinc-950 dark:text-white">Configure filters</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Pick a subset of dataset cases to evaluate.</p>
 
-          <label className="mt-5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">
-            Number of tests
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={runLimit}
-              onChange={(event) => setRunLimit(Number(event.target.value))}
-              className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-2 text-base focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
-            />
-          </label>
+          {loading ? (
+            <div className="mt-5 space-y-4">
+              <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+              <div className="h-10 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+              <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+              <div className="flex gap-2 mt-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-8 w-20 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+          ) : cases.length === 0 ? (
+            <div className="mt-5 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 p-6 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+              <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
+                <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No evaluation cases available</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Add test cases to your evaluation dataset to run tests.</p>
+            </div>
+          ) : (
+            <label className="mt-5 block text-sm font-medium text-zinc-800 dark:text-zinc-200">
+              Number of tests
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={runLimit}
+                onChange={(event) => setRunLimit(Number(event.target.value))}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-2 text-base focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+              />
+            </label>
+          )}
 
           {categoryOptions.length > 0 && (
             <div className="mt-5">
@@ -229,9 +252,13 @@ export default function EvaluationDashboard() {
             <button
               type="submit"
               disabled={isRunning}
-              className="rounded-full bg-zinc-900 px-5 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900"
+              className="btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
-              {isRunning ? "Running…" : "Run evaluation"}
+              {isRunning ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Running…</>
+              ) : (
+                <>Run evaluation <span className="transition-transform group-hover:translate-x-1">→</span></>
+              )}
             </button>
             <button
               type="button"
@@ -240,7 +267,7 @@ export default function EvaluationDashboard() {
                 setSelectedDifficulties([]);
                 setRunLimit(5);
               }}
-              className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+              className="btn-secondary"
             >
               Reset
             </button>
@@ -273,10 +300,10 @@ export default function EvaluationDashboard() {
             <h2 className="pt-1 text-xl font-semibold text-zinc-950 dark:text-white">Historical performance</h2>
           </div>
           <div className="flex gap-2 text-sm">
-            <button onClick={handleRefreshSummary} className="rounded-full border border-zinc-200 px-4 py-2 font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+            <button onClick={handleRefreshSummary} className="btn-secondary">
               Refresh
             </button>
-            <button onClick={handleClearLogs} className="rounded-full border border-red-200 px-4 py-2 font-medium text-red-600 dark:border-red-800 dark:text-red-400">
+            <button onClick={handleClearLogs} className="rounded-full border-2 border-red-200 px-4 py-2 font-medium text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
               Clear logs
             </button>
           </div>

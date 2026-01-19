@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        version: 1
+        editable: true
+        isDefault: false
+        jsonData:
+          maxLines: 1000
+          derivedFields:
+            # Extract trace ID from logs for trace correlation
+            - datasourceUid: jaeger
+              matcherRegex: "trace_id=(\\w+)"
+              name: TraceID
+              url: "$${__value.raw}"
+            # Extract span ID
+            - datasourceUid: jaeger
+              matcherRegex: "span_id=(\\w+)"
+              name: SpanID
+              url: "$${__value.raw}"

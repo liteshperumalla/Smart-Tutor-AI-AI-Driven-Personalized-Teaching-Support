@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels:
+    app: smart-ai-tutor
+    component: postgres
+data:
+  POSTGRES_DB: "smart_tutor"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config-files
+  labels:
+    app: smart-ai-tutor
+    component: postgres
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration for Production
+
+    # Connection Settings
+    max_connections = 200
+    superuser_reserved_connections = 3
+
+    # Memory Settings
+    shared_buffers = 2GB                  # 25% of RAM
+    effective_cache_size = 6GB            # 75% of RAM
+    work_mem = 10MB                       # Per operation
+    maintenance_work_mem = 512MB
+
+    # Write Ahead Log (WAL)
+    wal_level = replica
+    max_wal_size = 2GB
+    min_wal_size = 1GB
+    wal_buffers = 16MB
+    checkpoint_completion_target = 0.9
+
+    # Query Planner
+    random_page_cost = 1.1                # For SSD
+    effective_io_concurrency = 200        # For SSD
+
+    # Logging
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = 1000     # Log slow queries (>1s)
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    log_statement = 'ddl'
+
+    # Performance
+    autovacuum = on
+    autovacuum_max_workers = 3
+
+    # Security
+    ssl = off  # SSL handled at network level in K8s
+    password_encryption = scram-sha-256
+
+  init.sql: |
+    -- Initial database setup
+
+    -- Create extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+    -- Create tables (if not using migrations)
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP,
+        login_attempts INTEGER DEFAULT 0,
+        locked_until TIMESTAMP,
+        metadata JSONB
+    );
+
+    CREATE TABLE IF NOT EXISTS quiz_results (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        quiz_id VARCHAR(255) NOT NULL,
+        score INTEGER NOT NULL,
+        total_questions INTEGER NOT NULL,
+        answers JSONB,
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Create indexes
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_quiz_results_username ON quiz_results(username);
+    CREATE INDEX IF NOT EXISTS idx_quiz_results_created_at ON quiz_results(created_at);
+
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO smart_tutor_user;
+    GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO smart_tutor_user;

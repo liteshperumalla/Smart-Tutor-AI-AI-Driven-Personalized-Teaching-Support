@@ -6,6 +6,7 @@ import Link from "next/link";
 import { fetchResources, fetchResearchUploads, ResearchUpload } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { FolderOpen, ExternalLink, BookOpen } from "lucide-react";
 
 type CategoryMap = Record<string, { title: string; url: string }[]>;
 
@@ -30,13 +31,22 @@ export default function ResourcesPage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8">
-      <header className="space-y-3">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Resources</p>
-        <h1 className="text-3xl font-semibold text-zinc-950 dark:text-white">Course library</h1>
-        <p className="text-zinc-600 dark:text-zinc-400">
-          Curated links for the INFO 5731 curriculum—Python references, NLP demos, and deployment how-tos. Each card
-          expands to reveal external resources.
-        </p>
+      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-emerald-400/20 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-teal-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-medium text-emerald-700 backdrop-blur dark:border-emerald-800 dark:bg-zinc-900/80 dark:text-emerald-300 mb-4">
+            <BookOpen className="h-4 w-4" />
+            Resources
+          </div>
+          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+            Course library
+          </h1>
+          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            Curated links for the INFO 5731 curriculum—Python references, NLP demos, and deployment how-tos
+          </p>
+        </div>
       </header>
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">{error}</p>}

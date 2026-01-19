@@ -2,15 +2,19 @@ version: '3.8'
 
 services:
   # PostgreSQL for user data
+  # NOTE: When using AWS RDS (ENVIRONMENT=production or AWS config in .env),
+  # this local postgres container is NOT used. Configure POSTGRES_HOST in .env
+  # to point to AWS RDS: smart-tutor-postgres.cmfouoe8c2p1.us-east-1.rds.amazonaws.com
   postgres:
     image: postgres:15-alpine
     container_name: smart-tutor-postgres
     environment:
       POSTGRES_DB: smart_tutor
       POSTGRES_USER: smart_tutor_user
-      POSTGRES_PASSWORD: dev_password_change_in_prod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_change_in_prod}
+    # SECURITY: Only expose port in development
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT_EXPOSE:-}5432:5432"  # Leave empty in production
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -19,15 +23,40 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - smart-tutor-network
+    # SECURITY: Add security options
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # OPTIONAL: Uncomment "profiles" to prevent this from starting by default
+    # profiles:
+    #   - local-dev-only
 
   # DynamoDB Local for chat sessions
+  # NOTE: When using AWS DynamoDB (DYNAMODB_ENDPOINT is empty in .env),
+  # this local dynamodb container is NOT used. AWS DynamoDB in us-east-1 is used instead.
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     container_name: smart-tutor-dynamodb
-    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
     ports:
       - "8001:8000"
     working_dir: /home/dynamodblocal
+    volumes:
+      - dynamodb_data:/data
+    networks:
+      - smart-tutor-network
+    # OPTIONAL: Uncomment "profiles" to prevent this from starting by default
+    # profiles:
+    #   - local-dev-only
 
   # Redis for caching (Phase 3)
   redis:
@@ -43,8 +72,242 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - smart-tutor-network
+
+  # Backend API service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: smart-tutor-backend
+    ports:
+      - "8010:8000"
+    env_file:
+      - .env
+    environment:
+      # Override with .env file settings (uses AWS RDS + DynamoDB in production mode)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - HF_HOME=/app/.cache
+      - TRANSFORMERS_CACHE=/app/.cache/huggingface
+      - OLLAMA_HOST=http://ollama:11434
+      - ENABLE_CODE_EXECUTION=true
+      # For local development, uncomment these:
+      # - POSTGRES_HOST=postgres
+      # - POSTGRES_PORT=5432
+      # - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      # - ENVIRONMENT=development
+      # - DEBUG=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      # NOTE: When using AWS RDS + DynamoDB (current production config),
+      # postgres and dynamodb-local dependencies are NOT needed.
+      # Uncomment these ONLY for local-only development (without AWS):
+      # postgres:
+      #   condition: service_healthy
+      # dynamodb-local:
+      #   condition: service_started
+    volumes:
+      - ./user_data:/app/user_data
+      - ./logs:/app/logs
+      - ./keys:/app/keys
+      - ./persisted_index:/app/persisted_index
+      - ./chroma_db:/app/chroma_db
+      - ./previous_chats:/app/previous_chats
+      - ./quiz_results:/app/quiz_results
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    # SECURITY: Add security hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+  # Frontend Next.js service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=/api/backend
+        - BACKEND_API_BASE_URL=http://backend:8000
+        - NEXT_PUBLIC_APP_BASE_URL=http://localhost:4000
+        - NEXT_PUBLIC_GOOGLE_CLIENT_ID=96179087878-5gke05am5bm3c65nvo3mbqlau6ula654.apps.googleusercontent.com
+        - NEXT_PUBLIC_GOOGLE_REDIRECT_URI=http://localhost:4000/auth/google/callback
+    container_name: smart-tutor-frontend
+    ports:
+      - "4000:4000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=/api/backend
+      - BACKEND_API_BASE_URL=http://backend:8000
+      - NEXT_PUBLIC_APP_BASE_URL=http://localhost:4000
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: smart-tutor-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: smart-tutor-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      # SECURITY: Use environment variable for admin password
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-please_change_me_in_production}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+      - GF_INSTALL_PLUGINS=redis-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    # SECURITY: Add security options
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  # Postgres Exporter for database metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: smart-tutor-postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      # SECURITY: Use environment variable for database password
+      DATA_SOURCE_NAME: "postgresql://smart_tutor_user:${POSTGRES_PASSWORD:-dev_password_change_in_prod}@postgres:5432/smart_tutor?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    # SECURITY: Add security options
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  # Redis Exporter for cache metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: smart-tutor-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      - redis
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  # Node Exporter for system metrics
+  # Note: Limited functionality on macOS Docker Desktop (no host filesystem access)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: smart-tutor-node-exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--collector.disable-defaults'
+      - '--collector.cpu'
+      - '--collector.meminfo'
+      - '--collector.loadavg'
+      - '--collector.filesystem'
+      - '--collector.netdev'
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    # SECURITY: Add security options
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+
+  # Ollama for Code LLM (Qwen2.5 Coder)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smart-tutor-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+networks:
+  smart-tutor-network:
+    driver: bridge
 
 volumes:
   postgres_data:
   dynamodb_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
+  ollama_data:

@@ -1,0 +1,71 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+  labels:
+    {{- include "smart-ai-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+data:
+  # Application Configuration
+  APP_NAME: "Smart AI Tutor"
+  APP_VERSION: {{ .Chart.AppVersion | quote }}
+
+  # CORS Configuration
+  {{- if .Values.backend.cors.allowedOrigins }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.backend.cors.allowedOrigins | quote }}
+  {{- end }}
+  CORS_ALLOWED_METHODS: {{ .Values.backend.cors.allowedMethods | default "GET,POST,PUT,DELETE,PATCH,OPTIONS" | quote }}
+  CORS_ALLOWED_HEADERS: {{ .Values.backend.cors.allowedHeaders | default "*" | quote }}
+  CORS_EXPOSE_HEADERS: {{ .Values.backend.cors.exposeHeaders | default "" | quote }}
+  CORS_MAX_AGE: {{ .Values.backend.cors.maxAge | default "600" | quote }}
+  CORS_ALLOW_CREDENTIALS: {{ .Values.backend.cors.allowCredentials | default "true" | quote }}
+
+  # Rate Limiting
+  RATE_LIMIT_ENABLED: {{ .Values.backend.rateLimit.enabled | default "true" | quote }}
+  RATE_LIMIT_PER_MINUTE: {{ .Values.backend.rateLimit.perMinute | default "60" | quote }}
+  RATE_LIMIT_PER_HOUR: {{ .Values.backend.rateLimit.perHour | default "1000" | quote }}
+
+  # AWS Configuration
+  AWS_DEFAULT_REGION: {{ .Values.aws.region | default "us-east-1" | quote }}
+  {{- if .Values.backend.bedrock.enabled }}
+  BEDROCK_REGION: {{ .Values.backend.bedrock.region | default .Values.aws.region | quote }}
+  BEDROCK_MODEL_ID: {{ .Values.backend.bedrock.modelId | default "anthropic.claude-3-5-sonnet-20241022-v2:0" | quote }}
+  BEDROCK_EMBEDDING_MODEL_ID: {{ .Values.backend.bedrock.embeddingModelId | default "amazon.titan-embed-text-v2:0" | quote }}
+  {{- end }}
+
+  # LLM Provider
+  LLM_PROVIDER: {{ .Values.backend.llmProvider | default "bedrock" | quote }}
+  EMBEDDING_PROVIDER: {{ .Values.backend.embeddingProvider | default "bedrock" | quote }}
+
+  # Cache Configuration
+  USE_REDIS_CACHE: {{ .Values.redis.enabled | quote }}
+  REDIS_SSL: {{ .Values.redis.ssl | default "false" | quote }}
+  REDIS_SSL_CERT_REQS: {{ .Values.redis.sslCertReqs | default "required" | quote }}
+
+  # RAG Configuration
+  RAG_SIMILARITY_TOP_K: {{ .Values.backend.rag.similarityTopK | default "3" | quote }}
+  RAG_CONFIDENCE_THRESHOLD: {{ .Values.backend.rag.confidenceThreshold | default "0.3" | quote }}
+  RAG_CHUNK_SIZE: {{ .Values.backend.rag.chunkSize | default "512" | quote }}
+  RAG_CHUNK_OVERLAP: {{ .Values.backend.rag.chunkOverlap | default "102" | quote }}
+  USE_S3_VECTORS: {{ .Values.backend.rag.useS3Vectors | default "false" | quote }}
+
+  # Monitoring
+  LANGFUSE_ENABLED: {{ .Values.backend.monitoring.langfuse.enabled | default "false" | quote }}
+  {{- if .Values.backend.monitoring.langfuse.enabled }}
+  LANGFUSE_PUBLIC_KEY: {{ .Values.backend.monitoring.langfuse.publicKey | quote }}
+  LANGFUSE_HOST: {{ .Values.backend.monitoring.langfuse.host | default "https://cloud.langfuse.com" | quote }}
+  {{- end }}
+
+  # Security
+  ENFORCE_HTTPS: {{ .Values.backend.security.enforceHttps | default "true" | quote }}
+  SECURE_COOKIES: {{ .Values.backend.security.secureCookies | default "true" | quote }}
+
+  # Feature Flags
+  WEB_SEARCH_ENABLED: {{ .Values.backend.features.webSearch | default "true" | quote }}
+  CODE_EXECUTION_ENABLED: {{ .Values.backend.features.codeExecution | default "true" | quote }}
+
+  {{- if .Values.backend.extraConfig }}
+  {{- toYaml .Values.backend.extraConfig | nindent 2 }}
+  {{- end }}
+{{- end }}

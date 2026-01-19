@@ -1,0 +1,336 @@
+# Default values for smart-ai-tutor
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global configuration
+global:
+  environment: production
+  domain: smart-ai-tutor.com
+
+# Container registry configuration
+image:
+  registry: docker.io
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Backend API configuration
+backend:
+  enabled: true
+  name: backend-api
+
+  image:
+    repository: smart-ai-tutor-backend
+    tag: latest
+
+  replicaCount: 3
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+
+  health:
+    liveness:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /health/ready
+      initialDelaySeconds: 10
+      periodSeconds: 5
+    startup:
+      path: /health
+      failureThreshold: 30
+      periodSeconds: 5
+
+  env:
+    ENVIRONMENT: production
+    LOG_LEVEL: INFO
+    JWT_ALGORITHM: HS256
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
+    SESSION_TIMEOUT: "900"
+    PASSWORD_MIN_LENGTH: "12"
+    RATE_LIMIT_ENABLED: "true"
+    POSTGRES_SSL_MODE: require
+    STORAGE_BACKEND: hybrid
+    ENABLE_METRICS: "true"
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+# Frontend configuration
+frontend:
+  enabled: true
+  name: frontend
+
+  image:
+    repository: smart-ai-tutor-frontend
+    tag: latest
+
+  replicaCount: 3
+
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+
+  health:
+    liveness:
+      path: /
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readiness:
+      path: /
+      initialDelaySeconds: 10
+      periodSeconds: 5
+
+  env:
+    NODE_ENV: production
+    NEXT_TELEMETRY_DISABLED: "1"
+    NEXT_PUBLIC_ENVIRONMENT: production
+
+# PostgreSQL configuration
+postgres:
+  enabled: true
+  name: postgres
+
+  image:
+    repository: postgres
+    tag: 15-alpine
+
+  # Use external PostgreSQL (RDS) in production
+  external:
+    enabled: false
+    host: ""
+    port: 5432
+    database: smart_tutor
+    username: smart_tutor_user
+
+  persistence:
+    enabled: true
+    storageClass: gp3
+    size: 100Gi
+
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+
+  service:
+    type: ClusterIP
+    port: 5432
+
+  config:
+    max_connections: "200"
+    shared_buffers: "2GB"
+    effective_cache_size: "6GB"
+    work_mem: "10MB"
+    maintenance_work_mem: "512MB"
+
+# Redis configuration
+redis:
+  enabled: true
+  name: redis
+
+  image:
+    repository: redis
+    tag: 7-alpine
+
+  # Use external Redis (ElastiCache) in production
+  external:
+    enabled: false
+    host: ""
+    port: 6379
+
+  persistence:
+    enabled: false  # Use EmptyDir for development
+    storageClass: gp3
+    size: 10Gi
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+  service:
+    type: ClusterIP
+    port: 6379
+
+  config:
+    maxmemory: "1gb"
+    maxmemory_policy: "allkeys-lru"
+    appendonly: "yes"
+
+  exporter:
+    enabled: true
+    image:
+      repository: oliver006/redis_exporter
+      tag: latest
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: alb  # or "nginx"
+
+  annotations:
+    # AWS ALB annotations
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/load-balancer-attributes: deletion_protection.enabled=true
+
+    # NGINX annotations (uncomment if using NGINX)
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+
+  tls:
+    enabled: true
+    # For AWS ALB
+    certificateArn: ""  # AWS ACM certificate ARN
+    # For NGINX with cert-manager
+    secretName: smart-ai-tutor-tls
+
+  hosts:
+    - host: smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+    - host: api.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend-api
+          port: 8000
+    - host: www.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+
+# Network policies
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+
+# Resource quotas
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "20"
+    requests.memory: "40Gi"
+    limits.cpu: "40"
+    limits.memory: "80Gi"
+    pods: "100"
+    services: "50"
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Pod security standards
+podSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+    add:
+      - NET_BIND_SERVICE
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# RBAC
+rbac:
+  create: true
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheus:
+    scrape: true
+    port: 8000
+    path: /metrics
+
+# AWS configuration
+aws:
+  region: us-east-1
+  s3:
+    bucket: smart-ai-tutor-storage
+  dynamodb:
+    tablePrefix: smart-tutor
+  bedrock:
+    region: us-east-1
+    modelId: anthropic.claude-3-sonnet-20240229-v1:0
+
+# Secrets (will be loaded from Kubernetes secrets)
+secrets:
+  # Existing secret names
+  backend: backend-secrets
+  postgres: postgres-secrets
+  redis: redis-secrets
+
+  # Or use External Secrets Operator
+  externalSecrets:
+    enabled: false
+    backend: secretsManager
+    region: us-east-1

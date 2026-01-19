@@ -1,0 +1,99 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: smart-ai-tutor
+  namespace: argocd
+  # Finalizer to ensure project isn't deleted with existing applications
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Smart AI Tutor Project
+
+  # Source repositories
+  sourceRepos:
+    - 'https://github.com/your-org/smart-ai-tutor'
+    - 'https://github.com/your-org/smart-ai-tutor-gitops'  # Separate GitOps repo (recommended)
+
+  # Destination clusters and namespaces
+  destinations:
+    - namespace: development
+      server: https://kubernetes.default.svc
+    - namespace: staging
+      server: https://kubernetes.default.svc
+    - namespace: production
+      server: https://kubernetes.default.svc
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+
+  # Namespace resource whitelist (allow all)
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Roles for this project
+  roles:
+    # Developer role - can sync dev and staging
+    - name: developer
+      description: Developers can view and sync dev/staging applications
+      policies:
+        - p, proj:smart-ai-tutor:developer, applications, get, smart-ai-tutor/*, allow
+        - p, proj:smart-ai-tutor:developer, applications, sync, smart-ai-tutor/*-dev, allow
+        - p, proj:smart-ai-tutor:developer, applications, sync, smart-ai-tutor/*-staging, allow
+        - p, proj:smart-ai-tutor:developer, applications, override, smart-ai-tutor/*-dev, allow
+      groups:
+        - your-org:developers
+
+    # DevOps role - full access
+    - name: devops
+      description: DevOps team has full access to all applications
+      policies:
+        - p, proj:smart-ai-tutor:devops, applications, *, smart-ai-tutor/*, allow
+      groups:
+        - your-org:devops
+
+  # Sync windows - prevent deployments during certain times
+  syncWindows:
+    # Block production deployments during business hours on Friday
+    - kind: deny
+      schedule: '0 9-17 * * 5'  # Friday 9 AM - 5 PM
+      duration: 8h
+      applications:
+        - '*-production'
+      timeZone: America/Chicago
+
+    # Allow maintenance window deployments on weekends
+    - kind: allow
+      schedule: '0 2-6 * * 0,6'  # Sat/Sun 2 AM - 6 AM
+      duration: 4h
+      applications:
+        - '*'
+      timeZone: America/Chicago
+
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ''
+        kind: ConfigMap
+        name: kube-root-ca.crt
+
+  # Signature keys for verification (if using signed commits)
+  signatureKeys:
+    - keyID: ABCDEF1234567890
+
+  # Source namespaces (for ApplicationSet)
+  sourceNamespaces:
+    - development
+    - staging
+    - production

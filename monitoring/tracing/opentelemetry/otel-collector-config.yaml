@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: monitoring
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      # OTLP receiver for traces, metrics, and logs
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "http://*"
+                - "https://*"
+
+      # Prometheus receiver for scraping metrics
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'otel-collector'
+              scrape_interval: 10s
+              static_configs:
+                - targets: ['localhost:8888']
+
+      # Jaeger receiver (for backward compatibility)
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+          thrift_compact:
+            endpoint: 0.0.0.0:6831
+
+      # Zipkin receiver (for backward compatibility)
+      zipkin:
+        endpoint: 0.0.0.0:9411
+
+    processors:
+      # Batch processor - batches telemetry data
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      # Memory limiter - prevents OOM
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+        spike_limit_mib: 128
+
+      # Resource processor - adds resource attributes
+      resource:
+        attributes:
+          - key: service.namespace
+            value: smart-ai-tutor
+            action: upsert
+          - key: deployment.environment
+            from_attribute: env
+            action: insert
+
+      # Span processor - modifies span attributes
+      span:
+        name:
+          # Extract HTTP method and path
+          from_attributes: ["http.method", "http.target"]
+          separator: " "
+
+      # Attributes processor - manipulate attributes
+      attributes/example:
+        actions:
+          - key: db.statement
+            action: delete
+          - key: http.url
+            action: hash
+
+      # Probabilistic sampler - sample traces
+      probabilistic_sampler:
+        sampling_percentage: 100  # Sample all in dev, reduce in prod
+
+      # Tail sampling - intelligent sampling based on conditions
+      tail_sampling:
+        decision_wait: 10s
+        num_traces: 100
+        expected_new_traces_per_sec: 10
+        policies:
+          # Always sample errors
+          - name: error-policy
+            type: status_code
+            status_code:
+              status_codes:
+                - ERROR
+          # Always sample slow requests
+          - name: latency-policy
+            type: latency
+            latency:
+              threshold_ms: 2000
+          # Sample 10% of normal requests
+          - name: probabilistic-policy
+            type: probabilistic
+            probabilistic:
+              sampling_percentage: 10
+
+    exporters:
+      # Jaeger exporter
+      jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:14250
+        tls:
+          insecure: true
+
+      # Prometheus exporter
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        namespace: otel
+        const_labels:
+          env: production
+
+      # Logging exporter (for debugging)
+      logging:
+        loglevel: info
+
+      # OTLP exporter (for chaining collectors)
+      otlp/jaeger:
+        endpoint: jaeger-collector.monitoring.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+    extensions:
+      # Health check extension
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+      # Performance profiler
+      pprof:
+        endpoint: 0.0.0.0:1777
+
+      # Zpages for debugging
+      zpages:
+        endpoint: 0.0.0.0:55679
+
+    service:
+      extensions: [health_check, pprof, zpages]
+
+      pipelines:
+        # Traces pipeline
+        traces:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [memory_limiter, batch, resource, span, tail_sampling]
+          exporters: [jaeger, otlp/jaeger, logging]
+
+        # Metrics pipeline
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, batch, resource]
+          exporters: [prometheus, logging]
+
+        # Logs pipeline
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch, resource]
+          exporters: [logging]
+
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          level: detailed
+          address: 0.0.0.0:8888

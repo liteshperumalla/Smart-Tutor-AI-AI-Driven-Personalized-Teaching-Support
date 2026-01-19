@@ -1,0 +1,26 @@
+# OpenTelemetry Tracing Dependencies
+# Install with: pip install -r requirements-tracing.txt
+
+# Core OpenTelemetry
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-instrumentation>=0.42b0
+
+# OTLP Exporter
+opentelemetry-exporter-otlp-proto-grpc>=1.21.0
+opentelemetry-exporter-otlp-proto-http>=1.21.0
+
+# Auto-instrumentation
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-instrumentation-requests>=0.42b0
+opentelemetry-instrumentation-psycopg2>=0.42b0
+opentelemetry-instrumentation-redis>=0.42b0
+opentelemetry-instrumentation-boto3sqs>=0.42b0
+opentelemetry-instrumentation-botocore>=0.42b0
+
+# Propagators
+opentelemetry-propagator-b3>=1.21.0
+
+# Optional: AWS X-Ray support (if using both)
+opentelemetry-propagator-aws-xray>=1.0.1
+opentelemetry-sdk-extension-aws>=2.0.1

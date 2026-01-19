@@ -1,0 +1,178 @@
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+  labels:
+    {{- include "smart-ai-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: {{ .Values.backend.strategy.maxSurge | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "smart-ai-tutor.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/backend/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/backend/secret.yaml") . | sha256sum }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+        {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "smart-ai-tutor.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+        version: {{ .Values.backend.image.tag | default .Chart.AppVersion }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "smart-ai-tutor.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      {{- if .Values.backend.initContainers }}
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:15-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ .Values.postgresql.host }} -U {{ .Values.postgresql.username }}; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+                  key: postgres-password
+        - name: wait-for-redis
+          image: redis:7-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until redis-cli -h {{ .Values.redis.host }} -p {{ .Values.redis.port }} ping; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+      {{- end }}
+      containers:
+        - name: backend
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: {{ .Values.environment }}
+            - name: LOG_LEVEL
+              value: {{ .Values.backend.logLevel | default "INFO" }}
+            - name: POSTGRES_HOST
+              value: {{ .Values.postgresql.host | quote }}
+            - name: POSTGRES_PORT
+              value: {{ .Values.postgresql.port | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+                  key: postgres-password
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            {{- if .Values.redis.password }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+                  key: redis-password
+            {{- end }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "smart-ai-tutor.fullname" . }}-backend
+                  key: jwt-secret-key
+            - name: STORAGE_BACKEND
+              value: {{ .Values.backend.storageBackend | default "hybrid" }}
+            - name: AWS_REGION
+              value: {{ .Values.aws.region | default "us-east-1" }}
+            {{- if .Values.backend.extraEnv }}
+            {{- toYaml .Values.backend.extraEnv | nindent 12 }}
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "smart-ai-tutor.fullname" . }}-backend
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.livenessProbe.initialDelaySeconds | default 30 }}
+            periodSeconds: {{ .Values.backend.livenessProbe.periodSeconds | default 10 }}
+            timeoutSeconds: {{ .Values.backend.livenessProbe.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.backend.livenessProbe.failureThreshold | default 3 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.readinessProbe.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ .Values.backend.readinessProbe.periodSeconds | default 5 }}
+            timeoutSeconds: {{ .Values.backend.readinessProbe.timeoutSeconds | default 3 }}
+            failureThreshold: {{ .Values.backend.readinessProbe.failureThreshold | default 3 }}
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: {{ .Values.backend.startupProbe.initialDelaySeconds | default 0 }}
+            periodSeconds: {{ .Values.backend.startupProbe.periodSeconds | default 5 }}
+            timeoutSeconds: {{ .Values.backend.startupProbe.timeoutSeconds | default 3 }}
+            failureThreshold: {{ .Values.backend.startupProbe.failureThreshold | default 30 }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.backend.volumeMounts }}
+            {{- toYaml .Values.backend.volumeMounts | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.backend.volumes }}
+        {{- toYaml .Values.backend.volumes | nindent 8 }}
+        {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -8,7 +8,8 @@ from typing import List
 
 from backend.config import config
 from backend.services.models import Appointment
-from utils import sanitize_filename
+def _sanitize_user_id(user_id: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "_" for c in user_id)
 
 
 class AppointmentService:
@@ -17,7 +18,7 @@ class AppointmentService:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _user_dir(self, username: str) -> Path:
-        safe = sanitize_filename(username)
+        safe = _sanitize_user_id(username)
         directory = self.root / safe / "appointments"
         directory.mkdir(parents=True, exist_ok=True)
         return directory

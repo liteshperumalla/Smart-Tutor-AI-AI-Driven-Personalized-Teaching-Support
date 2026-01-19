@@ -7,7 +7,8 @@ import pdfplumber
 from pathlib import Path
 from pptx import Presentation
 from transformers import AutoModel, AutoTokenizer
-from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+# from llama_index.embeddings.huggingface import HuggingFaceEmbedding  # Commented out - using Bedrock instead
+from backend.bedrock_embeddings import BedrockEmbeddings
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings, get_response_synthesizer
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.node_parser import SentenceSplitter, SemanticSplitterNodeParser
@@ -446,22 +447,15 @@ class NotebookAwareParser:
 # MODEL & LLM SETTINGS
 # ------------------------------
 try:
-    # Phase 1 improvement: Upgraded to BAAI/bge-small-en-v1.5 for better retrieval accuracy
-    # Previous model: sentence-transformers/all-MiniLM-L6-v2
-    # Expected improvement: +12-30% retrieval performance
-    model_name = "BAAI/bge-small-en-v1.5"
-    Settings.embed_model = HuggingFaceEmbedding(model_name=model_name)
-    print(f"✅ Model {model_name} loaded successfully.")
+    # Using AWS Bedrock Titan embeddings (1024-dim) instead of HuggingFace
+    print("🚀 Initializing AWS Bedrock Titan embeddings...")
+    bedrock_embeddings = BedrockEmbeddings()
+    Settings.embed_model = bedrock_embeddings
+    print(f"✅ AWS Bedrock Titan embeddings loaded successfully (1024-dim)")
 except Exception as e:
-    print(f"❌ Error loading embedding model: {e}")
-    print(f"⚠️ Falling back to sentence-transformers/all-MiniLM-L6-v2")
-    try:
-        model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        Settings.embed_model = HuggingFaceEmbedding(model_name=model_name)
-        print(f"✅ Fallback model {model_name} loaded successfully.")
-    except Exception as e2:
-        print(f"❌ Error loading fallback embedding model: {e2}")
-        exit()
+    print(f"❌ Error loading Bedrock embeddings: {e}")
+    print(f"Please ensure AWS credentials are configured correctly.")
+    exit()
 
 Settings.llm = Ollama(model="llama3.1:latest", request_timeout=120.0)
 

@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  labels:
+    app: smart-ai-tutor
+    component: backend
+data:
+  # Application Configuration
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+
+  # Database Configuration
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "smart_tutor"
+
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # AWS Configuration
+  AWS_REGION: "us-east-1"
+  AWS_S3_BUCKET: "smart-ai-tutor-storage"
+
+  # JWT Configuration
+  JWT_ALGORITHM: "HS256"
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
+
+  # Security Configuration
+  SESSION_TIMEOUT: "900"  # 15 minutes
+  PASSWORD_MIN_LENGTH: "12"
+  MAX_LOGIN_ATTEMPTS: "5"
+  ACCOUNT_LOCKOUT_DURATION: "1800"  # 30 minutes
+
+  # Rate Limiting
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_PER_MINUTE: "60"
+
+  # CORS Configuration
+  CORS_ORIGINS: "https://smart-ai-tutor.com,https://www.smart-ai-tutor.com"
+
+  # PostgreSQL SSL Configuration
+  POSTGRES_SSL_MODE: "require"
+
+  # Storage Backend
+  STORAGE_BACKEND: "hybrid"  # postgres + dynamodb
+
+  # Features
+  ENABLE_GOOGLE_AUTH: "true"
+  ENABLE_METRICS: "true"
+
+  # Monitoring
+  PROMETHEUS_MULTIPROC_DIR: "/tmp/prometheus"

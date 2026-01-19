@@ -1,0 +1,48 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: backend-pod-failure
+  namespace: chaos-testing
+spec:
+  # Experiment mode
+  action: pod-failure  # pod-kill, pod-failure, container-kill
+
+  # Experiment scope
+  mode: one  # one, all, fixed, fixed-percent, random-max-percent
+
+  # Select target pods
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Duration of the experiment
+  duration: "30s"
+
+  # Scheduler configuration
+  scheduler:
+    cron: "@every 2h"  # Run every 2 hours
+
+  # Optional: limit the number of pods to chaos
+  # value: "2"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: backend-container-kill
+  namespace: chaos-testing
+spec:
+  action: container-kill
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+  containerNames:
+    - backend
+  duration: "10s"
+  scheduler:
+    cron: "@every 4h"

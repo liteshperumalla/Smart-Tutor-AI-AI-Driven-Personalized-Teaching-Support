@@ -47,6 +47,9 @@ class ChatSession:
         for m in self.messages:
             if isinstance(m, dict):
                 messages_list.append(m)
+            elif isinstance(m, list):
+                # Skip malformed data (lists from old format)
+                continue
             else:
                 messages_list.append(m.to_dict())
 
@@ -57,6 +60,40 @@ class ChatSession:
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
             "updated_at": self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else self.updated_at,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ChatSession":
+        """Convert dictionary to ChatSession, ensuring messages are ChatMessage objects"""
+        messages = []
+        for msg_data in data.get("messages", []):
+            if isinstance(msg_data, dict):
+                messages.append(ChatMessage.from_dict(msg_data))
+            elif isinstance(msg_data, ChatMessage):
+                messages.append(msg_data)
+            # Skip non-dict, non-ChatMessage items (old format)
+
+        created_at = data.get("created_at")
+        updated_at = data.get("updated_at")
+
+        # Helper to parse timestamp - handles both datetime objects and strings
+        def parse_timestamp(value):
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                try:
+                    # Try ISO format first
+                    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    pass
+            return datetime.utcnow()
+
+        return cls(
+            id=data.get("id", ""),
+            title=data.get("title", "New chat"),
+            messages=messages,
+            created_at=parse_timestamp(created_at),
+            updated_at=parse_timestamp(updated_at),
+        )
 
 
 @dataclass

@@ -1,0 +1,13 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-api-pdb
+  labels:
+    app: smart-ai-tutor
+    component: backend
+spec:
+  minAvailable: 2  # At least 2 pods must be available during disruptions
+  selector:
+    matchLabels:
+      app: smart-ai-tutor
+      component: backend

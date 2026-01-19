@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import json
 import re
-from utils import load_chat_sessions, save_chat_session, sanitize_filename, get_system_status
+from utils import load_chat_sessions, save_chat_session, sanitize_filename, get_system_status, resolve_chat_file_path
 from auth import display_logout_button # Import directly
 
 def sidebar_content():
@@ -113,9 +113,9 @@ def sidebar_content():
                                 if new_name_input not in sessions: # Ensure new name is unique
                                     # Preserve history and delete old file before saving new one
                                     history_to_move = sessions.pop(name)
-                                    old_chat_path = os.path.join("previous_chats", f"{sanitize_filename(name)}.json")
-                                    if os.path.exists(old_chat_path):
-                                        os.remove(old_chat_path)
+                                    old_chat_path = resolve_chat_file_path(name)
+                                    if old_chat_path.exists():
+                                        old_chat_path.unlink()
 
                                     sessions[new_name_input] = history_to_move
                                     if st.session_state.current_chat == name:
@@ -138,10 +138,10 @@ def sidebar_content():
                                 sessions.pop(name, None)
                                 
                                 # Delete file on disk
-                                filepath = os.path.join("previous_chats", f"{sanitize_filename(name)}.json")
-                                if os.path.exists(filepath):
+                                filepath = resolve_chat_file_path(name)
+                                if filepath.exists():
                                     try:
-                                        os.remove(filepath)
+                                        filepath.unlink()
                                     except OSError as e:
                                         st.error(f"Error deleting chat file: {e}")
 
@@ -194,20 +194,14 @@ def sidebar_content():
         # and the profile page does the same.
         # A more robust solution might involve a callback on this checkbox to also update user_data.
         is_dark = st.session_state.get('dark_mode', False)
-        if st.checkbox("Dark Mode", value=is_dark, key="sidebar_dark_mode_toggle"):
-            if not is_dark: # If it was false and now checked true
-                st.session_state.dark_mode = True
-                # Optionally, update user preference in backend if user is logged in
-                # from user_management import update_user_profile
-                # if st.session_state.get('authenticated', False):
-                #    update_user_profile(st.session_state.user_name, {'theme': 'dark'})
-                st.rerun()
-            else: # If it was true and now unchecked (false)
-                st.session_state.dark_mode = False
-                # Optionally, update user preference
-                # if st.session_state.get('authenticated', False):
-                #    update_user_profile(st.session_state.user_name, {'theme': 'light'})
-                st.rerun()
+        new_is_dark = st.checkbox("Dark Mode", value=is_dark, key="sidebar_dark_mode_toggle")
+        if new_is_dark != is_dark:
+            st.session_state.dark_mode = new_is_dark
+            # Optionally, update user preference in backend if user is logged in
+            # from user_management import update_user_profile
+            # if st.session_state.get('authenticated', False):
+            #    update_user_profile(st.session_state.user_name, {'theme': 'dark' if new_is_dark else 'light'})
+            st.rerun()
 
 
         st.markdown("<hr>", unsafe_allow_html=True)

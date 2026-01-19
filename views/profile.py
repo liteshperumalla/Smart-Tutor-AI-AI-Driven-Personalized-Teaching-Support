@@ -157,10 +157,14 @@ def render():
                         continue
         if appointments:
             for appt in appointments:
-                st.write(f"**Date:** {appt.get('date', 'N/A')}")
-                st.write(f"**Time:** {appt.get('time', 'N/A')}")
-                st.write(f"**With:** {appt.get('with', 'N/A')}")
-                st.write(f"**Reason:** {appt.get('reason', 'N/A')}")
+                date_val = appt.get("date") or appt.get("preferred_date", "N/A")
+                time_val = appt.get("time") or appt.get("preferred_time", "N/A")
+                with_val = appt.get("with") or appt.get("appointment_with", "N/A")
+                reason_val = appt.get("reason") or appt.get("primary_reason", "N/A")
+                st.write(f"**Date:** {date_val}")
+                st.write(f"**Time:** {time_val}")
+                st.write(f"**With:** {with_val}")
+                st.write(f"**Reason:** {reason_val}")
                 st.markdown("---")
         else:
             st.info("No appointments found.")
@@ -203,16 +207,37 @@ def render():
                             feedbacks.append(json.load(f))
                     except Exception:
                         continue
+                elif fname.endswith(".jsonl"):
+                    try:
+                        with open(os.path.join(feedback_dir, fname), "r", encoding="utf-8") as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                feedbacks.append(json.loads(line))
+                    except Exception:
+                        continue
         if feedbacks:
+            def _format_feedback_entry(entry):
+                created_at = entry.get("timestamp") or entry.get("created_at", "")
+                entry_type = entry.get("type")
+                if not entry_type:
+                    entry_type = "bug" if entry.get("feature") or entry.get("severity") else "feedback"
+                message = entry.get("message") or entry.get("description") or ""
+                return created_at, entry_type, message, entry
+
             for fb in feedbacks:
-                ts = fb.get("timestamp", "")
+                created_at, entry_type, message, raw_entry = _format_feedback_entry(fb)
                 try:
-                    ts_fmt = datetime.fromisoformat(ts).strftime("%Y-%m-%d %H:%M")
+                    ts_fmt = datetime.fromisoformat(created_at).strftime("%Y-%m-%d %H:%M")
                 except Exception:
-                    ts_fmt = ts
+                    ts_fmt = created_at or "N/A"
                 st.write(f"**Date:** {ts_fmt}")
-                st.write(f"**Type:** {fb.get('type', 'N/A')}")
-                st.write(f"**Message:** {fb.get('message', 'N/A')}")
+                st.write(f"**Type:** {entry_type}")
+                if entry_type == "bug":
+                    st.write(f"**Feature:** {raw_entry.get('page_feature') or raw_entry.get('feature', 'N/A')}")
+                    st.write(f"**Severity:** {raw_entry.get('severity', 'N/A')}")
+                st.write(f"**Message:** {message or 'N/A'}")
                 st.markdown("---")
         else:
             st.info("No feedback found.")

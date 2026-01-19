@@ -1,0 +1,64 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-api-hpa
+  labels:
+    app: smart-ai-tutor
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-api
+
+  minReplicas: 3  # Minimum for HA
+  maxReplicas: 20  # Maximum based on expected traffic
+
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # 5 minutes before scaling down
+      policies:
+        - type: Percent
+          value: 50  # Scale down max 50% of current pods
+          periodSeconds: 60
+        - type: Pods
+          value: 2  # Or max 2 pods at a time
+          periodSeconds: 60
+      selectPolicy: Min  # Use the policy that scales down the least
+
+    scaleUp:
+      stabilizationWindowSeconds: 60  # 1 minute before scaling up
+      policies:
+        - type: Percent
+          value: 100  # Double the current pods
+          periodSeconds: 60
+        - type: Pods
+          value: 4  # Or add max 4 pods at a time
+          periodSeconds: 60
+      selectPolicy: Max  # Use the policy that scales up the most
+
+  metrics:
+    # CPU-based scaling
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Target 70% CPU usage
+
+    # Memory-based scaling
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Target 80% memory usage
+
+    # Custom metric: Request rate (requires metrics server)
+    # - type: Pods
+    #   pods:
+    #     metric:
+    #       name: http_requests_per_second
+    #     target:
+    #       type: AverageValue
+    #       averageValue: "1000"  # 1000 req/s per pod

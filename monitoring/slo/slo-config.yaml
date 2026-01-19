@@ -1,0 +1,247 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slo-definitions
+  namespace: monitoring
+data:
+  # Backend API Availability SLO
+  backend-availability.yaml: |
+    apiVersion: openslo/v1alpha
+    kind: SLO
+    metadata:
+      name: backend-availability
+      displayName: Backend API Availability
+    spec:
+      description: Backend API should be available 99.9% of the time
+      service: backend-api
+      budgetingMethod: Occurrences
+      objectives:
+        - displayName: 99.9% availability over 30 days
+          target: 0.999
+          timeSlice:
+            duration: 30d
+            isRolling: true
+          indicator:
+            thresholdMetric:
+              metricSource:
+                type: Prometheus
+                spec:
+                  query: |
+                    sum(rate(http_requests_total{job="backend", code!~"5.."}[5m]))
+                    /
+                    sum(rate(http_requests_total{job="backend"}[5m]))
+
+  # Backend API Latency SLO
+  backend-latency.yaml: |
+    apiVersion: openslo/v1alpha
+    kind: SLO
+    metadata:
+      name: backend-latency-p95
+      displayName: Backend API P95 Latency
+    spec:
+      description: 95% of requests should complete within 500ms
+      service: backend-api
+      budgetingMethod: Timeslices
+      objectives:
+        - displayName: P95 latency < 500ms
+          target: 0.95
+          timeSlice:
+            duration: 30d
+            isRolling: true
+          indicator:
+            thresholdMetric:
+              metricSource:
+                type: Prometheus
+                spec:
+                  query: |
+                    histogram_quantile(0.95,
+                      sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+                    ) < 0.5
+
+  # Frontend Performance SLO
+  frontend-performance.yaml: |
+    apiVersion: openslo/v1alpha
+    kind: SLO
+    metadata:
+      name: frontend-performance
+      displayName: Frontend Page Load Performance
+    spec:
+      description: 95% of page loads should complete within 2 seconds
+      service: frontend
+      budgetingMethod: Timeslices
+      objectives:
+        - displayName: P95 page load < 2s
+          target: 0.95
+          timeSlice:
+            duration: 30d
+            isRolling: true
+          indicator:
+            thresholdMetric:
+              metricSource:
+                type: Prometheus
+                spec:
+                  query: |
+                    histogram_quantile(0.95,
+                      sum(rate(http_request_duration_seconds_bucket{job="frontend"}[5m])) by (le)
+                    ) < 2.0
+
+  # Database Query Performance SLO
+  database-performance.yaml: |
+    apiVersion: openslo/v1alpha
+    kind: SLO
+    metadata:
+      name: database-performance
+      displayName: Database Query Performance
+    spec:
+      description: 99% of database queries should complete within 100ms
+      service: postgresql
+      budgetingMethod: Timeslices
+      objectives:
+        - displayName: P99 query time < 100ms
+          target: 0.99
+          timeSlice:
+            duration: 30d
+            isRolling: true
+          indicator:
+            thresholdMetric:
+              metricSource:
+                type: Prometheus
+                spec:
+                  query: |
+                    histogram_quantile(0.99,
+                      sum(rate(pg_stat_statements_mean_exec_time_bucket[5m])) by (le)
+                    ) < 100
+
+  # RAG Query Success Rate SLO
+  rag-success-rate.yaml: |
+    apiVersion: openslo/v1alpha
+    kind: SLO
+    metadata:
+      name: rag-success-rate
+      displayName: RAG Query Success Rate
+    spec:
+      description: 99% of RAG queries should complete successfully
+      service: backend-api
+      budgetingMethod: Occurrences
+      objectives:
+        - displayName: 99% RAG query success
+          target: 0.99
+          timeSlice:
+            duration: 30d
+            isRolling: true
+          indicator:
+            thresholdMetric:
+              metricSource:
+                type: Prometheus
+                spec:
+                  query: |
+                    sum(rate(rag_queries_total{status="success"}[5m]))
+                    /
+                    sum(rate(rag_queries_total[5m]))
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: slo-alert-rules
+  namespace: monitoring
+data:
+  slo-alerts.yaml: |
+    groups:
+      - name: slo_alerts
+        interval: 1m
+        rules:
+          # Backend availability SLO burn rate alerts
+          - alert: BackendAvailabilityBurnRateFast
+            expr: |
+              (
+                sum(rate(http_requests_total{job="backend", code=~"5.."}[1h]))
+                /
+                sum(rate(http_requests_total{job="backend"}[1h]))
+              ) > (14.4 * (1 - 0.999))
+            for: 2m
+            labels:
+              severity: critical
+              slo: backend-availability
+            annotations:
+              summary: "Backend availability SLO burn rate is very high"
+              description: "Error rate is {{ $value | humanizePercentage }} (threshold: 1.44%)"
+
+          - alert: BackendAvailabilityBurnRateSlow
+            expr: |
+              (
+                sum(rate(http_requests_total{job="backend", code=~"5.."}[6h]))
+                /
+                sum(rate(http_requests_total{job="backend"}[6h]))
+              ) > (6 * (1 - 0.999))
+            for: 15m
+            labels:
+              severity: warning
+              slo: backend-availability
+            annotations:
+              summary: "Backend availability SLO burn rate is elevated"
+              description: "Error rate is {{ $value | humanizePercentage }}"
+
+          # Backend latency SLO alerts
+          - alert: BackendLatencySLOBreach
+            expr: |
+              histogram_quantile(0.95,
+                sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le)
+              ) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+              slo: backend-latency
+            annotations:
+              summary: "Backend P95 latency exceeds SLO"
+              description: "P95 latency is {{ $value }}s (threshold: 0.5s)"
+
+          # Error budget exhaustion alerts
+          - alert: BackendErrorBudgetAlmostExhausted
+            expr: |
+              (
+                1 - (
+                  sum(rate(http_requests_total{job="backend", code!~"5.."}[30d]))
+                  /
+                  sum(rate(http_requests_total{job="backend"}[30d]))
+                )
+              ) / (1 - 0.999) > 0.8
+            for: 5m
+            labels:
+              severity: warning
+              slo: backend-availability
+            annotations:
+              summary: "Backend error budget 80% consumed"
+              description: "Only {{ $value | humanizePercentage }} of error budget remaining"
+
+          - alert: BackendErrorBudgetExhausted
+            expr: |
+              (
+                1 - (
+                  sum(rate(http_requests_total{job="backend", code!~"5.."}[30d]))
+                  /
+                  sum(rate(http_requests_total{job="backend"}[30d]))
+                )
+              ) / (1 - 0.999) > 1.0
+            for: 5m
+            labels:
+              severity: critical
+              slo: backend-availability
+            annotations:
+              summary: "Backend error budget exhausted"
+              description: "Error budget completely consumed. No more errors allowed this month!"
+
+          # RAG query success rate
+          - alert: RAGQuerySuccessRateLow
+            expr: |
+              sum(rate(rag_queries_total{status="success"}[5m]))
+              /
+              sum(rate(rag_queries_total[5m]))
+              < 0.99
+            for: 5m
+            labels:
+              severity: warning
+              slo: rag-success-rate
+            annotations:
+              summary: "RAG query success rate below SLO"
+              description: "Success rate is {{ $value | humanizePercentage }} (threshold: 99%)"

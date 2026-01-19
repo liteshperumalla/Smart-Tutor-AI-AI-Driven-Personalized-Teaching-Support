@@ -1,18 +1,24 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { GoogleAuthButton } from "@/components/google-auth-button";
+import { User, Lock, LogIn, ArrowLeft } from "lucide-react";
 
 type LoginResponse = {
-  token: string;
-  user?: { username: string };
+  user: {
+    username: string;
+    email: string;
+    full_name: string;
+  };
+  token_type: string;
+  message: string;
 };
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
@@ -38,6 +44,7 @@ export default function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // Important: Include cookies in request/response
         body: JSON.stringify({ username: normalizedUsername, password: password.trim() }),
       });
 
@@ -50,10 +57,11 @@ export default function LoginPage() {
         throw new Error(serverDetail ? `Unable to sign in: ${serverDetail}` : "Unable to sign in");
       }
 
-      if (payload.token) {
-        saveAuthToken(payload.token);
-      }
+      // Authentication successful - tokens are in HttpOnly cookies
+      // Trigger auth state change event so useAuthToken hook updates
+      saveAuthToken("authenticated");
 
+      // Redirect to home page
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
@@ -62,30 +70,91 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
-        <div className="mb-10 text-center">
-          <Link href="/" className="text-sm font-semibold text-blue-600 dark:text-blue-400">
-            ← Back to home
-          </Link>
-          <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-white">
-            Sign in to Smart AI Tutor
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            Use the same credentials you created in the FastAPI backend.
-          </p>
+    <div className="grid min-h-screen lg:grid-cols-2">
+      {/* Left: Visual side with atmosphere */}
+      <div className="relative hidden lg:flex flex-col justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 overflow-hidden p-16">
+        {/* Decorative background */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 h-96 w-96 bg-white rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 left-0 h-64 w-64 bg-amber-300 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
         </div>
 
-        {signupSuccess && (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-            Account created successfully. Sign in with your new credentials.
+        <div className="relative z-10 text-white">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur mb-8 animate-fade-in-down">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
+            </span>
+            Live AI Tutoring System
           </div>
-        )}
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-6 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-        >
+          <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
+            Master Advanced<br />Computational Methods
+          </h2>
+
+          <p className="mt-6 text-xl text-white/80 max-w-xl animate-fade-in-up stagger-1">
+            AI-powered tutoring that adapts to your learning style. Get instant help, generate quizzes, and ace your courses.
+          </p>
+
+          <div className="mt-12 space-y-4 animate-fade-in-up stagger-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <span className="text-lg">24/7 AI tutor assistance</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <span className="text-lg">Smart quiz generation</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <span className="text-lg">Document research mode</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right: Login form */}
+      <main className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+        <div className="w-full max-w-md animate-scale-in">
+          <div className="mb-10 text-center lg:text-left">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:gap-3 transition-all">
+              <span>←</span> Back to home
+            </Link>
+            <h1 className="font-display mt-6 text-4xl font-bold text-zinc-900 dark:text-white">
+              Welcome back
+            </h1>
+            <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+              Sign in to continue your learning journey
+            </p>
+          </div>
+
+          {signupSuccess && (
+            <div className="mb-6 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 animate-fade-in-down">
+              <div className="flex items-center gap-2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Account created successfully. Sign in with your new credentials.
+              </div>
+            </div>
+          )}
+
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6 card animate-fade-in-up stagger-1"
+          >
           <div className="space-y-2">
             <label
               htmlFor="username"
@@ -135,9 +204,13 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-75 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
+            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-75 disabled:hover:scale-100"
           >
-            {isSubmitting ? "Signing in…" : "Sign in"}
+            {isSubmitting ? (
+              <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Signing in…</>
+            ) : (
+              <>Sign in <span className="transition-transform group-hover:translate-x-1">→</span></>
+            )}
           </button>
 
           <div className="space-y-3">
@@ -148,13 +221,34 @@ export default function LoginPage() {
           </div>
         </form>
 
-        <p className="mt-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-          Don't have an account?{" "}
-          <Link href="/signup" className="font-medium text-zinc-900 underline dark:text-white">
-            Create one
-          </Link>
-        </p>
+        <div className="mt-8 space-y-3 text-center text-sm">
+          <p className="text-zinc-600 dark:text-zinc-400">
+            Don't have an account?{" "}
+            <Link href="/signup" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+              Create one →
+            </Link>
+          </p>
+          <p className="text-zinc-600 dark:text-zinc-400">
+            Forgot your password?{" "}
+            <Link href="/password-reset/request" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+              Reset it
+            </Link>
+          </p>
+        </div>
+      </div>
       </main>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
+        <p className="text-zinc-500">Loading...</p>
+      </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }

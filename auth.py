@@ -34,7 +34,7 @@ def display_signup_page():
                 if add_user(username, hashed_password, email):
                     st.success("Sign up successful! Please Sign In.")
                     st.session_state.auth_page = "login"
-                    get_user_dir(st.session_state.user_name)
+                    get_user_dir(username)
                     st.rerun()
                 else:
                     st.error("An error occurred during sign up. Please try again.")
@@ -73,9 +73,9 @@ def display_login_page():
                                 if not update_last_login(username):
                                     print(f"Warning: Failed to update last login time for user {username}")
 
-                                st.session_state.authenticated = True
-                                get_user_dir(st.session_state.user_name)
                                 st.session_state.user_name = username
+                                st.session_state.authenticated = True
+                                get_user_dir(username)
                                 st.session_state.pop('dark_mode_initialized_from_user_preference', None)
                                 st.rerun()
                             else:

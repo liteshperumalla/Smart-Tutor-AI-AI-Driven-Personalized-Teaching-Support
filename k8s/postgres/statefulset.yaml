@@ -1,0 +1,146 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    app: smart-ai-tutor
+    component: postgres
+    tier: database
+spec:
+  serviceName: postgres-headless
+  replicas: 1  # Single instance (use AWS RDS for production HA)
+  selector:
+    matchLabels:
+      app: smart-ai-tutor
+      component: postgres
+
+  # Volume Claim Templates
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app: smart-ai-tutor
+          component: postgres
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "gp3"  # AWS EBS gp3 (change for other providers)
+        resources:
+          requests:
+            storage: 100Gi  # 100 GB for database
+
+  template:
+    metadata:
+      labels:
+        app: smart-ai-tutor
+        component: postgres
+        tier: database
+    spec:
+      # SECURITY: Run as postgres user (uid 999)
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+
+          # Environment variables
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: postgres-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            # Performance tuning
+            - name: POSTGRES_INITDB_ARGS
+              value: "--encoding=UTF8 --locale=en_US.utf8"
+
+          # HEALTH CHECKS
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $POSTGRES_USER -d $POSTGRES_DB
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # RESOURCES: Database workload
+          resources:
+            requests:
+              cpu: 1000m     # 1 CPU core
+              memory: 2Gi    # 2 GB
+            limits:
+              cpu: 4000m     # 4 CPU cores max
+              memory: 8Gi    # 8 GB max
+
+          # VOLUME MOUNTS
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config-files
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+            - name: postgres-config-files
+              mountPath: /docker-entrypoint-initdb.d/init.sql
+              subPath: init.sql
+
+          # SECURITY: Container security context
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # Postgres needs to write
+            capabilities:
+              drop:
+                - ALL
+
+      # VOLUMES: ConfigMap for PostgreSQL configuration
+      volumes:
+        - name: postgres-config-files
+          configMap:
+            name: postgres-config-files
+
+      # NODE AFFINITY: Prefer nodes with SSD
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node.kubernetes.io/instance-type
+                    operator: In
+                    values:
+                      - m5.xlarge
+                      - m5.2xlarge
+                      - r5.xlarge

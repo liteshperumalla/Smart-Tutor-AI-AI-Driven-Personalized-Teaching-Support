@@ -1,0 +1,33 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "smart-ai-tutor.fullname" . }}-frontend
+  labels:
+    {{- include "smart-ai-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+data:
+  # API Configuration
+  NEXT_PUBLIC_API_BASE_URL: {{ .Values.frontend.apiBaseUrl | default "http://backend:8000/api/v1" | quote }}
+
+  # Application Configuration
+  APP_NAME: "Smart AI Tutor"
+  APP_VERSION: {{ .Chart.AppVersion | quote }}
+
+  # Google OAuth (public config)
+  {{- if .Values.frontend.oauth.google.enabled }}
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: {{ .Values.frontend.oauth.google.clientId | quote }}
+  NEXT_PUBLIC_GOOGLE_REDIRECT_URI: {{ .Values.frontend.oauth.google.redirectUri | quote }}
+  {{- end }}
+
+  # Feature Flags
+  NEXT_PUBLIC_ENABLE_ANALYTICS: {{ .Values.frontend.features.analytics | default "false" | quote }}
+  NEXT_PUBLIC_ENABLE_DARK_MODE: {{ .Values.frontend.features.darkMode | default "true" | quote }}
+
+  # Performance
+  NEXT_PUBLIC_ENABLE_SW: {{ .Values.frontend.features.serviceWorker | default "false" | quote }}
+
+  {{- if .Values.frontend.extraConfig }}
+  {{- toYaml .Values.frontend.extraConfig | nindent 2 }}
+  {{- end }}
+{{- end }}

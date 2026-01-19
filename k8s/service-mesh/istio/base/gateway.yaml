@@ -1,0 +1,157 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: smart-ai-tutor-gateway
+  namespace: production
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+    # HTTP (redirect to HTTPS)
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "api.smart-ai-tutor.com"
+        - "app.smart-ai-tutor.com"
+      tls:
+        httpsRedirect: true
+
+    # HTTPS
+    - port:
+        number: 443
+        name: https
+        protocol: HTTPS
+      hosts:
+        - "api.smart-ai-tutor.com"
+        - "app.smart-ai-tutor.com"
+      tls:
+        mode: SIMPLE
+        credentialName: smart-ai-tutor-tls  # TLS certificate secret
+        minProtocolVersion: TLSV1_2
+        cipherSuites:
+          - ECDHE-RSA-AES128-GCM-SHA256
+          - ECDHE-RSA-AES256-GCM-SHA384
+
+---
+# Egress Gateway for external services
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: smart-ai-tutor-egress
+  namespace: production
+spec:
+  selector:
+    istio: egressgateway
+  servers:
+    - port:
+        number: 443
+        name: tls
+        protocol: TLS
+      hosts:
+        - "*.amazonaws.com"
+        - "bedrock-runtime.us-east-1.amazonaws.com"
+      tls:
+        mode: PASSTHROUGH
+
+---
+# Virtual Service for frontend
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: frontend
+  namespace: production
+spec:
+  hosts:
+    - "app.smart-ai-tutor.com"
+  gateways:
+    - smart-ai-tutor-gateway
+  http:
+    - match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: frontend
+            port:
+              number: 3000
+      timeout: 30s
+
+---
+# Virtual Service for backend API
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: backend-api
+  namespace: production
+spec:
+  hosts:
+    - "api.smart-ai-tutor.com"
+  gateways:
+    - smart-ai-tutor-gateway
+  http:
+    - match:
+        - uri:
+            prefix: "/api/v1"
+      route:
+        - destination:
+            host: backend
+            port:
+              number: 8000
+      corsPolicy:
+        allowOrigins:
+          - prefix: "https://app.smart-ai-tutor.com"
+        allowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+          - OPTIONS
+        allowHeaders:
+          - content-type
+          - authorization
+          - x-requested-with
+        allowCredentials: true
+        maxAge: "24h"
+      timeout: 60s
+      retries:
+        attempts: 3
+        perTryTimeout: 20s
+
+---
+# ServiceEntry for AWS Bedrock (allow egress)
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: aws-bedrock
+  namespace: production
+spec:
+  hosts:
+    - "bedrock-runtime.us-east-1.amazonaws.com"
+  ports:
+    - number: 443
+      name: https
+      protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# ServiceEntry for external APIs
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-apis
+  namespace: production
+spec:
+  hosts:
+    - "*.serpapi.com"
+    - "*.arxiv.org"
+    - "*.ncbi.nlm.nih.gov"
+  ports:
+    - number: 443
+      name: https
+      protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS

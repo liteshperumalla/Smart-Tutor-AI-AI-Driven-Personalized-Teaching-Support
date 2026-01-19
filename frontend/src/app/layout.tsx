@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,9 +41,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ThemeProvider>
-          <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

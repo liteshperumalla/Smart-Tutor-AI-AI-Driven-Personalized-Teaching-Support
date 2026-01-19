@@ -1,0 +1,694 @@
+name: Enhanced CI/CD Pipeline with Security
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# Prevent concurrent deployments
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # =============================================================================
+  # SECURITY SCANNING JOBS
+  # =============================================================================
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better detection
+
+      - name: TruffleHog Secret Scanning
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      - name: GitGuardian Secret Scanning
+        uses: GitGuardian/ggshield-action@master
+        env:
+          GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
+        with:
+          args: secret scan path .
+
+  dependency-scanning:
+    name: Dependency Vulnerability Scanning
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Snyk for Backend
+        if: matrix.component == 'backend'
+        uses: snyk/actions/python@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=backend/requirements.txt
+
+      - name: Run Snyk for Frontend
+        if: matrix.component == 'frontend'
+        uses: snyk/actions/node@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --file=frontend/package.json
+
+      - name: Run Safety check (Python)
+        if: matrix.component == 'backend'
+        run: |
+          pip install safety
+          safety check --file=backend/requirements.txt --json --output safety-report.json || true
+
+      - name: Run npm audit (Frontend)
+        if: matrix.component == 'frontend'
+        run: |
+          cd frontend
+          npm audit --json > npm-audit-report.json || true
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ matrix.component }}
+          path: |
+            safety-report.json
+            npm-audit-report.json
+          retention-days: 30
+
+  sast-scanning:
+    name: SAST (Static Application Security Testing)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: Run Semgrep SAST
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/python
+            p/javascript
+
+      - name: Bandit Python Security Linter
+        run: |
+          pip install bandit[toml]
+          bandit -r backend/ -f json -o bandit-report.json --severity-level medium || true
+
+      - name: ESLint Security Plugin (Frontend)
+        run: |
+          cd frontend
+          npm ci
+          npm run lint -- --format json --output-file eslint-security.json || true
+
+      - name: Upload SAST Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-reports
+          path: |
+            bandit-report.json
+            frontend/eslint-security.json
+          retention-days: 30
+
+  # =============================================================================
+  # TESTING JOBS
+  # =============================================================================
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: [secret-scanning]
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-cov pytest-asyncio pytest-xdist httpx
+
+      - name: Run unit tests
+        env:
+          ENVIRONMENT: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: |
+          cd backend
+          pytest tests/ -v --cov=backend --cov-report=xml --cov-report=html --cov-report=term-missing \
+            --junitxml=junit.xml --maxfail=5 -n auto
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: backend/junit.xml
+          check_name: Backend Test Results
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    needs: [secret-scanning]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run TypeScript type check
+        run: |
+          cd frontend
+          npm run type-check || npx tsc --noEmit
+
+      - name: Run linter
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Run unit tests
+        run: |
+          cd frontend
+          npm test -- --coverage --watchAll=false --maxWorkers=2
+
+      - name: Build application
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./frontend/coverage/coverage-final.json
+          flags: frontend
+          name: frontend-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/.next
+          retention-days: 7
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Playwright
+        run: |
+          cd e2e
+          npm ci
+          npx playwright install --with-deps chromium firefox
+
+      - name: Start services with Docker Compose
+        run: |
+          docker-compose up -d
+          timeout 120 bash -c 'until curl -f http://localhost:8010/health; do sleep 2; done'
+          timeout 120 bash -c 'until curl -f http://localhost:4000; do sleep 2; done'
+
+      - name: Run E2E tests
+        run: |
+          cd e2e
+          npx playwright test --reporter=html,json
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 30
+
+      - name: Stop services
+        if: always()
+        run: docker-compose down -v
+
+  # =============================================================================
+  # CONTAINER SECURITY SCANNING
+  # =============================================================================
+
+  container-security-scan:
+    name: Container Image Security Scan
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (Backend)
+        if: matrix.component == 'backend'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: false
+          load: true
+          tags: smart-tutor-${{ matrix.component }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Docker image (Frontend)
+        if: matrix.component == 'frontend'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: false
+          load: true
+          tags: smart-tutor-${{ matrix.component }}:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: smart-tutor-${{ matrix.component }}:test
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.component }}.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.component }}.sarif'
+          category: trivy-${{ matrix.component }}
+
+      - name: Run Trivy in table format
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: smart-tutor-${{ matrix.component }}:test
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
+
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: smart-tutor-${{ matrix.component }}:test
+          fail-build: false
+          severity-cutoff: high
+
+      - name: Scan with Snyk Container
+        continue-on-error: true
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: smart-tutor-${{ matrix.component }}:test
+          args: --severity-threshold=high --file=Dockerfile
+
+  # =============================================================================
+  # BUILD AND PUSH
+  # =============================================================================
+
+  build-and-push:
+    name: Build and Push Container Images
+    runs-on: ubuntu-latest
+    needs: [dependency-scanning, sast-scanning, backend-tests, frontend-tests, container-security-scan]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # For OIDC
+
+    outputs:
+      backend-image: ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate version
+        id: version
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "version=$(date +%Y%m%d)-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true  # Generate SBOM
+          provenance: true  # Generate provenance
+
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
+
+      - name: Sign container images with Cosign
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}
+
+  # =============================================================================
+  # KUBERNETES DEPLOYMENT
+  # =============================================================================
+
+  deploy-staging:
+    name: Deploy to Staging (Kubernetes)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.smart-ai-tutor.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: us-east-1
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name smart-ai-tutor-staging --region us-east-1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Deploy with Helm
+        run: |
+          helm upgrade --install smart-ai-tutor ./helm/smart-ai-tutor \
+            --namespace staging \
+            --create-namespace \
+            --values helm/smart-ai-tutor/values-staging.yaml \
+            --set image.registry=${{ env.REGISTRY }} \
+            --set image.tag=${{ needs.build-and-push.outputs.version }} \
+            --wait \
+            --timeout 10m \
+            --atomic \
+            --cleanup-on-fail
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/smart-ai-tutor-backend-api -n staging --timeout=5m
+          kubectl rollout status deployment/smart-ai-tutor-frontend -n staging --timeout=5m
+
+      - name: Run smoke tests
+        run: |
+          # Wait for load balancer
+          sleep 30
+
+          # Get ingress URL
+          BACKEND_URL=$(kubectl get ingress -n staging -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}')
+
+          # Health check
+          curl -f https://staging.smart-ai-tutor.com/health || exit 1
+          curl -f https://api.staging.smart-ai-tutor.com/health || exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          helm rollback smart-ai-tutor -n staging
+
+  deploy-production:
+    name: Deploy to Production (Kubernetes)
+    runs-on: ubuntu-latest
+    needs: [build-and-push, e2e-tests]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://smart-ai-tutor.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: us-east-1
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --name smart-ai-tutor-production --region us-east-1
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: '3.13.0'
+
+      - name: Pre-deployment backup
+        run: |
+          # Backup current Helm release
+          helm get values smart-ai-tutor -n production > backup-values-$(date +%Y%m%d-%H%M%S).yaml
+
+      - name: Deploy with Helm (Blue-Green)
+        run: |
+          helm upgrade --install smart-ai-tutor ./helm/smart-ai-tutor \
+            --namespace production \
+            --create-namespace \
+            --values helm/smart-ai-tutor/values-production.yaml \
+            --set image.registry=${{ env.REGISTRY }} \
+            --set image.tag=${{ needs.build-and-push.outputs.version }} \
+            --wait \
+            --timeout 15m \
+            --atomic \
+            --cleanup-on-fail
+
+      - name: Verify deployment health
+        run: |
+          kubectl rollout status deployment/smart-ai-tutor-backend-api -n production --timeout=10m
+          kubectl rollout status deployment/smart-ai-tutor-frontend -n production --timeout=10m
+
+          # Check pod health
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=smart-ai-tutor -n production --timeout=5m
+
+      - name: Run production smoke tests
+        run: |
+          # Critical path smoke tests
+          curl -f https://smart-ai-tutor.com/health || exit 1
+          curl -f https://api.smart-ai-tutor.com/health || exit 1
+          curl -f https://api.smart-ai-tutor.com/metrics || exit 1
+
+      - name: Monitor deployment metrics
+        run: |
+          # Check error rates (requires Prometheus)
+          kubectl exec -n monitoring deployment/prometheus -- \
+            promtool query instant http://localhost:9090 \
+            'rate(http_requests_total{status=~"5.."}[5m])' || echo "Metrics check skipped"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, rolling back..."
+          helm rollback smart-ai-tutor -n production --wait
+
+      - name: Notify deployment success
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: |
+            🚀 Production deployment successful!
+            Version: ${{ needs.build-and-push.outputs.version }}
+            Commit: ${{ github.sha }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: |
+            ❌ Production deployment failed and was rolled back!
+            Version: ${{ needs.build-and-push.outputs.version }}
+            Commit: ${{ github.sha }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  # =============================================================================
+  # POST-DEPLOYMENT VALIDATION
+  # =============================================================================
+
+  post-deployment-tests:
+    name: Post-Deployment Validation
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run API integration tests
+        run: |
+          # Run integration tests against production
+          curl -f https://api.smart-ai-tutor.com/health
+          curl -f https://api.smart-ai-tutor.com/health/ready
+
+      - name: Check performance metrics
+        run: |
+          # Basic performance check
+          response_time=$(curl -o /dev/null -s -w '%{time_total}\n' https://smart-ai-tutor.com)
+          if (( $(echo "$response_time > 2.0" | bc -l) )); then
+            echo "Warning: Response time ${response_time}s exceeds 2s threshold"
+          fi
+
+      - name: Verify auto-scaling
+        run: |
+          # Check HPA status
+          kubectl get hpa -n production

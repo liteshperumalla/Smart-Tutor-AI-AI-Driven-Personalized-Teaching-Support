@@ -1,0 +1,54 @@
+{{- if and .Values.frontend.enabled .Values.frontend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "smart-ai-tutor.fullname" . }}-frontend
+  labels:
+    {{- include "smart-ai-tutor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "smart-ai-tutor.fullname" . }}-frontend
+  minReplicas: {{ .Values.frontend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.frontend.autoscaling.maxReplicas }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.frontend.autoscaling.scaleDown.stabilizationWindowSeconds | default 300 }}
+      policies:
+        - type: Percent
+          value: {{ .Values.frontend.autoscaling.scaleDown.percentPolicy | default 50 }}
+          periodSeconds: {{ .Values.frontend.autoscaling.scaleDown.periodSeconds | default 60 }}
+        - type: Pods
+          value: {{ .Values.frontend.autoscaling.scaleDown.podsPolicy | default 2 }}
+          periodSeconds: {{ .Values.frontend.autoscaling.scaleDown.periodSeconds | default 60 }}
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.frontend.autoscaling.scaleUp.stabilizationWindowSeconds | default 0 }}
+      policies:
+        - type: Percent
+          value: {{ .Values.frontend.autoscaling.scaleUp.percentPolicy | default 100 }}
+          periodSeconds: {{ .Values.frontend.autoscaling.scaleUp.periodSeconds | default 30 }}
+        - type: Pods
+          value: {{ .Values.frontend.autoscaling.scaleUp.podsPolicy | default 4 }}
+          periodSeconds: {{ .Values.frontend.autoscaling.scaleUp.periodSeconds | default 30 }}
+      selectPolicy: Max
+  metrics:
+    {{- if .Values.frontend.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.frontend.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.frontend.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.frontend.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

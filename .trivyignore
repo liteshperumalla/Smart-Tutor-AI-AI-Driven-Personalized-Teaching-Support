@@ -1,0 +1,15 @@
+# Trivy ignore file
+# Add CVE IDs to ignore specific vulnerabilities
+# Format: CVE-YYYY-NNNNN
+
+# Example: Ignore low-severity CVEs in development dependencies
+# CVE-2023-12345
+
+# Ignore vulnerabilities that have been assessed and accepted
+# Document the reason for ignoring
+
+# False positives
+# CVE-2023-XXXXX  # False positive - not applicable to our usage
+
+# Accepted risks (with justification)
+# CVE-2023-YYYYY  # Accepted - mitigation in place via network policies

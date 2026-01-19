@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: smart-ai-tutor-quota
+  namespace: smart-ai-tutor
+spec:
+  hard:
+    requests.cpu: "20"       # Total 20 CPU cores
+    requests.memory: 40Gi    # Total 40 GB memory
+    limits.cpu: "40"         # Max 40 CPU cores
+    limits.memory: 80Gi      # Max 80 GB memory
+    pods: "100"              # Max 100 pods
+    services: "50"           # Max 50 services
+    persistentvolumeclaims: "20"  # Max 20 PVCs
+
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: smart-ai-tutor-limits
+  namespace: smart-ai-tutor
+spec:
+  limits:
+    # Default limits for containers
+    - type: Container
+      default:
+        cpu: "1"
+        memory: 1Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "8"
+        memory: 16Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+
+    # Default limits for pods
+    - type: Pod
+      max:
+        cpu: "16"
+        memory: 32Gi
+      min:
+        cpu: 100m
+        memory: 128Mi

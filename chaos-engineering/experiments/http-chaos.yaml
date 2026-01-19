@@ -1,0 +1,89 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: backend-http-abort
+  namespace: chaos-testing
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Target port
+  port: 8000
+
+  # HTTP method to target
+  method: POST
+
+  # Path matching
+  path: /api/v1/*
+
+  # Abort request with specific status code
+  abort: true
+  abortStatus: "503"
+
+  duration: "30s"
+
+  scheduler:
+    cron: "@every 24h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: backend-http-delay
+  namespace: chaos-testing
+spec:
+  mode: fixed-percent
+  value: "20"  # Affect 20% of pods
+
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  port: 8000
+  method: GET
+  path: /api/v1/*
+
+  # Add delay to HTTP requests
+  delay: "2s"
+
+  duration: "2m"
+
+  scheduler:
+    cron: "@every 12h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: backend-http-patch
+  namespace: chaos-testing
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  port: 8000
+  path: /api/v1/*
+
+  # Modify HTTP response
+  patch:
+    headers:
+      - ["X-Chaos-Injected", "true"]
+    body:
+      type: JSON
+      value: '{"error": "Chaos Engineering Test", "code": "CHAOS_FAULT"}'
+
+  duration: "1m"
+
+  # Manual execution only
+  # scheduler:
+  #   cron: "@manually"

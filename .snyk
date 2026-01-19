@@ -1,0 +1,34 @@
+# Snyk (https://snyk.io) policy file
+
+# Specify paths to exclude from scanning
+exclude:
+  global:
+    - node_modules/
+    - venv/
+    - .venv/
+    - __pycache__/
+    - .next/
+    - dist/
+    - build/
+    - coverage/
+    - .git/
+
+# Ignore specific vulnerabilities (with expiration)
+ignore:
+  # Example:
+  # SNYK-PYTHON-PACKAGE-123456:
+  #   - '*':
+  #       reason: 'False positive - not applicable'
+  #       expires: '2024-12-31T23:59:59.000Z'
+  #       created: '2024-01-01T00:00:00.000Z'
+
+# Language-specific settings
+python:
+  # Python version for better vulnerability detection
+  pythonVersion: '3.11'
+
+# Fail on severity threshold
+failThreshold: 'high'
+
+# Organization settings
+org: smart-ai-tutor

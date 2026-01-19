@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: smart-ai-tutor
+
+# Common labels applied to all resources
+commonLabels:
+  app: smart-ai-tutor
+  managed-by: kustomize
+
+# Common annotations
+commonAnnotations:
+  platform: kubernetes
+  version: "1.0.0"
+
+resources:
+  - namespace.yaml
+  - resource-quota.yaml
+  - ../backend/deployment.yaml
+  - ../backend/service.yaml
+  - ../backend/configmap.yaml
+  - ../backend/hpa.yaml
+  - ../backend/pdb.yaml
+  - ../frontend/deployment.yaml
+  - ../frontend/service.yaml
+  - ../frontend/configmap.yaml
+  - ../frontend/hpa.yaml
+  - ../postgres/statefulset.yaml
+  - ../postgres/service.yaml
+  - ../postgres/configmap.yaml
+  - ../redis/deployment.yaml
+  - ../redis/service.yaml
+  - ../redis/configmap.yaml
+  - ../ingress/ingress.yaml
+  - ../ingress/network-policy.yaml
+
+# Secrets (must be created separately)
+# - ../backend/secret.yaml
+# - ../postgres/secret.yaml
+# - ../redis/secret.yaml
+
+# Images
+images:
+  - name: smart-ai-tutor-backend
+    newName: <REGISTRY>/smart-ai-tutor-backend
+    newTag: latest
+  - name: smart-ai-tutor-frontend
+    newName: <REGISTRY>/smart-ai-tutor-frontend
+    newTag: latest

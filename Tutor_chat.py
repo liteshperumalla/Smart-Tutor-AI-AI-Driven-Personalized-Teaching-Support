@@ -12,12 +12,13 @@ from llama_index.core import Settings, get_response_synthesizer, PromptTemplate
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.query_engine import CustomQueryEngine
 from llama_index.core.response_synthesizers import BaseSynthesizer
-from llama_index.llms.ollama import Ollama
+from backend.llm_provider import LLMFactory
 from llama_index.core import StorageContext, load_index_from_storage
 from sentence_transformers import SentenceTransformer, util, CrossEncoder
 from llama_index.core.schema import Document, TextNode, NodeWithScore
 from llama_index.core import VectorStoreIndex
 from llama_index.retrievers.bm25 import BM25Retriever
+from backend.s3_retriever import S3Retriever, create_s3_retriever
 from langfuse import Langfuse
 from llama_index.core.callbacks import CallbackManager
 try:
@@ -124,19 +125,28 @@ def parse_args():
     return parser.parse_args()
 
 # --- Model Settings ---
-# Phase 1 improvement: Upgraded to BAAI/bge-small-en-v1.5 for better retrieval accuracy
-# Previous: sentence-transformers/all-MiniLM-L6-v2
-# Expected improvement: +12-30% retrieval performance
-try:
-    embedding_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-    Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-    logging.info("✅ Loaded embedding model: BAAI/bge-small-en-v1.5")
-except Exception as e:
-    logging.warning(f"⚠️ Failed to load BAAI/bge-small-en-v1.5, falling back to all-MiniLM-L6-v2: {e}")
-    embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-    Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Use embeddings from provider factory (AWS Bedrock or local HuggingFace based on config)
+from backend.config import config
 
-Settings.llm = Ollama(model="llama3.2:latest", request_timeout=120.0)
+if config.EMBEDDING_PROVIDER == "bedrock":
+    # AWS Bedrock embeddings (Titan v2, 1024-dim)
+    Settings.embed_model = LLMFactory.create_embeddings()
+    logging.info(f"✅ Using AWS Bedrock embeddings: {config.BEDROCK_EMBEDDING_MODEL_ID}")
+    # For backward compatibility with sentence-transformers code
+    embedding_model = None  # S3Retriever uses BedrockEmbeddings directly
+else:
+    # Local HuggingFace embeddings (fallback for development)
+    try:
+        embedding_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+        Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        logging.info("✅ Loaded embedding model: BAAI/bge-small-en-v1.5")
+    except Exception as e:
+        logging.warning(f"⚠️ Failed to load BAAI/bge-small-en-v1.5, falling back to all-MiniLM-L6-v2: {e}")
+        embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+        Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+# Use LLM from provider factory (Bedrock or Ollama based on config)
+Settings.llm = LLMFactory.create_llm()
 
 # --- Directories ---
 persist_dir = "./persisted_index"
@@ -541,6 +551,73 @@ def get_hybrid_retriever(index, documents: List[Document], similarity_top_k=6, r
                 logging.error(f"Error in cross-encoder reranking: {e}")
                 return [NodeWithScore(node=n, score=0.0) for n in combined_unique_nodes[:1]]
     return HybridRetriever()
+
+
+def get_s3_retriever(similarity_top_k=6, rerank_top_k=5, force_rebuild=False):
+    """
+    Create a retriever using S3 vector storage
+
+    Args:
+        similarity_top_k: Number of results to retrieve
+        rerank_top_k: Number of results after reranking
+        force_rebuild: Force rebuild of S3 index
+
+    Returns:
+        S3-based retriever with reranking
+    """
+    # Create S3 retriever
+    s3_retriever = create_s3_retriever(
+        similarity_top_k=similarity_top_k,
+        force_rebuild=force_rebuild
+    )
+
+    MIN_SCORE = 0.20
+
+    class S3HybridRetriever(BaseRetriever):
+        def _retrieve(self, query_str: str) -> List[NodeWithScore]:
+            # Get results from S3
+            s3_results = s3_retriever.retrieve(query_str)
+
+            if not s3_results:
+                return []
+
+            # Extract query text
+            query_text = query_str.query_str if hasattr(query_str, "query_str") else query_str
+
+            # Prepare pairs for reranking
+            pairs = [(query_text, extract_node_text(node_ws.node)) for node_ws in s3_results]
+
+            if not pairs:
+                return s3_results[:1]
+
+            try:
+                # Rerank with cross-encoder
+                cross_scores = re_ranker.predict(pairs)
+                scored_nodes = [
+                    NodeWithScore(node=node_ws.node, score=float(score))
+                    for node_ws, score in zip(s3_results, cross_scores)
+                ]
+
+                # Sort by score
+                reranked_nodes = sorted(
+                    scored_nodes,
+                    key=lambda x: x.score if x.score is not None else -1.0,
+                    reverse=True,
+                )
+
+                # Filter by minimum score
+                final_nodes = [x for x in reranked_nodes if x.score >= MIN_SCORE]
+
+                if not final_nodes:
+                    final_nodes = reranked_nodes[:1]  # fallback to best one
+
+                return final_nodes[:rerank_top_k]
+
+            except Exception as e:
+                logging.error(f"Error in S3 reranking: {e}")
+                return s3_results[:rerank_top_k]
+
+    return S3HybridRetriever()
 
 
 def extract_node_text(node_or_item):

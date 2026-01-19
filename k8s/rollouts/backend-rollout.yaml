@@ -1,0 +1,394 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: backend
+  namespace: production
+  labels:
+    app: backend
+    component: api
+spec:
+  replicas: 10
+  revisionHistoryLimit: 5
+
+  # Selector for pods
+  selector:
+    matchLabels:
+      app: backend
+      component: api
+
+  # Workload reference (if migrating from Deployment)
+  workloadRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+
+  # Progressive delivery strategy - Canary
+  strategy:
+    canary:
+      # Maximum number of replicas set to canary
+      maxSurge: "25%"
+      # Maximum number of unavailable replicas
+      maxUnavailable: 0
+
+      # Canary service (receives canary traffic)
+      canaryService: backend-canary
+
+      # Stable service (receives stable traffic)
+      stableService: backend-stable
+
+      # Traffic routing (use with Istio, ALB, or NGINX)
+      trafficRouting:
+        # Option 1: AWS ALB Ingress Controller
+        alb:
+          ingress: backend-ingress
+          servicePort: 8000
+          annotationPrefix: alb.ingress.kubernetes.io
+
+        # Option 2: Istio (uncomment if using Istio)
+        # istio:
+        #   virtualService:
+        #     name: backend-vsvc
+        #     routes:
+        #       - primary
+        #   destinationRule:
+        #     name: backend-destrule
+        #     canarySubsetName: canary
+        #     stableSubsetName: stable
+
+      # Canary deployment steps
+      steps:
+        # Step 1: Route 10% traffic to canary
+        - setWeight: 10
+        - pause:
+            duration: 2m  # Observe for 2 minutes
+
+        # Step 2: Run analysis
+        - analysis:
+            templates:
+              - templateName: success-rate
+              - templateName: error-rate
+              - templateName: latency-p95
+            args:
+              - name: service-name
+                value: backend-canary
+
+        # Step 3: Increase to 25%
+        - setWeight: 25
+        - pause:
+            duration: 3m
+
+        # Step 4: Analysis again
+        - analysis:
+            templates:
+              - templateName: success-rate
+              - templateName: error-rate
+              - templateName: latency-p95
+
+        # Step 5: Increase to 50%
+        - setWeight: 50
+        - pause:
+            duration: 5m
+
+        # Step 6: Final analysis before full rollout
+        - analysis:
+            templates:
+              - templateName: success-rate
+              - templateName: error-rate
+              - templateName: latency-p95
+
+        # Step 7: Increase to 75%
+        - setWeight: 75
+        - pause:
+            duration: 5m
+
+        # Step 8: Full rollout (automatic if all checks pass)
+        - setWeight: 100
+
+      # Analysis run metadata
+      analysis:
+        # Start analysis after deployment
+        startingStep: 2
+        # Run analysis every step
+        templates:
+          - templateName: success-rate
+          - templateName: error-rate
+          - templateName: latency-p95
+
+      # Anti-affinity for canary pods
+      antiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: backend
+            topologyKey: kubernetes.io/hostname
+
+  # Pod template
+  template:
+    metadata:
+      labels:
+        app: backend
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: backend
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+
+      containers:
+        - name: backend
+          image: your-registry/smart-ai-tutor-backend:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          env:
+            - name: ENVIRONMENT
+              value: production
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "otel-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_SERVICE_NAME
+              value: "backend-api"
+
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+
+---
+# Canary Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-canary
+  namespace: production
+  labels:
+    app: backend
+    role: canary
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: backend
+    component: api
+
+---
+# Stable Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-stable
+  namespace: production
+  labels:
+    app: backend
+    role: stable
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: backend
+    component: api
+
+---
+# Analysis Templates
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: production
+spec:
+  metrics:
+    - name: success-rate
+      interval: 1m
+      count: 3
+      successCondition: result[0] >= 0.95
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{
+              job="backend-canary",
+              code!~"5.."
+            }[2m]))
+            /
+            sum(rate(http_requests_total{
+              job="backend-canary"
+            }[2m]))
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: error-rate
+  namespace: production
+spec:
+  metrics:
+    - name: error-rate
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 0.05
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{
+              job="backend-canary",
+              code=~"5.."
+            }[2m]))
+            /
+            sum(rate(http_requests_total{
+              job="backend-canary"
+            }[2m]))
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: latency-p95
+  namespace: production
+spec:
+  metrics:
+    - name: latency-p95
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 500
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{
+                job="backend-canary"
+              }[2m])) by (le)
+            ) * 1000
+
+---
+# Combined Analysis Template
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: canary-analysis
+  namespace: production
+spec:
+  metrics:
+    # Success rate check
+    - name: success-rate
+      interval: 1m
+      count: 3
+      successCondition: result[0] >= 0.95
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{job="{{args.service-name}}",code!~"5.."}[2m]))
+            / sum(rate(http_requests_total{job="{{args.service-name}}"}[2m]))
+
+    # Error rate check
+    - name: error-rate
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 0.05
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{job="{{args.service-name}}",code=~"5.."}[2m]))
+            / sum(rate(http_requests_total{job="{{args.service-name}}"}[2m]))
+
+    # Latency check
+    - name: latency-p95
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 500
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="{{args.service-name}}"}[2m])) by (le)) * 1000
+
+    # CPU usage check
+    - name: cpu-usage
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 80
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            avg(rate(container_cpu_usage_seconds_total{pod=~"backend-.*",namespace="production"}[2m])) * 100
+
+    # Memory usage check
+    - name: memory-usage
+      interval: 1m
+      count: 3
+      successCondition: result[0] <= 80
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            avg(container_memory_working_set_bytes{pod=~"backend-.*",namespace="production"} / container_spec_memory_limit_bytes{pod=~"backend-.*",namespace="production"}) * 100
+
+  args:
+    - name: service-name
+      value: backend-canary

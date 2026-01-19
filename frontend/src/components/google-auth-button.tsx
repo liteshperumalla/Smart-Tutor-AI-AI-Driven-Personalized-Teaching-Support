@@ -20,6 +20,17 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       return { ready: false } as const;
     }
 
+    const nonce =
+      typeof window !== "undefined" && window.crypto?.getRandomValues
+        ? Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+            .map((value) => value.toString(16).padStart(2, "0"))
+            .join("")
+        : Math.random().toString(16).slice(2);
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("google_oauth_state", nonce);
+    }
+    const statePayload = btoa(JSON.stringify({ intent, nonce }));
+
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -27,7 +38,7 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       scope: "openid email profile",
       access_type: "offline",
       prompt: "consent",
-      state: intent,
+      state: statePayload,
     });
 
     return {

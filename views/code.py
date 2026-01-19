@@ -109,6 +109,7 @@ def render():
             key="sandbox_code_input"
         )
 
+        gen_prompt = st.text_input("Describe what you want to code:", key="gen_prompt")
         run_btn = st.button("Run Code", use_container_width=True, key="run_code_btn")
         gen_btn = st.button("Generate Code", use_container_width=True, key="gen_code_btn")
         explain_btn = st.button("Explain Code", use_container_width=True, key="explain_code_btn")
@@ -125,10 +126,9 @@ def render():
                 st.warning("Please enter code to run.")
 
         if gen_btn:
-            prompt = st.text_input("Describe what you want to code:", key="gen_prompt")
-            if prompt.strip():
+            if gen_prompt.strip():
                 with st.spinner("Generating code..."):
-                    gen_code = generate_code(prompt, language)
+                    gen_code = generate_code(gen_prompt, language)
                 st.code(gen_code, language=language)
             else:
                 st.warning("Please enter a prompt to generate code.")

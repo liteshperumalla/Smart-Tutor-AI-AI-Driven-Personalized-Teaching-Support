@@ -1,0 +1,190 @@
+# Kubecost Helm Values
+# Install with: helm install kubecost kubecost/cost-analyzer -f kubecost-values.yaml -n kubecost
+
+global:
+  # Prometheus integration
+  prometheus:
+    enabled: true
+    fqdn: http://prometheus.monitoring.svc:9090
+
+  # Grafana integration
+  grafana:
+    enabled: true
+    fqdn: http://grafana.monitoring.svc:80
+
+# Cost analyzer configuration
+kubecostProductConfigs:
+  # AWS integration
+  athenaProjectID: "smart-tutor-cost"
+  athenaBucketName: "s3://smart-tutor-prod-kubecost"
+  athenaRegion: "us-east-1"
+  athenaDatabase: "kubecost"
+  athenaTable: "kubecost_data"
+
+  # Product configuration
+  productKey:
+    enabled: false  # Set to true for Enterprise features
+    key: ""  # Add your product key
+
+  # Currency
+  currencyCode: "USD"
+
+  # Cluster information
+  clusterName: "smart-ai-tutor-production"
+
+  # AWS Spot feed configuration
+  awsSpotDataRegion: "us-east-1"
+  awsSpotDataBucket: "smart-tutor-prod-spot-data"
+  awsSpotDataPrefix: "spot-feed"
+
+  # Alerts
+  alertsEnabled: true
+
+  # Slack integration
+  slackWebhookUrl: ""  # Add Slack webhook for cost alerts
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:region:account:certificate/cert-id"
+    alb.ingress.kubernetes.io/auth-type: cognito  # Or oidc
+  hosts:
+    - host: finops.internal.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: kubecost-tls
+      hosts:
+        - finops.internal.smart-ai-tutor.com
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9090
+  targetPort: 9090
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9003"
+
+# Persistent storage
+persistentVolume:
+  enabled: true
+  size: 32Gi
+  storageClass: gp3
+  accessMode: ReadWriteOnce
+
+# Resources
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+
+# Network costs (requires cloud integration)
+networkCosts:
+  enabled: true
+  config:
+    services:
+      # AWS
+      amazon-web-services:
+        enabled: true
+        region: "us-east-1"
+
+# Reporting
+reporting:
+  enabled: true
+  # Generate weekly cost reports
+  schedule: "0 9 * * 1"  # Monday 9 AM
+  # Email configuration (optional)
+  email:
+    enabled: false
+    # recipients: ["finops@your-domain.com"]
+
+# Budgets and alerts
+budgets:
+  - name: "monthly-infra-budget"
+    amount: 10000  # $10,000/month
+    window: "month"
+    alertThresholds:
+      - 50  # Alert at 50%
+      - 80  # Alert at 80%
+      - 95  # Alert at 95%
+      - 100 # Alert at 100%
+
+  - name: "daily-compute-budget"
+    amount: 350  # $350/day
+    window: "day"
+    alertThresholds:
+      - 80
+      - 100
+
+# Cost allocation
+costAllocation:
+  enabled: true
+  # Label-based allocation
+  labels:
+    - app
+    - environment
+    - team
+    - component
+    - cost-center
+
+# Savings recommendations
+savings:
+  enabled: true
+  # Check for savings opportunities
+  schedule: "0 2 * * *"  # Daily at 2 AM
+
+# Node exporter (for accurate node costs)
+nodeExporter:
+  enabled: true
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  interval: 60s
+
+# Grafana dashboards
+grafana:
+  enabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+
+# Priority class
+priorityClassName: ""
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9003"
+
+# Security context
+securityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  runAsNonRoot: true
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

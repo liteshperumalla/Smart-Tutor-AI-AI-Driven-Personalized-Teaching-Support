@@ -87,3 +87,35 @@ chunks_by_type/*.txt
 
 # JWT RSA Keys (keep private!)
 keys/jwt_private.pem
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/.vercel
+frontend/node_modules/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/crash.log
+terraform/crash.*.log
+
+# Vector Indices (large files - regenerate from S3)
+s3_vector_index.pkl
+*.pkl
+
+# Archive directories
+archive_test_scripts/
+
+# Log directories
+logs/
+*.log

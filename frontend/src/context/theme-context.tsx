@@ -14,6 +14,7 @@ type Theme = "light" | "dark";
 type ThemeContextValue = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  hasHydrated: boolean;
 };
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
@@ -27,11 +28,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       let initial: Theme = "light";
-      const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-      if (stored === "dark" || stored === "light") {
-        initial = stored;
-      } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-        initial = "dark";
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored === "dark" || stored === "light") {
+          initial = stored;
+        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+          initial = "dark";
+        }
       }
       setThemeState(initial);
       setHasHydrated(true);
@@ -56,7 +59,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(value === "dark" ? "dark" : "light");
   }, []);
 
-  const value = useMemo(() => ({ theme, setTheme }), [theme, setTheme]);
+  const value = useMemo(() => ({ theme, setTheme, hasHydrated }), [theme, setTheme, hasHydrated]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

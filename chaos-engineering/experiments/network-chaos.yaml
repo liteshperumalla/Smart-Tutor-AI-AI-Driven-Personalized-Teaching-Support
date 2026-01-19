@@ -1,0 +1,128 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-delay
+  namespace: chaos-testing
+spec:
+  # Add network latency
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Delay configuration
+  delay:
+    latency: "100ms"
+    correlation: "50"  # 50% correlation
+    jitter: "10ms"
+
+  # Direction: to, from, or both
+  direction: both
+
+  # Target (optional - specific destination)
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: postgres
+    mode: one
+
+  duration: "2m"
+
+  scheduler:
+    cron: "@every 6h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-loss
+  namespace: chaos-testing
+spec:
+  # Packet loss
+  action: loss
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Loss configuration
+  loss:
+    loss: "10"  # 10% packet loss
+    correlation: "25"
+
+  direction: both
+
+  duration: "1m"
+
+  scheduler:
+    cron: "@every 8h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-network-partition
+  namespace: chaos-testing
+spec:
+  # Network partition
+  action: partition
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Direction
+  direction: to
+
+  # Target to partition from
+  target:
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: redis
+    mode: all
+
+  duration: "30s"
+
+  # Run manually only
+  # scheduler:
+  #   cron: "@manually"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: backend-bandwidth-limit
+  namespace: chaos-testing
+spec:
+  # Bandwidth limitation
+  action: bandwidth
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Bandwidth configuration
+  bandwidth:
+    rate: "1mbps"  # Limit to 1 Mbps
+    limit: 20000
+    buffer: 10000
+
+  direction: both
+
+  duration: "2m"
+
+  scheduler:
+    cron: "@weekly"

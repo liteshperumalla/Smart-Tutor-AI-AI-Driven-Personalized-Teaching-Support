@@ -1,0 +1,144 @@
+# Development environment values
+# Overrides for local/development deployments
+
+global:
+  environment: development
+  domain: dev.smart-ai-tutor.local
+
+# Use local registry
+image:
+  registry: localhost:5000
+  pullPolicy: Always
+
+# Backend - smaller footprint for development
+backend:
+  enabled: true
+  replicaCount: 1
+
+  autoscaling:
+    enabled: false  # Disabled for dev
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  env:
+    ENVIRONMENT: development
+    LOG_LEVEL: DEBUG
+    RATE_LIMIT_ENABLED: "false"  # Disabled for dev
+
+  podDisruptionBudget:
+    enabled: false  # Not needed in dev
+
+# Frontend - smaller footprint
+frontend:
+  enabled: true
+  replicaCount: 1
+
+  autoscaling:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  env:
+    NODE_ENV: development
+    NEXT_PUBLIC_ENVIRONMENT: development
+
+# PostgreSQL - smaller instance
+postgres:
+  enabled: true
+
+  external:
+    enabled: false  # Use in-cluster PostgreSQL
+
+  persistence:
+    enabled: true
+    storageClass: standard  # Use default storage class
+    size: 10Gi  # Smaller for dev
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Redis - minimal config
+redis:
+  enabled: true
+
+  external:
+    enabled: false
+
+  persistence:
+    enabled: false  # EmptyDir for dev
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  config:
+    maxmemory: "256mb"
+
+  exporter:
+    enabled: false  # Disable metrics exporter in dev
+
+# Ingress - use NGINX for local development
+ingress:
+  enabled: true
+  className: nginx
+
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"  # Allow HTTP in dev
+
+  tls:
+    enabled: false  # No TLS in development
+
+  hosts:
+    - host: dev.smart-ai-tutor.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+    - host: api.dev.smart-ai-tutor.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend-api
+          port: 8000
+
+# Network policies - disabled for easier debugging
+networkPolicy:
+  enabled: false
+
+# Resource quotas - more generous for dev
+resourceQuota:
+  enabled: false
+
+# Monitoring - disabled in dev
+monitoring:
+  enabled: false
+
+# AWS - use LocalStack or mock services
+aws:
+  region: us-east-1
+  s3:
+    bucket: dev-smart-ai-tutor-storage
+  dynamodb:
+    tablePrefix: dev-smart-tutor

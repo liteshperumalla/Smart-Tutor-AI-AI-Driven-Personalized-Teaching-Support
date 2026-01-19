@@ -122,14 +122,21 @@ class UserDatabase:
         self.db = JSONDatabase(self.users_file)
         logger.info(f"UserDatabase initialized with file: {self.users_file}")
 
-    def create_user(self, username: str, hashed_password: str, email: Optional[str] = None,
-                   **additional_fields) -> Dict[str, Any]:
+    def create_user(
+        self,
+        username: str,
+        password_hash: Optional[str] = None,
+        email: Optional[str] = None,
+        *,
+        hashed_password: Optional[str] = None,
+        **additional_fields,
+    ) -> Dict[str, Any]:
         """
         Create a new user
 
         Args:
             username: Username
-            hashed_password: Hashed password
+            password_hash: Hashed password
             email: Optional email
             **additional_fields: Additional user fields
 
@@ -139,13 +146,18 @@ class UserDatabase:
         Raises:
             UserAlreadyExistsError: If user already exists
         """
+        hash_value = password_hash or hashed_password
+        if not hash_value:
+            raise ValueError("password_hash is required")
+
         with self.db.transaction() as users:
             if username in users:
                 logger.warning(f"Attempt to create existing user: {username}")
                 raise UserAlreadyExistsError(username)
 
             user_data = {
-                'hashed_password': hashed_password if isinstance(hashed_password, str) else hashed_password.decode('utf-8'),
+                'password_hash': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
+                'hashed_password': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
                 'email': email or '',
                 'display_name': '',
                 'phone_number': '',
@@ -182,11 +194,32 @@ class UserDatabase:
         if not user_data:
             logger.warning(f"User not found: {username}")
             raise UserNotFoundError(username)
+        if "password_hash" not in user_data and "hashed_password" in user_data:
+            user_data = dict(user_data)
+            user_data["password_hash"] = user_data["hashed_password"]
         return user_data
 
     def get_user_safe(self, username: str) -> Optional[Dict[str, Any]]:
         """Get user data without raising exception if not found"""
-        return self.db.get(username)
+        user_data = self.db.get(username)
+        if not user_data:
+            return None
+        if "password_hash" not in user_data and "hashed_password" in user_data:
+            user_data = dict(user_data)
+            user_data["password_hash"] = user_data["hashed_password"]
+        return user_data
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Find a user by email address."""
+        if not email:
+            return None
+        all_users = self.db.get_all()
+        for username, user_data in all_users.items():
+            if user_data.get("email") == email:
+                user = dict(user_data)
+                user["username"] = username
+                return user
+        return None
 
     def update_user(self, username: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -207,7 +240,11 @@ class UserDatabase:
                 raise UserNotFoundError(username)
 
             # Update only provided fields
-            for key, value in updates.items():
+            normalized_updates = dict(updates)
+            if "password_hash" in normalized_updates and "hashed_password" not in normalized_updates:
+                normalized_updates["hashed_password"] = normalized_updates["password_hash"]
+
+            for key, value in normalized_updates.items():
                 if key != 'username':  # Don't allow username change
                     users[username][key] = value
 
@@ -304,7 +341,10 @@ class UserDatabase:
         all_users = self.db.get_all()
         user_list = []
         for username, user_data in all_users.items():
-            safe_data = {k: v for k, v in user_data.items() if k != 'hashed_password'}
+            safe_data = {
+                k: v for k, v in user_data.items()
+                if k not in ['hashed_password', 'password_hash']
+            }
             safe_data['username'] = username
             user_list.append(safe_data)
         return user_list
@@ -420,14 +460,22 @@ def get_user_db():
     """
     global _user_db
     if _user_db is None:
-        # Check if we should use the new hybrid backend
-        if config.STORAGE_BACKEND == "hybrid":
+        backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
+        if backend_name == "hybrid":
             try:
                 from .services.storage.hybrid import get_hybrid_backend
                 _user_db = get_hybrid_backend()
                 logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
             except Exception as e:
                 logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
+                _user_db = UserDatabase()
+        elif backend_name == "postgres":
+            try:
+                from .services.storage.postgres import get_postgres_backend
+                _user_db = get_postgres_backend()
+                logger.info("Using PostgreSQL storage backend for users")
+            except Exception as e:
+                logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
                 _user_db = UserDatabase()
         else:
             # Use legacy filesystem backend

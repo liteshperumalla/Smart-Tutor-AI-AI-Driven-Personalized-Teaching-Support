@@ -49,10 +49,16 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             client_config["aws_access_key_id"] = "dummy"
             client_config["aws_secret_access_key"] = "dummy"
         else:
-            # For production, use real AWS credentials
-            if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
+            # For AWS DynamoDB - only pass credentials if they exist
+            # boto3 will use environment variables or IAM roles if not specified
+            if hasattr(config, 'AWS_ACCESS_KEY_ID') and config.AWS_ACCESS_KEY_ID:
                 client_config["aws_access_key_id"] = config.AWS_ACCESS_KEY_ID
+            if hasattr(config, 'AWS_SECRET_ACCESS_KEY') and config.AWS_SECRET_ACCESS_KEY:
                 client_config["aws_secret_access_key"] = config.AWS_SECRET_ACCESS_KEY
+            # IMPORTANT: Only pass session_token if it's actually a valid token (not empty)
+            if hasattr(config, 'AWS_SESSION_TOKEN') and config.AWS_SESSION_TOKEN:
+                if config.AWS_SESSION_TOKEN.strip():  # Check it's not empty/whitespace
+                    client_config["aws_session_token"] = config.AWS_SESSION_TOKEN
 
         self.dynamodb = boto3.resource('dynamodb', **client_config)
         self.table = self.dynamodb.Table(table_name)
@@ -99,18 +105,54 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             response = self.table.query(
                 KeyConditionExpression='user_id = :user_id',
                 ExpressionAttributeValues={':user_id': username},
-                ScanIndexForward=False,  # Sort by session_id descending (newest first)
+                ScanIndexForward=False,  # Sort by session_id (UUID), we re-sort by updated_at below
+            )
+
+            items = response.get('Items', [])
+
+            def parse_timestamp(value: Optional[str]) -> datetime:
+                if not value:
+                    return datetime.min.replace(tzinfo=timezone.utc)
+                try:
+                    # Handle ISO format with timezone
+                    cleaned = value.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(cleaned)
+                    # Ensure timezone-aware
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except Exception:
+                    try:
+                        # Handle format like "2025-05-01 14:54:25" (no timezone)
+                        dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+                        return dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        try:
+                            # Handle format like "05:50 PM, May 25"
+                            # Assume current year for dates without year
+                            dt = datetime.strptime(f"{value} {datetime.now().year}", "%I:%M %p, %b %d %Y")
+                            return dt.replace(tzinfo=timezone.utc)
+                        except Exception:
+                            return datetime.min.replace(tzinfo=timezone.utc)
+
+            items.sort(
+                key=lambda item: parse_timestamp(item.get('updated_at') or item.get('created_at')),
+                reverse=True,
             )
 
             sessions = []
-            for item in response.get('Items', []):
-                session = ChatSession(
-                    id=item['session_id'],
-                    title=item.get('title', 'Untitled Session'),
-                    messages=item.get('messages', []),
-                    created_at=item.get('created_at'),
-                    updated_at=item.get('updated_at'),
-                )
+            for item in items:
+                # Parse timestamps to datetime objects for ChatSession
+                created_at = parse_timestamp(item.get('created_at'))
+                updated_at = parse_timestamp(item.get('updated_at'))
+
+                session = ChatSession.from_dict({
+                    'id': item['session_id'],
+                    'title': item.get('title', 'Untitled Session'),
+                    'messages': item.get('messages', []),
+                    'created_at': created_at,
+                    'updated_at': updated_at,
+                })
                 sessions.append(session)
 
             return sessions
@@ -133,13 +175,13 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             if not item:
                 return None
 
-            session = ChatSession(
-                id=item['session_id'],
-                title=item.get('title', 'Untitled Session'),
-                messages=item.get('messages', []),
-                created_at=item.get('created_at'),
-                updated_at=item.get('updated_at'),
-            )
+            session = ChatSession.from_dict({
+                'id': item['session_id'],
+                'title': item.get('title', 'Untitled Session'),
+                'messages': item.get('messages', []),
+                'created_at': item.get('created_at'),
+                'updated_at': item.get('updated_at'),
+            })
 
             return session
 
@@ -152,12 +194,31 @@ class DynamoDBStorageBackend(BaseStorageBackend):
         try:
             now = datetime.now(timezone.utc).isoformat()
 
+            # Convert ChatMessage objects to dictionaries for DynamoDB
+            messages_list = []
+            if session.messages:
+                for msg in session.messages:
+                    if hasattr(msg, 'to_dict'):
+                        messages_list.append(msg.to_dict())
+                    elif isinstance(msg, dict):
+                        messages_list.append(msg)
+                    else:
+                        # Fallback: convert to dict manually
+                        message_dict = {
+                            'role': getattr(msg, 'role', 'user'),
+                            'content': getattr(msg, 'content', str(msg)),
+                        }
+                        # Only include timestamp if it exists
+                        if hasattr(msg, 'timestamp') and getattr(msg, 'timestamp') is not None:
+                            message_dict['timestamp'] = getattr(msg, 'timestamp').isoformat()
+                        messages_list.append(message_dict)
+
             # Prepare item
             item = {
                 'user_id': username,
                 'session_id': session.id or str(uuid.uuid4()),
                 'title': session.title or 'Untitled Session',
-                'messages': session.messages or [],
+                'messages': messages_list,
                 'updated_at': now,
             }
 

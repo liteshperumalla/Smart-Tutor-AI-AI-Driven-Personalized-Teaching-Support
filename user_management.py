@@ -123,7 +123,10 @@ def list_user_chats(user_id):
                     messages = []
 
                 # 📝 Ensure there's a title
-                title = chat_data.get("title") or make_session_title(messages)
+                if isinstance(chat_data, dict):
+                    title = chat_data.get("title") or make_session_title(messages)
+                else:
+                    title = make_session_title(messages)
 
                 timestamp = chat_data.get(
                     "timestamp",
@@ -262,5 +265,10 @@ def delete_user_account(username):
 
     del users[username]
     save_users(users)
+    user_dir = get_user_dir(username)
+    try:
+        import shutil
+        shutil.rmtree(user_dir, ignore_errors=True)
+    except Exception as e:
+        print(f"Warning: Failed to remove user directory {user_dir}: {e}")
     return True
-

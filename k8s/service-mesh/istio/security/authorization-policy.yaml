@@ -1,0 +1,122 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-authz
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  action: ALLOW
+  rules:
+    # Allow health checks
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/health", "/metrics"]
+
+    # Allow authenticated requests
+    - from:
+        - source:
+            principals: ["cluster.local/ns/production/sa/*"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            paths: ["/api/v1/*"]
+
+    # Allow requests from frontend
+    - from:
+        - source:
+            namespaces: ["production"]
+            principals: ["cluster.local/ns/production/sa/frontend"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/v1/*"]
+
+    # Allow requests from ingress gateway
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+      to:
+        - operation:
+            methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+            paths: ["/api/v1/*"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: frontend-authz
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  action: ALLOW
+  rules:
+    # Allow all HTTP methods from ingress
+    - from:
+        - source:
+            namespaces: ["istio-system"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+
+    # Allow health checks
+    - to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/api/health"]
+
+---
+# Deny all by default (enable after testing)
+# apiVersion: security.istio.io/v1beta1
+# kind: AuthorizationPolicy
+# metadata:
+#   name: deny-all
+#   namespace: production
+# spec:
+#   # Empty selector applies to all workloads
+#   action: DENY
+#   rules:
+#     - {} # Deny all
+
+---
+# Rate limiting policy
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: rate-limit-policy
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  action: CUSTOM
+  provider:
+    name: envoy-ext-authz-http
+  rules:
+    - to:
+        - operation:
+            paths: ["/api/v1/*"]
+
+---
+# Block specific paths (if needed)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-admin-paths
+  namespace: production
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  action: DENY
+  rules:
+    - to:
+        - operation:
+            paths: ["/admin/*", "/debug/*"]
+      when:
+        - key: request.headers[x-admin-token]
+          notValues: ["valid-admin-token"]

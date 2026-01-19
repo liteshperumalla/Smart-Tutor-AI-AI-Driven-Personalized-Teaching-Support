@@ -1,0 +1,333 @@
+# Prometheus Alert Rules for Smart AI Tutor
+groups:
+  # Infrastructure Alerts
+  - name: infrastructure
+    interval: 30s
+    rules:
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected on {{ $labels.instance }}"
+          description: "CPU usage is above 80% (current value: {{ $value }}%)"
+
+      # Critical CPU usage
+      - alert: CriticalCPUUsage
+        expr: (100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 95% (current value: {{ $value }}%)"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85% (current value: {{ $value }}%)"
+
+      # Critical memory usage
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 95% (current value: {{ $value }}%)"
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage is above 80% on {{ $labels.mountpoint }} (current value: {{ $value }}%)"
+
+      # Critical disk space
+      - alert: CriticalDiskSpace
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_size_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical disk space on {{ $labels.instance }}"
+          description: "Disk usage is above 95% on {{ $labels.mountpoint }} (current value: {{ $value }}%)"
+
+  # Backend API Alerts
+  - name: backend_api
+    interval: 30s
+    rules:
+      # High API error rate
+      - alert: HighAPIErrorRate
+        expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 5
+        for: 3m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High API error rate detected"
+          description: "API error rate is above 5% (current value: {{ $value }}%)"
+
+      # Critical API error rate
+      - alert: CriticalAPIErrorRate
+        expr: (sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 15
+        for: 1m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Critical API error rate"
+          description: "API error rate is above 15% (current value: {{ $value }}%)"
+
+      # High API latency
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High API latency on {{ $labels.endpoint }}"
+          description: "P95 latency is above 2s (current value: {{ $value }}s)"
+
+      # Critical API latency
+      - alert: CriticalAPILatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 5
+        for: 2m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Critical API latency on {{ $labels.endpoint }}"
+          description: "P95 latency is above 5s (current value: {{ $value }}s)"
+
+      # Backend service down
+      - alert: BackendServiceDown
+        expr: up{job="backend-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Backend API service is down"
+          description: "Backend API has been down for more than 1 minute"
+
+  # Database Alerts (PostgreSQL)
+  - name: database
+    interval: 30s
+    rules:
+      # High database connection usage
+      - alert: HighDatabaseConnections
+        expr: (pg_stat_database_numbackends / pg_settings_max_connections) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database connection usage"
+          description: "Database connection usage is above 80% (current value: {{ $value }}%)"
+
+      # Critical database connection usage
+      - alert: CriticalDatabaseConnections
+        expr: (pg_stat_database_numbackends / pg_settings_max_connections) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "Critical database connection usage"
+          description: "Database connection usage is above 95% (current value: {{ $value }}%)"
+
+      # Database down
+      - alert: DatabaseDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL database is down"
+          description: "PostgreSQL has been unreachable for more than 1 minute"
+
+      # High database lock wait time
+      - alert: HighDatabaseLockWaitTime
+        expr: rate(pg_stat_database_blk_read_time[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database lock wait time"
+          description: "Database lock wait time is high (current value: {{ $value }}ms)"
+
+      # High database deadlocks
+      - alert: HighDatabaseDeadlocks
+        expr: rate(pg_stat_database_deadlocks[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database deadlock rate"
+          description: "Database deadlock rate is above 0.1/s (current value: {{ $value }})"
+
+  # Redis Cache Alerts
+  - name: redis_cache
+    interval: 30s
+    rules:
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 70
+        for: 10m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low Redis cache hit rate"
+          description: "Cache hit rate is below 70% (current value: {{ $value }}%)"
+
+      # Critical cache hit rate
+      - alert: CriticalCacheHitRate
+        expr: (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 50
+        for: 5m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Critical Redis cache hit rate"
+          description: "Cache hit rate is below 50% (current value: {{ $value }}%)"
+
+      # High Redis memory usage
+      - alert: HighRedisMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is above 85% (current value: {{ $value }}%)"
+
+      # Critical Redis memory usage
+      - alert: CriticalRedisMemoryUsage
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Critical Redis memory usage"
+          description: "Redis memory usage is above 95% (current value: {{ $value }}%)"
+
+      # Redis down
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis cache is down"
+          description: "Redis has been unreachable for more than 1 minute"
+
+      # High Redis eviction rate
+      - alert: HighRedisEvictionRate
+        expr: rate(redis_evicted_keys_total[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "High Redis key eviction rate"
+          description: "Redis is evicting keys at a high rate (current value: {{ $value }}/s)"
+
+  # RAG Application Alerts
+  - name: rag_application
+    interval: 30s
+    rules:
+      # High RAG query latency
+      - alert: HighRAGQueryLatency
+        expr: histogram_quantile(0.95, sum(rate(rag_query_duration_seconds_bucket[5m])) by (le)) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: rag
+        annotations:
+          summary: "High RAG query latency"
+          description: "P95 RAG query latency is above 3s (current value: {{ $value }}s)"
+
+      # Low RAG retrieval quality
+      - alert: LowRAGRetrievalQuality
+        expr: avg(rag_retrieval_recall_at_3) < 0.6
+        for: 10m
+        labels:
+          severity: warning
+          component: rag
+        annotations:
+          summary: "Low RAG retrieval quality"
+          description: "RAG recall@3 is below 0.6 (current value: {{ $value }})"
+
+      # High RAG cost
+      - alert: HighRAGCost
+        expr: rate(rag_total_cost_dollars[1h]) > 10
+        for: 30m
+        labels:
+          severity: warning
+          component: rag
+        annotations:
+          summary: "High RAG operational cost"
+          description: "RAG cost is above $10/hour (current value: ${{ $value }}/hour)"
+
+      # High embedding failure rate
+      - alert: HighEmbeddingFailureRate
+        expr: (sum(rate(rag_embedding_errors_total[5m])) / sum(rate(rag_embedding_requests_total[5m]))) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: rag
+        annotations:
+          summary: "High embedding generation failure rate"
+          description: "Embedding failure rate is above 5% (current value: {{ $value }}%)"
+
+  # Service Health Alerts
+  - name: service_health
+    interval: 30s
+    rules:
+      # Frontend down
+      - alert: FrontendDown
+        expr: up{job="frontend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: frontend
+        annotations:
+          summary: "Frontend service is down"
+          description: "Frontend has been unreachable for more than 1 minute"
+
+      # Prometheus scrape failures
+      - alert: HighPrometheusScrapeFailures
+        expr: (sum(up == 0) by (job) / count(up) by (job)) * 100 > 20
+        for: 5m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "High Prometheus scrape failure rate for {{ $labels.job }}"
+          description: "Scrape failure rate is above 20% (current value: {{ $value }}%)"

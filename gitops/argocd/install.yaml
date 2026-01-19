@@ -1,0 +1,240 @@
+# ArgoCD Installation
+# This file contains the complete ArgoCD installation manifest
+# To install: kubectl apply -n argocd -f gitops/argocd/install.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+
+---
+# Install ArgoCD using the official stable release
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# For production, use HA installation:
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # Git repository configuration
+  repositories: |
+    - url: https://github.com/your-org/smart-ai-tutor
+      name: smart-ai-tutor
+      type: git
+
+  # SSO Configuration (optional - Google OAuth)
+  dex.config: |
+    connectors:
+      - type: google
+        id: google
+        name: Google
+        config:
+          clientID: $GOOGLE_CLIENT_ID
+          clientSecret: $GOOGLE_CLIENT_SECRET
+          redirectURI: https://argocd.your-domain.com/api/dex/callback
+          hostedDomains:
+            - your-domain.com
+
+  # Resource exclusions
+  resource.exclusions: |
+    - apiGroups:
+      - "*"
+      kinds:
+      - ProviderConfigUsage
+
+  # Resource customizations for health assessment
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+
+  # Timeout settings
+  timeout.reconciliation: 180s
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-rbac-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  # RBAC policies
+  policy.csv: |
+    # Default role for all authenticated users
+    p, role:readonly, applications, get, */*, allow
+    p, role:readonly, logs, get, */*, allow
+    p, role:readonly, exec, create, */*, deny
+
+    # Developer role
+    p, role:developer, applications, *, */dev/*, allow
+    p, role:developer, applications, *, */staging/*, allow
+    p, role:developer, applications, get, */production/*, allow
+    p, role:developer, applications, sync, */production/*, deny
+
+    # DevOps role
+    p, role:devops, applications, *, */* allow
+    p, role:devops, clusters, *, *, allow
+    p, role:devops, repositories, *, *, allow
+
+    # Group mappings (when using SSO)
+    g, your-org:devops, role:devops
+    g, your-org:developers, role:developer
+
+  # Default policy for authenticated users
+  policy.default: role:readonly
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  # Slack notification configuration
+  service.slack: |
+    token: $slack-token
+
+  # Notification templates
+  template.app-deployed: |
+    message: |
+      Application {{.app.metadata.name}} has been deployed to {{.app.spec.destination.namespace}}.
+      Sync Status: {{.app.status.sync.status}}
+      Health Status: {{.app.status.health.status}}
+    slack:
+      attachments: |
+        [{
+          "title": "{{ .app.metadata.name}}",
+          "title_link":"{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#18be52",
+          "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            },
+            {
+              "title": "Environment",
+              "value": "{{.app.spec.destination.namespace}}",
+              "short": true
+            }
+          ]
+        }]
+
+  template.app-health-degraded: |
+    message: |
+      Application {{.app.metadata.name}} health is degraded.
+      Health Status: {{.app.status.health.status}}
+    slack:
+      attachments: |
+        [{
+          "title": "{{ .app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#f4c030",
+          "fields": [
+            {
+              "title": "Health Status",
+              "value": "{{.app.status.health.status}}",
+              "short": true
+            }
+          ]
+        }]
+
+  template.app-sync-failed: |
+    message: |
+      Application {{.app.metadata.name}} sync has failed.
+      Sync Status: {{.app.status.sync.status}}
+    slack:
+      attachments: |
+        [{
+          "title": "{{ .app.metadata.name}}",
+          "title_link": "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}",
+          "color": "#E96D76",
+          "fields": [
+            {
+              "title": "Sync Status",
+              "value": "{{.app.status.sync.status}}",
+              "short": true
+            }
+          ]
+        }]
+
+  # Notification triggers
+  trigger.on-deployed: |
+    - when: app.status.operationState.phase in ['Succeeded']
+      send: [app-deployed]
+
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [app-health-degraded]
+
+  trigger.on-sync-failed: |
+    - when: app.status.operationState.phase in ['Error', 'Failed']
+      send: [app-sync-failed]
+
+  # Subscriptions
+  subscriptions: |
+    - recipients:
+      - slack:deployments-channel
+      triggers:
+      - on-deployed
+      - on-health-degraded
+      - on-sync-failed
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+type: Opaque
+stringData:
+  slack-token: "xoxb-your-slack-token-here"
+
+---
+# Ingress for ArgoCD UI
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/backend-protocol: HTTPS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/cert-id
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+spec:
+  rules:
+  - host: argocd.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server
+            port:
+              number: 443

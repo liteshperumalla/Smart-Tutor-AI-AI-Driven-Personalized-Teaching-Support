@@ -35,6 +35,10 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import {
+  FileText, Upload, Globe, Youtube, Search, BookOpen, GitCompare, Quote,
+  AlignLeft, HelpCircle, ShieldCheck, Send, Trash2, Download, FolderOpen
+} from "lucide-react";
 
 type ResearchChatMessage = {
   role: "user" | "assistant";
@@ -196,6 +200,12 @@ export default function ResearchPage() {
   const [summaryResult, setSummaryResult] = useState<SummaryResult | null>(null);
   const [questionsResult, setQuestionsResult] = useState<StudyQuestion[]>([]);
   const [factCheckResult, setFactCheckResult] = useState<FactCheckResult | null>(null);
+
+  const uploadedDocuments = useMemo(
+    () => documents.filter((doc) => (doc.file_path || "").includes("knowledge_uploads")),
+    [documents]
+  );
+  const uploadedCount = Math.max(uploadedDocuments.length, previews.length);
 
   // Tool input state
   const [academicQuery, setAcademicQuery] = useState("");
@@ -515,13 +525,12 @@ export default function ResearchPage() {
     const handleBeforeUnload = () => {
       // Use sendBeacon for reliable cleanup on page unload
       if (token) {
-        const baseUrl = typeof window !== "undefined"
-          ? `${window.location.protocol}//${window.location.hostname}:${process.env.NEXT_PUBLIC_BACKEND_PORT || "8010"}`
-          : "";
-        navigator.sendBeacon(
-          `${baseUrl}/research/uploads/clear`,
-          JSON.stringify({ token })
-        );
+        const baseUrl =
+          typeof window !== "undefined"
+            ? `${window.location.protocol}//${window.location.hostname}:${process.env.NEXT_PUBLIC_BACKEND_PORT || "8010"}`
+            : "";
+        const clearUrl = `${baseUrl}/research/uploads/clear?token=${encodeURIComponent(token)}`;
+        navigator.sendBeacon(clearUrl);
       }
     };
 
@@ -706,20 +715,22 @@ export default function ResearchPage() {
 
   return (
     <PageShell contentClassName="gap-8">
-        <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Research Mode</p>
-            <h1 className="pt-2 text-3xl font-semibold text-zinc-950 dark:text-white">Investigate any topic</h1>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Upload documents, web pages, or YouTube videos and ask questions about them.
+        <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+          <div className="absolute top-0 right-0 h-64 w-64 bg-emerald-400/20 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 left-0 h-48 w-48 bg-blue-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-medium text-emerald-700 backdrop-blur dark:border-emerald-800 dark:bg-zinc-900/80 dark:text-emerald-300 mb-4">
+              <Search className="h-4 w-4" />
+              Research Mode
+            </div>
+            <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+              Investigate any topic
+            </h1>
+            <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+              Upload documents, web pages, or YouTube videos and ask questions about them
             </p>
           </div>
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-          >
-            Back to home
-          </Link>
         </header>
 
         {/* Upload Sources Section */}
@@ -756,9 +767,13 @@ export default function ResearchPage() {
               <button
                 type="submit"
                 disabled={uploadingFile || !fileToUpload}
-                className="mt-4 w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900"
+                className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
-                {uploadingFile ? "Analyzing..." : fileToUpload ? `Add ${fileToUpload.name}` : "Add file"}
+                {uploadingFile ? (
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Analyzing...</>
+                ) : (
+                  fileToUpload ? `Add ${fileToUpload.name}` : "Add file"
+                )}
               </button>
               <div className="mt-3">{renderStatus("file")}</div>
             </form>
@@ -783,9 +798,13 @@ export default function ResearchPage() {
               <button
                 type="submit"
                 disabled={submittingUrl || !urlInput.trim()}
-                className="mt-4 w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900"
+                className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
-                {submittingUrl ? "Fetching..." : "Add URL"}
+                {submittingUrl ? (
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Fetching...</>
+                ) : (
+                  "Add URL"
+                )}
               </button>
               <div className="mt-3">{renderStatus("url")}</div>
             </form>
@@ -810,9 +829,13 @@ export default function ResearchPage() {
               <button
                 type="submit"
                 disabled={submittingYoutube || !youtubeInput.trim()}
-                className="mt-4 w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900"
+                className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
-                {submittingYoutube ? "Transcribing..." : "Add YouTube"}
+                {submittingYoutube ? (
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Transcribing...</>
+                ) : (
+                  "Add YouTube"
+                )}
               </button>
               <div className="mt-3">{renderStatus("youtube")}</div>
             </form>
@@ -831,7 +854,7 @@ export default function ResearchPage() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-emerald-900 dark:text-emerald-100">Indexed Sources</h3>
-                  <p className="text-sm text-emerald-700 dark:text-emerald-300">{previews.length} document(s) ready for querying</p>
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">{uploadedCount} document(s) ready for querying</p>
                 </div>
               </div>
               <button
@@ -1085,9 +1108,13 @@ export default function ResearchPage() {
             <button
               type="submit"
               disabled={loading || (queryUploadedOnly && previews.length === 0)}
-              className="w-full rounded-full bg-zinc-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70 dark:bg-white dark:text-zinc-900"
+              className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
             >
-              {loading ? "Searching..." : queryUploadedOnly ? "Ask about uploaded documents" : "Search course materials"}
+              {loading ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Searching...</>
+              ) : (
+                <>{queryUploadedOnly ? "Ask about uploaded documents" : "Search course materials"} <span className="transition-transform group-hover:translate-x-1">→</span></>
+              )}
             </button>
 
             {queryUploadedOnly && previews.length === 0 && (
@@ -1202,12 +1229,12 @@ export default function ResearchPage() {
                 />
                 <button
                   type="submit"
-                  disabled={toolLoading || !compareTopic.trim() || previews.length < 1}
+                  disabled={toolLoading || !compareTopic.trim() || uploadedCount < 1}
                   className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {toolLoading ? "Comparing..." : "Compare Documents"}
                 </button>
-                {previews.length < 1 && (
+                {uploadedCount < 1 && (
                   <p className="text-xs text-amber-600">Upload at least one document to compare</p>
                 )}
               </form>
@@ -1262,13 +1289,13 @@ export default function ResearchPage() {
                   <button
                     type="button"
                     onClick={handleExtractCitations}
-                    disabled={toolLoading || previews.length < 1}
+                    disabled={toolLoading || uploadedCount < 1}
                     className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                   >
                     {toolLoading ? "Extracting..." : "Extract Citations"}
                   </button>
                 </div>
-                {previews.length < 1 && (
+                {uploadedCount < 1 && (
                   <p className="text-xs text-amber-600">Upload a document to extract citations</p>
                 )}
 
@@ -1334,13 +1361,13 @@ export default function ResearchPage() {
                   <button
                     type="button"
                     onClick={handleGenerateSummary}
-                    disabled={toolLoading || previews.length < 1}
+                    disabled={toolLoading || uploadedCount < 1}
                     className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 ml-auto"
                   >
                     {toolLoading ? "Generating..." : "Generate"}
                   </button>
                 </div>
-                {previews.length < 1 && (
+                {uploadedCount < 1 && (
                   <p className="text-xs text-amber-600">Upload a document to generate summary</p>
                 )}
 
@@ -1388,7 +1415,7 @@ export default function ResearchPage() {
                   <button
                     type="button"
                     onClick={handleGenerateQuestions}
-                    disabled={toolLoading || previews.length < 1}
+                    disabled={toolLoading || uploadedCount < 1}
                     className="rounded-xl bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 ml-auto"
                   >
                     {toolLoading ? "Generating..." : "Generate Questions"}
@@ -1415,7 +1442,7 @@ export default function ResearchPage() {
                     </label>
                   ))}
                 </div>
-                {previews.length < 1 && (
+                {uploadedCount < 1 && (
                   <p className="text-xs text-amber-600">Upload a document to generate questions</p>
                 )}
 

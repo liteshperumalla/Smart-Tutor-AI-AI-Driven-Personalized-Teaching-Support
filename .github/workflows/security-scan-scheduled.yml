@@ -1,0 +1,253 @@
+name: Scheduled Security Scans
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  issues: write
+
+jobs:
+  trivy-scheduled-scan:
+    name: Trivy Full Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy config scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '0'
+
+  dependency-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python (Backend)
+        if: matrix.component == 'backend'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run pip-audit (Backend)
+        if: matrix.component == 'backend'
+        run: |
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt --format json --output pip-audit.json || true
+
+      - name: Run Safety check (Backend)
+        if: matrix.component == 'backend'
+        run: |
+          pip install safety
+          safety check --file backend/requirements.txt --json --output safety-report.json || true
+          safety check --file backend/requirements.txt || true
+
+      - name: Set up Node.js (Frontend)
+        if: matrix.component == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run npm audit (Frontend)
+        if: matrix.component == 'frontend'
+        run: |
+          cd frontend
+          npm audit --json > npm-audit-report.json || true
+          npm audit
+
+      - name: Upload audit reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-${{ matrix.component }}
+          path: |
+            pip-audit.json
+            safety-report.json
+            frontend/npm-audit-report.json
+          retention-days: 90
+
+      - name: Create issue if vulnerabilities found
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Security vulnerabilities detected in ${{ matrix.component }}`,
+              body: `Automated security scan detected vulnerabilities in ${{ matrix.component }}.\n\nPlease review the artifacts from this workflow run.`,
+              labels: ['security', 'dependencies', 'automated']
+            })
+
+  container-scan:
+    name: Container Security Scan (Latest)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull latest backend image
+        run: |
+          docker pull ghcr.io/${{ github.repository }}-backend:latest
+
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}-backend:latest
+          format: 'sarif'
+          output: 'trivy-backend.sarif'
+
+      - name: Upload backend scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-backend.sarif'
+          category: trivy-backend-latest
+
+      - name: Pull latest frontend image
+        run: |
+          docker pull ghcr.io/${{ github.repository }}-frontend:latest
+
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/${{ github.repository }}-frontend:latest
+          format: 'sarif'
+          output: 'trivy-frontend.sarif'
+
+      - name: Upload frontend scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-frontend.sarif'
+          category: trivy-frontend-latest
+
+  license-compliance:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check Python licenses
+        run: |
+          pip install pip-licenses
+          pip install -r backend/requirements.txt
+          pip-licenses --format=json --output-file=python-licenses.json
+          pip-licenses --fail-on='GPL;AGPL'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check npm licenses
+        run: |
+          cd frontend
+          npm ci
+          npx license-checker --json --out ../npm-licenses.json
+          npx license-checker --failOn 'GPL;AGPL'
+
+      - name: Upload license reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-reports
+          path: |
+            python-licenses.json
+            npm-licenses.json
+          retention-days: 90
+
+  sbom-generation:
+    name: Generate Software Bill of Materials
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM with Syft
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom-spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom-spdx.json
+          retention-days: 365
+
+      - name: Scan SBOM with Grype
+        uses: anchore/scan-action@v3
+        with:
+          sbom: sbom-spdx.json
+          fail-build: false
+
+  security-scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@v2.3.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif

@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: monitoring
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+      log_level: info
+
+    # Client configuration
+    client:
+      url: http://loki:3100/loki/api/v1/push
+      batchwait: 1s
+      batchsize: 1048576
+      timeout: 10s
+      backoff_config:
+        min_period: 500ms
+        max_period: 5m
+        max_retries: 10
+      external_labels:
+        cluster: smart-ai-tutor
+        environment: ${ENVIRONMENT}
+
+    # Positions file
+    positions:
+      filename: /run/promtail/positions.yaml
+
+    # Scrape configs
+    scrape_configs:
+      # Kubernetes pods
+      - job_name: kubernetes-pods
+        pipeline_stages:
+          # Extract pod metadata
+          - cri: {}
+          # Parse JSON logs
+          - json:
+              expressions:
+                level: level
+                logger: logger
+                message: message
+                trace_id: trace_id
+                span_id: span_id
+          # Add labels from JSON fields
+          - labels:
+              level:
+              logger:
+          # Add trace context
+          - labels:
+              trace_id:
+              span_id:
+          # Parse timestamp
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+          # Drop unnecessary fields
+          - labeldrop:
+              - filename
+              - stream
+
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - production
+                - staging
+                - development
+
+        relabel_configs:
+          # Drop logs from system namespaces
+          - source_labels: [__meta_kubernetes_namespace]
+            regex: kube-system|kube-public|kube-node-lease
+            action: drop
+
+          # Add namespace label
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+
+          # Add pod name
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+          # Add container name
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+
+          # Add app label
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+
+          # Add component label
+          - source_labels: [__meta_kubernetes_pod_label_component]
+            target_label: component
+
+          # Add version label
+          - source_labels: [__meta_kubernetes_pod_label_version]
+            target_label: version
+
+          # Set log path
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            target_label: __path__
+            separator: /
+            replacement: /var/log/pods/*$1*/*.log
+
+          # Drop empty targets
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: node_name
+
+      # System logs
+      - job_name: kubernetes-system
+        pipeline_stages:
+          - cri: {}
+        static_configs:
+          - targets:
+              - localhost
+            labels:
+              job: varlogs
+              __path__: /var/log/*.log
+
+      # Journal logs (systemd)
+      - job_name: journal
+        journal:
+          max_age: 12h
+          labels:
+            job: systemd-journal
+        relabel_configs:
+          - source_labels: ['__journal__systemd_unit']
+            target_label: 'unit'
+          - source_labels: ['__journal__hostname']
+            target_label: 'hostname'
+          - source_labels: ['__journal_priority_keyword']
+            target_label: 'level'
+
+    # Limits
+    limits_config:
+      readline_rate: 10000
+      readline_burst: 20000

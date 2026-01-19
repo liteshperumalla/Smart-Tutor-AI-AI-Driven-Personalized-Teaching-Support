@@ -1,0 +1,262 @@
+{
+  "dashboard": {
+    "title": "SLO Dashboard - Smart AI Tutor",
+    "tags": ["slo", "sla", "reliability"],
+    "timezone": "browser",
+    "schemaVersion": 36,
+    "version": 1,
+    "refresh": "1m",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Backend Availability - Error Budget",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+        "targets": [{
+          "expr": "(1 - (1 - (sum(rate(http_requests_total{job=\"backend\",code!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend\"}[30d]))))) / (1 - 0.999)",
+          "refId": "A",
+          "legendFormat": "Error Budget Used"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "min": 0,
+            "max": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 0.5},
+                {"color": "orange", "value": 0.8},
+                {"color": "red", "value": 1.0}
+              ]
+            }
+          }
+        },
+        "options": {
+          "orientation": "auto",
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 2,
+        "title": "Backend Availability - Current (30d)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+        "targets": [{
+          "expr": "sum(rate(http_requests_total{job=\"backend\",code!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend\"}[30d]))",
+          "refId": "A"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 4,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.995},
+                {"color": "green", "value": 0.999}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 3,
+        "title": "SLO Target",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 4},
+        "targets": [{
+          "expr": "0.999",
+          "refId": "A"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 3
+          }
+        },
+        "options": {
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Backend P95 Latency vs SLO",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m])) by (le)) * 1000",
+            "refId": "A",
+            "legendFormat": "P95 Latency"
+          },
+          {
+            "expr": "500",
+            "refId": "B",
+            "legendFormat": "SLO Target (500ms)"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 10
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "SLO Target (500ms)"},
+              "properties": [
+                {"id": "custom.lineStyle", "value": {"fill": "dash"}},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "title": "Error Budget Burn Rate (1h window)",
+        "type": "timeseries",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [{
+          "expr": "(sum(rate(http_requests_total{job=\"backend\",code=~\"5..\"}[1h])) / sum(rate(http_requests_total{job=\"backend\"}[1h]))) / (1 - 0.999)",
+          "refId": "A",
+          "legendFormat": "Burn Rate"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 20
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Availability by Endpoint",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [{
+          "expr": "sum by (path) (rate(http_requests_total{job=\"backend\",code!~\"5..\"}[5m])) / sum by (path) (rate(http_requests_total{job=\"backend\"}[5m]))",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Value"},
+              "properties": [
+                {"id": "unit", "value": "percentunit"},
+                {"id": "decimals", "value": 4},
+                {"id": "custom.displayMode", "value": "color-background"},
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "mode": "absolute",
+                    "steps": [
+                      {"color": "red", "value": 0},
+                      {"color": "yellow", "value": 0.99},
+                      {"color": "green", "value": 0.999}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "title": "RAG Query Success Rate",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16},
+        "targets": [{
+          "expr": "sum(rate(rag_queries_total{status=\"success\"}[5m])) / sum(rate(rag_queries_total[5m]))",
+          "refId": "A"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.98},
+                {"color": "green", "value": 0.99}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 8,
+        "title": "SLO Compliance (All Services)",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 18, "x": 6, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{job=\"backend\",code!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend\"}[30d]))",
+            "refId": "A",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Backend API Availability"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"backend\"}[30d])) by (le)) < bool 0.5",
+            "refId": "B",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "Backend API Latency"
+          },
+          {
+            "expr": "sum(rate(rag_queries_total{status=\"success\"}[30d])) / sum(rate(rag_queries_total[30d]))",
+            "refId": "C",
+            "format": "table",
+            "instant": true,
+            "legendFormat": "RAG Success Rate"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "Value #A": "Availability",
+                "Value #B": "Latency Compliance",
+                "Value #C": "RAG Success"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

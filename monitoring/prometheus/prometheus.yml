@@ -1,0 +1,74 @@
+# Prometheus Configuration for Smart AI Tutor
+global:
+  scrape_interval: 15s  # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    cluster: 'smart-ai-tutor'
+    environment: 'development'
+
+# Alertmanager configuration (optional, for future expansion)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - alertmanager:9093
+
+# Load alerting rules
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # FastAPI Backend Application
+  - job_name: 'backend-api'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['backend:8000']
+        labels:
+          service: 'backend-api'
+          app: 'smart-ai-tutor'
+    scrape_interval: 10s
+
+  # PostgreSQL Database
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgres'
+          database: 'smart_tutor'
+    scrape_interval: 30s
+
+  # Redis Cache
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          cache: 'rag-cache'
+    scrape_interval: 30s
+
+  # System Metrics (Node Exporter)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+          instance: 'docker-host'
+    scrape_interval: 30s
+
+  # Frontend Application (if metrics endpoint added)
+  - job_name: 'frontend'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['frontend:4000']
+        labels:
+          service: 'frontend'
+          app: 'smart-ai-tutor-ui'
+    scrape_interval: 30s

@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { Code2, Play, Sparkles, Bug, BookOpen, Send, Bot, Terminal } from "lucide-react";
 
 const SUPPORTED_LANGUAGES: CodeLanguage[] = ["python", "javascript", "java"];
 
@@ -178,22 +179,22 @@ export default function CodeSandboxPage() {
 
   return (
     <PageShell contentClassName="gap-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Code Sandbox</p>
-          <h1 className="pt-2 text-3xl font-semibold text-zinc-950 dark:text-white">
-            Coding Agent (Qwen2.5 Coder)
+      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-purple-400/20 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-pink-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-white/80 px-4 py-2 text-sm font-medium text-purple-700 backdrop-blur dark:border-purple-800 dark:bg-zinc-900/80 dark:text-purple-300 mb-4">
+            <Code2 className="h-4 w-4" />
+            Code Sandbox
+          </div>
+          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+            Coding Agent
           </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Write, run, explain, and debug code with AI assistance
+          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            Write, run, explain, and debug code with AI assistance powered by Qwen2.5 Coder
           </p>
         </div>
-        <Link
-          href="/"
-          className="inline-flex items-center justify-center rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
-        >
-          Back to home
-        </Link>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -239,19 +240,23 @@ export default function CodeSandboxPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 animate-fade-in-up">
             <button
               type="button"
               onClick={handleRunCode}
               disabled={runningCode || !code.trim()}
-              className="rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-gradient-to-r from-emerald-600 to-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/30 transition hover:scale-105 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
-              {runningCode ? "Running..." : "Run Code"}
+              {runningCode ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Running...</>
+              ) : (
+                "Run Code"
+              )}
             </button>
             <button
               type="button"
               onClick={() => setShowGenerateInput(!showGenerateInput)}
-              className="rounded-full border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="btn-secondary"
             >
               Generate Code
             </button>
@@ -259,17 +264,25 @@ export default function CodeSandboxPage() {
               type="button"
               onClick={handleExplainCode}
               disabled={explaining || !code.trim()}
-              className="rounded-full border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
-              {explaining ? "Explaining..." : "Explain Code"}
+              {explaining ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Explaining...</>
+              ) : (
+                "Explain Code"
+              )}
             </button>
             <button
               type="button"
               onClick={handleDebugCode}
               disabled={debugging || !code.trim()}
-              className="rounded-full border border-zinc-200 px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
-              {debugging ? "Debugging..." : "Debug Code"}
+              {debugging ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Debugging...</>
+              ) : (
+                "Debug Code"
+              )}
             </button>
           </div>
 
@@ -293,9 +306,13 @@ export default function CodeSandboxPage() {
                 <button
                   type="submit"
                   disabled={generating || !generatePrompt.trim()}
-                  className="rounded-full bg-zinc-900 px-6 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
+                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                 >
-                  {generating ? "Generating..." : "Generate"}
+                  {generating ? (
+                    <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Generating...</>
+                  ) : (
+                    "Generate"
+                  )}
                 </button>
               </div>
             </form>
@@ -427,9 +444,13 @@ export default function CodeSandboxPage() {
               <button
                 type="submit"
                 disabled={chatLoading || !chatInput.trim()}
-                className="mt-2 w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100"
+                className="mt-2 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
-                {chatLoading ? "Sending..." : "Send"}
+                {chatLoading ? (
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Sending...</>
+                ) : (
+                  "Send"
+                )}
               </button>
             </form>
 
@@ -437,7 +458,7 @@ export default function CodeSandboxPage() {
               <button
                 type="button"
                 onClick={() => setChatHistory([])}
-                className="mt-2 w-full rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                className="mt-2 w-full btn-ghost text-sm"
               >
                 Clear Chat
               </button>

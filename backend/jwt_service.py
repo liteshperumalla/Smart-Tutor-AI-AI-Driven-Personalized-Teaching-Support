@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 from jose import JWTError, jwt
 from pathlib import Path
+import uuid
 from .config import config
 from .logger import get_logger
 from .exceptions import SessionExpiredError
@@ -111,7 +112,8 @@ class JWTService:
             "iat": now,  # Issued at
             "iss": self.issuer,  # Issuer
             "aud": self.audience,  # Audience
-            "type": "access"  # Token type
+            "type": "access",  # Token type
+            "jti": str(uuid.uuid4())  # JWT ID - unique identifier for token revocation
         }
 
         # Add additional claims if provided
@@ -148,6 +150,7 @@ class JWTService:
             "iat": now,
             "iss": self.issuer,
             "aud": self.audience,
+            "jti": str(uuid.uuid4()),  # JWT ID - unique identifier for token revocation
             "type": "refresh"  # Token type
         }
 
@@ -239,8 +242,8 @@ class JWTService:
             exp = payload.get("exp")
             if exp:
                 return datetime.fromtimestamp(exp, tz=timezone.utc)
-        except JWTError:
-            pass
+        except JWTError as exc:
+            logger.debug(f"Failed to decode token expiry: {exc}")
         return None
 
     def is_token_expired(self, token: str) -> bool:

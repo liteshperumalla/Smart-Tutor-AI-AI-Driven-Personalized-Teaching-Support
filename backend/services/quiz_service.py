@@ -6,19 +6,30 @@ import re
 import uuid
 from dataclasses import asdict
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from llama_index.core import get_response_synthesizer, load_index_from_storage
-from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-
-from Tutor_chat import RAGQueryEngine
-from utils import get_storage_context
-
+from backend.config import config
 from backend.services import get_storage_backend
 from backend.services.models import QuizResult
-
+from backend.s3_retriever import S3Retriever
+from backend.bedrock_llm import BedrockLLM
+from backend.bedrock_embeddings import BedrockEmbeddings
 
 logger = logging.getLogger(__name__)
+
+QUESTION_TEMPLATE = """Based on the following context, generate a unique multiple-choice question with four options (A, B, C, D).
+
+Context:
+{context_str}
+
+Generate a question that tests understanding of key concepts from this material. Return ONLY a JSON object in this format:
+{{
+  "question": "Your question here?",
+  "options": ["Option A", "Option B", "Option C", "Option D"],
+  "correct_answer_letter": "A"
+}}
+
+Do not include any other text or formatting. The correct answer should be clearly indicated."""
 
 
 class QuizGenerationError(RuntimeError):
@@ -28,24 +39,27 @@ class QuizGenerationError(RuntimeError):
 class QuizService:
     def __init__(self) -> None:
         self.storage = get_storage_backend()
+        self.s3_retriever = S3Retriever(similarity_top_k=5)
+        self.llm = BedrockLLM()
         self._folder_cache: Optional[Dict[str, List[str]]] = None
-        storage_context = get_storage_context()
-        if storage_context is None:
-            raise RuntimeError("Knowledge base is not initialized")
-        self.index = load_index_from_storage(storage_context)
 
     def _get_folder_structure(self) -> Dict[str, List[str]]:
         if self._folder_cache is not None:
             return self._folder_cache
 
+        import boto3
+
+        s3 = boto3.client("s3", region_name="us-east-1")
         structure: Dict[str, List[str]] = {}
-        docstore = self.index.docstore
-        for doc in docstore.docs.values():
-            file_path = doc.metadata.get("file_path")
-            if not file_path:
-                continue
-            folder = str(file_path.rsplit("/", 1)[0])
-            structure.setdefault(folder, []).append(file_path)
+
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket="smart-ai-tutor-docs", Prefix="modules/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith((".pdf", ".pptx", ".ppt", ".docx", ".ipynb")):
+                    folder = str(key.rsplit("/", 1)[0]).replace("modules/", "")
+                    structure.setdefault(folder, []).append(key)
+
         self._folder_cache = structure
         return structure
 
@@ -67,14 +81,18 @@ class QuizService:
         folders.sort(key=lambda item: item["label"].lower())
         return folders
 
-    def _build_query_engine(self, file_paths: List[str]) -> RAGQueryEngine:
-        filters = MetadataFilters(
-            filters=[ExactMatchFilter(key="file_path", value=path) for path in file_paths],
-            condition="or",
-        )
-        retriever = self.index.as_retriever(filters=filters, similarity_top_k=3)
-        synthesizer = get_response_synthesizer(response_mode="compact")
-        return RAGQueryEngine(retriever=retriever, response_synthesizer=synthesizer, mode="quiz")
+    def _get_context_for_query(self, query: str, file_paths: List[str]) -> str:
+        """Get context from S3 for a specific query and files"""
+        try:
+            nodes = self.s3_retriever.retrieve(query)
+            context_parts = []
+            for node in nodes[:3]:
+                text = node.node.text if hasattr(node.node, "text") else str(node.node)
+                context_parts.append(text)
+            return "\n\n".join(context_parts)
+        except Exception as e:
+            logger.error(f"Error getting context: {e}")
+            return ""
 
     def generate_quiz(
         self, user_id: str, selected_folders: List[str], num_questions: int
@@ -90,26 +108,41 @@ class QuizService:
         if not files:
             raise ValueError("Selected folders do not contain indexed files")
 
-        query_engine = self._build_query_engine(files)
         questions: List[Dict[str, object]] = []
         generated_questions = set()
         attempts = 0
         max_attempts = num_questions * 5
 
+        # Generate quiz questions
         while len(questions) < num_questions and attempts < max_attempts:
             attempts += 1
-            llm_response_str = query_engine.custom_query(
-                "Generate a unique, high-quality multiple-choice question with four options based on the provided context."
-            )
-            match = re.search(r"\{[\s\S]*\}", llm_response_str)
-            if not match:
-                logger.warning("Quiz generation attempt %s returned no JSON", attempts)
+
+            # Create a query for quiz generation
+            query = "Generate a multiple-choice question about key concepts"
+            context_str = self._get_context_for_query(query, files)
+
+            if not context_str:
+                logger.warning(
+                    f"Quiz generation attempt {attempts}: no context retrieved"
+                )
                 continue
 
             try:
+                prompt = QUESTION_TEMPLATE.format(context_str=context_str[:3000])
+                llm_response = self.llm.complete(prompt)
+                response_text = str(llm_response).strip()
+
+                # Extract JSON from response
+                match = re.search(r"\{[\s\S]*\}", response_text)
+                if not match:
+                    logger.warning(f"Quiz generation attempt {attempts}: no JSON found")
+                    continue
+
                 payload = json.loads(match.group(0))
             except json.JSONDecodeError as exc:
-                logger.warning("Invalid JSON in quiz generation: %s", exc)
+                logger.warning(
+                    f"Quiz generation attempt {attempts}: invalid JSON - {exc}"
+                )
                 continue
 
             if not self._is_valid_question(payload):
@@ -119,7 +152,11 @@ class QuizService:
             if question_text in generated_questions:
                 continue
 
-            explanation = query_engine.get_related_module(question_text)
+            # Get explanation using the context
+            explanation = (
+                context_str[:500] + "..." if len(context_str) > 500 else context_str
+            )
+
             question_id = uuid.uuid4().hex
             questions.append(
                 {
@@ -131,9 +168,12 @@ class QuizService:
                 }
             )
             generated_questions.add(question_text)
+            logger.info(f"Generated question {len(questions)}/{num_questions}")
 
         if not questions:
-            raise QuizGenerationError("Unable to generate quiz questions from the selected folders")
+            raise QuizGenerationError(
+                "Unable to generate quiz questions from the selected folders"
+            )
 
         quiz_id = uuid.uuid4().hex
         return {

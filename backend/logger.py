@@ -71,6 +71,9 @@ class ContextLogger:
 
     def _log(self, level: int, msg: str, extra_data: Optional[Dict[str, Any]] = None, **kwargs):
         """Internal logging method with context"""
+        # Extract exc_info if present (it's a logging kwarg, not extra)
+        exc_info = kwargs.pop('exc_info', False)
+
         extra = {**self.context}
         if extra_data:
             extra['extra_data'] = extra_data
@@ -79,7 +82,7 @@ class ContextLogger:
         for key, value in extra.items():
             kwargs.setdefault(key, value)
 
-        self.logger.log(level, msg, extra=kwargs)
+        self.logger.log(level, msg, extra=kwargs, exc_info=exc_info)
 
     def debug(self, msg: str, extra: Optional[Dict[str, Any]] = None):
         """Log debug message"""

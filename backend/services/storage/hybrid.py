@@ -40,6 +40,10 @@ class HybridStorageBackend(BaseStorageBackend):
         """Update user in PostgreSQL"""
         return self.postgres.update_user(username, updates)
 
+    def get_user_by_email(self, email: str) -> Optional[dict]:
+        """Get user by email from PostgreSQL"""
+        return self.postgres.get_user_by_email(email)
+
     # Additional user methods (for auth_service compatibility)
     def get_user_safe(self, username: str) -> Optional[dict]:
         """Get user safely (alias for get_user)"""

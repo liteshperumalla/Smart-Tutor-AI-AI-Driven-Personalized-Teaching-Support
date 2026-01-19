@@ -6,7 +6,8 @@ python-multipart>=0.0.6
 
 # Database & Storage
 psycopg2-binary>=2.9.9
-boto3>=1.34.0
+boto3>=1.35.78  # Upgraded to fix credential resolution issues
+botocore>=1.35.78  # Must match boto3 version
 asyncpg>=0.29.0
 sqlalchemy>=2.0.0
 alembic>=1.13.0
@@ -31,3 +32,16 @@ llama-index-workflows
 llama-index-cli
 llama-cloud
 llama-cloud-services
+
+# RAG Enhancement Dependencies
+spacy>=3.7.0  # NER, tokenization, query enhancement
+# Note: Install spaCy model separately: python -m spacy download en_core_web_sm
+
+# LLM Evaluation & Metrics
+nltk>=3.8.1  # BLEU score, tokenization
+rouge-score>=0.1.2  # ROUGE metrics for summarization
+bert-score>=0.3.13  # Semantic similarity using BERT embeddings
+scipy>=1.11.0  # Statistical testing (t-tests, effect size)
+
+# Monitoring & Observability
+prometheus-client>=0.20.0  # Metrics collection and export

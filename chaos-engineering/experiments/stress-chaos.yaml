@@ -1,0 +1,72 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: backend-cpu-stress
+  namespace: chaos-testing
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # CPU stress
+  stressors:
+    cpu:
+      workers: 2  # Number of CPU workers
+      load: 80    # Target load percentage
+
+  duration: "2m"
+
+  scheduler:
+    cron: "@every 12h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: backend-memory-stress
+  namespace: chaos-testing
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # Memory stress
+  stressors:
+    memory:
+      workers: 1
+      size: "512MB"  # Amount of memory to consume
+
+  duration: "1m"
+
+  scheduler:
+    cron: "@every 12h"
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: backend-io-stress
+  namespace: chaos-testing
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+
+  # I/O stress
+  stressors:
+    io:
+      workers: 2
+
+  duration: "1m"
+
+  scheduler:
+    cron: "@weekly"

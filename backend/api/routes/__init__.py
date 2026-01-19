@@ -14,6 +14,7 @@ from . import (
     home,
     files,
     code,
+    ws_chat,  # WebSocket chat support
 )
 
 
@@ -32,3 +33,4 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(home.router)
     app.include_router(files.router)
     app.include_router(code.router)
+    app.include_router(ws_chat.router)  # WebSocket endpoints

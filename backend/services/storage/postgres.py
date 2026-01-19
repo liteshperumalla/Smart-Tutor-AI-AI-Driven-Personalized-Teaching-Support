@@ -8,12 +8,15 @@ from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import SimpleConnectionPool
+from psycopg2 import sql  # SECURITY: For safe SQL identifier quoting
 from contextlib import contextmanager
+import re
 
 from backend.config import config
 from backend.logger import get_logger
 from backend.services.storage.base import BaseStorageBackend
-from backend.services.models import ChatSession, QuizResult
+from backend.services.storage.filesystem import FileSystemStorageBackend
+from backend.services.models import ChatSession, QuizResult  # Fixed import path
 
 logger = get_logger(__name__)
 
@@ -31,13 +34,21 @@ class PostgresStorageBackend(BaseStorageBackend):
         min_connections: int = 2,
         max_connections: int = 10,
     ):
+        # SECURITY: Add SSL configuration
+        from backend.config import config
+
         self.connection_params = {
             "host": host,
             "port": port,
             "database": database,
             "user": user,
             "password": password,
+            "sslmode": config.POSTGRES_SSL_MODE,
         }
+
+        # Add SSL root certificate if provided (for RDS)
+        if config.POSTGRES_SSL_ROOT_CERT:
+            self.connection_params["sslrootcert"] = config.POSTGRES_SSL_ROOT_CERT
 
         # Create connection pool for efficient connection management
         self.pool = SimpleConnectionPool(
@@ -45,6 +56,7 @@ class PostgresStorageBackend(BaseStorageBackend):
             max_connections,
             **self.connection_params
         )
+        self.chat_storage = FileSystemStorageBackend()
 
         logger.info(f"PostgreSQL storage backend initialized (pool: {min_connections}-{max_connections})")
 
@@ -57,6 +69,23 @@ class PostgresStorageBackend(BaseStorageBackend):
         finally:
             self.pool.putconn(conn)
 
+    @staticmethod
+    def _is_valid_field_name(field_name: str) -> bool:
+        """
+        Validate field name to prevent SQL injection.
+        Only allows alphanumeric characters and underscores.
+
+        Args:
+            field_name: The field name to validate
+
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        # Field names must be alphanumeric with underscores only
+        # Must start with letter or underscore
+        pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+        return bool(re.match(pattern, field_name))
+
     @contextmanager
     def _get_cursor(self, cursor_factory=RealDictCursor):
         """Get cursor with automatic commit/rollback"""
@@ -67,7 +96,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 conn.commit()
             except Exception as e:
                 conn.rollback()
-                print(f"Database error: {e}")
+                logger.error(f"Database error: {e}", exc_info=True)
                 raise
             finally:
                 cursor.close()
@@ -79,10 +108,8 @@ class PostgresStorageBackend(BaseStorageBackend):
                 cursor.execute(
                     """
                     SELECT
-                        username, email, hashed_password, display_name,
-                        phone_number, role, theme, notes, profile_picture_path,
-                        is_locked, locked_until, login_attempts,
-                        created_at, updated_at, last_login
+                        username, email, password_hash, full_name,
+                        created_at, last_login, login_attempts, locked_until, metadata
                     FROM users
                     WHERE username = %s
                     """,
@@ -96,6 +123,11 @@ class PostgresStorageBackend(BaseStorageBackend):
                     for key, value in user_dict.items():
                         if isinstance(value, datetime):
                             user_dict[key] = value.isoformat()
+                    metadata = user_dict.get("metadata") or {}
+                    if isinstance(metadata, dict):
+                        for key in ("display_name", "phone_number", "theme"):
+                            if key not in user_dict and key in metadata:
+                                user_dict[key] = metadata[key]
                     return user_dict
 
                 return None
@@ -104,31 +136,59 @@ class PostgresStorageBackend(BaseStorageBackend):
             logger.error(f"Error getting user {username}: {e}")
             return None
 
+    def get_user_by_email(self, email: str) -> Optional[dict]:
+        """Get user by email"""
+        if not email:
+            return None
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        username, email, password_hash, full_name,
+                        created_at, last_login, login_attempts, locked_until, metadata
+                    FROM users
+                    WHERE email = %s
+                    """,
+                    (email,)
+                )
+                user = cursor.fetchone()
+
+                if user:
+                    user_dict = dict(user)
+                    for key, value in user_dict.items():
+                        if isinstance(value, datetime):
+                            user_dict[key] = value.isoformat()
+                    metadata = user_dict.get("metadata") or {}
+                    if isinstance(metadata, dict):
+                        for key in ("display_name", "phone_number", "theme"):
+                            if key not in user_dict and key in metadata:
+                                user_dict[key] = metadata[key]
+                    return user_dict
+                return None
+        except Exception as e:
+            logger.error(f"Error getting user by email {email}: {e}")
+            return None
+
     def create_user(self, username: str, password_hash: str, **extras) -> dict:
         """Create a new user"""
         try:
             with self._get_cursor() as cursor:
-                # Extract known fields
+                # Extract known fields from extras
                 email = extras.get("email", username)
-                display_name = extras.get("display_name", username)
-                phone_number = extras.get("phone_number", "")
-                role = extras.get("role", "User")
-                theme = extras.get("theme", "light")
+                full_name = extras.get("full_name", username)
 
                 cursor.execute(
                     """
                     INSERT INTO users (
-                        username, email, hashed_password, display_name,
-                        phone_number, role, theme
+                        username, email, password_hash, full_name
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING
-                        username, email, hashed_password, display_name,
-                        phone_number, role, theme, notes, profile_picture_path,
-                        is_locked, locked_until, login_attempts,
-                        created_at, updated_at, last_login
+                        username, email, password_hash, full_name,
+                        created_at, last_login, login_attempts, locked_until
                     """,
-                    (username, email, password_hash, display_name, phone_number, role, theme)
+                    (username, email, password_hash, full_name)
                 )
 
                 user = cursor.fetchone()
@@ -160,13 +220,33 @@ class PostgresStorageBackend(BaseStorageBackend):
             values = []
 
             allowed_fields = {
-                'email', 'hashed_password', 'display_name', 'phone_number',
-                'role', 'theme', 'notes', 'profile_picture_path',
-                'is_locked', 'locked_until', 'login_attempts', 'last_login'
+                'email', 'password_hash', 'full_name',
+                'locked_until', 'login_attempts', 'last_login', 'metadata'
             }
+            profile_fields = {"display_name", "phone_number", "theme"}
+            metadata_updates = {
+                key: value for key, value in updates.items()
+                if key in profile_fields
+            }
+
+            if metadata_updates:
+                current = self.get_user(username) or {}
+                metadata = current.get("metadata") or {}
+                if not isinstance(metadata, dict):
+                    metadata = {}
+                metadata.update(metadata_updates)
+                updates = {k: v for k, v in updates.items() if k in allowed_fields}
+                updates["metadata"] = metadata
 
             for key, value in updates.items():
                 if key in allowed_fields:
+                    # SECURITY: Validate field name to prevent SQL injection
+                    if not self._is_valid_field_name(key):
+                        logger.error(f"Invalid field name detected: {key}")
+                        raise ValueError(f"Invalid field name: {key}")
+
+                    if key == "metadata" and isinstance(value, dict):
+                        value = psycopg2.extras.Json(value)
                     set_clauses.append(f"{key} = %s")
                     values.append(value)
 
@@ -182,10 +262,8 @@ class PostgresStorageBackend(BaseStorageBackend):
                     SET {', '.join(set_clauses)}
                     WHERE username = %s
                     RETURNING
-                        username, email, hashed_password, display_name,
-                        phone_number, role, theme, notes, profile_picture_path,
-                        is_locked, locked_until, login_attempts,
-                        created_at, updated_at, last_login
+                        username, email, password_hash, full_name,
+                        created_at, last_login, login_attempts, locked_until, metadata
                 """
 
                 cursor.execute(query, values)
@@ -206,55 +284,102 @@ class PostgresStorageBackend(BaseStorageBackend):
             logger.error(f"Error updating user {username}: {e}")
             raise
 
+    # Additional user methods (for auth_service compatibility)
+    def get_user_safe(self, username: str) -> Optional[dict]:
+        """Get user safely (alias for get_user)"""
+        return self.get_user(username)
+
+    def user_exists(self, username: str) -> bool:
+        """Check if user exists"""
+        return self.get_user(username) is not None
+
+    def update_last_login(self, username: str) -> None:
+        """Update last login timestamp and reset attempts"""
+        self.update_user(username, {
+            "last_login": datetime.utcnow().isoformat(),
+            "login_attempts": 0
+        })
+
+    def increment_login_attempts(self, username: str) -> int:
+        """Increment failed login attempts"""
+        user = self.get_user(username)
+        if not user:
+            return 0
+        attempts = user.get("login_attempts", 0) + 1
+        self.update_user(username, {"login_attempts": attempts})
+        return attempts
+
+    def reset_login_attempts(self, username: str) -> None:
+        """Reset failed login attempts"""
+        self.update_user(username, {"login_attempts": 0})
+
+    def lock_account(self, username: str, until) -> None:
+        """Lock user account until specified time"""
+        locked_until = until.isoformat() if hasattr(until, "isoformat") else str(until)
+        self.update_user(username, {"locked_until": locked_until})
+
+    def is_account_locked(self, username: str) -> bool:
+        """Check if account is locked"""
+        user = self.get_user(username)
+        if not user:
+            return False
+        locked_until = user.get("locked_until")
+        if not locked_until:
+            return False
+        try:
+            unlock_time = (
+                datetime.fromisoformat(locked_until)
+                if isinstance(locked_until, str)
+                else locked_until
+            )
+            return datetime.utcnow() < unlock_time
+        except Exception:
+            return False
+
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         """
         List chat sessions for a user
         Note: Chat sessions are stored in DynamoDB, not PostgreSQL
         This is a placeholder that will be handled by DynamoDBStorageBackend
         """
-        logger.warning("Chat sessions should be retrieved from DynamoDB, not PostgreSQL")
-        return []
+        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        return self.chat_storage.list_chat_sessions(username)
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
         """
         Load a specific chat session
         Note: Chat sessions are stored in DynamoDB, not PostgreSQL
         """
-        logger.warning("Chat sessions should be retrieved from DynamoDB, not PostgreSQL")
-        return None
+        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        return self.chat_storage.load_chat_session(username, session_id)
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
         """
         Save a chat session
         Note: Chat sessions are stored in DynamoDB, not PostgreSQL
         """
-        logger.warning("Chat sessions should be saved to DynamoDB, not PostgreSQL")
-        pass
+        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        self.chat_storage.save_chat_session(username, session)
 
     def save_quiz_result(self, result: QuizResult) -> None:
         """Save quiz result to PostgreSQL"""
         try:
             with self._get_cursor() as cursor:
-                # Calculate correct answers from score if not in metadata
-                correct_answers = result.score
-                time_taken = result.metadata.get('time_taken', 0) if result.metadata else 0
-
                 cursor.execute(
                     """
                     INSERT INTO quiz_results (
                         username, quiz_id, score, total_questions,
-                        correct_answers, time_taken_seconds, quiz_data
+                        answers, metadata
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
                         result.user_id,  # username maps to user_id
                         result.id,  # quiz_id maps to id
-                        result.percentage,  # score is percentage
+                        result.score,
                         result.total_questions,
-                        correct_answers,
-                        time_taken,
-                        psycopg2.extras.Json(result.metadata) if result.metadata else None
+                        psycopg2.extras.Json(result.metadata.get("responses", [])) if result.metadata else None,
+                        psycopg2.extras.Json(result.metadata) if result.metadata else None,
                     )
                 )
                 logger.info(f"Saved quiz result for {result.user_id}: {result.id}")
@@ -271,8 +396,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                     """
                     SELECT
                         id, username, quiz_id, score, total_questions,
-                        correct_answers, time_taken_seconds, quiz_data,
-                        created_at
+                        answers, metadata, created_at
                     FROM quiz_results
                     WHERE username = %s
                     ORDER BY created_at DESC
@@ -286,10 +410,10 @@ class PostgresStorageBackend(BaseStorageBackend):
                     result = QuizResult(
                         id=row['quiz_id'],  # quiz_id from DB maps to id
                         user_id=row['username'],  # username from DB maps to user_id
-                        score=row['correct_answers'],  # correct_answers maps to score
+                        score=row['score'],
                         total_questions=row['total_questions'],
-                        percentage=row['score'],  # score from DB is percentage
-                        metadata=row['quiz_data'] or {},
+                        percentage=(row['score'] / row['total_questions'] * 100.0) if row.get('total_questions') else 0.0,
+                        metadata=row['metadata'] or {},
                         created_at=row['created_at']
                     )
                     results.append(result)
@@ -316,11 +440,11 @@ def get_postgres_backend() -> PostgresStorageBackend:
     global _postgres_backend
     if _postgres_backend is None:
         # Read from environment or config
-        host = config.get("POSTGRES_HOST", "localhost")
-        port = int(config.get("POSTGRES_PORT", "5432"))
-        database = config.get("POSTGRES_DB", "smart_tutor")
-        user = config.get("POSTGRES_USER", "smart_tutor_user")
-        password = config.get("POSTGRES_PASSWORD", "dev_password_change_in_prod")
+        host = config.POSTGRES_HOST
+        port = int(config.POSTGRES_PORT)
+        database = config.POSTGRES_DB
+        user = config.POSTGRES_USER
+        password = config.POSTGRES_PASSWORD
 
         _postgres_backend = PostgresStorageBackend(
             host=host,

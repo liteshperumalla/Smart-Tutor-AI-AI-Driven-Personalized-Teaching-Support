@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 
-export default function GoogleCallbackPage() {
+// This page uses useSearchParams(), so must be dynamic
+export const dynamic = "force-dynamic";
+
+function GoogleCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("Verifying Google sign-in…");
@@ -13,9 +16,28 @@ export default function GoogleCallbackPage() {
 
   useEffect(() => {
     const code = searchParams.get("code");
-    const state = searchParams.get("state") || "login";
+    const state = searchParams.get("state") || "";
     if (!code) {
       setError("Missing authorization code.");
+      return;
+    }
+    let intent = "login";
+    if (state) {
+      try {
+        const parsed = JSON.parse(atob(state));
+        intent = parsed.intent || "login";
+        const stored = window.sessionStorage.getItem("google_oauth_state");
+        if (!stored || parsed.nonce !== stored) {
+          setError("Invalid or expired OAuth state.");
+          return;
+        }
+        window.sessionStorage.removeItem("google_oauth_state");
+      } catch (err) {
+        setError("Invalid OAuth state.");
+        return;
+      }
+    } else {
+      setError("Missing OAuth state.");
       return;
     }
     const run = async () => {
@@ -27,12 +49,13 @@ export default function GoogleCallbackPage() {
         const response = await fetch(`${apiBaseUrl}/auth/google/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, state, redirect_uri: redirectUri }),
+          body: JSON.stringify({ code, state: intent, redirect_uri: redirectUri }),
         });
-        const payload = await response.json().catch(() => ({}));
+        const payload = await response.json().catch(() => ({})) as { token?: string; detail?: string };
         if (!response.ok) {
           throw new Error(payload.detail || "Failed to verify Google account.");
         }
+        // After response.ok check, we expect token to be present
         if (payload.token) {
           saveAuthToken(payload.token);
         }
@@ -58,5 +81,19 @@ export default function GoogleCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
+        <div className="max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow">
+          <h1 className="text-xl font-semibold text-zinc-900">Loading…</h1>
+        </div>
+      </div>
+    }>
+      <GoogleCallbackContent />
+    </Suspense>
   );
 }

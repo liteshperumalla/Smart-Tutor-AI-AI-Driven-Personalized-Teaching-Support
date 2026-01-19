@@ -66,7 +66,11 @@ class FileSystemStorageBackend(BaseStorageBackend):
         return chat_dir
 
     def _quiz_dir(self, username: str) -> Path:
-        quiz_dir = self._user_dir(username) / "quizzes"
+        base = self._user_dir(username)
+        legacy_dir = base / "quizzes"
+        quiz_dir = base / "quiz"
+        if legacy_dir.exists() and not quiz_dir.exists():
+            shutil.move(str(legacy_dir), str(quiz_dir))
         quiz_dir.mkdir(parents=True, exist_ok=True)
         return quiz_dir
 
@@ -91,9 +95,14 @@ class FileSystemStorageBackend(BaseStorageBackend):
             data = json.load(f)
         messages_data = data if isinstance(data, list) else data.get("messages", [])
         messages = [ChatMessage.from_dict(msg) for msg in messages_data]
-        title = data.get("title") or f"Session {session_id[:8]}"
-        created = data.get("created_at")
-        updated = data.get("updated_at")
+        if isinstance(data, dict):
+            title = data.get("title") or f"Session {session_id[:8]}"
+            created = data.get("created_at")
+            updated = data.get("updated_at")
+        else:
+            title = f"Session {session_id[:8]}"
+            created = None
+            updated = None
         return ChatSession(
             id=session_id,
             title=title,
@@ -129,6 +138,11 @@ class FileSystemStorageBackend(BaseStorageBackend):
         for path in directory.glob("*.json"):
             with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
+            created_at = data.get("created_at") or data.get("timestamp") or datetime.utcnow().isoformat()
+            metadata = data.get("metadata") or {
+                "selected_folders": data.get("selected_folders", []),
+                "questions_data": data.get("questions_data", []),
+            }
             results.append(
                 QuizResult(
                     id=data.get("id", path.stem),
@@ -136,8 +150,8 @@ class FileSystemStorageBackend(BaseStorageBackend):
                     score=data.get("score", 0),
                     total_questions=data.get("total_questions", 0),
                     percentage=data.get("percentage", 0.0),
-                    created_at=datetime.fromisoformat(data.get("created_at", datetime.utcnow().isoformat())),
-                    metadata=data.get("metadata", {}),
+                    created_at=datetime.fromisoformat(created_at),
+                    metadata=metadata,
                 )
             )
         results.sort(key=lambda r: r.created_at, reverse=True)

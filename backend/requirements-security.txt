@@ -1,0 +1,13 @@
+# Security Enhancement Dependencies
+# Install with: pip install -r requirements-security.txt
+
+# Optional but HIGHLY RECOMMENDED for production
+
+# File upload validation - MIME type detection
+python-magic==0.4.27
+# Linux: Also install system package: apt-get install libmagic1
+# macOS: Also install system package: brew install libmagic
+
+# Additional security scanning tools (development only)
+bandit==1.7.5  # Security linter for Python
+safety==3.0.1  # Check for known security vulnerabilities in dependencies

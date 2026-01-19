@@ -13,10 +13,22 @@ def get_rate_limiter_dep() -> PerUserRateLimiter:
 
 
 def _resolve_token(
+    request: Request,
     authorization: str | None,
-    allow_query_token: bool,
-    query_token: str | None,
 ) -> str:
+    """
+    Resolve authentication token with priority:
+    1. HttpOnly cookie (most secure)
+    2. Authorization header (for backward compatibility)
+
+    SECURITY: Query string tokens are NO LONGER SUPPORTED.
+    """
+    # SECURITY: First, try to get token from HttpOnly cookie
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        return cookie_token.strip()
+
+    # Fallback to Authorization header for backward compatibility
     if authorization:
         if not authorization.lower().startswith("bearer "):
             raise HTTPException(
@@ -25,12 +37,10 @@ def _resolve_token(
             )
         return authorization.split(" ", 1)[1].strip()
 
-    if allow_query_token and query_token:
-        return query_token.strip()
-
+    # SECURITY: Query string tokens are NOT accepted (removed for security)
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing authorization token",
+        detail="Missing authorization token. Please login again.",
     )
 
 
@@ -41,44 +51,23 @@ async def get_current_session(
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """
-    Extract the session token from the `Authorization: Bearer <token>` header,
-    validate it, check per-user rate limits, and return (token, user_dict).
+    Extract session token with priority:
+    1. HttpOnly cookie (most secure)
+    2. Authorization header (backward compatibility)
+
+    Validates token, checks per-user rate limits, and returns (token, user_dict).
+
+    SECURITY: Query string tokens are NO LONGER SUPPORTED.
     """
     # Check per-user rate limit BEFORE authentication
     # This uses JWT token to identify user without full validation
     await rate_limiter.check_rate_limit(request)
 
-    token = _resolve_token(authorization, allow_query_token=False, query_token=None)
+    # SECURITY: Get token from cookie or header (no query string)
+    token = _resolve_token(request, authorization)
     try:
         user = auth_service.validate_session(token)
         return token, user
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired session",
-        )
-
-
-async def get_session_with_optional_query_token(
-    request: Request,
-    authorization: str | None = Header(None, alias="Authorization"),
-    token: str | None = Query(None),
-    auth_service: AuthService = Depends(get_auth_service_dep),
-    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
-):
-    """
-    Same as get_current_session but also accepts token via query parameter.
-    Includes per-user rate limiting.
-    """
-    # Check per-user rate limit
-    await rate_limiter.check_rate_limit(request)
-
-    token_value = _resolve_token(
-        authorization, allow_query_token=True, query_token=token
-    )
-    try:
-        user = auth_service.validate_session(token_value)
-        return token_value, user
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

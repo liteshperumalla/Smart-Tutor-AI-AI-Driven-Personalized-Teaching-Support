@@ -1,0 +1,194 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: weekly-resilience-test
+  namespace: chaos-testing
+spec:
+  # Entry point
+  entry: the-entry
+
+  # Template definitions
+  templates:
+    # Entry template - serial execution
+    - name: the-entry
+      templateType: Serial
+      deadline: 30m
+      children:
+        - pod-chaos-test
+        - network-chaos-test
+        - stress-test
+        - http-chaos-test
+        - validation
+
+    # Pod failure test
+    - name: pod-chaos-test
+      templateType: PodChaos
+      deadline: 2m
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: backend
+
+    # Network delay test
+    - name: network-chaos-test
+      templateType: NetworkChaos
+      deadline: 3m
+      networkChaos:
+        action: delay
+        mode: one
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: backend
+        delay:
+          latency: "200ms"
+          jitter: "50ms"
+        duration: "2m"
+
+    # CPU stress test
+    - name: stress-test
+      templateType: StressChaos
+      deadline: 3m
+      stressChaos:
+        mode: one
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: backend
+        stressors:
+          cpu:
+            workers: 2
+            load: 70
+        duration: "2m"
+
+    # HTTP delay test
+    - name: http-chaos-test
+      templateType: HTTPChaos
+      deadline: 3m
+      httpChaos:
+        mode: one
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: backend
+        port: 8000
+        path: /api/v1/*
+        delay: "1s"
+        duration: "2m"
+
+    # Validation step - run smoke tests
+    - name: validation
+      templateType: Suspend
+      deadline: 5m
+
+---
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: automated-chaos-schedule
+  namespace: chaos-testing
+spec:
+  # Run weekly resilience test every Sunday at 2 AM
+  schedule: "0 2 * * 0"
+  type: Workflow
+  workflowSpec:
+    entry: the-entry
+    templates:
+      - name: the-entry
+        templateType: Serial
+        children:
+          - pod-failure-test
+          - network-delay-test
+
+      - name: pod-failure-test
+        templateType: PodChaos
+        deadline: 1m
+        podChaos:
+          action: pod-failure
+          mode: one
+          selector:
+            namespaces:
+              - production
+            labelSelectors:
+              app: backend
+          duration: "30s"
+
+      - name: network-delay-test
+        templateType: NetworkChaos
+        deadline: 2m
+        networkChaos:
+          action: delay
+          mode: one
+          selector:
+            namespaces:
+              - production
+            labelSelectors:
+              app: backend
+          delay:
+            latency: "100ms"
+          duration: "1m"
+
+  # History limit
+  historyLimit: 5
+
+  # Starting deadline seconds
+  startingDeadlineSeconds: 3600
+
+  # Concurrency policy: Allow, Forbid, Replace
+  concurrencyPolicy: Forbid
+
+---
+# Chaos experiment for database connection failures
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: database-failure-simulation
+  namespace: chaos-testing
+spec:
+  entry: database-chaos
+  templates:
+    - name: database-chaos
+      templateType: Serial
+      children:
+        - partition-database
+        - wait
+        - verify-recovery
+
+    # Network partition to database
+    - name: partition-database
+      templateType: NetworkChaos
+      deadline: 1m
+      networkChaos:
+        action: partition
+        mode: all
+        selector:
+          namespaces:
+            - production
+          labelSelectors:
+            app: backend
+        direction: to
+        target:
+          selector:
+            namespaces:
+              - production
+            labelSelectors:
+              app: postgres
+          mode: all
+        duration: "30s"
+
+    # Wait for systems to stabilize
+    - name: wait
+      templateType: Suspend
+      deadline: 30s
+
+    # Verify recovery
+    - name: verify-recovery
+      templateType: Suspend
+      deadline: 2m

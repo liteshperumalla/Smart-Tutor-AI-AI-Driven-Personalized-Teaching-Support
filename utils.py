@@ -13,7 +13,12 @@ import datetime
 from functools import lru_cache
 from typing import Optional, List, Dict, Any, Union, Tuple
 import requests
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+from urllib.parse import quote
+from youtube_transcript_api import (
+    YouTubeTranscriptApi,
+    TranscriptsDisabled,
+    NoTranscriptFound,
+)
 from bs4 import BeautifulSoup
 from backend.services.status_service import (
     get_knowledge_base_stats,
@@ -28,8 +33,14 @@ from llama_index.core import (
     get_response_synthesizer,
     VectorStoreIndex,
     PromptTemplate,
+    Settings,
 )
 from llama_index.core.schema import Document, TextNode, NodeWithScore
+
+# S3 Vector Store imports
+from backend.s3_retriever import create_s3_retriever
+from backend.config import config
+from backend.llm_provider import get_llm
 
 # File processing imports
 from pptx import Presentation
@@ -47,6 +58,7 @@ except ImportError:
 # Import langfuse for tracing
 try:
     from langfuse import Langfuse
+
     langfuse_client = Langfuse()
 except ImportError:
     logging.warning("Langfuse not available. Tracing will be disabled.")
@@ -56,16 +68,26 @@ except Exception as e:
     langfuse_client = None
 
 # --- Constants ---
-PREV_CHAT_DIR = "previous_chats"
+PREV_CHAT_DIR = config.PREV_CHAT_DIR
 os.makedirs(PREV_CHAT_DIR, exist_ok=True)
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.ERROR, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 # --- LlamaIndex Setup ---
 PERSIST_DIR = "./persisted_index"
 os.makedirs(PERSIST_DIR, exist_ok=True)
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
+
+# Initialize LLM for response generation
+try:
+    Settings.llm = get_llm()
+    logging.info(f"LLM initialized for response generation: {config.LLM_PROVIDER}")
+except Exception as e:
+    logging.error(f"Failed to initialize LLM: {e}")
+    Settings.llm = None
 
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "").strip()
@@ -110,20 +132,25 @@ def _should_search_web(query: str, context: str, sources: List[Dict[str, Any]]) 
         return False
     if not context or not context.strip():
         return True
-    normalized_query = " ".join(query.lower().split())
+
+    # If we got results from S3/local RAG, check token coverage (not exact phrase match)
+    # This allows semantic search to work - S3 embeddings find relevant content
+    # even if it doesn't contain the exact query phrase
     context_text = context.lower()
-    if normalized_query and normalized_query not in context_text:
-        return True
-    tokens = [token for token in re.findall(r"[a-zA-Z0-9]+", query.lower()) if len(token) > 3]
+    tokens = [
+        token for token in re.findall(r"[a-zA-Z0-9]+", query.lower()) if len(token) > 3
+    ]
     if not tokens:
         return False
+
     hits = sum(1 for token in tokens if token in context_text)
     coverage = hits / len(tokens)
-    unique_sources = {src.get("file_name") for src in sources if src.get("file_name")}
-    if coverage < 0.4:
+
+    # Only fall back to web search if coverage is very low (< 30%)
+    # This trusts the semantic search results from S3/embeddings
+    if coverage < 0.3:
         return True
-    if len(unique_sources) <= 1 and coverage < 0.75:
-        return True
+
     return False
 
 
@@ -217,6 +244,7 @@ def search_web_results(query: str, max_results: int = MAX_WEB_RESULTS):
         return results
     return _search_with_duckduckgo(query, max_results)
 
+
 def get_storage_context():
     """Get storage context with proper error handling"""
     try:
@@ -225,6 +253,7 @@ def get_storage_context():
         st.error(f"Error initializing storage context: {e}")
         logging.error(f"Storage context initialization failed: {e}")
         return None
+
 
 # --- CSS Definitions ---
 LIGHT_MODE_CSS = """
@@ -314,6 +343,7 @@ BASE_CSS = """
 </style>
 """
 
+
 # --- Helper Functions ---
 def render_footer():
     """Render a footer with disclaimer"""
@@ -338,21 +368,37 @@ def render_footer():
             Disclaimer: The Smart AI Tutor may occasionally make mistakes. Please verify important information independently.
         </div>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
+
 
 def _safe_name(name: str) -> str:
     """Convert name to safe filename"""
-    return re.sub(r'[^a-zA-Z0-9_-]', '_', name)
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+
 
 def _chat_path(name: str) -> str:
     """Get full path for chat session file"""
     return os.path.join(PREV_CHAT_DIR, f"{_safe_name(name)}.json")
 
+
+def resolve_chat_file_path(name: str) -> Path:
+    """Find an existing chat file path using common naming variants."""
+    candidates = [
+        Path(PREV_CHAT_DIR) / f"{name}.json",
+        Path(_chat_path(name)),
+        Path(PREV_CHAT_DIR) / f"{sanitize_filename(name)}.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[1]
+
+
 def load_chat_sessions() -> Dict[str, List]:
     """Load all chat sessions from disk"""
     sessions = {}
-    
+
     if not os.path.exists(PREV_CHAT_DIR):
         os.makedirs(PREV_CHAT_DIR)
         return sessions
@@ -367,8 +413,9 @@ def load_chat_sessions() -> Dict[str, List]:
                 sessions[session_name] = json.load(f)
         except Exception as e:
             logging.error(f"Error loading chat session {fname}: {e}")
-    
+
     return sessions
+
 
 def get_recent_chat_summaries(limit: int = 3) -> List[Dict[str, Any]]:
     """Return lightweight metadata for the most recent chat sessions."""
@@ -388,28 +435,35 @@ def get_recent_chat_summaries(limit: int = 3) -> List[Dict[str, Any]]:
                     if preview_text:
                         break
 
-        file_path = Path(_chat_path(name))
+        file_path = resolve_chat_file_path(name)
         try:
             updated_at = file_path.stat().st_mtime
         except OSError:
             updated_at = 0
 
         if updated_at:
-            updated_display = datetime.datetime.fromtimestamp(updated_at).strftime("%b %d, %I:%M %p")
+            updated_display = datetime.datetime.fromtimestamp(updated_at).strftime(
+                "%b %d, %I:%M %p"
+            )
         else:
             updated_display = "Not saved yet"
 
-        summaries.append({
-            "name": name,
-            "preview": textwrap.shorten(preview_text, width=110, placeholder="...") if preview_text else "No messages yet",
-            "updated_at": updated_at,
-            "updated_display": updated_display,
-        })
+        summaries.append(
+            {
+                "name": name,
+                "preview": textwrap.shorten(preview_text, width=110, placeholder="...")
+                if preview_text
+                else "No messages yet",
+                "updated_at": updated_at,
+                "updated_display": updated_display,
+            }
+        )
 
     summaries.sort(key=lambda item: item["updated_at"], reverse=True)
     if limit is None or limit <= 0:
         return summaries
     return summaries[:limit]
+
 
 def save_chat_session(name: str, history: List) -> None:
     """Save chat session to disk"""
@@ -418,42 +472,61 @@ def save_chat_session(name: str, history: List) -> None:
         if isinstance(entry, (list, tuple)):
             if len(entry) == 3:  # user: (role, message, timestamp)
                 role, text, timestamp_val = entry
-                formatted_history.append({
-                    "role": role, 
-                    "content": text, 
-                    "timestamp": timestamp_val, 
-                    "sources": []
-                })
+                formatted_history.append(
+                    {
+                        "role": role,
+                        "content": text,
+                        "timestamp": timestamp_val,
+                        "sources": [],
+                    }
+                )
             elif len(entry) == 4:  # assistant: (role, message, sources, timestamp)
                 role, text, sources_val, timestamp_val = entry
-                formatted_history.append({
-                    "role": role, 
-                    "content": text, 
-                    "timestamp": timestamp_val, 
-                    "sources": sources_val
-                })
+                formatted_history.append(
+                    {
+                        "role": role,
+                        "content": text,
+                        "timestamp": timestamp_val,
+                        "sources": sources_val,
+                    }
+                )
         elif isinstance(entry, dict):  # Already correct format
             formatted_history.append(entry)
-    
-    filepath = _chat_path(name)
+
+    filepath = resolve_chat_file_path(name)
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
+        with filepath.open("w", encoding="utf-8") as f:
             json.dump(formatted_history, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error(f"Error saving chat session {name} to {filepath}: {e}")
+
 
 def sanitize_filename(name: str) -> str:
     """Sanitize filename for safe storage"""
     safe = re.sub(r"[^0-9A-Za-z_-]", "_", name).lower()
     return safe[:50].rstrip("_")
 
+
 def is_greeting(msg: str) -> bool:
     """Check if message is a greeting"""
-    greetings = ["hi", "hello", "hey", "good morning", "good evening",
-                 "greetings", "thanks", "thank you", "bye", "goodbye"]
+    greetings = [
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good evening",
+        "greetings",
+        "thanks",
+        "thank you",
+        "bye",
+        "goodbye",
+    ]
     return any(msg.lower().strip().startswith(g) for g in greetings)
 
-def generate_response_with_sources(query: str, user_id: str = "default-user", session_id: Optional[str] = None) -> Tuple[str, List[Dict]]:
+
+def generate_response_with_sources(
+    query: str, user_id: str = "default-user", session_id: Optional[str] = None
+) -> Tuple[str, List[Dict]]:
     """Generate response with sources (non-streaming version)"""
     main_trace = None
     if langfuse_client:
@@ -462,7 +535,7 @@ def generate_response_with_sources(query: str, user_id: str = "default-user", se
             user_id=user_id,
             session_id=session_id,
             input={"query": query},
-            tags=["chat", "RAG"]
+            tags=["chat", "RAG"],
         )
 
     response_sources = []
@@ -473,44 +546,76 @@ def generate_response_with_sources(query: str, user_id: str = "default-user", se
             if main_trace:
                 main_trace.update(output={"response": response})
             return response, []
-        
-        storage_context = get_storage_context()
-        if storage_context is None:
-            err_msg = "Error: Storage context not initialized. Cannot query index."
-            if main_trace:
-                main_trace.update(output={"error": err_msg}, level="ERROR")
-            return err_msg, []
-            
-        idx = load_index_from_storage(storage_context)
-        retriever = idx.as_retriever(similarity_top_k=3)
-        retrieved_nodes = retriever.retrieve(query)
-        
+
+        # Use S3 vectors or local ChromaDB
+        if config.USE_S3_VECTORS:
+            try:
+                retriever = create_s3_retriever(similarity_top_k=3)
+                retrieved_nodes = retriever.retrieve(query)
+            except Exception as e:
+                err_msg = f"Error using S3 vectors: {str(e)}"
+                if main_trace:
+                    main_trace.update(output={"error": err_msg}, level="ERROR")
+                return err_msg, []
+        else:
+            storage_context = get_storage_context()
+            if storage_context is None:
+                err_msg = "Error: Storage context not initialized. Cannot query index."
+                if main_trace:
+                    main_trace.update(output={"error": err_msg}, level="ERROR")
+                return err_msg, []
+
+            idx = load_index_from_storage(storage_context)
+            retriever = idx.as_retriever(similarity_top_k=3)
+            retrieved_nodes = retriever.retrieve(query)
+
         for n_ws in retrieved_nodes:
             node = n_ws.node
-            source_text = node.get_text() if hasattr(node, 'get_text') else (node.text if hasattr(node, 'text') else "")
-            
-            fp = node.metadata.get("file_path")
-            response_sources.append({
-                "file_name": os.path.basename(fp) if fp else "Unknown Source",
-                "file_path": fp,
-                "page": node.metadata.get("page_number"),
-                "slide": node.metadata.get("slide_number"),
-                "chunk_text": source_text[:300] + "..." if len(source_text) > 300 else source_text
-            })
-        
+            source_text = (
+                node.get_text()
+                if hasattr(node, "get_text")
+                else (node.text if hasattr(node, "text") else "")
+            )
+
+            # Check both file_path (ChromaDB) and source_file (S3)
+            fp = node.metadata.get("file_path") or node.metadata.get("source_file")
+            file_name = os.path.basename(fp) if fp else "Unknown Source"
+
+            # Generate S3 document URL instead of local file path
+            source_url = (
+                f"/api/backend/files/s3-document?source_file={quote(file_name)}"
+                if fp
+                else None
+            )
+
+            response_sources.append(
+                {
+                    "file_name": file_name,
+                    "file_path": fp,  # Keep for backwards compatibility
+                    "source_url": source_url,  # New S3 URL for frontend
+                    "page": node.metadata.get("page_number"),
+                    "slide": node.metadata.get("slide_number"),
+                    "chunk_text": source_text[:300] + "..."
+                    if len(source_text) > 300
+                    else source_text,
+                }
+            )
+
         synth = get_response_synthesizer(response_mode="compact")
         response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
         response_text = str(response_obj)
-        
+
         if main_trace:
             main_trace.update(
                 output={"response": response_text},
                 metadata={
                     "num_retrieved_sources": len(response_sources),
-                    "retrieved_source_sample": [s['file_name'] for s in response_sources[:2]]
-                }
+                    "retrieved_source_sample": [
+                        s["file_name"] for s in response_sources[:2]
+                    ],
+                },
             )
-        
+
         return response_text, response_sources
 
     except Exception as e:
@@ -520,7 +625,13 @@ def generate_response_with_sources(query: str, user_id: str = "default-user", se
         error_msg = f"⚠️ Error processing your query: {e}"
         return error_msg, response_sources
 
-def generate_response_stream_and_sources(query: str, user_id: str = "default-user", session_id: Optional[str] = None, enable_llm_judge: bool = False):
+
+def generate_response_stream_and_sources(
+    query: str,
+    user_id: str = "default-user",
+    session_id: Optional[str] = None,
+    enable_llm_judge: bool = False,
+):
     """Generate streaming response with sources"""
     main_trace = None
     if langfuse_client:
@@ -529,45 +640,85 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
             user_id=user_id,
             session_id=session_id,
             input={"query": query},
-            tags=["chat", "RAG", "streaming"]
+            tags=["chat", "RAG", "streaming"],
         )
 
     response_sources = []
 
     try:
         if is_greeting(query):
+
             def greeting_stream():
                 yield "Hello! How can I assist you today?"
-            if main_trace: 
-                main_trace.update(output={"response": "Hello! How can I assist you today?"})
+
+            if main_trace:
+                main_trace.update(
+                    output={"response": "Hello! How can I assist you today?"}
+                )
             return greeting_stream(), []
-        
-        storage_context = get_storage_context()
-        if storage_context is None:
-            err_msg = "Error: Storage context not initialized. Cannot query index."
-            if main_trace: 
-                main_trace.update(output={"error": err_msg}, level="ERROR")
-            def error_stream_storage(): 
-                yield err_msg
-            return error_stream_storage(), []
-            
-        idx = load_index_from_storage(storage_context)
-        retriever = idx.as_retriever(similarity_top_k=3)
-        retrieved_nodes = retriever.retrieve(query)
+
+        # Use S3 vectors or local ChromaDB
+        if config.USE_S3_VECTORS:
+            try:
+                retriever = create_s3_retriever(similarity_top_k=3)
+                retrieved_nodes = retriever.retrieve(query)
+            except Exception as e:
+                err_msg = f"Error using S3 vectors: {str(e)}"
+                if main_trace:
+                    main_trace.update(output={"error": err_msg}, level="ERROR")
+
+                def error_stream_s3():
+                    yield err_msg
+
+                return error_stream_s3(), []
+        else:
+            storage_context = get_storage_context()
+            if storage_context is None:
+                err_msg = "Error: Storage context not initialized. Cannot query index."
+                if main_trace:
+                    main_trace.update(output={"error": err_msg}, level="ERROR")
+
+                def error_stream_storage():
+                    yield err_msg
+
+                return error_stream_storage(), []
+
+            idx = load_index_from_storage(storage_context)
+            retriever = idx.as_retriever(similarity_top_k=3)
+            retrieved_nodes = retriever.retrieve(query)
 
         local_sources = []
         for n_ws in retrieved_nodes:
             node = n_ws.node
-            source_text = node.get_text() if hasattr(node, 'get_text') else (node.text if hasattr(node, 'text') else "")
-            
-            fp = node.metadata.get("file_path")
-            local_sources.append({
-                "file_name": os.path.basename(fp) if fp else "Unknown Source",
-                "file_path": fp,
-                "page": node.metadata.get("page_number"),
-                "slide": node.metadata.get("slide_number"),
-                "chunk_text": source_text[:300] + "..." if len(source_text) > 300 else source_text
-            })
+            source_text = (
+                node.get_text()
+                if hasattr(node, "get_text")
+                else (node.text if hasattr(node, "text") else "")
+            )
+
+            # Check both file_path (ChromaDB) and source_file (S3)
+            fp = node.metadata.get("file_path") or node.metadata.get("source_file")
+            file_name = os.path.basename(fp) if fp else "Unknown Source"
+
+            # Generate S3 document URL instead of local file path
+            source_url = (
+                f"/api/backend/files/s3-document?source_file={quote(file_name)}"
+                if fp
+                else None
+            )
+
+            local_sources.append(
+                {
+                    "file_name": file_name,
+                    "file_path": fp,  # Keep for backwards compatibility
+                    "source_url": source_url,  # New S3 URL for frontend
+                    "page": node.metadata.get("page_number"),
+                    "slide": node.metadata.get("slide_number"),
+                    "chunk_text": source_text[:300] + "..."
+                    if len(source_text) > 300
+                    else source_text,
+                }
+            )
         nodes_for_prompt = retrieved_nodes
         context_str = "\n\n".join(
             [
@@ -590,7 +741,9 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
                 web_nodes = []
                 for idx, result in enumerate(web_results):
                     snippet = result.get("content", "")
-                    clean_snippet = snippet[:300] + "..." if len(snippet) > 300 else snippet
+                    clean_snippet = (
+                        snippet[:300] + "..." if len(snippet) > 300 else snippet
+                    )
                     response_sources.append(
                         {
                             "file_name": result.get("title") or "Web result",
@@ -613,7 +766,10 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
                     node = TextNode(
                         id_=f"web-{idx}",
                         text=text_payload,
-                        metadata={"source": result.get("url"), "title": result.get("title", "Web result")},
+                        metadata={
+                            "source": result.get("url"),
+                            "title": result.get("title", "Web result"),
+                        },
                     )
                     web_nodes.append(
                         NodeWithScore(
@@ -623,7 +779,9 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
                     )
                 if web_nodes:
                     nodes_for_prompt = web_nodes
-                    context_str = "\n\n".join(n.node.get_text() for n in nodes_for_prompt)
+                    context_str = "\n\n".join(
+                        n.node.get_text() for n in nodes_for_prompt
+                    )
             else:
                 used_web_search = False
                 response_sources = local_sources
@@ -643,29 +801,52 @@ def generate_response_stream_and_sources(query: str, user_id: str = "default-use
             nodes=nodes_for_prompt,
         )
         response_text_generator = streaming_response_obj.response_gen
-        
+
         if main_trace:
-            main_trace.update(metadata={
-                "num_retrieved_sources": len(response_sources),
-                "retrieved_source_sample": [s['file_name'] for s in response_sources[:2]],
-                "web_search_used": used_web_search,
-            })
-        
+            main_trace.update(
+                metadata={
+                    "num_retrieved_sources": len(response_sources),
+                    "retrieved_source_sample": [
+                        s["file_name"] for s in response_sources[:2]
+                    ],
+                    "web_search_used": used_web_search,
+                }
+            )
+
         return response_text_generator, response_sources
 
     except Exception as e:
-        logging.error(f"Error in generate_response_stream_and_sources: {e}", exc_info=True)
+        logging.error(
+            f"Error in generate_response_stream_and_sources: {e}", exc_info=True
+        )
+        error_message = str(e)
         if main_trace:
-            main_trace.update(output={"error": str(e)}, level="ERROR")
-        def error_stream_exception(): 
-            yield f"⚠️ Error processing your query: {e}"
+            main_trace.update(output={"error": error_message}, level="ERROR")
+
+        def error_stream_exception():
+            yield f"⚠️ Error processing your query: {error_message}"
+
         return error_stream_exception(), response_sources
+
 
 def make_session_title(history: List) -> str:
     """Generate a title for chat session based on history"""
     if not history:
-        return "Chat"
+        return "New Chat"
 
+    # Get the first user message for potential fallback
+    first_user_message = None
+    for entry in history:
+        role, text = "", ""
+        if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+            role, text = entry[0], entry[1]
+        elif isinstance(entry, dict):
+            role, text = entry.get("role", ""), entry.get("content", "")
+        if role == "user" and text:
+            first_user_message = text
+            break
+
+    # Build snippet from recent conversation
     snippet_lines = []
     for entry in history[-6:]:  # Last up to 6 messages
         role, text = "", ""
@@ -673,44 +854,70 @@ def make_session_title(history: List) -> str:
             role, text = entry[0], entry[1]
         elif isinstance(entry, dict):
             role, text = entry.get("role", ""), entry.get("content", "")
-        
+
         if role and text:
-            snippet_lines.append(f"{role}: {text}")
+            # Truncate very long messages for the prompt
+            text_preview = text[:500] + "..." if len(text) > 500 else text
+            snippet_lines.append(f"{role}: {text_preview}")
 
     if not snippet_lines:
-        return "Chat"
-        
+        return (
+            first_user_message.split()[:4].title() if first_user_message else "New Chat"
+        )
+
     snippet = "\n".join(snippet_lines)
-    
+
     try:
         prompt = (
-            "Summarize the following conversation in a concise, three-word title:\n"
+            "Create a short, descriptive title (2-5 words) for this conversation:\n"
             f"{snippet}\n"
-            "Title (3 words):"
+            "Just return the title, nothing else:"
         )
         title_response, _ = generate_response_with_sources(prompt)
-        words = re.findall(r"\w+", title_response)
-        title = " ".join(words[:3]).title()
-        return title if title else "Chat"
+
+        # Clean up the title
+        title = title_response.strip()
+        # Remove quotes, bullets, and extra whitespace
+        title = re.sub(r'^["\'\-\*\s]+|["\'\-\*\s]+$', "", title)
+        title = re.sub(r"\s+", " ", title).strip()
+
+        # If title is too short or empty, use fallback
+        if len(title) < 2:
+            if first_user_message:
+                return first_user_message.split()[:5].title()
+            return "New Chat"
+
+        # Limit to 5 words max
+        words = title.split()[:5]
+        title = " ".join(words).title()
+
+        return (
+            title
+            if title
+            else (
+                first_user_message.split()[:5].title()
+                if first_user_message
+                else "New Chat"
+            )
+        )
+
     except Exception as e:
         logging.error(f"Error generating session title: {e}")
-        # Fallback title generation based on the first user query
-        for entry in history:
-            role, text = "", ""
-            if isinstance(entry, (list, tuple)) and len(entry) >= 2: 
-                role, text = entry[0], entry[1]
-            elif isinstance(entry, dict): 
-                role, text = entry.get("role"), entry.get("content")
-            if role == "user" and text:
-                return " ".join(text.split()[:3]).title()
-        return "Chat"
+        # Fallback: use first few words of user's first message
+        if first_user_message:
+            words = first_user_message.split()
+            # Take first 4 words, capitalizing each
+            title_words = [w.capitalize() for w in words[:4]]
+            return " ".join(title_words) if title_words else "New Chat"
+        return "New Chat"
+
 
 # --- File Conversion and Content Extraction ---
 def convert_text_to_pdf(text: str, output_path: str) -> None:
     """Convert text to PDF file"""
     pdf = FPDF()
     pdf.add_page()
-    
+
     # Try to use a Unicode font, fallback to Arial
     try:
         # You should replace this with a valid font path or use a bundled font
@@ -730,10 +937,11 @@ def convert_text_to_pdf(text: str, output_path: str) -> None:
             pdf.multi_cell(0, 10, line)
         except UnicodeEncodeError:
             # Handle Unicode characters that can't be encoded
-            safe_line = line.encode('latin-1', 'ignore').decode('latin-1')
+            safe_line = line.encode("latin-1", "ignore").decode("latin-1")
             pdf.multi_cell(0, 10, safe_line)
-    
+
     pdf.output(output_path)
+
 
 def convert_docx_to_pdf(docx_file_path: str, output_pdf_path: str) -> str:
     """Convert DOCX to PDF and return extracted text"""
@@ -745,6 +953,7 @@ def convert_docx_to_pdf(docx_file_path: str, output_pdf_path: str) -> str:
     except Exception as e:
         logging.error(f"Error converting DOCX to PDF: {e}")
         return f"Error processing DOCX file: {e}"
+
 
 def convert_pptx_to_pdf(pptx_file_path: str, output_pdf_path: str) -> str:
     """Convert PPTX to PDF and return extracted text"""
@@ -761,6 +970,7 @@ def convert_pptx_to_pdf(pptx_file_path: str, output_pdf_path: str) -> str:
         logging.error(f"Error converting PPTX to PDF: {e}")
         return f"Error processing PPTX file: {e}"
 
+
 def image_to_document(image_file_uploader_object) -> Document:
     """Convert image to document using OCR"""
     try:
@@ -768,133 +978,205 @@ def image_to_document(image_file_uploader_object) -> Document:
         text = pytesseract.image_to_string(image)
         return Document(text=text, metadata={"source": image_file_uploader_object.name})
     except pytesseract.TesseractNotFoundError:
-        st.error("Tesseract is not installed or not in your PATH. OCR functionality will not work.")
-        return Document(text="Error: Tesseract not found.", metadata={"source": image_file_uploader_object.name, "error": True})
+        st.error(
+            "Tesseract is not installed or not in your PATH. OCR functionality will not work."
+        )
+        return Document(
+            text="Error: Tesseract not found.",
+            metadata={"source": image_file_uploader_object.name, "error": True},
+        )
     except Exception as e:
         st.error(f"Error during OCR: {e}")
-        return Document(text=f"Error during OCR: {e}", metadata={"source": image_file_uploader_object.name, "error": True})
+        return Document(
+            text=f"Error during OCR: {e}",
+            metadata={"source": image_file_uploader_object.name, "error": True},
+        )
+
 
 def url_to_document(url: str) -> Document:
     """Fetch content from URL and convert to document"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         }
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
+
+        soup = BeautifulSoup(response.content, "html.parser")
+
         # Extract title
         page_title = url
         if soup.title and soup.title.string:
             page_title = soup.title.string.strip()
-        
+
         # Remove unwanted elements
         for element in soup(["script", "style", "nav", "footer", "aside"]):
             element.decompose()
-        
-        text = soup.get_text(separator='\n', strip=True)
-        
+
+        text = soup.get_text(separator="\n", strip=True)
+
         if not text.strip():
             return Document(
                 text=f"Warning: No main text content extracted from {url}. The page might be heavily JavaScript-reliant or empty.",
-                metadata={"source": url, "title": page_title, "warning": True}
+                metadata={"source": url, "title": page_title, "warning": True},
             )
 
         return Document(text=text, metadata={"source": url, "title": page_title})
-        
+
     except requests.exceptions.RequestException as e:
         error_msg = f"Error fetching URL content from {url}: {e}"
         logging.error(error_msg)
-        return Document(text=f"Error: {error_msg}", metadata={"source": url, "title": url, "error": True})
+        return Document(
+            text=f"Error: {error_msg}",
+            metadata={"source": url, "title": url, "error": True},
+        )
     except Exception as e:
         error_msg = f"An unexpected error occurred while processing URL {url}: {e}"
         logging.error(error_msg)
-        return Document(text=f"Error: {error_msg}", metadata={"source": url, "title": url, "error": True})
+        return Document(
+            text=f"Error: {error_msg}",
+            metadata={"source": url, "title": url, "error": True},
+        )
+
 
 def extract_video_id(url_or_id: str) -> Optional[str]:
     """Extract YouTube video ID from URL or validate existing ID"""
     if not url_or_id:
         return None
-        
+
     # Regex to match various YouTube URL formats
     regex = r"(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/|googleusercontent\.com\/youtube\.com\/\d+\/v\/)([a-zA-Z0-9_-]{11})"
     match = re.search(regex, url_or_id)
-    
+
     if match:
         return match.group(1)
-    
+
     # Check if it's already a valid video ID
     if re.fullmatch(r"[a-zA-Z0-9_-]{11}", url_or_id):
         return url_or_id
-        
+
     return None
+
 
 def youtube_to_document(video_id_or_url: str) -> Document:
     """Convert YouTube video to document using transcript"""
     video_id = extract_video_id(video_id_or_url)
     source_ref = video_id_or_url
-    
-    video_title = f"YouTube Video: {video_id}" if video_id else f"Invalid YouTube Link: {video_id_or_url[:30]}..."
-    watch_url = f"https://www.youtube.com/watch?v={video_id}" if video_id else source_ref
+
+    video_title = (
+        f"YouTube Video: {video_id}"
+        if video_id
+        else f"Invalid YouTube Link: {video_id_or_url[:30]}..."
+    )
+    watch_url = (
+        f"https://www.youtube.com/watch?v={video_id}" if video_id else source_ref
+    )
 
     if not video_id:
         error_msg = f"Invalid YouTube URL or ID provided: '{video_id_or_url}'."
         logging.error(f"youtube_to_document: {error_msg}")
-        return Document(text=f"Error: {error_msg}", metadata={"source": source_ref, "title": video_title, "error": True})
+        return Document(
+            text=f"Error: {error_msg}",
+            metadata={"source": source_ref, "title": video_title, "error": True},
+        )
 
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         transcript_obj = None
-        
+
         # Try to get English transcript
-        preferred_langs = ['en', 'en-US', 'en-GB']
+        preferred_langs = ["en", "en-US", "en-GB"]
         try:
-            transcript_obj = transcript_list.find_manually_created_transcript(preferred_langs)
+            transcript_obj = transcript_list.find_manually_created_transcript(
+                preferred_langs
+            )
         except NoTranscriptFound:
             try:
-                transcript_obj = transcript_list.find_generated_transcript(preferred_langs)
+                transcript_obj = transcript_list.find_generated_transcript(
+                    preferred_langs
+                )
             except NoTranscriptFound:
                 error_msg = f"No English transcript found for video ID '{video_id}'."
                 logging.warning(f"youtube_to_document: {error_msg}")
-                return Document(text=f"Error: {error_msg}", metadata={"source": watch_url, "title": video_title, "video_id": video_id, "error": True})
-        
+                return Document(
+                    text=f"Error: {error_msg}",
+                    metadata={
+                        "source": watch_url,
+                        "title": video_title,
+                        "video_id": video_id,
+                        "error": True,
+                    },
+                )
+
         # Fetch transcript data
         fetched_transcript_data = transcript_obj.fetch()
-        
+
         if not fetched_transcript_data:
             error_msg = f"Fetched transcript data is empty for video ID '{video_id}'."
             logging.warning(f"youtube_to_document: {error_msg}")
-            return Document(text="Warning: Transcript was found but contained no segments.", 
-                            metadata={"source": watch_url, "title": video_title, "video_id": video_id, "warning": True})
+            return Document(
+                text="Warning: Transcript was found but contained no segments.",
+                metadata={
+                    "source": watch_url,
+                    "title": video_title,
+                    "video_id": video_id,
+                    "warning": True,
+                },
+            )
 
         # Extract text from transcript segments
         text_segments = []
         for segment in fetched_transcript_data:
             if isinstance(segment, dict) and "text" in segment:
                 text_segments.append(segment["text"])
-            elif hasattr(segment, 'text'):
+            elif hasattr(segment, "text"):
                 text_segments.append(segment.text)
-        
+
         full_transcript_text = " ".join(text_segments).strip()
-        
+
         if not full_transcript_text:
             error_msg = f"Processed transcript for video ID '{video_id}' is empty."
             logging.warning(f"youtube_to_document: {error_msg}")
-            return Document(text="Warning: Processed transcript was empty.", 
-                            metadata={"source": watch_url, "title": video_title, "video_id": video_id, "warning": True})
-            
-        return Document(text=full_transcript_text, metadata={"source": watch_url, "title": video_title, "video_id": video_id})
+            return Document(
+                text="Warning: Processed transcript was empty.",
+                metadata={
+                    "source": watch_url,
+                    "title": video_title,
+                    "video_id": video_id,
+                    "warning": True,
+                },
+            )
+
+        return Document(
+            text=full_transcript_text,
+            metadata={"source": watch_url, "title": video_title, "video_id": video_id},
+        )
 
     except TranscriptsDisabled:
         error_msg = f"Transcripts are disabled for video ID '{video_id}'."
         logging.warning(f"youtube_to_document: {error_msg}")
-        return Document(text=f"Error: {error_msg}", metadata={"source": watch_url, "title": video_title, "video_id": video_id, "error": True})
+        return Document(
+            text=f"Error: {error_msg}",
+            metadata={
+                "source": watch_url,
+                "title": video_title,
+                "video_id": video_id,
+                "error": True,
+            },
+        )
     except Exception as e:
         error_msg = f"Error processing transcript for video ID '{video_id}': {str(e)}"
         logging.error(f"youtube_to_document: {error_msg}", exc_info=True)
-        return Document(text=f"Error: {error_msg}", metadata={"source": watch_url, "title": video_title, "video_id": video_id, "error": True})
+        return Document(
+            text=f"Error: {error_msg}",
+            metadata={
+                "source": watch_url,
+                "title": video_title,
+                "video_id": video_id,
+                "error": True,
+            },
+        )
+
 
 def save_quiz_results(quiz_data: Dict[str, Any]) -> None:
     """Save quiz results to file"""

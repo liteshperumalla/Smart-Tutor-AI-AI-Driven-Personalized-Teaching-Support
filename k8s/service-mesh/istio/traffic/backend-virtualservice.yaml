@@ -1,0 +1,155 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: backend
+  namespace: production
+spec:
+  hosts:
+    - backend
+    - api.smart-ai-tutor.com
+  gateways:
+    - istio-ingressgateway
+    - mesh  # For internal traffic
+  http:
+    # Canary routing rule
+    - name: "canary-route"
+      match:
+        - headers:
+            x-canary:
+              exact: "true"
+      route:
+        - destination:
+            host: backend
+            subset: canary
+          weight: 100
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: "5xx,reset,connect-failure,refused-stream"
+
+    # Default routing with progressive traffic shift
+    - name: "default-route"
+      match:
+        - uri:
+            prefix: "/api/v1"
+      route:
+        - destination:
+            host: backend
+            subset: stable
+          weight: 90
+          headers:
+            response:
+              set:
+                x-version: stable
+        - destination:
+            host: backend
+            subset: canary
+          weight: 10
+          headers:
+            response:
+              set:
+                x-version: canary
+      timeout: 30s
+      retries:
+        attempts: 3
+        perTryTimeout: 10s
+        retryOn: "5xx,reset,connect-failure,refused-stream"
+      # Fault injection (disabled by default, enable for testing)
+      # fault:
+      #   delay:
+      #     percentage:
+      #       value: 0.1
+      #     fixedDelay: 5s
+      #   abort:
+      #     percentage:
+      #       value: 0.001
+      #     httpStatus: 500
+
+      # Request mirroring for testing
+      mirror:
+        host: backend
+        subset: canary
+      mirrorPercentage:
+        value: 5.0  # Mirror 5% of traffic
+
+    # Health check route (no retry)
+    - name: "health-route"
+      match:
+        - uri:
+            exact: "/health"
+      route:
+        - destination:
+            host: backend
+            subset: stable
+      timeout: 5s
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: backend
+  namespace: production
+spec:
+  host: backend
+  trafficPolicy:
+    # Connection pool settings
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+        maxRetries: 3
+
+    # Load balancer settings
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: "x-user-id"
+      # Alternative: use cookies for session affinity
+      # consistentHash:
+      #   httpCookie:
+      #     name: session-id
+      #     ttl: 3600s
+
+    # Outlier detection (circuit breaker)
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+
+    # TLS settings for mTLS
+    tls:
+      mode: ISTIO_MUTUAL
+
+  subsets:
+    # Stable version
+    - name: stable
+      labels:
+        version: stable
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 100
+          http:
+            http2MaxRequests: 100
+
+    # Canary version
+    - name: canary
+      labels:
+        version: canary
+      trafficPolicy:
+        connectionPool:
+          tcp:
+            maxConnections: 50
+          http:
+            http2MaxRequests: 50
+        # More aggressive circuit breaking for canary
+        outlierDetection:
+          consecutive5xxErrors: 3
+          interval: 20s
+          baseEjectionTime: 60s
+          maxEjectionPercent: 100

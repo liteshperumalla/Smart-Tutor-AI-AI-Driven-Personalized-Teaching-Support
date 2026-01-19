@@ -19,6 +19,7 @@ SUPPORTED_LANGUAGES = ["python", "javascript", "java"]
 
 class CodeExecuteRequest(BaseModel):
     """Request to execute code."""
+
     code: str = Field(..., min_length=1, description="Code to execute")
     language: Literal["python", "javascript", "java"] = Field(
         default="python", description="Programming language"
@@ -27,7 +28,10 @@ class CodeExecuteRequest(BaseModel):
 
 class CodeGenerateRequest(BaseModel):
     """Request to generate code from a prompt."""
-    prompt: str = Field(..., min_length=3, description="Description of what to generate")
+
+    prompt: str = Field(
+        ..., min_length=3, description="Description of what to generate"
+    )
     language: Literal["python", "javascript", "java"] = Field(
         default="python", description="Target programming language"
     )
@@ -35,6 +39,7 @@ class CodeGenerateRequest(BaseModel):
 
 class CodeExplainRequest(BaseModel):
     """Request to explain code."""
+
     code: str = Field(..., min_length=1, description="Code to explain")
     language: Literal["python", "javascript", "java"] = Field(
         default="python", description="Programming language"
@@ -43,6 +48,7 @@ class CodeExplainRequest(BaseModel):
 
 class CodeDebugRequest(BaseModel):
     """Request to debug code."""
+
     code: str = Field(..., min_length=1, description="Code to debug")
     language: Literal["python", "javascript", "java"] = Field(
         default="python", description="Programming language"
@@ -51,6 +57,7 @@ class CodeDebugRequest(BaseModel):
 
 class CodeChatRequest(BaseModel):
     """Request for code-related chat."""
+
     message: str = Field(..., min_length=1, description="Chat message")
     history: Optional[List[dict]] = Field(
         default=None, description="Previous chat history"
@@ -59,6 +66,7 @@ class CodeChatRequest(BaseModel):
 
 class CodeExecuteResponse(BaseModel):
     """Response from code execution."""
+
     output: str
     success: bool
     error: Optional[str] = None
@@ -66,37 +74,42 @@ class CodeExecuteResponse(BaseModel):
 
 class CodeGenerateResponse(BaseModel):
     """Response from code generation."""
+
     code: str
     language: str
 
 
 class CodeExplainResponse(BaseModel):
     """Response from code explanation."""
+
     explanation: str
 
 
 class CodeDebugResponse(BaseModel):
     """Response from code debugging."""
+
     analysis: str
     fixed_code: Optional[str] = None
 
 
 class CodeChatResponse(BaseModel):
     """Response from code chat."""
+
     response: str
 
 
 def _get_code_llm():
-    """Get the code LLM instance."""
+    """Get the code LLM instance using AWS Bedrock (Llama 3.2)."""
     try:
-        from llama_index.llms.ollama import Ollama
-        return Ollama(model="qwen2.5-coder:3b", request_timeout=120.0)
-    except Exception:
-        try:
-            from llama_index.llms.ollama import Ollama
-            return Ollama(model="llama3.2:latest", request_timeout=120.0)
-        except Exception:
-            return None
+        from backend.bedrock_llm import BedrockLLM
+        from backend.config import config
+
+        return BedrockLLM(
+            model_id="us.meta.llama3-2-11b-instruct-v1:0", region=config.AWS_REGION
+        )
+    except Exception as e:
+        logger.error(f"Failed to initialize Bedrock LLM: {e}")
+        return None
 
 
 def _execute_python_code(code: str) -> tuple[str, bool]:
@@ -117,10 +130,7 @@ def _execute_javascript_code(code: str) -> tuple[str, bool]:
         tmp_path = tmp.name
     try:
         result = subprocess.run(
-            ["node", tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=10
+            ["node", tmp_path], capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
             return result.stdout or "(no output)", True
@@ -151,10 +161,7 @@ def _execute_java_code(code: str) -> tuple[str, bool]:
             f.write(code)
         try:
             compile_proc = subprocess.run(
-                ["javac", java_file],
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["javac", java_file], capture_output=True, text=True, timeout=10
             )
             if compile_proc.returncode != 0:
                 return f"Compilation Error:\n{compile_proc.stderr}", False
@@ -163,7 +170,7 @@ def _execute_java_code(code: str) -> tuple[str, bool]:
                 ["java", "-cp", tmpdir, class_name],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
             if run_proc.returncode == 0:
                 return run_proc.stdout or "(no output)", True
@@ -197,9 +204,7 @@ async def execute_code(
     """Execute code in the specified language."""
     output, success = _execute_code(request.code, request.language)
     return CodeExecuteResponse(
-        output=output,
-        success=success,
-        error=None if success else output
+        output=output, success=success, error=None if success else output
     )
 
 
@@ -213,7 +218,7 @@ async def generate_code(
     if not llm:
         raise HTTPException(
             status_code=503,
-            detail="Code LLM is not available. Ensure Ollama is running."
+            detail="Code LLM is not available. Ensure AWS Bedrock is configured.",
         )
 
     system_prompt = (
@@ -221,11 +226,15 @@ async def generate_code(
         "Only output the code, no explanations or comments unless asked. "
         "Do not include markdown code fences."
     )
-    full_prompt = f"{system_prompt}\n\nRequest: {request.prompt}\n\nCode:"
 
     try:
-        response = llm.complete(full_prompt)
-        code = response.text.strip()
+        response = llm.generate(
+            prompt=f"Request: {request.prompt}\n\nCode:",
+            system_prompt=system_prompt,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        code = response.strip()
         if code.startswith("```"):
             lines = code.split("\n")
             code = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
@@ -244,20 +253,26 @@ async def explain_code(
     if not llm:
         raise HTTPException(
             status_code=503,
-            detail="Code LLM is not available. Ensure Ollama is running."
+            detail="Code LLM is not available. Ensure AWS Bedrock is configured.",
         )
 
     system_prompt = (
         f"You are an expert {request.language} developer. "
         "Explain what the following code does, step by step, in simple terms."
     )
-    full_prompt = f"{system_prompt}\n\nCode:\n{request.code}\n\nExplanation:"
 
     try:
-        response = llm.complete(full_prompt)
-        return CodeExplainResponse(explanation=response.text.strip())
+        response = llm.generate(
+            prompt=f"Code:\n{request.code}\n\nExplanation:",
+            system_prompt=system_prompt,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        return CodeExplainResponse(explanation=response.strip())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Code explanation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Code explanation failed: {str(e)}"
+        )
 
 
 @router.post("/debug", response_model=CodeDebugResponse)
@@ -265,12 +280,12 @@ async def debug_code(
     request: CodeDebugRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Debug and fix code issues."""
+    """Debug and fix code issues using AWS Bedrock."""
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
             status_code=503,
-            detail="Code LLM is not available. Ensure Ollama is running."
+            detail="Code LLM is not available. Ensure AWS Bedrock is configured.",
         )
 
     system_prompt = (
@@ -278,11 +293,15 @@ async def debug_code(
         "Find and fix any bugs in the following code. "
         "Explain the problem and provide the corrected code."
     )
-    full_prompt = f"{system_prompt}\n\nCode:\n{request.code}\n\nDebugging:"
 
     try:
-        response = llm.complete(full_prompt)
-        analysis = response.text.strip()
+        response = llm.generate(
+            prompt=f"Code:\n{request.code}\n\nDebugging:",
+            system_prompt=system_prompt,
+            max_tokens=2048,
+            temperature=0.3,
+        )
+        analysis = response.strip()
         fixed_code = None
         if "```" in analysis:
             parts = analysis.split("```")
@@ -304,12 +323,12 @@ async def chat_with_code_llm(
     request: CodeChatRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Chat with the code LLM for coding assistance."""
+    """Chat with AWS Bedrock for coding assistance."""
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
             status_code=503,
-            detail="Code LLM is not available. Ensure Ollama is running."
+            detail="Code LLM is not available. Ensure AWS Bedrock is configured.",
         )
 
     context = ""
@@ -319,17 +338,19 @@ async def chat_with_code_llm(
             content = msg.get("content", "")
             context += f"{role.capitalize()}: {content}\n"
 
-    full_prompt = (
+    system_prompt = (
         "You are a helpful coding assistant. Answer questions about programming, "
-        "help debug code, explain concepts, and provide code examples when asked.\n\n"
-        f"{context}"
-        f"User: {request.message}\n"
-        "Assistant:"
+        "help debug code, explain concepts, and provide code examples when asked."
     )
 
     try:
-        response = llm.complete(full_prompt)
-        return CodeChatResponse(response=response.text.strip())
+        response = llm.generate(
+            prompt=f"{context}User: {request.message}\nAssistant:",
+            system_prompt=system_prompt,
+            max_tokens=2048,
+            temperature=0.7,
+        )
+        return CodeChatResponse(response=response.strip())
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 

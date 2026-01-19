@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { postJSON } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { MessageSquare, Bug, User, Mail, Tag, FileText, Send } from "lucide-react";
 
 type FeedbackPayload = {
   name?: string;
@@ -96,13 +97,22 @@ export default function FeedbackPage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8">
-      <header className="space-y-3">
-        <p className="text-sm uppercase tracking-[0.3em] text-zinc-500">Feedback</p>
-        <h1 className="text-3xl font-semibold text-zinc-950">Tell us how we can improve</h1>
-        <p className="text-zinc-600">
-          All submissions are stored securely. Our team reviews new entries weekly and follows up if contact
-          information is provided.
-        </p>
+      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+        <div className="absolute top-0 right-0 h-64 w-64 bg-pink-400/20 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/80 px-4 py-2 text-sm font-medium text-pink-700 backdrop-blur dark:border-pink-800 dark:bg-zinc-900/80 dark:text-pink-300 mb-4">
+            <MessageSquare className="h-4 w-4" />
+            Feedback
+          </div>
+          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+            Tell us how we can improve
+          </h1>
+          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            All submissions are stored securely. Our team reviews new entries weekly and follows up if contact information is provided
+          </p>
+        </div>
       </header>
 
       <section className="grid gap-6 md:grid-cols-2">
@@ -130,9 +140,13 @@ export default function FeedbackPage() {
             <button
               type="submit"
               disabled={feedbackState.loading}
-              className="w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
-              {feedbackState.loading ? "Submitting…" : "Submit feedback"}
+              {feedbackState.loading ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Submitting…</>
+              ) : (
+                "Submit feedback"
+              )}
             </button>
           </form>
         </article>
@@ -172,9 +186,13 @@ export default function FeedbackPage() {
             <button
               type="submit"
               disabled={bugState.loading}
-              className="w-full rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
-              {bugState.loading ? "Submitting…" : "Submit bug report"}
+              {bugState.loading ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Submitting…</>
+              ) : (
+                "Submit bug report"
+              )}
             </button>
           </form>
         </article>

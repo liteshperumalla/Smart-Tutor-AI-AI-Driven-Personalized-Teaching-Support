@@ -1,0 +1,107 @@
+Thank you for installing {{ .Chart.Name }} version {{ .Chart.Version }}!
+
+Your release is named {{ .Release.Name }}.
+
+To learn more about the release, try:
+
+  $ helm status {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+  $ helm get all {{ .Release.Name }} --namespace {{ .Release.Namespace }}
+
+=======================================================================
+
+🎉 Smart AI Tutor has been deployed!
+
+Environment: {{ .Values.global.environment }}
+Domain: {{ .Values.global.domain }}
+
+📦 Deployed Components:
+{{- if .Values.backend.enabled }}
+  ✓ Backend API ({{ .Values.backend.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.frontend.enabled }}
+  ✓ Frontend ({{ .Values.frontend.replicaCount }} replicas)
+{{- end }}
+{{- if .Values.postgres.enabled }}
+  {{- if .Values.postgres.external.enabled }}
+  ✓ PostgreSQL (External: {{ .Values.postgres.external.host }})
+  {{- else }}
+  ✓ PostgreSQL (StatefulSet)
+  {{- end }}
+{{- end }}
+{{- if .Values.redis.enabled }}
+  {{- if .Values.redis.external.enabled }}
+  ✓ Redis (External: {{ .Values.redis.external.host }})
+  {{- else }}
+  ✓ Redis (Deployment)
+  {{- end }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+  ✓ Ingress ({{ .Values.ingress.className }})
+{{- end }}
+
+🌐 Access URLs:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  {{- if eq .service "frontend" }}
+  Frontend: https://{{ .host }}
+  {{- end }}
+  {{- if eq .service "backend-api" }}
+  Backend API: https://{{ .host }}
+  {{- end }}
+{{- end }}
+{{- else }}
+  Get the application URL by running:
+    kubectl port-forward svc/{{ include "smart-ai-tutor.fullname" . }}-frontend {{ .Values.frontend.service.port }}:{{ .Values.frontend.service.port }} -n {{ .Release.Namespace }}
+    kubectl port-forward svc/{{ include "smart-ai-tutor.fullname" . }}-backend-api {{ .Values.backend.service.port }}:{{ .Values.backend.service.port }} -n {{ .Release.Namespace }}
+{{- end }}
+
+📊 Monitoring:
+{{- if .Values.monitoring.enabled }}
+  Metrics endpoint: /metrics (on backend)
+  Prometheus scraping: enabled
+{{- end }}
+
+🔐 Security:
+  - Non-root containers: ✓
+  - Network policies: {{ if .Values.networkPolicy.enabled }}✓{{ else }}✗{{ end }}
+  - HTTPS redirect: {{ if .Values.ingress.tls.enabled }}✓{{ else }}✗{{ end }}
+  - Pod Security Standards: ✓
+
+📈 Auto-scaling:
+{{- if .Values.backend.autoscaling.enabled }}
+  Backend: {{ .Values.backend.autoscaling.minReplicas }}-{{ .Values.backend.autoscaling.maxReplicas }} replicas (CPU: {{ .Values.backend.autoscaling.targetCPUUtilizationPercentage }}%)
+{{- end }}
+{{- if .Values.frontend.autoscaling.enabled }}
+  Frontend: {{ .Values.frontend.autoscaling.minReplicas }}-{{ .Values.frontend.autoscaling.maxReplicas }} replicas (CPU: {{ .Values.frontend.autoscaling.targetCPUUtilizationPercentage }}%)
+{{- end }}
+
+📝 Useful Commands:
+
+  # View all resources
+  kubectl get all -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+  # View pods
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+  # View logs
+  kubectl logs -n {{ .Release.Namespace }} -l component=backend --tail=100 -f
+
+  # Check health
+  kubectl exec -it -n {{ .Release.Namespace }} $(kubectl get pod -n {{ .Release.Namespace }} -l component=backend -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:{{ .Values.backend.service.port }}/health
+
+  # Scale manually
+  kubectl scale deployment {{ include "smart-ai-tutor.fullname" . }}-backend-api --replicas=5 -n {{ .Release.Namespace }}
+
+⚠️  Important:
+  - Ensure secrets are created before deployment
+  - Configure DNS to point to the load balancer
+  - Set up monitoring alerts
+  - Configure automated backups
+
+📚 Documentation:
+  - Chart: https://github.com/your-org/smart-ai-tutor/tree/main/helm
+  - Deployment Guide: https://docs.smart-ai-tutor.com/deployment
+
+For support, please visit: https://github.com/your-org/smart-ai-tutor/issues
+
+=======================================================================

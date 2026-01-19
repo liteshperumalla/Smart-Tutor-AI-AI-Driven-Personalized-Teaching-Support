@@ -1,0 +1,281 @@
+"""
+Security Middleware for FastAPI
+Provides additional security layers for API routes
+"""
+
+from fastapi import Request, HTTPException, status
+from fastapi.responses import JSONResponse
+from typing import Callable
+import time
+import logging
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
+
+
+class SecurityHeadersMiddleware:
+    """
+    Add comprehensive security headers to all responses
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+
+                # Add security headers
+                security_headers = [
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"x-frame-options", b"DENY"),
+                    (b"x-xss-protection", b"1; mode=block"),
+                    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+                    (b"permissions-policy", b"geolocation=(), microphone=(), camera=()"),
+                ]
+
+                # Add headers if not already present
+                existing_keys = {h[0].lower() for h in headers}
+                for key, value in security_headers:
+                    if key not in existing_keys:
+                        headers.append((key, value))
+
+                message["headers"] = headers
+
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+class IPWhitelistMiddleware:
+    """
+    Optional IP whitelist for sensitive endpoints
+    """
+
+    def __init__(self, app, whitelist: list = None, protected_paths: list = None):
+        self.app = app
+        self.whitelist = set(whitelist or [])
+        self.protected_paths = protected_paths or ["/admin", "/internal"]
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        # Check if path is protected
+        is_protected = any(path.startswith(p) for p in self.protected_paths)
+
+        if is_protected and self.whitelist:
+            # Get client IP
+            client_ip = None
+            for header_name, header_value in scope.get("headers", []):
+                if header_name == b"x-forwarded-for":
+                    client_ip = header_value.decode().split(",")[0].strip()
+                    break
+                elif header_name == b"x-real-ip":
+                    client_ip = header_value.decode()
+                    break
+
+            if not client_ip:
+                client_ip = scope.get("client", [""])[0]
+
+            if client_ip not in self.whitelist:
+                logger.warning(f"Blocked access to {path} from non-whitelisted IP: {client_ip}")
+
+                # Send 403 Forbidden
+                response = JSONResponse(
+                    status_code=403,
+                    content={"detail": "Access forbidden"}
+                )
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
+
+
+class RequestSizeLimitMiddleware:
+    """
+    Limit request body size to prevent DoS attacks
+    """
+
+    def __init__(self, app, max_size: int = 10 * 1024 * 1024):  # 10MB default
+        self.app = app
+        self.max_size = max_size
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Check Content-Length header
+        content_length = 0
+        for header_name, header_value in scope.get("headers", []):
+            if header_name == b"content-length":
+                try:
+                    content_length = int(header_value.decode())
+                except ValueError:
+                    pass
+                break
+
+        if content_length > self.max_size:
+            logger.warning(f"Request body too large: {content_length} bytes (max: {self.max_size})")
+
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body too large (max: {self.max_size} bytes)"}
+            )
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
+class SlowRequestDetectionMiddleware:
+    """
+    Detect and log slow requests for performance monitoring
+    """
+
+    def __init__(self, app, threshold_seconds: float = 5.0):
+        self.app = app
+        self.threshold = threshold_seconds
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        start_time = time.time()
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+
+        await self.app(scope, receive, send)
+
+        duration = time.time() - start_time
+
+        if duration > self.threshold:
+            logger.warning(
+                f"Slow request detected: {method} {path} took {duration:.2f}s "
+                f"(threshold: {self.threshold}s)"
+            )
+
+
+class SuspiciousActivityDetectionMiddleware:
+    """
+    Detect suspicious patterns in requests
+    """
+
+    # Track failed authentication attempts by IP
+    _failed_attempts = defaultdict(list)
+    _blocked_ips = {}
+
+    def __init__(self, app, max_failures: int = 10, block_duration: int = 900):
+        self.app = app
+        self.max_failures = max_failures
+        self.block_duration = block_duration  # seconds (15 minutes default)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Get client IP
+        client_ip = None
+        for header_name, header_value in scope.get("headers", []):
+            if header_name == b"x-forwarded-for":
+                client_ip = header_value.decode().split(",")[0].strip()
+                break
+            elif header_name == b"x-real-ip":
+                client_ip = header_value.decode()
+                break
+
+        if not client_ip:
+            client_ip = scope.get("client", [""])[0]
+
+        # Check if IP is blocked
+        if client_ip in self._blocked_ips:
+            block_until = self._blocked_ips[client_ip]
+            if datetime.utcnow() < block_until:
+                logger.warning(f"Blocked suspicious IP: {client_ip}")
+
+                response = JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many failed attempts. Please try again later."}
+                )
+                await response(scope, receive, send)
+                return
+            else:
+                # Unblock expired blocks
+                del self._blocked_ips[client_ip]
+                if client_ip in self._failed_attempts:
+                    del self._failed_attempts[client_ip]
+
+        # Track suspicious patterns in response
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 200)
+
+                # Track 401/403 responses (authentication failures)
+                path = scope.get("path", "")
+                if status_code in [401, 403] and "/auth/" in path:
+                    self._failed_attempts[client_ip].append(datetime.utcnow())
+
+                    # Clean old attempts (older than block duration)
+                    cutoff = datetime.utcnow() - timedelta(seconds=self.block_duration)
+                    self._failed_attempts[client_ip] = [
+                        t for t in self._failed_attempts[client_ip] if t > cutoff
+                    ]
+
+                    # Check if should block
+                    if len(self._failed_attempts[client_ip]) >= self.max_failures:
+                        block_until = datetime.utcnow() + timedelta(seconds=self.block_duration)
+                        self._blocked_ips[client_ip] = block_until
+                        logger.error(
+                            f"Blocking IP {client_ip} due to {len(self._failed_attempts[client_ip])} "
+                            f"failed authentication attempts. Blocked until {block_until}"
+                        )
+
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+def add_security_middleware(app, config=None):
+    """
+    Add all security middleware to FastAPI app
+
+    Args:
+        app: FastAPI application instance
+        config: Optional configuration dict
+    """
+    config = config or {}
+
+    # Add request size limit (default 10MB)
+    max_request_size = config.get("max_request_size", 10 * 1024 * 1024)
+    app.add_middleware(RequestSizeLimitMiddleware, max_size=max_request_size)
+
+    # Add slow request detection (default 5 seconds)
+    slow_threshold = config.get("slow_request_threshold", 5.0)
+    app.add_middleware(SlowRequestDetectionMiddleware, threshold_seconds=slow_threshold)
+
+    # Add suspicious activity detection
+    app.add_middleware(
+        SuspiciousActivityDetectionMiddleware,
+        max_failures=config.get("max_auth_failures", 10),
+        block_duration=config.get("block_duration", 900)
+    )
+
+    # Add IP whitelist if configured
+    whitelist = config.get("ip_whitelist", [])
+    protected_paths = config.get("protected_paths", ["/admin", "/internal"])
+    if whitelist:
+        app.add_middleware(IPWhitelistMiddleware, whitelist=whitelist, protected_paths=protected_paths)
+
+    logger.info("Security middleware initialized")

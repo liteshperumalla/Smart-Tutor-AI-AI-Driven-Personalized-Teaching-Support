@@ -3,7 +3,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
 
-from backend.api.dependencies import get_current_session, get_session_with_optional_query_token
+from backend.api.dependencies import get_current_session
+from backend.validators import FileValidator
+from backend.exceptions import InvalidFileError
 from backend.services.research_service import (
     ResearchService,
     get_research_service,
@@ -14,6 +16,7 @@ router = APIRouter(prefix="/research", tags=["research"])
 
 
 # ==================== REQUEST MODELS ====================
+
 
 class ResearchQueryRequest(BaseModel):
     query: str = Field(..., min_length=3)
@@ -53,7 +56,9 @@ class CitationExtractionRequest(BaseModel):
 
 class SummaryRequest(BaseModel):
     document_id: Optional[str] = None
-    mode: str = Field(default="executive", pattern="^(executive|detailed|bullets|custom)$")
+    mode: str = Field(
+        default="executive", pattern="^(executive|detailed|bullets|custom)$"
+    )
     max_length: Optional[int] = Field(default=None, ge=50, le=2000)
 
 
@@ -78,7 +83,12 @@ def research_folders(
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
-    return {"folders": service.list_folders()}
+    try:
+        return {"folders": service.list_folders()}
+    except RuntimeError as e:
+        if "Knowledge base is not initialized" in str(e):
+            return {"folders": []}
+        raise
 
 
 @router.get("/documents")
@@ -86,7 +96,12 @@ def research_documents(
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
-    return {"documents": service.list_documents()}
+    try:
+        return {"documents": service.list_documents()}
+    except RuntimeError as e:
+        if "Knowledge base is not initialized" in str(e):
+            return {"documents": []}
+        raise
 
 
 @router.get("/uploads")
@@ -94,7 +109,12 @@ def research_uploads(
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
-    return {"uploads": service.list_uploads()}
+    try:
+        return {"uploads": service.list_uploads()}
+    except RuntimeError as e:
+        if "Knowledge base is not initialized" in str(e):
+            return {"uploads": []}
+        raise
 
 
 @router.get("/stats")
@@ -113,7 +133,7 @@ def run_research_query(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Query cannot be empty",
-    )
+        )
     result = service.query(
         payload.query,
         folders=payload.folders,
@@ -124,14 +144,19 @@ def run_research_query(
 
 @router.post("/upload/file")
 async def upload_research_file(
-    session=Depends(get_session_with_optional_query_token),
+    session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
     file: UploadFile = File(...),
 ):
     content = await file.read()
     try:
-        preview = service.preview_file(content, file.filename or "uploaded-file")
+        sanitized_name = FileValidator.validate_file(
+            file.filename or "uploaded-file", len(content)
+        )
+        preview = service.preview_file(content, sanitized_name)
     except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except InvalidFileError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return {"preview": preview}
 
@@ -139,7 +164,7 @@ async def upload_research_file(
 @router.post("/upload/url")
 def upload_research_url(
     payload: ResearchURLRequest,
-    session=Depends(get_session_with_optional_query_token),
+    session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
     try:
@@ -152,10 +177,11 @@ def upload_research_url(
 @router.post("/upload/youtube")
 def upload_research_youtube(
     payload: ResearchYouTubeRequest,
-    session=Depends(get_session_with_optional_query_token),
+    session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
     import logging
+
     logger = logging.getLogger(__name__)
     logger.info(f"YouTube upload request for URL: {payload.url}")
     try:
@@ -167,7 +193,10 @@ def upload_research_youtube(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except Exception as exc:
         logger.error(f"YouTube upload unexpected error: {type(exc).__name__}: {exc}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch transcript: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch transcript: {str(exc)}",
+        )
 
 
 @router.delete("/uploads/clear")
@@ -180,11 +209,14 @@ def clear_research_uploads(
         result = service.clear_uploads()
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/uploads/clear")
 def clear_research_uploads_post(
+    session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
     """Clear all uploaded documents (POST version for sendBeacon API)."""
@@ -192,7 +224,9 @@ def clear_research_uploads_post(
         result = service.clear_uploads()
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 # ==================== RESEARCH CAPABILITIES ENDPOINTS ====================
@@ -209,7 +243,9 @@ def search_web(
         result = service.search_web(payload.query, payload.max_results)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/search/academic")
@@ -225,7 +261,9 @@ def search_academic(
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/compare")
@@ -241,7 +279,9 @@ def compare_sources(
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/citations")
@@ -255,7 +295,9 @@ def extract_citations(
         result = service.extract_citations(payload.document_id, payload.format_style)
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/summary")
@@ -271,7 +313,9 @@ def generate_summary(
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/questions")
@@ -290,7 +334,9 @@ def generate_questions(
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )
 
 
 @router.post("/fact-check")
@@ -306,4 +352,6 @@ def fact_check(
         )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+        )

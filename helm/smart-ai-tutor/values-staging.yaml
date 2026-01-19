@@ -1,0 +1,140 @@
+# Staging environment values
+# Production-like configuration with reduced scale
+
+global:
+  environment: staging
+  domain: staging.smart-ai-tutor.com
+
+# Use production registry
+image:
+  registry: <PRODUCTION_REGISTRY>
+  pullPolicy: IfNotPresent
+
+# Backend - reduced replicas for staging
+backend:
+  enabled: true
+  replicaCount: 2
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10  # Half of production
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2Gi
+
+  env:
+    ENVIRONMENT: staging
+    LOG_LEVEL: INFO
+    RATE_LIMIT_ENABLED: "true"
+
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1  # Less strict than production
+
+# Frontend - reduced replicas
+frontend:
+  enabled: true
+  replicaCount: 2
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  env:
+    NODE_ENV: production
+    NEXT_PUBLIC_ENVIRONMENT: staging
+
+# PostgreSQL - use RDS in staging
+postgres:
+  enabled: false  # Use external RDS
+
+  external:
+    enabled: true
+    host: staging-smart-tutor-db.xxxx.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: smart_tutor_staging
+    username: smart_tutor_user
+
+# Redis - use ElastiCache in staging
+redis:
+  enabled: false  # Use external ElastiCache
+
+  external:
+    enabled: true
+    host: staging-smart-tutor-redis.xxxx.cache.amazonaws.com
+    port: 6379
+
+# Ingress - use ALB with staging domain
+ingress:
+  enabled: true
+  className: alb
+
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+
+  tls:
+    enabled: true
+    certificateArn: "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID_STAGING"
+
+  hosts:
+    - host: staging.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+          port: 3000
+    - host: api.staging.smart-ai-tutor.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: backend-api
+          port: 8000
+
+# Network policies - enabled in staging
+networkPolicy:
+  enabled: true
+
+# Resource quotas - moderate limits
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    pods: "50"
+
+# Monitoring - enabled
+monitoring:
+  enabled: true
+  prometheus:
+    scrape: true
+
+# AWS - staging resources
+aws:
+  region: us-east-1
+  s3:
+    bucket: staging-smart-ai-tutor-storage
+  dynamodb:
+    tablePrefix: staging-smart-tutor
+  bedrock:
+    region: us-east-1
+    modelId: anthropic.claude-3-sonnet-20240229-v1:0

@@ -1,0 +1,212 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: smart-ai-tutor-istio
+  namespace: istio-system
+spec:
+  # Use production profile
+  profile: production
+
+  # Hub and tag for Istio images
+  hub: docker.io/istio
+  tag: 1.20.1
+
+  # Mesh configuration
+  meshConfig:
+    # Enable access logging
+    accessLogFile: /dev/stdout
+    accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "start_time": "%START_TIME%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "protocol": "%PROTOCOL%",
+        "response_code": "%RESPONSE_CODE%",
+        "response_flags": "%RESPONSE_FLAGS%",
+        "bytes_received": "%BYTES_RECEIVED%",
+        "bytes_sent": "%BYTES_SENT%",
+        "duration": "%DURATION%",
+        "upstream_service_time": "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%",
+        "x_forwarded_for": "%REQ(X-FORWARDED-FOR)%",
+        "user_agent": "%REQ(USER-AGENT)%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "authority": "%REQ(:AUTHORITY)%",
+        "upstream_host": "%UPSTREAM_HOST%",
+        "upstream_cluster": "%UPSTREAM_CLUSTER%",
+        "upstream_local_address": "%UPSTREAM_LOCAL_ADDRESS%",
+        "downstream_local_address": "%DOWNSTREAM_LOCAL_ADDRESS%",
+        "downstream_remote_address": "%DOWNSTREAM_REMOTE_ADDRESS%",
+        "requested_server_name": "%REQUESTED_SERVER_NAME%",
+        "route_name": "%ROUTE_NAME%",
+        "trace_id": "%REQ(X-B3-TRACEID)%"
+      }
+
+    # Default tracing configuration
+    enableTracing: true
+    defaultConfig:
+      tracing:
+        sampling: 100.0  # Sample all requests
+        zipkin:
+          address: jaeger-collector.monitoring.svc.cluster.local:9411
+
+    # Telemetry configuration
+    enablePrometheusMerge: true
+
+    # Service discovery
+    discoverySelectors:
+      - matchLabels:
+          istio-injection: enabled
+
+    # Trust domain
+    trustDomain: smart-ai-tutor.local
+
+  # Components configuration
+  components:
+    # Ingress Gateway
+    ingressGateways:
+      - name: istio-ingressgateway
+        enabled: true
+        k8s:
+          replicas: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          service:
+            type: LoadBalancer
+            ports:
+              - name: status-port
+                port: 15021
+                targetPort: 15021
+              - name: http2
+                port: 80
+                targetPort: 8080
+              - name: https
+                port: 443
+                targetPort: 8443
+              - name: tcp
+                port: 31400
+                targetPort: 31400
+              - name: tls
+                port: 15443
+                targetPort: 15443
+          hpaSpec:
+            minReplicas: 3
+            maxReplicas: 10
+            metrics:
+              - type: Resource
+                resource:
+                  name: cpu
+                  target:
+                    type: Utilization
+                    averageUtilization: 80
+          podAnnotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "15020"
+            prometheus.io/path: "/stats/prometheus"
+
+    # Egress Gateway
+    egressGateways:
+      - name: istio-egressgateway
+        enabled: true
+        k8s:
+          replicas: 2
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+    # Pilot (Istiod)
+    pilot:
+      enabled: true
+      k8s:
+        replicas: 2
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+        hpaSpec:
+          minReplicas: 2
+          maxReplicas: 5
+          metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 80
+        env:
+          # Enable trace sampling
+          - name: PILOT_TRACE_SAMPLING
+            value: "100"
+          # Enable debug endpoints
+          - name: PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_OUTBOUND
+            value: "true"
+          - name: PILOT_ENABLE_PROTOCOL_SNIFFING_FOR_INBOUND
+            value: "true"
+
+  # Values configuration
+  values:
+    global:
+      # Proxy configuration
+      proxy:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+        # Tracing
+        tracer: "zipkin"
+        # Log level
+        logLevel: "warning"
+        # Component log level
+        componentLogLevel: "misc:error"
+
+      # Image pull policy
+      imagePullPolicy: IfNotPresent
+
+      # Use default hub and tag from above
+      # hub: docker.io/istio
+      # tag: 1.20.1
+
+    # Telemetry v2 (Prometheus)
+    telemetry:
+      enabled: true
+      v2:
+        enabled: true
+        prometheus:
+          enabled: true
+
+    # Kiali (service mesh observability)
+    kiali:
+      enabled: true
+      createDemoSecret: false  # Use proper authentication in production
+
+    # Grafana
+    grafana:
+      enabled: false  # Use existing Grafana instance
+
+    # Prometheus
+    prometheus:
+      enabled: false  # Use existing Prometheus
+
+    # Tracing
+    tracing:
+      enabled: false  # Use existing Jaeger
+
+    # Sidecar injector
+    sidecarInjectorWebhook:
+      enableNamespacesByDefault: false
+      rewriteAppHTTPProbe: true

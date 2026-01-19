@@ -13,7 +13,8 @@ from utils import (
     make_session_title, 
     save_chat_session, 
     render_footer, 
-    sanitize_filename 
+    sanitize_filename,
+    resolve_chat_file_path,
 )
 try:
     from Tutor_chat import langfuse_client 
@@ -72,7 +73,7 @@ def render():
     # --- Display Chat History & Handle Streaming ---
     chat_display_container = st.container() 
     with chat_display_container:
-        seen_file_paths_for_download = set() 
+        seen_source_keys_for_display = set() 
 
         # Display existing chat history
         for msg_idx, msg_entry in enumerate(history): 
@@ -105,7 +106,7 @@ def render():
 
                 # Display source buttons for assistant messages
                 if role == "assistant" and sources:
-                    display_source_buttons(sources, msg_idx, seen_file_paths_for_download)
+                    display_source_buttons(sources, msg_idx, seen_source_keys_for_display)
                 
                 st.markdown("</div>", unsafe_allow_html=True)  # Close chat-message-container
         
@@ -222,7 +223,7 @@ def process_text_with_code_blocks(text_content):
     return "".join(escaped_parts)
 
 
-def display_source_buttons(sources, msg_idx, seen_file_paths):
+def display_source_buttons(sources, msg_idx, seen_source_keys):
     """Display source buttons for a message in an organized layout."""
     if not sources:
         return
@@ -230,13 +231,15 @@ def display_source_buttons(sources, msg_idx, seen_file_paths):
     
     # Filter out duplicate file paths first
     unique_sources = []
-    processed_paths = set()
+    processed_keys = set()
     
     for src_data in sources:
         fpath = src_data.get("file_path", "")
-        if fpath and fpath not in processed_paths and fpath not in seen_file_paths:
+        external_url = src_data.get("external_url")
+        source_key = fpath or external_url or ""
+        if source_key and source_key not in processed_keys and source_key not in seen_source_keys:
             unique_sources.append(src_data)
-            processed_paths.add(fpath)
+            processed_keys.add(source_key)
     
     # Create organized layout with proper columns
     if unique_sources:
@@ -259,6 +262,7 @@ def display_source_buttons(sources, msg_idx, seen_file_paths):
                 with cols[col_idx]:
                     fname = src_data.get("file_name", "source.file")
                     fpath = src_data.get("file_path", "")
+                    external_url = src_data.get("external_url")
                     
                     # Create download button
                     if fpath and os.path.exists(fpath):
@@ -289,7 +293,7 @@ def display_source_buttons(sources, msg_idx, seen_file_paths):
                             st.markdown("</div>", unsafe_allow_html=True)
                             
                             # Mark as processed
-                            seen_file_paths.add(fpath)
+                            seen_source_keys.add(fpath)
                             
                         except Exception as e:
                             logging.error(f"Download error for {fpath}: {e}")
@@ -300,6 +304,10 @@ def display_source_buttons(sources, msg_idx, seen_file_paths):
                                 help=f"Error loading: {fname}",
                                 use_container_width=True
                             )
+                    elif external_url:
+                        display_name = fname[:25] + ('...' if len(fname) > 25 else '')
+                        st.markdown(f"[🔗 {display_name}]({external_url})")
+                        seen_source_keys.add(external_url)
     
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -322,14 +330,14 @@ def handle_session_management(history):
             new_title_candidate not in sessions):
             
             # Handle old chat file cleanup
-            old_chat_path = Path(f"previous_chats/{sanitize_filename(current_chat_name)}.json")
+            old_chat_path = resolve_chat_file_path(current_chat_name)
             
             # Rename session
             sessions[new_title_candidate] = sessions.pop(current_chat_name)
             st.session_state.current_chat = new_title_candidate
             
             # Save new session
-            save_chat_session(sanitize_filename(new_title_candidate), sessions[new_title_candidate])
+            save_chat_session(new_title_candidate, sessions[new_title_candidate])
             
             # Clean up old file if different
             if (old_chat_path.exists() and 
@@ -339,6 +347,6 @@ def handle_session_management(history):
                 except OSError as e: 
                     logging.warning(f"Could not delete old chat file {old_chat_path}: {e}")
         else:
-            save_chat_session(sanitize_filename(current_chat_name), history)
+            save_chat_session(current_chat_name, history)
     else:
-        save_chat_session(sanitize_filename(current_chat_name), history)
+        save_chat_session(current_chat_name, history)

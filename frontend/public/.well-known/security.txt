@@ -1,0 +1,59 @@
+Contact: security@smart-ai-tutor.example.com
+Expires: 2026-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://smart-ai-tutor.example.com/.well-known/security.txt
+Policy: https://smart-ai-tutor.example.com/security-policy
+Acknowledgments: https://smart-ai-tutor.example.com/security-acknowledgments
+
+# Security Disclosure Policy for Smart AI Tutor
+
+## Reporting Security Vulnerabilities
+
+If you discover a security vulnerability in Smart AI Tutor, please report it to us at:
+security@smart-ai-tutor.example.com
+
+We take all security reports seriously and will respond within 48 hours.
+
+## What to Include in Your Report
+
+- Description of the vulnerability
+- Steps to reproduce the issue
+- Potential impact of the vulnerability
+- Any proof-of-concept code or screenshots
+- Your contact information for follow-up
+
+## Our Commitment
+
+- We will acknowledge receipt of your report within 48 hours
+- We will provide regular updates on our progress
+- We will credit reporters who follow responsible disclosure
+- We will not pursue legal action against security researchers who:
+  - Act in good faith
+  - Do not access or modify user data
+  - Do not disrupt service
+  - Report findings privately
+
+## Scope
+
+In-scope vulnerabilities include:
+- Authentication and authorization bypass
+- SQL injection, XSS, CSRF
+- Remote code execution
+- Information disclosure
+- Session hijacking
+- Security misconfiguration
+
+Out-of-scope:
+- Denial of service attacks
+- Social engineering
+- Physical attacks
+- Issues in third-party dependencies (report to maintainers)
+
+## Timeline
+
+- Initial response: Within 48 hours
+- Vulnerability assessment: Within 1 week
+- Fix deployment: Based on severity (Critical: <24hrs, High: <7 days, Medium: <30 days)
+- Public disclosure: After fix is deployed (coordinated with reporter)
+
+Thank you for helping keep Smart AI Tutor secure!
