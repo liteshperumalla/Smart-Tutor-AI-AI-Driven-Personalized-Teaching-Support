@@ -1,0 +1,103 @@
+# CodeRabbit Reviews Configuration
+# AI-powered code review rules
+
+# Python-specific rules
+python:
+  name: "Python Rules"
+  enabled: true
+  rules:
+    # Security checks
+    - name: "No hardcoded secrets"
+      description: "Avoid hardcoding API keys, passwords, or credentials"
+      type: "security"
+      severity: "error"
+    - name: "No SQL injection"
+      description: "Use parameterized queries instead of string concatenation"
+      type: "security"
+      severity: "error"
+    - name: "Safe pickle usage"
+      description: "Avoid unpickling untrusted data"
+      type: "security"
+      severity: "warning"
+
+    # Performance checks
+    - name: "Use list comprehension"
+      description: "Prefer list comprehension over loops where appropriate"
+      type: "performance"
+      severity: "info"
+    - name: "Avoid globals"
+      description: "Minimize use of global variables"
+      type: "performance"
+      severity: "info"
+    - name: "Close resources"
+      description: "Use context managers (with statements) for file/DB connections"
+      type: "performance"
+      severity: "warning"
+
+    # Best practices
+    - name: "Type hints"
+      description: "Use type hints for function signatures"
+      type: "best_practices"
+      severity: "info"
+    - name: "Docstrings"
+      description: "Add docstrings to public functions and classes"
+      type: "best_practices"
+      severity: "info"
+    - name: "Exception handling"
+      description: "Use specific exception types, avoid bare except"
+      type: "best_practices"
+      severity: "warning"
+    - name: "Logging"
+      description: "Use logging module instead of print statements"
+      type: "best_practices"
+      severity: "info"
+
+    # Style checks
+    - name: "Line length"
+      description: "Keep lines under 120 characters"
+      type: "style"
+      severity: "info"
+    - name: "Naming conventions"
+      description: "Follow PEP8 naming conventions"
+      type: "style"
+      severity: "info"
+
+# TypeScript/JavaScript rules
+typescript:
+  name: "TypeScript Rules"
+  enabled: true
+  rules:
+    - name: "No type assertions"
+      description: "Avoid 'as any' type assertions"
+      type: "style"
+      severity: "warning"
+    - name: "Use interfaces"
+      description: "Prefer interfaces over type aliases for objects"
+      type: "best_practices"
+      severity: "info"
+    - name: "React hooks rules"
+      description: "Follow React hooks rules (no conditionals in hooks)"
+      type: "bugs"
+      severity: "error"
+    - name: "Async/await usage"
+      description: "Prefer async/await over .then() chains"
+      type: "style"
+      severity: "info"
+
+# General rules
+general:
+  name: "General Rules"
+  enabled: true
+  rules:
+    - name: "No console.log"
+      description: "Remove debug console.log statements"
+      type: "best_practices"
+      severity: "warning"
+    - name: "No TODO comments"
+      description: "Address TODO comments or create issues"
+      type: "documentation"
+      severity: "info"
+    - name: "No commented code"
+      description: "Remove commented-out code"
+      type: "style"
+      severity: "info"
