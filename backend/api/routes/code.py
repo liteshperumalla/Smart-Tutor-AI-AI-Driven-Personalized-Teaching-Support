@@ -6,6 +6,7 @@ This module provides endpoints for:
 - Code-related chat assistance
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
@@ -17,6 +18,8 @@ import tempfile
 import os
 
 from ..dependencies import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/code", tags=["code"])
 
@@ -105,7 +108,11 @@ class CodeChatResponse(BaseModel):
 
 
 def _get_code_llm():
-    """Get the code LLM instance using AWS Bedrock (Llama 3.2)."""
+    """Get the code LLM instance using AWS Bedrock (Llama 3.2).
+
+    Returns:
+        BedrockLLM: Configured LLM instance or None if initialization fails.
+    """
     try:
         from backend.bedrock_llm import BedrockLLM
         from backend.config import config
@@ -113,18 +120,32 @@ def _get_code_llm():
         return BedrockLLM(
             model_id="us.meta.llama3-2-11b-instruct-v1:0", region=config.AWS_REGION
         )
+    except (ImportError, ValueError, RuntimeError) as e:
+        logger.error("Failed to initialize Bedrock LLM: %s", str(e))
+        return None
     except Exception as e:
-        logger.error(f"Failed to initialize Bedrock LLM: {e}")
+        logger.error("Unexpected error initializing Bedrock LLM: %s", str(e))
         return None
 
 
 def _execute_python_code(code: str) -> tuple[str, bool]:
-    """Execute Python code safely."""
+    """Execute Python code safely.
+
+    Args:
+        code: Python code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
     output = io.StringIO()
     try:
         with contextlib.redirect_stdout(output):
             exec(code, {"__builtins__": __builtins__, "print": print})
         return output.getvalue(), True
+    except SyntaxError as e:
+        return f"Syntax Error: {e}\n{traceback.format_exc()}", False
+    except (NameError, TypeError, ValueError, AttributeError) as e:
+        return f"Runtime Error: {e}\n{traceback.format_exc()}", False
     except Exception:
         return f"Error during execution:\n{traceback.format_exc()}", False
 
