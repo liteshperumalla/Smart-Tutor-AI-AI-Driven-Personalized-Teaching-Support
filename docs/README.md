@@ -1,113 +1,197 @@
 # Smart Tutor AI: AI-Driven Personalized Teaching Support
 
+An AI-first course companion for INFO 5731 at University of North Texas. Leverages Retrieval-Augmented Generation (RAG) with Large Language Models to provide context-aware, personalized teaching support.
+
 ## Problem
+
 Students struggle with personalized learning support, especially accessing relevant information from course materials. Traditional search engines and LLMs often return irrelevant or inaccurate results, creating gaps in learning comprehension and academic performance.
 
 ## Approach
-Leverages Retrieval-Augmented Generation (RAG) with Large Language Models to provide context-aware, personalized teaching support. Combines course-specific materials with advanced language modeling to eliminate LLM hallucinations and ensure factual, relevant responses through a multi-step pipeline including document parsing, vector embeddings, similarity search, and intelligent response generation.
+
+Combines course-specific materials with advanced language modeling to eliminate LLM hallucinations and ensure factual, relevant responses through a multi-step pipeline including document parsing, vector embeddings, similarity search, and intelligent response generation.
 
 ## Tech Stack
-- **Backend**: Python 3.9+, LlamaIndex, Ollama
-- **ML/AI**: Llama 3.1 7B/8B, HuggingFace Transformers (all-MiniLM-L6-v2)
-- **Database**: ChromaDB (vector storage)
-- **Frontend**: Streamlit
-- **Evaluation**: Evidently AI, Langfuse for real-time evaluation
-- **Data Processing**: Multi-format support (PDF, PPT, DOCX, CSV, images, YouTube videos)
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 16, Tailwind CSS, Lucide React Icons |
+| **Backend** | FastAPI, Python 3.11 |
+| **LLM Provider** | AWS Bedrock (Llama 3.2 11B/90B) |
+| **Vector Store** | LlamaIndex with S3 storage (12,760+ chunks) |
+| **Database** | PostgreSQL (user data), DynamoDB (chat sessions) |
+| **Caching** | Redis |
+| **Containerization** | Docker Compose |
+| **Code Review** | CodeRabbit AI |
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **AI Chat** | Context-aware Q&A with course materials using RAG |
+| **Code Sandbox** | Generate, explain, debug code with AWS Bedrock Llama 3.2 |
+| **Quiz Generator** | Create assessments from course content |
+| **Research Mode** | Multi-format document upload and indexing |
+| **Shareable Chats** | Generate links to share conversations |
+| **Code Review** | AI-powered code analysis and suggestions |
 
 ## Quickstart
 
-### Install
+### Prerequisites
+
+- Docker & Docker Compose
+- AWS Account with Bedrock access
+- Node.js 18+ (for frontend)
+
+### Run with Docker Compose
+
 ```bash
-# Clone the repository
+# Clone and enter directory
 git clone https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support.git
 cd Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support
 
-# Install dependencies
-pip install -r requirements.txt
+# Start all services
+docker compose up -d
+
+# Access the application
+Frontend: http://localhost:4000
+Backend API: http://localhost:8010
+Health Check: http://localhost:8010/health
 ```
 
-### Run
-```bash
-# Start the Streamlit application
-streamlit run app.py
+### Services Running
 
-# Access the application at http://localhost:8501
-```
+| Service | Port | Status |
+|---------|------|--------|
+| Frontend (Next.js) | :4000 | ✓ Running |
+| Backend (FastAPI) | :8010 | ✓ Running |
+| Redis | :6380 | ✓ Running |
+| PostgreSQL | :5432 | ✓ Running |
+| DynamoDB Local | :8001 | ✓ Running |
+| Prometheus | :9090 | ✓ Running |
+| Grafana | :3001 | ✓ Running |
 
-### Run with Docker
-```bash
-# Build image
-docker build -t smart-ai-tutor .
+### Manual Frontend Setup
 
-# Start container (exposes Streamlit on localhost:8501)
-docker run --env-file .env -p 8501:8501 smart-ai-tutor
-
-# Start FastAPI backend instead of Streamlit
-docker run --env-file .env -e APP_MODE=fastapi -p 8000:8000 smart-ai-tutor
-```
-
-### Run Next.js Frontend
 ```bash
 cd frontend
-cp .env.local.example .env.local   # update API base URL if needed
 npm install
 npm run dev -- --port 4000
-# open http://localhost:4000
+# Open http://localhost:4000
 ```
 
-### LLM Setup (Ollama)
+## Code Sandbox
+
+The `/code` page provides AI-powered coding assistance:
+
 ```bash
-# Install once (macOS)
-brew install --cask ollama
-
-# Start the local service (keep it running in its own terminal tab)
-ollama serve
-
-# Pull the model referenced in .env (defaults to llama3.2:latest)
-ollama pull llama3.2:latest
+# API Endpoints
+POST /code/generate  # Generate code from prompts
+POST /code/explain   # Explain code functionality
+POST /code/debug     # Debug and fix code issues
+POST /code/chat      # Coding assistant chat
+GET  /code/languages # Supported languages
 ```
-The app pings `OLLAMA_BASE_URL` (defaults to `http://localhost:11434`). If the “LLM Service” card on the home page shows “Offline,” start the service and rerun the Streamlit script.
 
-### In-App Productivity Boosts
-- **System Snapshot** cards on the home page surface knowledge-base size, evaluation readiness, and Ollama connectivity so you can spot issues without opening a terminal.
-- **Quick Actions** let you jump directly into Chat, Quiz Generator, or Research Mode with a single click.
-- **Recent Conversations** appear on the right rail for instant context switching across chat sessions.
+**Safety Features:**
+- Rate limiting (30 requests/min, 10 executions/hour)
+- Code size limits (10KB input, 100KB output)
+- Dangerous pattern detection (blocks unsafe imports)
+- Per-language timeouts (Python: 5s, JavaScript: 10s, Java: 15s)
+
+## Shareable Chat Links
+
+Create shareable links for chat sessions:
+
+```bash
+# Create share link (expires in 24 hours)
+POST /chat/sessions/{session_id}/share?expires_in_hours=24
+
+# Access shared chat (no auth required)
+GET /shared/{share_id}
+```
+
+## CodeRabbit AI Code Review
+
+Automated AI-powered code reviews on every PR:
+
+```bash
+# View reviews on GitHub PRs
+# https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support/pull/X
+```
+
+**Review Categories:**
+- Security (secrets, injection risks)
+- Performance (inefficient code)
+- Best Practices (type hints, docstrings)
+- Bugs (edge cases, null handling)
+- Style (naming, organization)
+
+## AWS Bedrock Models
+
+| Model | Purpose |
+|-------|---------|
+| Llama 3.2 11B | Code generation/explanation |
+| Llama 3.2 90B | Chat responses |
+| Titan Embeddings | Vector search |
+
+## Test Credentials
+
+- **Username:** `testuser123`
+- **Password:** `Test@12345678`
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Next.js Frontend                        │
+│                    (localhost:4000)                          │
+└─────────────────────┬───────────────────────────────────────┘
+                      │ HTTP/WebSocket
+┌─────────────────────▼───────────────────────────────────────┐
+│                      FastAPI Backend                         │
+│                    (localhost:8010)                          │
+├─────────────────────┬───────────────────────────────────────┼
+│  ┌───────────────┐  │  ┌─────────────────────────────────┐  │
+│  │ RAG Pipeline  │  │  │     Code Sandbox               │  │
+│  │ - LlamaIndex  │  │  │     AWS Bedrock Llama 3.2      │  │
+│  │ - S3 Vectors  │  │  │     Python/JS/Java Support     │  │
+│  └───────────────┘  │  └─────────────────────────────────┘  │
+├─────────────────────┴───────────────────────────────────────┤
+│                     AWS Bedrock (Llama 3.2)                  │
+├─────────────────────────────────────────────────────────────┤
+│  PostgreSQL  │  Redis  │  DynamoDB  │  S3 Vector Store      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Development
+
+```bash
+# Rebuild backend after code changes
+docker compose build backend --no-cache
+docker compose up -d backend
+
+# View logs
+docker compose logs -f backend
+
+# Check health
+curl http://localhost:8010/health
+```
+
+## Security
+
+- **Code execution** is DISABLED by default
+- Set `ENABLE_CODE_EXECUTION=true` to enable (not recommended in production)
+- Use isolated containers for production code execution
+- HttpOnly cookies for authentication
+- AWS Secrets Manager for credentials
 
 ## Results & Metrics
-- **24/7 Availability**: Continuous student support with context-aware responses
-- **Multi-format Support**: Processes PDFs, presentations, documents, images, and video content
-- **Real-time Evaluation**: Integrated feedback system with human and automated assessment
-- **Personalized Learning**: Adaptive quiz generation and individualized response tailoring
-- **Academic Integration**: Successfully deployed for INFO 5731 course at University of North Texas
+
+- **24/7 Availability**: Continuous student support
+- **12,760+ Document Chunks**: Indexed from course materials
+- **43 Sources**: PDFs, PPTX, Jupyter notebooks
+- **Multi-format Processing**: PDF, DOCX, PPTX, IPYNB, HTML
 
 ---
 
-## Architecture Overview
-![RAG Pipeline](https://github.com/user-attachments/assets/856dca10-e7c4-42e5-ac78-f39ca13ee96a)
-
-## Features
-- **Conversational AI Tutor**: Natural language Q&A with course materials
-- **Research Mode**: Multi-format document upload and indexing
-- **Automated Quiz Generation**: On-demand assessments with instant feedback
-- **Smart Retrieval**: Metadata tagging and context-aware search
-- **Content Download**: Access to processed materials and generated content
-- **Continuous Improvement**: Built-in feedback collection and evaluation
-
-## Getting Started - Detailed Setup
-
-### Requirements
-- Python 3.9+
-- [LlamaIndex](https://www.llamaindex.ai/)
-- [Ollama](https://ollama.ai/)
-- [HuggingFace Transformers](https://huggingface.co/)
-- [ChromaDB](https://www.trychroma.com/)
-- [Streamlit](https://streamlit.io/)
-- [Evidently AI](https://www.evidentlyai.com/)
-- [Langfuse](https://langfuse.com/)
-
-### Installation
-```bash
-pip install -r requirements.txt
-```
-
-*INFO 5731 - Computational Methods for Information Systems | University of North Texas, Spring 2025*
+*INFO 5731 - Computational Methods for Information Systems | University of North Texas*
