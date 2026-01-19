@@ -4,7 +4,7 @@
 # https://docs.coderabbit.ai/
 
 reviews:
-  profile: "chill"  # balanced between thoroughness and speed
+  profile: "chill"
   request_changes_workflow: true
   high_level_summary: true
   auto_title_placeholder: true
