@@ -114,6 +114,7 @@ s3_vector_index.pkl
 *.pkl
 
 # Archive directories
+_archive/
 archive_test_scripts/
 
 # Log directories
