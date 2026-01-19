@@ -1,4 +1,10 @@
-"""Code sandbox API routes for code execution and LLM assistance."""
+"""Code sandbox API routes for code execution and LLM assistance.
+
+This module provides endpoints for:
+- Code generation using AWS Bedrock Llama 3.2
+- Code explanation and debugging
+- Code-related chat assistance
+"""
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
