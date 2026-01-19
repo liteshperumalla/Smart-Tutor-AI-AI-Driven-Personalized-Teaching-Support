@@ -1,5 +1,9 @@
 name: CodeRabbit Code Review
 
+# Note: CodeRabbit reviews are configured via the CodeRabbit GitHub App
+# This workflow is a placeholder that can trigger reviews on demand
+# https://coderabbit.ai -> GitHub App Integration
+
 on:
   pull_request:
     branches: [main, develop]
@@ -7,8 +11,10 @@ on:
     branches: [main, develop]
 
 jobs:
-  coderabbit:
-    name: Code Review
+  # CodeRabbit reviews are handled via the GitHub App
+  # To set up: https://coderabbit.ai -> Settings -> GitHub Integration
+  notify:
+    name: CodeRabbit Review Trigger
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -16,9 +22,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run CodeRabbit Review
-        uses: docker://ghcr.io/coderabbitai/coderabbit-reviewer:latest
-        with:
-          config_path: .coderabbit.yaml
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Create PR marker file
+        run: |
+          echo "CodeRabbit review configured for this PR."
+          echo "To enable automated reviews:"
+          echo "1. Go to https://coderabbit.ai"
+          echo "2. Connect your GitHub repository"
+          echo "3. Enable auto-review in settings"
+          echo ""
+          echo "Configuration files:"
+          echo "  - .coderabbit.yaml (main config)"
+          echo "  - .coderabbit/coderabbit_reviews.yaml (rules)"
+
