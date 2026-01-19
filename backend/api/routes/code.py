@@ -120,8 +120,11 @@ def _get_code_llm():
         return BedrockLLM(
             model_id="us.meta.llama3-2-11b-instruct-v1:0", region=config.AWS_REGION
         )
-    except (ImportError, ValueError, RuntimeError) as e:
-        logger.error("Failed to initialize Bedrock LLM: %s", str(e))
+    except (ImportError, ValueError, RuntimeError):
+        logger.exception("Failed to initialize Bedrock LLM")
+        return None
+    except Exception:
+        logger.exception("Unexpected error initializing Bedrock LLM")
         return None
     except Exception as e:
         logger.error("Unexpected error initializing Bedrock LLM: %s", str(e))
@@ -129,7 +132,10 @@ def _get_code_llm():
 
 
 def _execute_python_code(code: str) -> tuple[str, bool]:
-    """Execute Python code safely.
+    """Execute Python code.
+
+    Note: This function is NOT sandboxed. Use only with trusted input.
+    The exec() call has access to built-in functions like print().
 
     Args:
         code: Python code string to execute.
@@ -142,10 +148,10 @@ def _execute_python_code(code: str) -> tuple[str, bool]:
         with contextlib.redirect_stdout(output):
             exec(code, {"__builtins__": __builtins__, "print": print})
         return output.getvalue(), True
-    except SyntaxError as e:
-        return f"Syntax Error: {e}\n{traceback.format_exc()}", False
-    except (NameError, TypeError, ValueError, AttributeError) as e:
-        return f"Runtime Error: {e}\n{traceback.format_exc()}", False
+    except SyntaxError:
+        return f"Syntax Error:\n{traceback.format_exc()}", False
+    except (NameError, TypeError, ValueError, AttributeError):
+        return f"Runtime Error:\n{traceback.format_exc()}", False
     except Exception:
         return f"Error during execution:\n{traceback.format_exc()}", False
 
