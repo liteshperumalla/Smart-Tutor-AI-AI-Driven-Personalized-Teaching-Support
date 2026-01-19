@@ -16,8 +16,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run CodeRabbit
-        uses: coderabbitai/coderabbit-action@main
+      - name: Run CodeRabbit Review
+        uses: docker://ghcr.io/coderabbitai/coderabbit-reviewer:latest
         with:
           config_path: .coderabbit.yaml
         env:
