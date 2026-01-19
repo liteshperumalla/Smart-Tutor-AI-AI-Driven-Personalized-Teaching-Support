@@ -4,20 +4,22 @@ This project uses [CodeRabbit](https://coderabbit.ai) for AI-powered code review
 
 ## Setup
 
-### 1. Get CodeRabbit API Key
+### 1. Install CodeRabbit GitHub App
 
-1. Sign up at [coderabbit.ai](https://coderabbit.ai)
-2. Connect your GitHub account
-3. Copy your API key from the dashboard
+1. Go to [coderabbit.ai](https://coderabbit.ai)
+2. Click "Connect GitHub" and authorize the app
+3. Select this repository: `Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support`
+4. Configure review settings in the CodeRabbit dashboard
 
-### 2. Add API Key to GitHub Secrets
+### 2. API Key Setup (Optional for CLI)
 
-1. Go to your repository settings → Secrets and variables → Actions
-2. Add a new secret:
-   - Name: `OPENAI_API_KEY` (or `CODERABBIT_API_KEY`)
-   - Value: Your CodeRabbit API key
+Get your API key from [coderabbit.ai](https://coderabbit.ai) → Settings → API Key
 
-### 3. Configure CodeRabbit
+Add to GitHub secrets:
+- **Name**: `OPENAI_API_KEY` (or `CODERABBIT_API_KEY`)
+- **Value**: Your CodeRabbit API key
+
+### 3. Configure Review Rules
 
 Edit `.coderabbit.yaml` to customize:
 - Review profile (chill, balanced, thorough)
@@ -25,37 +27,25 @@ Edit `.coderabbit.yaml` to customize:
 - Categories to review
 - Files to ignore
 
-## Running Locally
+## Features
 
-### Install CodeRabbit CLI
+| Feature | Description |
+|---------|-------------|
+| **Line-by-line review** | AI analyzes each changed file |
+| **Security scanning** | Finds vulnerabilities and secrets |
+| **Performance tips** | Suggests optimizations |
+| **Bug detection** | Identifies potential bugs |
+| **Style suggestions** | Code style improvements |
+| **Sequence diagrams** | Visualizes complex logic |
 
-```bash
-pip install coderabbitai
-```
+## GitHub Integration
 
-### Run a Review
+Once the GitHub App is connected, CodeRabbit will automatically:
 
-```bash
-# Review all changed files
-coderabbit review
-
-# Review specific files
-coderabbit review --files backend/api/routes/code.py frontend/src/app/code/page.tsx
-
-# With a specific config
-coderabbit review --config .coderabbit.yaml
-```
-
-## Review Categories
-
-CodeRabbit reviews for:
-- **Security** - Vulnerabilities, secret exposure, injection risks
-- **Performance** - Inefficient code, resource leaks
-- **Best Practices** - Modern patterns, clean code
-- **Bugs** - Potential bugs, edge cases
-- **Style** - Code style, naming conventions
-- **Documentation** - Missing docs, unclear comments
-- **Test Coverage** - Test suggestions
+1. **Review PRs** - Adds comments on changed files
+2. **Post summary** - Overview of findings in PR conversation
+3. **Show walkthroughs** - Sequence diagrams for complex changes
+4. **Track suggestions** - Mark suggestions as resolved
 
 ## Configuration Files
 
@@ -63,28 +53,68 @@ CodeRabbit reviews for:
 |------|---------|
 | `.coderabbit.yaml` | Main configuration |
 | `.coderabbit/coderabbit_reviews.yaml` | Review rules |
-
-## GitHub Integration
-
-CodeRabbit automatically reviews:
-- Pull requests to `main` and `develop`
-- Pushes to `main` and `develop`
-
-Results appear as:
-- PR comments with line-by-line feedback
-- Summary in PR conversation
-- Status check on the PR
-
-## Tips
-
-1. **Be specific**: CodeRabbit learns from your feedback on its reviews
-2. **Use walkthroughs**: Enable sequence diagrams for complex changes
-3. **Customize rules**: Adjust rules in `coderabbit_reviews.yaml`
-4. **Ignore files**: Add patterns to `.coderabbit.yaml` ignore list
+| `.github/workflows/coderabbit.yml` | CI/CD workflow (placeholder) |
 
 ## Supported Languages
 
-- Python (backend)
-- TypeScript/JavaScript (frontend)
-- YAML/JSON configs
-- Markdown documentation
+- **Python** - Backend APIs, scripts
+- **TypeScript/JavaScript** - Frontend React components
+- **YAML/JSON** - Config files
+- **Markdown** - Documentation
+
+## Review Categories
+
+CodeRabbit checks for:
+
+| Category | What it catches |
+|----------|-----------------|
+| **Security** | Hardcoded secrets, SQL injection, unsafe deserialization |
+| **Performance** | Inefficient loops, N+1 queries, missing caching |
+| **Best Practices** | Type hints, docstrings, context managers |
+| **Bugs** | Null handling, edge cases, exception types |
+| **Style** | Naming conventions, code organization |
+| **Tests** | Test coverage gaps, missing assertions |
+| **Documentation** | Unclear comments, missing docstrings |
+
+## Tips
+
+1. **Respond to reviews**: CodeRabbit learns from your feedback
+2. **Use walkthroughs**: Enable for complex refactoring PRs
+3. **Customize rules**: Adjust rules in `coderabbit_reviews.yaml`
+4. **Ignore files**: Add patterns to `.coderabbit.yaml` ignore list
+
+## Troubleshooting
+
+### CodeRabbit not reviewing PRs?
+
+1. Check GitHub App permissions in repository settings
+2. Verify repository is connected in CodeRabbit dashboard
+3. Ensure PR is open (not draft)
+
+### Want CLI reviews?
+
+```bash
+# Install via npm (if available)
+npm install -g @coderabbitai/cli
+
+# Or use via npx
+npx @coderabbitai/cli review
+```
+
+## Example Review Output
+
+```
+📝 Code Review Summary
+
+🐰 CodeRabbit reviewed 12 files
+
+✅ Found 3 suggestions:
+  • security: Use environment variables for API keys
+  • performance: Cache database connections
+  • style: Rename 'calc' to 'calculate_total'
+
+📊 Categories:
+  security: 1 warning
+  performance: 1 suggestion
+  best_practices: 1 info
+```
