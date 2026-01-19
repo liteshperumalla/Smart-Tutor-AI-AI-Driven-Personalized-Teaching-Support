@@ -4,22 +4,20 @@
 # https://docs.coderabbit.ai/
 
 reviews:
-  profile: "chill"
+  profile: chill
   request_changes_workflow: true
   high_level_summary: true
-  auto_title_placeholder: true
+  auto_title_placeholder: "[Review]"
   review_status: true
   poem: false
   collapse_walkthrough: false
   sequence_diagrams: true
 
-  # What to review
   show_variable_types: true
   show_constants: true
   show_function_arguments: true
   show_timing: true
 
-# Categories of checks
 categories:
   security:
     enabled: true
@@ -36,14 +34,12 @@ categories:
   test_coverage:
     enabled: true
 
-# Path filters
 path_filters:
   python:
-    - "backend/**"
+    - backend/**
   typescript:
-    - "frontend/**"
+    - frontend/**
 
-# Ignore certain files/directories
 ignore:
   - "**/node_modules/**"
   - "**/venv/**"
@@ -51,5 +47,3 @@ ignore:
   - "**/__pycache__/**"
   - "**/dist/**"
   - "**/build/**"
-  - "**/*.min.js"
-  - "**/*.min.css"
