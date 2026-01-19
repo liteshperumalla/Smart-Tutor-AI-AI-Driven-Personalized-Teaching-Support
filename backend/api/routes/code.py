@@ -154,7 +154,14 @@ def _execute_python_code(code: str) -> tuple[str, bool]:
 
 
 def _execute_javascript_code(code: str) -> tuple[str, bool]:
-    """Execute JavaScript code using Node.js."""
+    """Execute JavaScript code using Node.js.
+
+    Args:
+        code: JavaScript code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as tmp:
         tmp.write(code)
         tmp_path = tmp.name
@@ -164,23 +171,31 @@ def _execute_javascript_code(code: str) -> tuple[str, bool]:
         )
         if result.returncode == 0:
             return result.stdout or "(no output)", True
-        else:
-            return f"Error:\n{result.stderr}", False
+        return f"Error:\n{result.stderr}", False
     except subprocess.TimeoutExpired:
         return "Error: Execution timed out (10 seconds)", False
     except FileNotFoundError:
         return "Error: Node.js is not installed or not in PATH", False
-    except Exception as e:
-        return f"Error running JavaScript: {e}", False
+    except OSError:
+        return "Error: Unable to execute JavaScript (system error)", False
+    except Exception:
+        return f"Error running JavaScript:\n{traceback.format_exc()}", False
     finally:
         try:
             os.remove(tmp_path)
-        except Exception:
+        except OSError:
             pass
 
 
 def _execute_java_code(code: str) -> tuple[str, bool]:
-    """Execute Java code."""
+    """Execute Java code.
+
+    Args:
+        code: Java code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
     class_name = "Main"
     if f"class {class_name}" not in code:
         code = f"public class {class_name} {{\npublic static void main(String[] args) {{\n{code}\n}}\n}}"
@@ -204,14 +219,15 @@ def _execute_java_code(code: str) -> tuple[str, bool]:
             )
             if run_proc.returncode == 0:
                 return run_proc.stdout or "(no output)", True
-            else:
-                return f"Runtime Error:\n{run_proc.stderr}", False
+            return f"Runtime Error:\n{run_proc.stderr}", False
         except subprocess.TimeoutExpired:
             return "Error: Execution timed out (10 seconds)", False
         except FileNotFoundError:
             return "Error: Java is not installed or not in PATH", False
-        except Exception as e:
-            return f"Error running Java: {e}", False
+        except OSError:
+            return "Error: Unable to execute Java (system error)", False
+        except Exception:
+            return f"Error running Java:\n{traceback.format_exc()}", False
 
 
 def _execute_code(code: str, language: str) -> tuple[str, bool]:
