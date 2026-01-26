@@ -63,16 +63,9 @@ export default function AppointmentsPage() {
   }
 
   return (
-    <PageShell className="max-w-4xl" contentClassName="gap-8">
-      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-        <div className="absolute top-0 right-0 h-64 w-64 bg-amber-400/20 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-orange-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
+    <PageShell className="max-w-4xl" contentClassName="gap-8" noCard>
+      <header className="relative overflow-hidden rounded-full p-12 animate-fade-in-down">
         <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/80 px-4 py-2 text-sm font-medium text-amber-700 backdrop-blur dark:border-amber-800 dark:bg-zinc-900/80 dark:text-amber-300 mb-4">
-            <Calendar className="h-4 w-4" />
-            Appointments
-          </div>
           <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
             Schedule time with the teaching team
           </h1>
@@ -82,8 +75,9 @@ export default function AppointmentsPage() {
         </div>
       </header>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-medium text-zinc-900">Request an appointment</h2>
+        
         <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
             <input name="name" placeholder="Your name" className="input" required />
@@ -114,7 +108,7 @@ export default function AppointmentsPage() {
           />
 
           {formState.error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/30">
+            <div className="rounded-full-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/30">
               <div className="flex items-start gap-3">
                 <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -127,7 +121,7 @@ export default function AppointmentsPage() {
             </div>
           )}
           {formState.success && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/30">
+            <div className="rounded-full-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/30">
               <div className="flex items-start gap-3">
                 <svg className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -143,10 +137,10 @@ export default function AppointmentsPage() {
           <button
             type="submit"
             disabled={formState.loading}
-            className="btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+            className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
             {formState.loading ? (
-              <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Submitting…</>
+              <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Submitting…</>
             ) : (
               <>Submit request <span className="transition-transform group-hover:translate-x-1">→</span></>
             )}
@@ -154,7 +148,7 @@ export default function AppointmentsPage() {
         </form>
       </section>
 
-      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <section className="rounded-full-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-medium text-zinc-900">Your appointment history</h2>
@@ -169,14 +163,14 @@ export default function AppointmentsPage() {
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 animate-pulse">
+                <div key={i} className="rounded-xl-zinc-100 bg-zinc-50 p-4 animate-pulse">
                   <div className="h-4 w-1/3 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
                   <div className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
                 </div>
               ))}
             </div>
           ) : appointments.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+            <div className="rounded-xl-2-dashed-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
               <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
                 <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -188,7 +182,7 @@ export default function AppointmentsPage() {
           ) : (
             <>
               {appointments.map((appt) => (
-                <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700">
+                <div key={appt.id} className="rounded-xl-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700">
                   <p className="font-semibold text-zinc-900">{appt.appointment_with}</p>
                   <p className="text-xs text-zinc-500">
                     {appt.preferred_date} at {appt.preferred_time} · {appt.primary_reason}

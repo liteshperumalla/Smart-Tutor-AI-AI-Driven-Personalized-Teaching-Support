@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useState, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,11 +9,30 @@ import {
   createChatSession,
   getApiBaseUrl,
   listChatSessions,
+  getSessionFeedback,
+  MessageFeedbackType,
+  SessionFeedbackMap,
+  deleteChatSession,
+  renameChatSession,
+  pinChatSession,
+  archiveChatSession,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
 import { PageShell } from "@/components/page-shell";
-import { Plus, RotateCcw, MessageCircle, User, Bot, Send, Trash2 } from "lucide-react";
+import {
+  MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
+  Globe, Paperclip, Feather, ChevronRight, Image, FileText
+} from "lucide-react";
+import { ResponseActionBar } from "@/components/chat/response-action-bar";
+import { SourcesSidebar } from "@/components/chat/sources-sidebar";
+import { ShareModal } from "@/components/chat/share-modal";
+import { ReportModal } from "@/components/chat/report-modal";
+import { ShareChatModal } from "@/components/chat/share-chat-modal";
+import { ChatHeaderActions } from "@/components/chat/chat-header-actions";
+import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
+import { RenameChatModal } from "@/components/chat/rename-chat-modal";
+import { UserMessageActions, EditableUserMessage } from "@/components/chat/user-message-actions";
 
 function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
@@ -26,6 +45,81 @@ function ChatWorkspaceContent() {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const [viewerTitle, setViewerTitle] = useState<string | null>(null);
+
+  // Feedback and action bar state
+  const [feedbackMap, setFeedbackMap] = useState<SessionFeedbackMap>({});
+  const [sourcesSidebarOpen, setSourcesSidebarOpen] = useState(false);
+  const [selectedSources, setSelectedSources] = useState<Array<Record<string, unknown>>>([]);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareModalMessage, setShareModalMessage] = useState("");
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportMessageIndex, setReportMessageIndex] = useState<number>(0);
+  const [shareChatModalOpen, setShareChatModalOpen] = useState(false);
+  const [deleteChatModalOpen, setDeleteChatModalOpen] = useState(false);
+  const [isDeletingChat, setIsDeletingChat] = useState(false);
+  const [renameChatModalOpen, setRenameChatModalOpen] = useState(false);
+  const [isRenamingChat, setIsRenamingChat] = useState(false);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [isEditSending, setIsEditSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [regeneratingMessageIndex, setRegeneratingMessageIndex] = useState<number | null>(null);
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet");
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+
+  // Plus menu state
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true); // On by default
+  const [selectedStyle, setSelectedStyle] = useState("normal");
+  const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Response styles for students
+  const RESPONSE_STYLES = [
+    { id: "normal", name: "Normal", description: "Standard balanced responses" },
+    { id: "learning", name: "Learning", description: "Step-by-step explanations with examples" },
+    { id: "concise", name: "Concise", description: "Brief, to-the-point answers" },
+    { id: "explanatory", name: "Explanatory", description: "Detailed explanations with context" },
+    { id: "formal", name: "Formal", description: "Academic and professional tone" },
+  ];
+
+  const currentStyle = RESPONSE_STYLES.find(s => s.id === selectedStyle) || RESPONSE_STYLES[0];
+
+  // Available LLM models
+  const LLM_MODELS = [
+    {
+      id: "claude-sonnet",
+      name: "Claude 3.5 Sonnet",
+      shortName: "Sonnet 3.5",
+      description: "Most capable, best for complex tasks",
+      modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      isDefault: true,
+    },
+    {
+      id: "claude-haiku",
+      name: "Claude 3 Haiku",
+      shortName: "Haiku 3",
+      description: "Fast and lightweight",
+      modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+      badge: "Fast",
+    },
+    {
+      id: "llama-70b",
+      name: "Llama 3.1 70B",
+      shortName: "Llama 70B",
+      description: "Open source alternative",
+      modelId: "meta.llama3-1-70b-instruct-v1:0",
+      badge: "Open",
+    },
+  ];
+
+  const currentModel = LLM_MODELS.find(m => m.id === selectedModel) || LLM_MODELS[0];
+
+  // Speech recognition ref (using any to avoid TypeScript issues with Web Speech API)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   const refreshSessions = useCallback(async () => {
     if (!token) {
@@ -58,15 +152,86 @@ function ChatWorkspaceContent() {
     };
   }, [refreshSessions]);
 
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, []);
+
+  // Close model dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    if (modelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [modelDropdownOpen]);
+
+  // Close plus menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (plusMenuRef.current && !plusMenuRef.current.contains(event.target as Node)) {
+        setPlusMenuOpen(false);
+        setStyleSubmenuOpen(false);
+      }
+    };
+    if (plusMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [plusMenuOpen]);
+
+  // Handle file upload
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      setUploadedFiles(prev => [...prev, ...Array.from(files)]);
+    }
+    setPlusMenuOpen(false);
+  }, []);
+
+  const removeUploadedFile = useCallback((index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Fetch feedback when session changes
+  useEffect(() => {
+    if (!token || !selectedSessionId) {
+      setFeedbackMap({});
+      return;
+    }
+
+    const fetchFeedback = async () => {
+      try {
+        const response = await getSessionFeedback({
+          token,
+          sessionId: selectedSessionId,
+        });
+        setFeedbackMap(response.feedback || {});
+      } catch (err) {
+        console.error("Failed to fetch feedback:", err);
+        setFeedbackMap({});
+      }
+    };
+
+    fetchFeedback();
+  }, [token, selectedSessionId]);
+
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) || null,
     [sessions, selectedSessionId]
   );
-  const sessionStatusLabel = !activeSession
-    ? "No session selected"
-    : activeSession.messages.length === 0
-    ? "Start a conversation"
-    : "Current conversation";
 
   async function handleCreateSession() {
     if (!token) return;
@@ -124,6 +289,10 @@ function ChatWorkspaceContent() {
 
     try {
       const apiBaseUrl = getApiBaseUrl();
+      // Use AbortController with 5 minute timeout for initial S3 index download
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+
       const response = await fetch(
         `${apiBaseUrl}/chat/sessions/${selectedSessionId}/messages`,
         {
@@ -132,9 +301,12 @@ function ChatWorkspaceContent() {
             "Content-Type": "application/json",
           },
           credentials: "include", // Use HttpOnly cookies for authentication
-          body: JSON.stringify({ query: content }),
+          body: JSON.stringify({ query: content, model_id: currentModel.modelId }),
+          signal: controller.signal,
         }
       );
+
+      clearTimeout(timeoutId);
 
       if (!response.ok || !response.body) {
         throw new Error("Chat endpoint unavailable");
@@ -188,191 +360,837 @@ function ChatWorkspaceContent() {
     }
   }
 
+  // Action bar handlers
+  const handleFeedbackChange = useCallback(
+    (messageIndex: number, feedback: MessageFeedbackType | null) => {
+      setFeedbackMap((prev) => {
+        const next = { ...prev };
+        if (feedback) {
+          next[messageIndex] = feedback;
+        } else {
+          delete next[messageIndex];
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleOpenSources = useCallback((sources: Array<Record<string, unknown>>) => {
+    setSelectedSources(sources);
+    setSourcesSidebarOpen(true);
+  }, []);
+
+  const handleOpenShare = useCallback((messageContent: string) => {
+    setShareModalMessage(messageContent);
+    setShareModalOpen(true);
+  }, []);
+
+  const handleOpenReport = useCallback((messageIndex: number) => {
+    setReportMessageIndex(messageIndex);
+    setReportModalOpen(true);
+  }, []);
+
+  const handleDeleteChat = useCallback(async () => {
+    if (!token || !selectedSessionId) return;
+    setIsDeletingChat(true);
+    try {
+      await deleteChatSession(token, selectedSessionId);
+      setDeleteChatModalOpen(false);
+      // Select next session or clear selection
+      const remainingSessions = sessions.filter(s => s.id !== selectedSessionId);
+      if (remainingSessions.length > 0) {
+        setSelectedSessionId(remainingSessions[0].id);
+      } else {
+        setSelectedSessionId(null);
+      }
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      console.error("Failed to delete chat:", error);
+    } finally {
+      setIsDeletingChat(false);
+    }
+  }, [token, selectedSessionId, sessions, refreshSessions]);
+
+  const handleRenameChat = useCallback(() => {
+    setRenameChatModalOpen(true);
+  }, []);
+
+  const handlePinChat = useCallback(async () => {
+    if (!token || !activeSession) return;
+    try {
+      await pinChatSession(token, activeSession.id, !activeSession.is_pinned);
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      console.error("Failed to pin chat:", error);
+    }
+  }, [token, activeSession, refreshSessions]);
+
+  const handleArchiveChat = useCallback(async () => {
+    if (!token || !activeSession) return;
+    try {
+      await archiveChatSession(token, activeSession.id, !activeSession.is_archived);
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      console.error("Failed to archive chat:", error);
+    }
+  }, [token, activeSession, refreshSessions]);
+
+  const handleConfirmRename = useCallback(async (newTitle: string) => {
+    if (!token || !activeSession) return;
+    setIsRenamingChat(true);
+    try {
+      await renameChatSession(token, activeSession.id, newTitle);
+      setRenameChatModalOpen(false);
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      console.error("Failed to rename chat:", error);
+    } finally {
+      setIsRenamingChat(false);
+    }
+  }, [token, activeSession, refreshSessions]);
+
+  // Handle editing and resending a user message
+  const handleEditMessage = useCallback(async (messageIndex: number, newContent: string) => {
+    if (!token || !selectedSessionId || isStreaming || isEditSending) return;
+
+    setIsEditSending(true);
+    setStreamError(null);
+
+    // Remove messages from the edited message onwards (keep messages before it)
+    // The edited message will be the new user message
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === selectedSessionId
+          ? {
+              ...session,
+              messages: session.messages.slice(0, messageIndex),
+            }
+          : session
+      )
+    );
+
+    // Create new user message and assistant placeholder
+    const userMessage: ChatMessageDTO = {
+      role: "user",
+      content: newContent,
+      timestamp: new Date().toISOString(),
+    };
+
+    const assistantMessage: ChatMessageDTO = {
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    };
+
+    // Add the new messages
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === selectedSessionId
+          ? {
+              ...session,
+              messages: [...session.messages, userMessage, assistantMessage],
+              updated_at: new Date().toISOString(),
+            }
+          : session
+      )
+    );
+
+    setEditingMessageIndex(null);
+    setIsStreaming(true);
+
+    try {
+      const apiBaseUrl = getApiBaseUrl();
+      // Use AbortController with 5 minute timeout for initial S3 index download
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+
+      const response = await fetch(
+        `${apiBaseUrl}/chat/sessions/${selectedSessionId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ query: newContent, model_id: currentModel.modelId }),
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok || !response.body) {
+        throw new Error("Chat endpoint unavailable");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        assistantText += decoder.decode(value, { stream: true });
+        const latestText = assistantText;
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === selectedSessionId
+              ? {
+                  ...session,
+                  messages: session.messages.map((message, index, arr) =>
+                    index === arr.length - 1 ? { ...message, content: latestText } : message
+                  ),
+                }
+              : session
+          )
+        );
+      }
+
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      const errMessage =
+        error instanceof Error ? error.message : "Unable to stream a response";
+      setStreamError(errMessage);
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === selectedSessionId
+            ? {
+                ...session,
+                messages: session.messages.map((message, index, arr) =>
+                  index === arr.length - 1
+                    ? { ...message, content: `Error: ${errMessage}` }
+                    : message
+                ),
+              }
+            : session
+        )
+      );
+    } finally {
+      setIsStreaming(false);
+      setIsEditSending(false);
+    }
+  }, [token, selectedSessionId, isStreaming, isEditSending, refreshSessions]);
+
+  // Handle regenerating a response (Try Again)
+  const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
+    if (!token || !selectedSessionId || isStreaming || !activeSession) return;
+
+    // Find the user message before this assistant message
+    const userMessageIndex = messageIndex - 1;
+    if (userMessageIndex < 0 || activeSession.messages[userMessageIndex]?.role !== "user") {
+      setStreamError("Cannot regenerate: No user message found before this response.");
+      return;
+    }
+
+    const userQuery = activeSession.messages[userMessageIndex].content;
+    setRegeneratingMessageIndex(messageIndex);
+    setStreamError(null);
+
+    // Keep messages up to and including the user message, then add new assistant placeholder
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === selectedSessionId
+          ? {
+              ...session,
+              messages: [
+                ...session.messages.slice(0, messageIndex),
+                { role: "assistant" as const, content: "", timestamp: new Date().toISOString() },
+              ],
+            }
+          : session
+      )
+    );
+
+    setIsStreaming(true);
+
+    try {
+      const apiBaseUrl = getApiBaseUrl();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+      const response = await fetch(
+        `${apiBaseUrl}/chat/sessions/${selectedSessionId}/messages`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ query: userQuery, model_id: currentModel.modelId }),
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok || !response.body) {
+        throw new Error("Chat endpoint unavailable");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        assistantText += decoder.decode(value, { stream: true });
+        const latestText = assistantText;
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.id === selectedSessionId
+              ? {
+                  ...session,
+                  messages: session.messages.map((message, index) =>
+                    index === messageIndex ? { ...message, content: latestText } : message
+                  ),
+                }
+              : session
+          )
+        );
+      }
+
+      await refreshSessions();
+      dispatchChatSessionsUpdated();
+    } catch (error) {
+      const errMessage = error instanceof Error ? error.message : "Unable to regenerate response";
+      setStreamError(errMessage);
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === selectedSessionId
+            ? {
+                ...session,
+                messages: session.messages.map((message, index) =>
+                  index === messageIndex ? { ...message, content: `Error: ${errMessage}` } : message
+                ),
+              }
+            : session
+        )
+      );
+    } finally {
+      setIsStreaming(false);
+      setRegeneratingMessageIndex(null);
+    }
+  }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions]);
+
+  // Speech recognition handler
+  const handleToggleDictation = useCallback(() => {
+    // Check if speech recognition is supported
+    const SpeechRecognition = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
+                              (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setStreamError("Speech recognition is not supported in your browser. Try using Chrome or Edge.");
+      return;
+    }
+
+    if (isListening) {
+      // Stop listening
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    // Start listening
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      // Append transcribed text to composer
+      if (finalTranscript) {
+        setComposerText((prev) => prev + (prev ? ' ' : '') + finalTranscript.trim());
+      }
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'not-allowed') {
+        setStreamError("Microphone access denied. Please allow microphone access in your browser settings.");
+      } else if (event.error !== 'aborted') {
+        setStreamError(`Speech recognition error: ${event.error}`);
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [isListening]);
+
+  const hasMessages = activeSession && activeSession.messages.length > 0;
+
   return (
-    <PageShell className="max-w-5xl" contentClassName="gap-6">
-      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-        <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-purple-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300 mb-4">
-            <div className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400"></div>
-            Chat Workspace
+    <PageShell className="max-w-4xl mx-auto" contentClassName="gap-0 h-full" noCard>
+      <div className="flex flex-col h-full animate-fade-in-up">
+        {/* Header with Share button and menu */}
+        {activeSession && (
+          <div className="flex items-center px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-700/50">
+            <ChatHeaderActions
+              sessionTitle={activeSession.title}
+              onShareClick={() => setShareChatModalOpen(true)}
+              onDeleteClick={() => setDeleteChatModalOpen(true)}
+              onRenameClick={handleRenameChat}
+              onPinClick={handlePinChat}
+              onArchiveClick={handleArchiveChat}
+              isPinned={activeSession.is_pinned}
+              isArchived={activeSession.is_archived}
+              hasActiveSession={!!activeSession}
+            />
           </div>
-          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
-            Course-aware assistant
-          </h1>
-          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            Get instant help with course concepts, homework, and research questions
-          </p>
+        )}
 
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={handleCreateSession}
-              disabled={isCreatingSession}
-              className="btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 flex items-center gap-2"
-            >
-              {isCreatingSession ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Creating…</>
-              ) : (
-                <><Plus className="h-4 w-4" /> Start new session <span className="transition-transform group-hover:translate-x-1">→</span></>
+        {/* Error banner */}
+        {streamError && (
+          <div className="mx-4 mt-4 rounded-xl bg-red-500/10-red-500/20 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <svg className="h-5 w-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-red-400 flex-1">{streamError}</p>
+              <button
+                type="button"
+                onClick={() => setStreamError(null)}
+                className="text-sm font-medium text-red-400 hover:text-red-300"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main content area */}
+        <div className="flex-1 overflow-y-auto flex flex-col">
+          {/* Welcome screen when no messages */}
+          {(!activeSession || !hasMessages) && (
+            <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
+              <h1 className="text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
+                Hi there
+              </h1>
+              <p className="text-xl text-zinc-500 dark:text-zinc-400">
+                What would you like to learn today?
+              </p>
+            </div>
+          )}
+
+          {/* Messages */}
+          {hasMessages && (
+            <div className="px-4 py-6 space-y-6">
+              {activeSession.messages.map((message, index) => {
+                const isLastMessage = index === activeSession.messages.length - 1;
+                const isStreamingMessage = isLastMessage && isStreaming && message.role === "assistant";
+                const isEditingThisMessage = editingMessageIndex === index;
+
+                return (
+                  <ChatBubble
+                    key={`${message.timestamp}-${index}`}
+                    message={message}
+                    messageIndex={index}
+                    sessionId={selectedSessionId!}
+                    token={token}
+                    isStreaming={isStreamingMessage}
+                    currentFeedback={feedbackMap[index] || null}
+                    onFeedbackChange={(feedback) => handleFeedbackChange(index, feedback)}
+                    onOpenSources={handleOpenSources}
+                    onOpenShare={handleOpenShare}
+                    onOpenReport={handleOpenReport}
+                    onOpenViewer={(url, title) => {
+                      setViewerUrl(url);
+                      setViewerTitle(title);
+                    }}
+                    // User message edit props
+                    isEditing={isEditingThisMessage}
+                    isEditSending={isEditSending}
+                    onStartEdit={() => setEditingMessageIndex(index)}
+                    onCancelEdit={() => setEditingMessageIndex(null)}
+                    onConfirmEdit={(newContent) => handleEditMessage(index, newContent)}
+                    // Regenerate props
+                    onRegenerateClick={message.role === "assistant" ? () => handleRegenerateMessage(index) : undefined}
+                    isRegenerating={regeneratingMessageIndex === index}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Input area - fixed at bottom */}
+        <div className="px-4 pb-6 pt-2">
+          {isListening ? (
+            /* Dictation mode - waveform animation */
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3">
+              <div className="flex items-center gap-4">
+                {/* Plus button */}
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+
+                {/* Audio waveform animation */}
+                <div className="flex-1 flex items-center justify-center h-8 gap-[2px]">
+                  {Array.from({ length: 80 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-[2px] bg-zinc-500 rounded-full animate-waveform"
+                      style={{
+                        height: `${Math.random() * 20 + 4}px`,
+                        animationDelay: `${i * 20}ms`,
+                        animationDuration: `${300 + Math.random() * 200}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Cancel button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
+                    setComposerText(""); // Clear any transcribed text
+                  }}
+                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  title="Cancel dictation"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                {/* Confirm/Send button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
+                    // Submit if there's text
+                    if (composerText.trim() && activeSession) {
+                      const fakeEvent = { preventDefault: () => {} } as React.FormEvent<HTMLFormElement>;
+                      handleSendMessage(fakeEvent);
+                    }
+                  }}
+                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  title="Send message"
+                >
+                  <Check className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Normal input mode - ChatGPT-style single line */
+            <form onSubmit={handleSendMessage}>
+              {/* Uploaded files preview */}
+              {uploadedFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2 px-2">
+                  {uploadedFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-sm"
+                    >
+                      {file.type.startsWith('image/') ? (
+                        <Image className="h-4 w-4 text-zinc-500" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-zinc-500" />
+                      )}
+                      <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[150px]">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeUploadedFile(index)}
+                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
-            </button>
-            <button
-              type="button"
-              onClick={refreshSessions}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <RotateCcw className="h-4 w-4" /> Refresh
-            </button>
-          </div>
-        </div>
-      </header>
 
-      <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 animate-fade-in-up">
-        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4 dark:border-zinc-800">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">{sessionStatusLabel}</p>
-            <h2 className="text-2xl font-semibold text-zinc-900 dark:text-white">
-              {activeSession ? activeSession.title : "Create a new session"}
-            </h2>
-          </div>
-          <span
-            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-medium ${
-              isStreaming
-                ? "badge-success"
-                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-            }`}
-          >
-            <span className={`h-2 w-2 rounded-full bg-current ${isStreaming ? 'animate-pulse' : ''}`} />
-            {isStreaming ? "Streaming" : "Idle"}
-          </span>
-        </div>
+              {/* Active options indicator */}
+              {(webSearchEnabled || selectedStyle !== 'normal') && (
+                <div className="flex items-center gap-2 mb-2 px-2">
+                  {webSearchEnabled && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs">
+                      <Globe className="h-3 w-3" />
+                      Web search
+                    </span>
+                  )}
+                  {selectedStyle !== 'normal' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
+                      <Feather className="h-3 w-3" />
+                      {currentStyle.name}
+                    </span>
+                  )}
+                </div>
+              )}
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
-          {streamError && (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/30">
-              <div className="flex items-start gap-3">
-                <svg className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Unable to get response</p>
-                  <p className="text-sm text-red-600 dark:text-red-400/80 mt-1">{streamError}</p>
+              <div className="flex items-center gap-3 rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 focus-within:border-zinc-300 focus-within:bg-white transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-800">
+                {/* Plus Menu Button (Left side) */}
+                <div className="relative" ref={plusMenuRef}>
                   <button
                     type="button"
-                    onClick={() => setStreamError(null)}
-                    className="mt-2 text-sm font-medium text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                    onClick={() => {
+                      setPlusMenuOpen(!plusMenuOpen);
+                      setStyleSubmenuOpen(false);
+                    }}
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition"
+                    title="More options"
                   >
-                    Dismiss
+                    <Plus className={`h-5 w-5 transition-transform ${plusMenuOpen ? 'rotate-45' : ''}`} />
+                  </button>
+
+                  {/* Plus Menu Dropdown */}
+                  {plusMenuOpen && (
+                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-visible z-50 animate-fade-in-up">
+                      {/* Hidden file input */}
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        multiple
+                        accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                      />
+
+                      <div className="py-2">
+                        {/* Add files or photos */}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <Paperclip className="h-5 w-5 text-zinc-500" />
+                          <span className="text-sm">Add files or photos</span>
+                        </button>
+
+                        {/* Divider */}
+                        <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+
+                        {/* Web search toggle */}
+                        <button
+                          type="button"
+                          onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Globe className={`h-5 w-5 ${webSearchEnabled ? 'text-blue-500' : 'text-zinc-500'}`} />
+                            <span className={`text-sm ${webSearchEnabled ? 'text-blue-500 font-medium' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                              Web search
+                            </span>
+                          </div>
+                          {webSearchEnabled && (
+                            <Check className="h-4 w-4 text-blue-500" />
+                          )}
+                        </button>
+
+                        {/* Use style - with submenu */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setStyleSubmenuOpen(!styleSubmenuOpen)}
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Feather className="h-5 w-5 text-zinc-500" />
+                              <span className="text-sm">Use style</span>
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-zinc-400" />
+                          </button>
+
+                          {/* Style submenu */}
+                          {styleSubmenuOpen && (
+                            <div className="absolute left-full top-0 ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+                              <div className="py-2">
+                                {RESPONSE_STYLES.map((style) => (
+                                  <button
+                                    key={style.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedStyle(style.id);
+                                      setStyleSubmenuOpen(false);
+                                      setPlusMenuOpen(false);
+                                    }}
+                                    className={`w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
+                                      selectedStyle === style.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <Feather className={`h-4 w-4 ${selectedStyle === style.id ? 'text-blue-500' : 'text-zinc-500'}`} />
+                                      <span className={`text-sm ${selectedStyle === style.id ? 'text-blue-500 font-medium' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                                        {style.name}
+                                      </span>
+                                    </div>
+                                    {selectedStyle === style.id && (
+                                      <Check className="h-4 w-4 text-blue-500" />
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Input */}
+                <input
+                  type="text"
+                  placeholder={activeSession ? "Ask anything..." : "Create a session to start"}
+                  value={composerText}
+                  disabled={!activeSession || isStreaming}
+                  onChange={(event) => setComposerText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      if (activeSession && composerText.trim() && !isStreaming) {
+                        handleSendMessage(event as unknown as React.FormEvent<HTMLFormElement>);
+                      }
+                    }
+                  }}
+                  className="flex-1 bg-transparent text-base text-zinc-900 outline-none placeholder:text-zinc-500 dark:text-white dark:placeholder:text-zinc-400 caret-zinc-900 dark:caret-white"
+                />
+
+                {/* Right side buttons */}
+                <div className="flex items-center gap-2">
+                  {/* Model Selector Button */}
+                  <div className="relative" ref={modelDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium"
+                      title="Select model"
+                    >
+                      <span>{currentModel.shortName}</span>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Model Dropdown Menu */}
+                    {modelDropdownOpen && (
+                      <div className="absolute bottom-full right-0 mb-2 w-72 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+                        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">Models</p>
+                        </div>
+                        <div className="py-2">
+                          {LLM_MODELS.map((model) => (
+                            <button
+                              key={model.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedModel(model.id);
+                                setModelDropdownOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
+                                selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
+                              }`}
+                            >
+                              <div className="text-left">
+                                <p className="text-sm font-medium text-zinc-900 dark:text-white">{model.name}</p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">{model.description}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {model.badge && (
+                                  <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300 rounded">
+                                    {model.badge}
+                                  </span>
+                                )}
+                                {selectedModel === model.id && (
+                                  <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+                                    <Check className="h-3 w-3 text-white" />
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dictate Button */}
+                  <button
+                    type="button"
+                    onClick={handleToggleDictation}
+                    disabled={!activeSession || isStreaming}
+                    className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Start dictation"
+                  >
+                    <Mic className="h-5 w-5" />
+                  </button>
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={!activeSession || isStreaming || !composerText.trim()}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send className="h-4 w-4" />
                   </button>
                 </div>
               </div>
-            </div>
+            </form>
           )}
-          {!activeSession && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-16 w-16 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mb-4">
-                <svg className="h-8 w-8 text-indigo-600 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
-                Start a new chat session to ask questions about course material, get homework help, or explore research topics.
-              </p>
-            </div>
-          )}
-          {activeSession && activeSession.messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
-                <svg className="h-8 w-8 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
-                Ask anything about INFO 5731 course material. I can explain concepts, help with assignments, or discuss research topics.
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setComposerText("What is the main topic of this course?")}
-                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                >
-                  Course overview
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComposerText("Help me understand machine learning basics")}
-                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                >
-                  ML basics
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setComposerText("How do I use the research mode?")}
-                  className="text-xs px-3 py-1.5 rounded-full bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                >
-                  Research mode
-                </button>
-              </div>
-            </div>
-          )}
-          {activeSession &&
-            activeSession.messages.map((message, index) => (
-              <ChatBubble 
-                key={`${message.timestamp}-${index}`} 
-                message={message} 
-                token={token}
-                onOpenViewer={(url, title) => {
-                  setViewerUrl(url);
-                  setViewerTitle(title);
-                }}
-              />
-            ))}
-        </div>
 
-        <form onSubmit={handleSendMessage} className="border-t border-zinc-100 px-6 py-4 dark:border-zinc-800">
-          <div className="rounded-2xl border-2 border-zinc-200 bg-zinc-50 p-4 focus-within:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100 transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-indigo-600 dark:focus-within:ring-indigo-900/30">
-            <textarea
-              rows={3}
-              placeholder={activeSession ? "Ask anything about INFO 5731…" : "Create a session to start chatting"}
-              value={composerText}
-              disabled={!activeSession || isStreaming}
-              onChange={(event) => setComposerText(event.target.value)}
-              className="w-full resize-none bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-white dark:placeholder:text-zinc-500"
-            />
-            <div className="mt-3 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-              <span className="flex items-center gap-1">
-                <MessageCircle className="h-3.5 w-3.5" />
-                {isStreaming ? "Waiting for the tutor…" : "Powered by AWS Bedrock"}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setComposerText("")}
-                  className="btn-ghost text-xs flex items-center gap-1"
-                  disabled={composerText.length === 0}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Clear
-                </button>
-                <button
-                  type="submit"
-                  disabled={!activeSession || composerText.trim().length === 0 || isStreaming}
-                  className="rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2 font-semibold text-white shadow-md shadow-indigo-600/20 transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100 flex items-center gap-1.5"
-                >
-                  {isStreaming ? (
-                    <><span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Sending…</>
-                  ) : (
-                    <><Send className="h-3.5 w-3.5" /> Send</>
-                  )}
-                </button>
-              </div>
+          {/* Suggestion chips - only show when no messages */}
+          {(!activeSession || !hasMessages) && (
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setComposerText("What is the main topic of this course?")}
+                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Course overview
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerText("Help me understand machine learning basics")}
+                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+              >
+                ML basics
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerText("How do I use the research mode?")}
+                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Research mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerText("Explain a complex concept simply")}
+                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Explain concepts
+              </button>
             </div>
-          </div>
-        </form>
-      </section>
+          )}
+        </div>
+      </div>
 
       {/* File Viewer Modal */}
       <FileViewerModal
@@ -383,191 +1201,440 @@ function ChatWorkspaceContent() {
           setViewerTitle(null);
         }}
       />
+
+      {/* Sources Sidebar */}
+      <SourcesSidebar
+        isOpen={sourcesSidebarOpen}
+        onClose={() => setSourcesSidebarOpen(false)}
+        sources={selectedSources}
+        token={token}
+        onOpenViewer={(url, title) => {
+          setViewerUrl(url);
+          setViewerTitle(title);
+        }}
+      />
+
+      {/* Share Modal */}
+      <ShareModal
+        isOpen={shareModalOpen}
+        onClose={() => setShareModalOpen(false)}
+        sessionId={selectedSessionId || ""}
+        sessionTitle={activeSession?.title || "Chat Session"}
+        messageContent={shareModalMessage}
+        token={token}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        sessionId={selectedSessionId || ""}
+        messageIndex={reportMessageIndex}
+        token={token}
+      />
+
+      {/* Share Chat Modal */}
+      <ShareChatModal
+        isOpen={shareChatModalOpen}
+        onClose={() => setShareChatModalOpen(false)}
+        sessionId={selectedSessionId || ""}
+        sessionTitle={activeSession?.title || "Chat Conversation"}
+        messages={activeSession?.messages || []}
+        token={token}
+      />
+
+      {/* Delete Chat Modal */}
+      <DeleteChatModal
+        isOpen={deleteChatModalOpen}
+        onClose={() => setDeleteChatModalOpen(false)}
+        onConfirm={handleDeleteChat}
+        chatTitle={activeSession?.title || `Session ${activeSession?.id?.slice(0, 6) || ""}`}
+        isDeleting={isDeletingChat}
+      />
+
+      {/* Rename Chat Modal */}
+      <RenameChatModal
+        isOpen={renameChatModalOpen}
+        onClose={() => setRenameChatModalOpen(false)}
+        onConfirm={handleConfirmRename}
+        currentTitle={activeSession?.title || "Chat Session"}
+        isRenaming={isRenamingChat}
+      />
     </PageShell>
   );
 }
 
-function ChatBubble({ message, token, onOpenViewer }: { message: ChatMessageDTO; token?: string | null; onOpenViewer?: (url: string, title: string) => void }) {
+interface ChatBubbleProps {
+  message: ChatMessageDTO;
+  messageIndex: number;
+  sessionId: string;
+  token?: string | null;
+  isStreaming?: boolean;
+  currentFeedback: MessageFeedbackType | null;
+  onFeedbackChange: (feedback: MessageFeedbackType | null) => void;
+  onOpenSources: (sources: Array<Record<string, unknown>>) => void;
+  onOpenShare: (messageContent: string) => void;
+  onOpenReport: (messageIndex: number) => void;
+  onOpenViewer?: (url: string, title: string) => void;
+  // User message edit props
+  isEditing?: boolean;
+  isEditSending?: boolean;
+  onStartEdit?: () => void;
+  onCancelEdit?: () => void;
+  onConfirmEdit?: (newContent: string) => void;
+  // Regenerate props
+  onRegenerateClick?: () => void;
+  isRegenerating?: boolean;
+}
+
+function ChatBubble({
+  message,
+  messageIndex,
+  sessionId,
+  token,
+  isStreaming,
+  currentFeedback,
+  onFeedbackChange,
+  onOpenSources,
+  onOpenShare,
+  onOpenReport,
+  onOpenViewer,
+  isEditing,
+  isEditSending,
+  onStartEdit,
+  onCancelEdit,
+  onConfirmEdit,
+  onRegenerateClick,
+  isRegenerating,
+}: ChatBubbleProps) {
+  const [isHovered, setIsHovered] = useState(false);
   const isUser = message.role === "user";
-  const formattedTime = message.timestamp
-    ? new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : "";
+  const hasSources = message.sources && message.sources.length > 0;
 
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-fade-in-up`}>
+  // Handle copy for user messages
+  const handleCopyUserMessage = () => {
+    navigator.clipboard.writeText(message.content);
+  };
+
+  // User message - right aligned dark bubble
+  if (isUser) {
+    // Editing mode
+    if (isEditing && onCancelEdit && onConfirmEdit) {
+      return (
+        <div className="flex justify-end animate-fade-in-up">
+          <EditableUserMessage
+            initialContent={message.content}
+            onCancel={onCancelEdit}
+            onSend={onConfirmEdit}
+            isSending={isEditSending}
+          />
+        </div>
+      );
+    }
+
+    // Normal view with Copy/Edit buttons (shown on hover)
+    return (
       <div
-        className={`max-w-xl rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md break-words ${
-          isUser
-            ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-indigo-600/20"
-            : "border-2 border-zinc-200 bg-white text-zinc-900 shadow-zinc-200/50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-zinc-800/50"
-        }`}
+        className="flex justify-end animate-fade-in-up"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-          <div className="flex items-start gap-3">
-            {isUser ? (
-              <User className="h-5 w-5 mt-0.5 flex-shrink-0 opacity-80" />
-            ) : (
-              <Bot className="h-5 w-5 mt-0.5 flex-shrink-0 opacity-80" />
-            )}
-            <div className="flex-1">
-              <p className="whitespace-pre-wrap break-words">{message.content || (isUser ? "" : "…")}</p>
-            </div>
+        <div className="flex flex-col items-end">
+          <div className="max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
           </div>
-          {message.sources && message.sources.length > 0 && (
-          <div className="mt-4 space-y-2 rounded-xl bg-black/10 p-3 text-xs backdrop-blur dark:bg-white/5">
-            <p className="font-semibold flex items-center gap-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-current"></div>
-              Sources
-            </p>
-            <ul className="space-y-2 pl-3">
-              {message.sources.map((source, index) => {
-                // Type guard helper
-                const getString = (key: string): string | undefined => {
-                  const val = source[key];
-                  return typeof val === "string" ? val : undefined;
-                };
-                const getNumber = (key: string): number | undefined => {
-                  const val = source[key];
-                  return typeof val === "number" ? val : undefined;
-                };
+          {/* Copy and Edit buttons - visible on hover */}
+          {onStartEdit && (
+            <UserMessageActions
+              onCopy={handleCopyUserMessage}
+              onEdit={onStartEdit}
+              visible={isHovered}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
-                const label =
-                  getString("title") ||
-                  getString("name") ||
-                  getString("file_name") ||
-                  getString("file_path") ||
-                  "Reference";
-                const locationParts = [
-                  getNumber("page") ? `page ${getNumber("page")}` : null,
-                  getNumber("slide") ? `slide ${getNumber("slide")}` : null,
-                ].filter(Boolean);
-                const location = locationParts.length ? `(${locationParts.join(", ")})` : "";
-                const chunkText = getString("chunk_text");
-                const snippet = chunkText
-                  ? `"${chunkText.slice(0, 120)}${chunkText.length > 120 ? "…" : ""}"`
-                  : "";
-                const externalUrl = getString("external_url") || getString("url") || getString("link") || getString("source_link") || getString("web_url");
-                
-                const findUrlInSource = (source: Record<string, unknown>): string | undefined => {
-                  for (const value of Object.values(source)) {
-                    if (typeof value === "string" && (value.startsWith('http://') || value.startsWith('https://'))) {
-                      return value;
-                    }
-                  }
-                  return undefined;
-                };
-                
-                const autoDetectedUrl = findUrlInSource(source);
-                const effectiveExternalUrl = externalUrl || autoDetectedUrl;
-                const sourceUrl = getString("source_url");
-                const filePath = getString("file_path");
-                const page = getNumber("page");
-                const slide = getNumber("slide");
-                
-                const directUrl = sourceUrl || (filePath ? `${getApiBaseUrl()}/files/view?path=${encodeURIComponent(filePath)}${page ? `&page=${page}` : ""}${slide ? `&slide=${slide}` : ""}${token ? `&token=${encodeURIComponent(token)}` : ""}` : null);
-                
-                const getFilename = (path: string) => {
-                  return path.split('/').pop() || path;
-                };
-                
-                const getFileExt = (filename: string) => {
-                  return filename.split('.').pop()?.toLowerCase() || '';
-                };
-                
-                const getViewerType = (filename: string): 'pdf' | 'office' | 'notebook' | 'raw' | null => {
-                  const ext = getFileExt(filename);
-                  if (ext === 'pdf') return 'pdf';
-                  if (['pptx', 'ppt', 'docx', 'doc'].includes(ext)) return 'office';
-                  if (ext === 'ipynb') return 'notebook';
-                  if (['txt', 'py', 'js', 'html', 'css', 'json', 'md'].includes(ext)) return 'raw';
-                  return null;
-                };
-                
-                const isExternalUrl = (url: string | undefined) => {
-                  if (!url) return false;
-                  return url.startsWith('http://') || url.startsWith('https://');
-                };
-                
-                const handleSourceClick = async (e: React.MouseEvent) => {
-                  e.preventDefault();
-                  
-                  const getFilename = (path: string) => {
-                    return path.split('/').pop() || path;
-                  };
-                  
-                  const getFileExt = (filename: string) => {
-                    return filename.split('.').pop()?.toLowerCase() || '';
-                  };
-                  
-                  const viewerType = (filename: string): 'pdf' | 'office' | 'notebook' | 'raw' | null => {
-                    const ext = getFileExt(filename);
-                    if (ext === 'pdf') return 'pdf';
-                    if (['pptx', 'ppt', 'docx', 'doc'].includes(ext)) return 'office';
-                    if (ext === 'ipynb') return 'notebook';
-                    if (['txt', 'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rs', 'rb', 'php', 'pl', 'lua', 'r', 'scala', 'kt', 'swift'].includes(ext)) return 'raw';
-                    return null;
-                  };
-                  
-                  const filename = getFilename(sourceUrl || filePath || '');
-                  const type = viewerType(filename);
-                  
-                  // Check for external URL first (web search results)
-                  if (isExternalUrl(effectiveExternalUrl)) {
-                    window.open(effectiveExternalUrl, '_blank');
-                    return;
-                  }
-                  
-                  if (!directUrl) return;
-                  
-                  if (type === 'pdf') {
-                    window.open(directUrl, '_blank');
-                  } else if (type === 'office' || type === 'notebook') {
-                    try {
-                      const response = await fetch(`${getApiBaseUrl()}/files/s3-url?source_file=${encodeURIComponent(filename)}`);
-                      if (response.ok) {
-                        const data = await response.json();
-                        if (onOpenViewer && data.url) {
-                          onOpenViewer(data.url, label || filename);
-                        }
-                      } else if (onOpenViewer) {
-                        onOpenViewer(directUrl, label || filename);
-                      }
-                    } catch (error) {
-                      if (onOpenViewer) {
-                        onOpenViewer(directUrl, label || filename);
-                      }
-                    }
-                  } else {
-                    window.open(directUrl, '_blank');
-                  }
-                };
-                
-                const hasClickableUrl = directUrl || isExternalUrl(effectiveExternalUrl);
-                return (
-                  <li key={index} className="opacity-80">
-                    <div className="font-medium">
-                      {hasClickableUrl ? (
-                        <button
-                          onClick={handleSourceClick}
-                          className={`${isUser ? "text-blue-200 hover:underline" : "text-blue-600 hover:underline dark:text-blue-400"} cursor-pointer bg-none border-none p-0`}
-                        >
-                          {label}
-                        </button>
-                      ) : (
-                        <span>{label}</span>
-                      )}{" "}
-                      {location}
-                    </div>
-                    {snippet && <div className={`text-[11px] ${isUser ? "text-white/70" : "text-zinc-500 dark:text-zinc-400"}`}>{snippet}</div>}
-                  </li>
-                );
-              })}
-            </ul>
+  // Show thinking animation when streaming starts and no content yet
+  const showThinking = isStreaming && !message.content;
+
+  // Assistant message - left aligned, no bubble
+  return (
+    <div className="animate-fade-in-up">
+      <div className="max-w-3xl">
+        {showThinking ? (
+          <div className="flex items-center gap-3 py-2">
+            <div className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }}></span>
+              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }}></span>
+              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }}></span>
+            </div>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking...</span>
           </div>
-        )}
-        {formattedTime && (
-          <p className={`mt-2 text-xs ${isUser ? "text-white/70" : "text-zinc-500 dark:text-zinc-400"}`}>{formattedTime}</p>
+        ) : (
+          <>
+            <MarkdownContent
+              content={message.content}
+              sources={message.sources}
+              isStreaming={isStreaming}
+              onOpenSources={onOpenSources}
+            />
+            {/* Response Action Bar - only show when not streaming */}
+            {!isStreaming && (
+              <ResponseActionBar
+                messageContent={message.content}
+                sessionId={sessionId}
+                messageIndex={messageIndex}
+                token={token || null}
+                hasSources={hasSources || false}
+                currentFeedback={currentFeedback}
+                onFeedbackChange={onFeedbackChange}
+                onShareClick={() => onOpenShare(message.content)}
+                onReportClick={() => onOpenReport(messageIndex)}
+                onSourcesClick={() => {
+                  if (message.sources) {
+                    onOpenSources(message.sources);
+                  }
+                }}
+                onRegenerateClick={onRegenerateClick}
+                isRegenerating={isRegenerating}
+              />
+            )}
+          </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Component to render markdown content with inline source citations
+interface MarkdownContentProps {
+  content: string;
+  sources?: Array<Record<string, unknown>> | null;
+  isStreaming?: boolean;
+  onOpenSources: (sources: Array<Record<string, unknown>>) => void;
+}
+
+function MarkdownContent({ content, sources, isStreaming, onOpenSources }: MarkdownContentProps) {
+  // Create a source chip component for inline use
+  const SourceChip = ({ sourceIndex, displayName }: { sourceIndex: number; displayName: string }) => {
+    if (!sources || sourceIndex >= sources.length) return null;
+
+    return (
+      <button
+        onClick={() => onOpenSources(sources)}
+        className="inline-flex items-center px-2 py-0.5 mx-0.5 rounded-full bg-zinc-700 dark:bg-zinc-700 text-xs text-zinc-300 hover:bg-zinc-600 transition-colors align-middle"
+      >
+        {displayName}
+      </button>
+    );
+  };
+
+  // Parse inline citations like [1], [2], [Source Name], etc.
+  const renderWithCitations = (text: string, keyPrefix: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    // Match [1], [2], [Source 1], [Source Name], etc.
+    const citationPattern = /\[(\d+)\]|\[Source\s*(\d+)\]|\[([^\]]+)\]/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let citationKey = 0;
+
+    while ((match = citationPattern.exec(text)) !== null) {
+      const currentMatch = match; // Store to avoid null checks
+
+      // Add text before citation
+      if (currentMatch.index > lastIndex) {
+        parts.push(text.substring(lastIndex, currentMatch.index));
+      }
+
+      // Determine source index and display name
+      let sourceIndex = -1;
+      let displayName = '';
+
+      if (currentMatch[1]) {
+        // Numeric citation like [1]
+        sourceIndex = parseInt(currentMatch[1]) - 1; // Convert to 0-indexed
+        const source = sources?.[sourceIndex];
+        displayName = source
+          ? ((source.name as string) || (source.title as string) || `Source ${currentMatch[1]}`).substring(0, 15)
+          : `Source ${currentMatch[1]}`;
+        if (displayName.length === 15) displayName += '...';
+      } else if (currentMatch[2]) {
+        // "Source N" format like [Source 1]
+        sourceIndex = parseInt(currentMatch[2]) - 1;
+        const source = sources?.[sourceIndex];
+        displayName = source
+          ? ((source.name as string) || (source.title as string) || `Source ${currentMatch[2]}`).substring(0, 15)
+          : `Source ${currentMatch[2]}`;
+        if (displayName.length === 15) displayName += '...';
+      } else if (currentMatch[3]) {
+        // Named citation like [Some Name]
+        const namedCitation = currentMatch[3];
+        displayName = namedCitation.length > 15 ? namedCitation.substring(0, 15) + '...' : namedCitation;
+        // Try to find matching source by name
+        sourceIndex = sources?.findIndex(s =>
+          (s.name as string)?.toLowerCase().includes(namedCitation.toLowerCase()) ||
+          (s.title as string)?.toLowerCase().includes(namedCitation.toLowerCase())
+        ) ?? -1;
+        if (sourceIndex === -1 && sources && sources.length > 0) {
+          sourceIndex = 0; // Default to first source if no match
+        }
+      }
+
+      // Add citation chip if we have sources
+      if (sources && sources.length > 0 && sourceIndex >= 0) {
+        parts.push(
+          <SourceChip
+            key={`${keyPrefix}-cite-${citationKey++}`}
+            sourceIndex={sourceIndex}
+            displayName={displayName}
+          />
+        );
+      } else {
+        // No sources, just show the citation text
+        parts.push(currentMatch[0]);
+      }
+
+      lastIndex = currentMatch.index + currentMatch[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : [text];
+  };
+
+  // Render inline markdown (bold, italic) with citations
+  const renderInlineMarkdown = (text: string, keyPrefix: string = ''): React.ReactNode => {
+    // First, handle citations, then bold/italic within each part
+    const partsWithCitations = renderWithCitations(text, keyPrefix);
+
+    // Process each text part for bold/italic (skip React elements)
+    const result: React.ReactNode[] = [];
+    let partKey = 0;
+
+    partsWithCitations.forEach((part, partIndex) => {
+      if (typeof part !== 'string') {
+        // Already a React element (citation chip)
+        result.push(part);
+        return;
+      }
+
+      // Process bold and italic
+      let remaining = part;
+      while (remaining.length > 0) {
+        // Check for bold **text**
+        const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+        // Check for italic *text* (not part of **)
+        const italicMatch = remaining.match(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/);
+
+        if (boldMatch && (!italicMatch || boldMatch.index! <= italicMatch.index!)) {
+          // Add text before bold
+          if (boldMatch.index! > 0) {
+            result.push(remaining.substring(0, boldMatch.index));
+          }
+          // Add bold text
+          result.push(
+            <strong key={`${keyPrefix}-bold-${partKey++}`} className="font-semibold text-zinc-900 dark:text-white">
+              {boldMatch[1]}
+            </strong>
+          );
+          remaining = remaining.substring(boldMatch.index! + boldMatch[0].length);
+        } else if (italicMatch) {
+          // Add text before italic
+          if (italicMatch.index! > 0) {
+            result.push(remaining.substring(0, italicMatch.index));
+          }
+          // Add italic text
+          result.push(
+            <em key={`${keyPrefix}-italic-${partKey++}`} className="italic">
+              {italicMatch[1]}
+            </em>
+          );
+          remaining = remaining.substring(italicMatch.index! + italicMatch[0].length);
+        } else {
+          // No more matches, add remaining text
+          result.push(remaining);
+          break;
+        }
+      }
+    });
+
+    return result;
+  };
+
+  // Parse markdown: headers, bold, paragraphs, with inline citations
+  const renderMarkdown = (text: string) => {
+    const lines = text.split('\n');
+    const elements: React.ReactNode[] = [];
+    let currentParagraph: React.ReactNode[] = [];
+    let paragraphKey = 0;
+
+    const flushParagraph = () => {
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <p key={`p-${paragraphKey++}`} className="mb-4 leading-relaxed">
+            {currentParagraph}
+          </p>
+        );
+        currentParagraph = [];
+      }
+    };
+
+    lines.forEach((line, lineIndex) => {
+      // Check for headers
+      const h1Match = line.match(/^# (.+)$/);
+      const h2Match = line.match(/^## (.+)$/);
+      const h3Match = line.match(/^### (.+)$/);
+
+      if (h1Match) {
+        flushParagraph();
+        elements.push(
+          <h1 key={`h1-${lineIndex}`} className="text-2xl font-bold mb-4 mt-6 text-zinc-900 dark:text-white">
+            {renderInlineMarkdown(h1Match[1], `h1-${lineIndex}`)}
+          </h1>
+        );
+      } else if (h2Match) {
+        flushParagraph();
+        elements.push(
+          <h2 key={`h2-${lineIndex}`} className="text-xl font-bold mb-3 mt-5 text-zinc-900 dark:text-white">
+            {renderInlineMarkdown(h2Match[1], `h2-${lineIndex}`)}
+          </h2>
+        );
+      } else if (h3Match) {
+        flushParagraph();
+        elements.push(
+          <h3 key={`h3-${lineIndex}`} className="text-lg font-semibold mb-2 mt-4 text-zinc-900 dark:text-white">
+            {renderInlineMarkdown(h3Match[1], `h3-${lineIndex}`)}
+          </h3>
+        );
+      } else if (line.trim() === '') {
+        // Empty line - flush current paragraph
+        flushParagraph();
+      } else {
+        // Regular text - add to current paragraph
+        if (currentParagraph.length > 0) {
+          currentParagraph.push(<br key={`br-${lineIndex}`} />);
+        }
+        currentParagraph.push(
+          <span key={`span-${lineIndex}`}>{renderInlineMarkdown(line, `line-${lineIndex}`)}</span>
+        );
+      }
+    });
+
+    // Flush remaining paragraph
+    flushParagraph();
+
+    return elements;
+  };
+
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200">
+      {renderMarkdown(content)}
+      {isStreaming && <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse rounded-sm"></span>}
     </div>
   );
 }
@@ -613,7 +1680,7 @@ function FileViewerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-6xl h-[90vh] bg-white dark:bg-zinc-900 rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+        <div className="flex items-center justify-between px-4 py-3-b-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white truncate">
             {title}
           </h3>
@@ -633,7 +1700,7 @@ function FileViewerModal({
             // PDF - embed directly
             <iframe
               src={displayUrl}
-              className="w-full h-full border-0"
+              className="w-full h-full-0"
               title={`PDF: ${title}`}
             />
           ) : isImage ? (
@@ -682,7 +1749,7 @@ function FileViewerModal({
             // HTML - embed directly
             <iframe
               src={displayUrl}
-              className="w-full h-full border-0"
+              className="w-full h-full-0"
               title={`HTML: ${title}`}
               sandbox="allow-scripts"
             />
@@ -825,7 +1892,7 @@ function FileViewerModal({
         </div>
         
         {/* Footer */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-zinc-50 dark:bg-zinc-800-t-zinc-200 dark:border-zinc-700">
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
             {isPDF ? 'PDF document' : 
              isImage ? 'Image file' : 
@@ -854,61 +1921,29 @@ export default function ChatWorkspace() {
 
 function ChatWorkspaceSkeleton() {
   return (
-    <PageShell className="max-w-5xl" contentClassName="gap-6">
-      {/* Header skeleton */}
-      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12">
-        <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-purple-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-        <div className="relative z-10 space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300 mb-4">
-            <div className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></div>
-            <div className="h-4 w-24 bg-indigo-200 dark:bg-indigo-800 rounded animate-pulse"></div>
-          </div>
-          <div className="h-10 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-          <div className="h-6 w-96 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-          <div className="flex gap-3 mt-8">
-            <div className="h-10 w-32 bg-white/20 rounded-full animate-pulse"></div>
-            <div className="h-10 w-24 border border-zinc-200 rounded-full animate-pulse"></div>
-          </div>
-        </div>
-      </header>
-
-      {/* Chat section skeleton */}
-      <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4 dark:border-zinc-800">
-          <div className="space-y-2">
-            <div className="h-3 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-            <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-          </div>
-          <div className="h-6 w-16 bg-zinc-100 dark:bg-zinc-800 rounded-full animate-pulse"></div>
+    <PageShell className="max-w-4xl mx-auto" contentClassName="gap-0 h-full" noCard>
+      <div className="flex flex-col h-full">
+        {/* Welcome screen skeleton */}
+        <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] px-6">
+          <div className="h-10 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse mb-3"></div>
+          <div className="h-6 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
-          {/* Chat bubble skeletons */}
-          {[1, 2, 3].map((i) => (
-            <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'} animate-pulse`}>
-              <div className={`max-w-xl rounded-2xl px-5 py-4 ${
-                i % 2 === 0
-                  ? 'bg-gradient-to-br from-indigo-600 to-purple-600'
-                  : 'border-2 border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800'
-              }`}>
-                <div className="h-4 w-3/4 bg-white/20 rounded animate-pulse"></div>
-                <div className="h-4 w-1/2 mt-2 bg-white/20 rounded animate-pulse"></div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="border-t border-zinc-100 px-6 py-4 dark:border-zinc-800">
-          <div className="rounded-2xl border-2 border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800">
-            <div className="h-20 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-            <div className="flex items-center justify-between mt-3">
-              <div className="h-4 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-              <div className="h-8 w-20 bg-indigo-600 rounded-full animate-pulse"></div>
+        {/* Input skeleton */}
+        <div className="px-4 pb-6 pt-2">
+          <div className="rounded-3xl-zinc-200 bg-zinc-100 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="h-6 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+            <div className="flex items-center justify-end mt-2">
+              <div className="h-9 w-9 bg-indigo-600 rounded-full animate-pulse"></div>
             </div>
           </div>
+          <div className="flex justify-center gap-2 mt-4">
+            <div className="h-10 w-32 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+            <div className="h-10 w-24 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+            <div className="h-10 w-28 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+          </div>
         </div>
-      </section>
+      </div>
     </PageShell>
   );
 }

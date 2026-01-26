@@ -76,6 +76,8 @@ class PerUserRateLimiter:
             # SECURITY: Use JTI instead of username to prevent bypass
             payload = jwt.decode(
                 token,
+                key="",  # Dummy key since we're not verifying
+                algorithms=["HS256"],
                 options={"verify_signature": False}
             )
 

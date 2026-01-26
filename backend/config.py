@@ -238,7 +238,7 @@ class Config:
 
     # Bedrock Models
     BEDROCK_MODEL_ID = os.getenv(
-        "BEDROCK_MODEL_ID", "anthropic.claude-3-5-sonnet-20241022-v2:0"
+        "BEDROCK_MODEL_ID", "us.meta.llama3-1-70b-instruct-v1:0"
     )
     BEDROCK_EMBEDDING_MODEL_ID = os.getenv(
         "BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"

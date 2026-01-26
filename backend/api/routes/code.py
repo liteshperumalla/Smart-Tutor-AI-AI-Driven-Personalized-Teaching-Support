@@ -7,6 +7,7 @@ This module provides endpoints for:
 """
 
 import logging
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
@@ -23,15 +24,62 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/code", tags=["code"])
 
-SUPPORTED_LANGUAGES = ["python", "javascript", "java"]
+
+def _clean_repeated_content(text: str) -> str:
+    """Remove repeated content from LLM responses."""
+    if not text:
+        return text
+
+    lines = text.split("\n")
+    unique_lines = []
+    seen = set()
+
+    for line in lines:
+        line_stripped = line.strip()
+        if line_stripped and line_stripped not in seen:
+            unique_lines.append(line)
+            seen.add(line_stripped)
+        elif not line_stripped:
+            unique_lines.append(line)
+
+    cleaned = "\n".join(unique_lines)
+
+    markdown_pattern = r"(```[\s\S]*?```)"
+    matches = list(re.finditer(markdown_pattern, cleaned))
+    if len(matches) > 1:
+        cleaned = matches[0].group(1)
+
+    return cleaned
+
+
+def _extract_code(text: str) -> str:
+    """Extract clean code from LLM response, removing markdown fences and explanations."""
+    if not text:
+        return text
+
+    code = text.strip()
+
+    code_block_pattern = r"```(\w*)\n([\s\S]*?)```"
+    matches = list(re.finditer(code_block_pattern, code))
+
+    if matches:
+        first_block = matches[0]
+        lang = first_block.group(1)
+        extracted_code = first_block.group(2).strip()
+        return extracted_code
+
+    return code
+
+
+SUPPORTED_LANGUAGES = ["python", "javascript", "java", "typescript", "cpp", "go"]
 
 
 class CodeExecuteRequest(BaseModel):
     """Request to execute code."""
 
     code: str = Field(..., min_length=1, description="Code to execute")
-    language: Literal["python", "javascript", "java"] = Field(
-        default="python", description="Programming language"
+    language: Literal["python", "javascript", "java", "typescript", "cpp", "go"] = (
+        Field(default="python", description="Programming language")
     )
 
 
@@ -41,8 +89,8 @@ class CodeGenerateRequest(BaseModel):
     prompt: str = Field(
         ..., min_length=3, description="Description of what to generate"
     )
-    language: Literal["python", "javascript", "java"] = Field(
-        default="python", description="Target programming language"
+    language: Literal["python", "javascript", "java", "typescript", "cpp", "go"] = (
+        Field(default="python", description="Target programming language")
     )
 
 
@@ -50,8 +98,8 @@ class CodeExplainRequest(BaseModel):
     """Request to explain code."""
 
     code: str = Field(..., min_length=1, description="Code to explain")
-    language: Literal["python", "javascript", "java"] = Field(
-        default="python", description="Programming language"
+    language: Literal["python", "javascript", "java", "typescript", "cpp", "go"] = (
+        Field(default="python", description="Programming language")
     )
 
 
@@ -59,8 +107,8 @@ class CodeDebugRequest(BaseModel):
     """Request to debug code."""
 
     code: str = Field(..., min_length=1, description="Code to debug")
-    language: Literal["python", "javascript", "java"] = Field(
-        default="python", description="Programming language"
+    language: Literal["python", "javascript", "java", "typescript", "cpp", "go"] = (
+        Field(default="python", description="Programming language")
     )
 
 
@@ -108,7 +156,7 @@ class CodeChatResponse(BaseModel):
 
 
 def _get_code_llm():
-    """Get the code LLM instance using AWS Bedrock (Llama 3.2).
+    """Get the code LLM instance using AWS Bedrock (Llama 3.1 70B).
 
     Returns:
         BedrockLLM: Configured LLM instance or None if initialization fails.
@@ -118,10 +166,13 @@ def _get_code_llm():
         from backend.config import config
 
         return BedrockLLM(
-            model_id="us.meta.llama3-2-11b-instruct-v1:0", region=config.AWS_REGION
+            model_id="us.meta.llama3-1-70b-instruct-v1:0", region=config.AWS_REGION
         )
     except (ImportError, ValueError, RuntimeError):
         logger.exception("Failed to initialize Bedrock LLM")
+        return None
+    except Exception:
+        logger.exception("Unexpected error initializing Bedrock LLM")
         return None
     except Exception:
         logger.exception("Unexpected error initializing Bedrock LLM")
@@ -230,6 +281,116 @@ def _execute_java_code(code: str) -> tuple[str, bool]:
             return f"Error running Java:\n{traceback.format_exc()}", False
 
 
+def _execute_typescript_code(code: str) -> tuple[str, bool]:
+    """Execute TypeScript code using ts-node or compile to JS first.
+
+    Args:
+        code: TypeScript code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as tmp:
+        tmp.write(code)
+        ts_path = tmp.name
+    try:
+        result = subprocess.run(
+            ["npx", "ts-node", ts_path], capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            return result.stdout or "(no output)", True
+        return f"Error:\n{result.stderr}", False
+    except subprocess.TimeoutExpired:
+        return "Error: Execution timed out (15 seconds)", False
+    except FileNotFoundError:
+        return "Error: Node.js/TypeScript is not installed or not in PATH", False
+    except OSError:
+        return "Error: Unable to execute TypeScript (system error)", False
+    except Exception:
+        return f"Error running TypeScript:\n{traceback.format_exc()}", False
+    finally:
+        try:
+            os.remove(ts_path)
+        except OSError:
+            pass
+
+
+def _execute_cpp_code(code: str) -> tuple[str, bool]:
+    """Execute C++ code using g++ compiler.
+
+    Args:
+        code: C++ code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cpp_file = os.path.join(tmpdir, "main.cpp")
+        with open(cpp_file, "w") as f:
+            f.write(code)
+        try:
+            compile_proc = subprocess.run(
+                ["g++", cpp_file, "-o", os.path.join(tmpdir, "main")],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if compile_proc.returncode != 0:
+                return f"Compilation Error:\n{compile_proc.stderr}", False
+
+            run_proc = subprocess.run(
+                [os.path.join(tmpdir, "main")],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if run_proc.returncode == 0:
+                return run_proc.stdout or "(no output)", True
+            return f"Runtime Error:\n{run_proc.stderr}", False
+        except subprocess.TimeoutExpired:
+            return "Error: Execution timed out (10 seconds)", False
+        except FileNotFoundError:
+            return "Error: g++ is not installed or not in PATH", False
+        except OSError:
+            return "Error: Unable to execute C++ (system error)", False
+        except Exception:
+            return f"Error running C++:\n{traceback.format_exc()}", False
+
+
+def _execute_go_code(code: str) -> tuple[str, bool]:
+    """Execute Go code using go run.
+
+    Args:
+        code: Go code string to execute.
+
+    Returns:
+        Tuple of (output, success).
+    """
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as tmp:
+        tmp.write(code)
+        go_path = tmp.name
+    try:
+        result = subprocess.run(
+            ["go", "run", go_path], capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            return result.stdout or "(no output)", True
+        return f"Error:\n{result.stderr}", False
+    except subprocess.TimeoutExpired:
+        return "Error: Execution timed out (15 seconds)", False
+    except FileNotFoundError:
+        return "Error: Go is not installed or not in PATH", False
+    except OSError:
+        return "Error: Unable to execute Go (system error)", False
+    except Exception:
+        return f"Error running Go:\n{traceback.format_exc()}", False
+    finally:
+        try:
+            os.remove(go_path)
+        except OSError:
+            pass
+
+
 def _execute_code(code: str, language: str) -> tuple[str, bool]:
     """Execute code in the specified language."""
     if language == "python":
@@ -238,6 +399,12 @@ def _execute_code(code: str, language: str) -> tuple[str, bool]:
         return _execute_javascript_code(code)
     elif language == "java":
         return _execute_java_code(code)
+    elif language == "typescript":
+        return _execute_typescript_code(code)
+    elif language == "cpp":
+        return _execute_cpp_code(code)
+    elif language == "go":
+        return _execute_go_code(code)
     else:
         return "Unsupported language.", False
 
@@ -268,9 +435,9 @@ async def generate_code(
         )
 
     system_prompt = (
-        f"You are a helpful coding assistant. Write {request.language} code for the following request. "
-        "Only output the code, no explanations or comments unless asked. "
-        "Do not include markdown code fences."
+        f"You are a helpful coding assistant. Write ONLY {request.language} code for the following request. "
+        "Output ONLY the code in a single code block. "
+        "Do NOT include explanations, comments, or any text before or after the code block."
     )
 
     try:
@@ -280,10 +447,7 @@ async def generate_code(
             max_tokens=2048,
             temperature=0.3,
         )
-        code = response.strip()
-        if code.startswith("```"):
-            lines = code.split("\n")
-            code = "\n".join(lines[1:-1] if lines[-1] == "```" else lines[1:])
+        code = _extract_code(response.strip())
         return CodeGenerateResponse(code=code, language=request.language)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
@@ -314,7 +478,8 @@ async def explain_code(
             max_tokens=2048,
             temperature=0.3,
         )
-        return CodeExplainResponse(explanation=response.strip())
+        cleaned_response = _clean_repeated_content(response.strip())
+        return CodeExplainResponse(explanation=cleaned_response)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Code explanation failed: {str(e)}"
@@ -347,8 +512,9 @@ async def debug_code(
             max_tokens=2048,
             temperature=0.3,
         )
-        analysis = response.strip()
+        analysis = _clean_repeated_content(response.strip())
         fixed_code = None
+
         if "```" in analysis:
             parts = analysis.split("```")
             for i, part in enumerate(parts):
@@ -359,8 +525,13 @@ async def debug_code(
                     else:
                         fixed_code = part.strip()
                     break
+
+        if fixed_code:
+            fixed_code = _extract_code(fixed_code)
+
         return CodeDebugResponse(analysis=analysis, fixed_code=fixed_code)
     except Exception as e:
+        logger.exception("Debug code failed")
         raise HTTPException(status_code=500, detail=f"Code debugging failed: {str(e)}")
 
 
@@ -385,8 +556,11 @@ async def chat_with_code_llm(
             context += f"{role.capitalize()}: {content}\n"
 
     system_prompt = (
-        "You are a helpful coding assistant. Answer questions about programming, "
-        "help debug code, explain concepts, and provide code examples when asked."
+        "You are an expert coding assistant. "
+        "Your ONLY job is to help with programming, code, software development, and technical questions. "
+        "If asked about anything unrelated to programming (phones, movies, weather, etc.), "
+        "politely redirect to coding topics. "
+        "Help debug code, explain algorithms, write functions, and discuss software architecture."
     )
 
     try:
@@ -396,7 +570,8 @@ async def chat_with_code_llm(
             max_tokens=2048,
             temperature=0.7,
         )
-        return CodeChatResponse(response=response.strip())
+        cleaned_response = _clean_repeated_content(response.strip())
+        return CodeChatResponse(response=cleaned_response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 

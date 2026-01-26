@@ -99,14 +99,17 @@ CHAT_QA_TEMPLATE = PromptTemplate(
         "You are Smart AI Tutor, a knowledgeable teaching assistant for graduate students. "
         "Using only the provided context, craft a brief yet thorough explanation that defines the idea, "
         "highlights why it matters, and includes a concrete example or analogy students can relate to. "
-        "Cite relevant facts from context when possible and clearly state when information is missing. "
+        "IMPORTANT: When citing information from the sources, include inline citations using the format [1], [2], etc. "
+        "corresponding to the source numbers in the context below. Place the citation immediately after the relevant statement. "
+        "Use **bold text** to highlight key terms and important concepts. "
+        "Clearly state when information is missing. "
         "Never reply with a single number, bullet label, or one-word answer—always respond in at least "
         "three complete sentences.\n"
         "---------------------\n"
         "{context_str}\n"
         "---------------------\n"
         "Question: {query_str}\n"
-        "Answer:"
+        "Answer (remember to use [1], [2], etc. for inline citations and **bold** for key terms):"
     )
 )
 
@@ -115,13 +118,16 @@ WEB_SEARCH_TEMPLATE = PromptTemplate(
         "You are Smart AI Tutor, and you are providing information from web search results because "
         "the coursework materials did not contain the answer. "
         "Always open with the sentence: 'Information from web search (not found in course materials)' "
-        "followed by a blank line. Summarize the results in clear academic language, cite the most relevant "
-        "facts, and note when multiple sources agree or disagree. "
+        "followed by a blank line. Summarize the results in clear academic language. "
+        "IMPORTANT: Include inline citations using the format [1], [2], etc. corresponding to the source numbers below. "
+        "Place the citation immediately after the relevant statement. "
+        "Use **bold text** to highlight key terms and important concepts. "
+        "Note when multiple sources agree or disagree. "
         "---------------------\n"
         "{context_str}\n"
         "---------------------\n"
         "Question: {query_str}\n"
-        "Answer:"
+        "Answer (remember to use [1], [2], etc. for inline citations and **bold** for key terms):"
     )
 )
 
@@ -631,8 +637,17 @@ def generate_response_stream_and_sources(
     user_id: str = "default-user",
     session_id: Optional[str] = None,
     enable_llm_judge: bool = False,
+    model_id: Optional[str] = None,
 ):
-    """Generate streaming response with sources"""
+    """Generate streaming response with sources
+
+    Args:
+        query: The user's question
+        user_id: User identifier for tracing
+        session_id: Session identifier for tracing
+        enable_llm_judge: Whether to enable LLM judge evaluation
+        model_id: Optional AWS Bedrock model ID to use (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0')
+    """
     main_trace = None
     if langfuse_client:
         main_trace = langfuse_client.trace(
@@ -720,14 +735,17 @@ def generate_response_stream_and_sources(
                 }
             )
         nodes_for_prompt = retrieved_nodes
-        context_str = "\n\n".join(
-            [
+        # Format context with numbered sources for citation
+        context_parts = []
+        for idx, n_ws in enumerate(nodes_for_prompt, 1):
+            source_text = (
                 n_ws.node.get_text()
                 if hasattr(n_ws.node, "get_text")
                 else (n_ws.node.text if hasattr(n_ws.node, "text") else "")
-                for n_ws in nodes_for_prompt
-            ]
-        )
+            )
+            source_name = local_sources[idx-1]["file_name"] if idx-1 < len(local_sources) else f"Source {idx}"
+            context_parts.append(f"[Source {idx}: {source_name}]\n{source_text}")
+        context_str = "\n\n".join(context_parts)
         response_sources = local_sources
         template_for_response = CHAT_QA_TEMPLATE
         used_web_search = False
@@ -779,9 +797,12 @@ def generate_response_stream_and_sources(
                     )
                 if web_nodes:
                     nodes_for_prompt = web_nodes
-                    context_str = "\n\n".join(
-                        n.node.get_text() for n in nodes_for_prompt
-                    )
+                    # Format web search context with numbered sources
+                    web_context_parts = []
+                    for idx, n in enumerate(nodes_for_prompt, 1):
+                        source_title = n.node.metadata.get("title", f"Web Source {idx}")
+                        web_context_parts.append(f"[Source {idx}: {source_title}]\n{n.node.get_text()}")
+                    context_str = "\n\n".join(web_context_parts)
             else:
                 used_web_search = False
                 response_sources = local_sources
@@ -791,11 +812,22 @@ def generate_response_stream_and_sources(
         print("--------CONTEXT PASSED TO LLM--------")
         print(context_str)
         print("--------------------------------------")
-        synth = get_response_synthesizer(
-            response_mode="compact",
-            streaming=True,
-            text_qa_template=template_for_response,
-        )
+
+        # Create response synthesizer with optional custom LLM
+        synth_kwargs = {
+            "response_mode": "compact",
+            "streaming": True,
+            "text_qa_template": template_for_response,
+        }
+
+        # If a specific model is requested, create a custom LLM instance
+        if model_id:
+            from backend.llm_provider import get_llm
+            custom_llm = get_llm(model_id=model_id)
+            synth_kwargs["llm"] = custom_llm
+            logging.info(f"Using custom LLM model: {model_id}")
+
+        synth = get_response_synthesizer(**synth_kwargs)
         streaming_response_obj = synth.synthesize(
             query=query,
             nodes=nodes_for_prompt,

@@ -5,13 +5,56 @@ from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session
 from backend.services.chat_service import get_chat_service, ChatService
+from backend.services.share_service import get_share_service
+from backend.services.message_feedback_service import (
+    get_feedback_service,
+    MessageFeedback,
+    MessageFeedbackService,
+    FeedbackType,
+)
 from backend.services.models import ChatMessage
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
+class ShareRequest(BaseModel):
+    expires_in_hours: int = Field(default=168, ge=1, le=8760)  # 1 hour to 1 year
+
+
+class ShareResponse(BaseModel):
+    share_id: str
+    share_url: str
+    expires_at: str
+
+
+class SharedSessionResponse(BaseModel):
+    session: dict
+    expires_at: str
+
+
 class SessionUpdate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=80)
+    title: Optional[str] = Field(None, min_length=1, max_length=80)
+    is_pinned: Optional[bool] = None
+    is_archived: Optional[bool] = None
+
+
+class SendMessageRequest(BaseModel):
+    """Request body for sending a chat message."""
+    query: str = Field(..., min_length=1, max_length=10000)
+    model_id: Optional[str] = Field(None, description="AWS Bedrock model ID to use")
+
+
+class MessageFeedbackRequest(BaseModel):
+    """Request body for submitting message feedback."""
+    type: str = Field(..., pattern="^(thumbs_up|thumbs_down|report)$")
+    reason: Optional[str] = Field(None, max_length=1000)
+
+
+class MessageFeedbackResponse(BaseModel):
+    """Response for feedback operations."""
+    success: bool
+    feedback_type: Optional[str] = None
+    message: Optional[str] = None
 
 
 @router.post("/sessions")
@@ -38,7 +81,7 @@ def list_sessions(
 @router.post("/sessions/{session_id}/messages")
 def send_message(
     session_id: str,
-    payload: dict,
+    payload: SendMessageRequest,
     session_data=Depends(get_current_session),
     chat_service: ChatService = Depends(get_chat_service),
 ):
@@ -47,14 +90,15 @@ def send_message(
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    query = payload.get("query", "")
+    query = payload.query
+    model_id = payload.model_id
     user_message = ChatMessage(role="user", content=query)
     chat_service.append_message(session, user_message)
     chat_service.save_session(user["username"], session)
 
     def stream():
         generator, sources = chat_service.stream_response(
-            query, user_id=user["username"], session_id=session_id
+            query, user_id=user["username"], session_id=session_id, model_id=model_id
         )
         collected = ""
         for chunk in generator:
@@ -90,7 +134,20 @@ def update_session(
     chat_service: ChatService = Depends(get_chat_service),
 ):
     _, user = session_data
-    session = chat_service.rename_session(user["username"], session_id, payload.title.strip())
+
+    # Build update dict with only provided fields
+    updates = {}
+    if payload.title is not None:
+        updates["title"] = payload.title.strip()
+    if payload.is_pinned is not None:
+        updates["is_pinned"] = payload.is_pinned
+    if payload.is_archived is not None:
+        updates["is_archived"] = payload.is_archived
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No update fields provided")
+
+    session = chat_service.update_session(user["username"], session_id, updates)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"session": session.to_dict()}
@@ -107,3 +164,165 @@ def delete_session(
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"success": True}
+
+
+@router.post("/sessions/{session_id}/share", response_model=ShareResponse)
+def share_session(
+    session_id: str,
+    request: ShareRequest,
+    session_data=Depends(get_current_session),
+    share_service=Depends(get_share_service),
+):
+    """Create a share link for a chat session."""
+    _, user = session_data
+    try:
+        share_data = share_service.create_share_link(
+            username=user["username"],
+            session_id=session_id,
+            expires_in_hours=request.expires_in_hours,
+        )
+        return ShareResponse(**share_data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/share/{share_id}", response_model=SharedSessionResponse)
+def get_shared_session(
+    share_id: str,
+    share_service=Depends(get_share_service),
+):
+    """Get a shared session by share ID."""
+    share_data = share_service.get_shared_session(share_id)
+    if share_data is None:
+        raise HTTPException(
+            status_code=404, detail="Shared session not found or expired"
+        )
+    return SharedSessionResponse(
+        session=share_data["session_data"],
+        expires_at=share_data["expires_at"],
+    )
+
+
+@router.delete("/share/{share_id}")
+def revoke_share(
+    share_id: str,
+    session_data=Depends(get_current_session),
+    share_service=Depends(get_share_service),
+):
+    """Revoke a share link."""
+    success = share_service.revoke_share(share_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    return {"success": True}
+
+
+@router.post(
+    "/sessions/{session_id}/messages/{message_index}/feedback",
+    response_model=MessageFeedbackResponse,
+)
+def submit_message_feedback(
+    session_id: str,
+    message_index: int,
+    request: MessageFeedbackRequest,
+    session_data=Depends(get_current_session),
+    chat_service: ChatService = Depends(get_chat_service),
+    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+):
+    """
+    Submit feedback for a specific message in a chat session.
+
+    Supports thumbs_up, thumbs_down, and report types.
+    For thumbs_up/thumbs_down, submitting the same type again will toggle it off.
+    """
+    _, user = session_data
+    username = user["username"]
+
+    # Validate session exists and message index is valid
+    session = chat_service.get_session(username, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if message_index < 0 or message_index >= len(session.messages):
+        raise HTTPException(status_code=400, detail="Invalid message index")
+
+    # Check if the message is an assistant message (only assistant messages can receive feedback)
+    message = session.messages[message_index]
+    if message.role != "assistant":
+        raise HTTPException(
+            status_code=400,
+            detail="Feedback can only be submitted for assistant messages"
+        )
+
+    feedback_type: FeedbackType = request.type  # type: ignore
+
+    # For thumbs up/down, check if the same type already exists (toggle behavior)
+    if feedback_type in ("thumbs_up", "thumbs_down"):
+        existing = feedback_service.get_feedback_for_message(
+            username, session_id, message_index
+        )
+        if existing and existing.feedback_type == feedback_type:
+            # Same feedback exists, remove it (toggle off)
+            feedback_service.remove_feedback(
+                username, session_id, message_index, feedback_type
+            )
+            return MessageFeedbackResponse(
+                success=True,
+                feedback_type=None,
+                message=f"Removed {feedback_type} feedback"
+            )
+
+    # Save the new feedback
+    feedback = MessageFeedback(
+        session_id=session_id,
+        message_index=message_index,
+        feedback_type=feedback_type,
+        reason=request.reason,
+    )
+    feedback_service.save_feedback(username, feedback)
+
+    return MessageFeedbackResponse(
+        success=True,
+        feedback_type=feedback_type,
+        message=f"Feedback recorded: {feedback_type}"
+    )
+
+
+@router.get("/sessions/{session_id}/messages/{message_index}/feedback")
+def get_message_feedback(
+    session_id: str,
+    message_index: int,
+    session_data=Depends(get_current_session),
+    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+):
+    """Get the current feedback for a specific message."""
+    _, user = session_data
+    username = user["username"]
+
+    feedback = feedback_service.get_feedback_for_message(
+        username, session_id, message_index
+    )
+
+    if feedback:
+        return {"feedback_type": feedback.feedback_type}
+    return {"feedback_type": None}
+
+
+@router.get("/sessions/{session_id}/feedback")
+def get_session_feedback(
+    session_id: str,
+    session_data=Depends(get_current_session),
+    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+):
+    """Get all feedback for a session (for restoring UI state)."""
+    _, user = session_data
+    username = user["username"]
+
+    feedback_list = feedback_service.get_feedback_for_session(username, session_id)
+
+    # Return as a dict mapping message_index to feedback_type for easy lookup
+    feedback_map = {}
+    for fb in feedback_list:
+        if fb.feedback_type in ("thumbs_up", "thumbs_down"):
+            feedback_map[fb.message_index] = fb.feedback_type
+
+    return {"feedback": feedback_map}

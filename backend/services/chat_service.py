@@ -56,11 +56,27 @@ class ChatService:
         self.save_session(username, session)
         return session
 
+    def update_session(self, username: str, session_id: str, updates: dict) -> Optional[ChatSession]:
+        """Update session with provided fields (title, is_pinned, is_archived)."""
+        session = self.load_session(username, session_id)
+        if not session:
+            return None
+
+        if "title" in updates:
+            session.title = updates["title"]
+        if "is_pinned" in updates:
+            session.is_pinned = updates["is_pinned"]
+        if "is_archived" in updates:
+            session.is_archived = updates["is_archived"]
+
+        self.save_session(username, session)
+        return session
+
     def stream_response(
-        self, query: str, user_id: str, session_id: Optional[str] = None
+        self, query: str, user_id: str, session_id: Optional[str] = None, model_id: Optional[str] = None
     ):
         generator, sources = generate_response_stream_and_sources(
-            query, user_id=user_id, session_id=session_id
+            query, user_id=user_id, session_id=session_id, model_id=model_id
         )
         return generator, sources
 

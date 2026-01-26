@@ -72,21 +72,13 @@ export default async function Home() {
   const issues = stats?.issues ?? [];
 
   return (
-    <PageShell contentClassName="gap-10 pb-6">
-        <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
+    <PageShell contentClassName="gap-10 pb-6" noCard>
+        <header className="relative overflow-hidden rounded-3xl p-12 animate-fade-in-down">
           {/* Decorative blobs */}
           <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
           <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
 
           <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500"></span>
-              </span>
-              Smart AI Tutor · INFO 5731
-            </div>
-
             <h1 className="font-display mt-6 text-6xl font-bold text-zinc-900 leading-tight dark:text-white">
               Advanced Computational<br />Methods
             </h1>
@@ -120,56 +112,17 @@ export default async function Home() {
                 <Link
                   key={action.title}
                   href={action.href}
-                  className={`group relative overflow-hidden rounded-3xl p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up ${
-                    i < 2
-                      ? 'card-gradient shadow-xl'
-                      : 'border-2 border-dashed border-zinc-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-indigo-600 dark:hover:bg-indigo-900/20'
-                  }`}
+                  className="group relative overflow-hidden rounded-3xl p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up bg-white hover:bg-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                   style={{animationDelay: `${i * 0.05}s`}}>
-
-                  {/* Visual indicator */}
-                  <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-xl ${
-                    i < 2 ? 'bg-white/20' : 'bg-indigo-100 dark:bg-indigo-900/30'
-                  }`}>
-                    {action.icon === 'chat' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    )}
-                    {action.icon === 'quiz' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                      </svg>
-                    )}
-                    {action.icon === 'research' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                    )}
-                    {action.icon === 'code' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                      </svg>
-                    )}
-                    {action.icon === 'calendar' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    )}
-                    {action.icon === 'chart' && (
-                      <svg className={`h-6 w-6 ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    )}
+                  
+                  <div className="mb-4">
+                    <h3 className="font-display text-xl font-bold text-zinc-900 dark:text-white">
+                      {action.title}
+                    </h3>
+                    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                      {action.description}
+                    </p>
                   </div>
-
-                  <h3 className={`font-display text-xl font-bold ${i < 2 ? 'text-white' : 'text-zinc-900 dark:text-white'}`}>
-                    {action.title}
-                  </h3>
-
-                  <p className={`mt-2 text-sm ${i < 2 ? 'text-white/80' : 'text-zinc-600 dark:text-zinc-400'}`}>
-                    {action.description}
-                  </p>
 
                   <div className={`mt-4 inline-flex items-center gap-2 font-medium text-sm ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`}>
                     Get started <span className="transition-transform group-hover:translate-x-1">→</span>
