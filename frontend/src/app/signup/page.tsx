@@ -67,22 +67,14 @@ export default function SignupPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Left: Visual side with atmosphere */}
-      <div className="relative hidden lg:flex flex-col justify-center bg-gradient-to-br from-amber-500 via-orange-500 to-pink-500 overflow-hidden p-16">
+      <div className="relative hidden lg:flex flex-col justify-center bg-zinc-900 overflow-hidden p-16">
         {/* Decorative background */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 h-96 w-96 bg-white rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-64 w-64 bg-purple-300 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
+          <div className="absolute top-0 right-0 h-96 w-96 bg-emerald-500 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 left-0 h-64 w-64 bg-teal-500 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
         </div>
 
         <div className="relative z-10 text-white">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur mb-8 animate-fade-in-down">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
-            </span>
-            Join thousands of learners
-          </div>
-
           <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
             Start Your<br />Learning Journey
           </h2>
@@ -216,7 +208,7 @@ export default function SignupPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="rounded-xl-2-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -227,7 +219,7 @@ export default function SignupPage() {
               className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-75 disabled:hover:scale-100"
             >
               {isSubmitting ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Creating account…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Creating account…</>
               ) : (
                 <>Create account <span className="transition-transform group-hover:translate-x-1">→</span></>
               )}

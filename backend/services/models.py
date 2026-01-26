@@ -40,6 +40,8 @@ class ChatSession:
     messages: List[ChatMessage] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
+    is_pinned: bool = False
+    is_archived: bool = False
 
     def to_dict(self) -> dict:
         # Handle both ChatMessage objects and dicts (from DynamoDB)
@@ -59,6 +61,8 @@ class ChatSession:
             "messages": messages_list,
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
             "updated_at": self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else self.updated_at,
+            "is_pinned": self.is_pinned,
+            "is_archived": self.is_archived,
         }
 
     @classmethod
@@ -93,6 +97,8 @@ class ChatSession:
             messages=messages,
             created_at=parse_timestamp(created_at),
             updated_at=parse_timestamp(updated_at),
+            is_pinned=data.get("is_pinned", False),
+            is_archived=data.get("is_archived", False),
         )
 
 

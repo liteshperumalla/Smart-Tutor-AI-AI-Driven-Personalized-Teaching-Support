@@ -6,7 +6,9 @@ from backend.auth_service import AuthService, get_auth_service
 from backend.api.dependencies import get_current_user, get_current_session
 from backend.config import config
 from backend.security_logger import SecurityLogger, get_client_ip, get_user_agent
-from backend.rate_limiter import limiter  # Import from rate_limiter to avoid circular imports
+from backend.rate_limiter import (
+    limiter,
+)  # Import from rate_limiter to avoid circular imports
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -25,6 +27,9 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     # Determine if we should use Secure flag
     is_production = config.ENVIRONMENT == "production"
 
+    # Set cookie domain for cross-origin requests (e.g., frontend proxy)
+    cookie_domain = "localhost" if not is_production else None
+
     # Set access token cookie
     response.set_cookie(
         key="access_token",
@@ -34,6 +39,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         samesite="lax",  # CSRF protection (Lax allows OAuth redirects)
         max_age=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # 15 minutes
         path="/",
+        domain=cookie_domain,
     )
 
     # Set refresh token cookie
@@ -45,6 +51,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         samesite="lax",
         max_age=config.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,  # 7 days
         path="/",
+        domain=cookie_domain,
     )
 
 
@@ -76,10 +83,12 @@ class GoogleAuthRequest(BaseModel):
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
+
 class PasswordResetRequest(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
     redirect_url: Optional[str] = None
+
 
 class PasswordResetConfirmRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -92,7 +101,7 @@ class PasswordResetConfirmRequest(BaseModel):
 def signup(
     payload: SignupRequest,
     request: Request,
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     try:
         user = auth_service.register_user(
@@ -100,13 +109,12 @@ def signup(
             password=payload.password,
             confirm_password=payload.confirm_password,
             email=payload.email,
-            full_name=payload.full_name
+            full_name=payload.full_name,
         )
 
         # SECURITY: Log account creation
         SecurityLogger.log_account_created(
-            username=payload.username,
-            ip_address=get_client_ip(request)
+            username=payload.username, ip_address=get_client_ip(request)
         )
 
         return {"user": user}
@@ -119,7 +127,7 @@ def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     Login endpoint - sets secure HttpOnly cookies for authentication.
@@ -137,14 +145,14 @@ def login(
         SecurityLogger.log_login_success(
             username=payload.username,
             ip_address=get_client_ip(request),
-            user_agent=get_user_agent(request)
+            user_agent=get_user_agent(request),
         )
 
         # Return user info only (tokens are in cookies)
         return {
             "user": user,
             "token_type": tokens["token_type"],
-            "message": "Login successful. Tokens set in secure cookies."
+            "message": "Login successful. Tokens set in secure cookies.",
         }
     except Exception as exc:
         # SECURITY: Log failed login attempt
@@ -152,7 +160,7 @@ def login(
             username=payload.username,
             ip_address=get_client_ip(request),
             reason="invalid_credentials",
-            user_agent=get_user_agent(request)
+            user_agent=get_user_agent(request),
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
 
@@ -161,7 +169,7 @@ def login(
 def google_callback(
     payload: GoogleAuthRequest,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     Google OAuth callback - sets secure HttpOnly cookies for authentication.
@@ -169,7 +177,9 @@ def google_callback(
     SECURITY: Tokens are stored in HttpOnly cookies to prevent XSS attacks.
     """
     try:
-        tokens, user = auth_service.login_with_google(payload.code, payload.redirect_uri)
+        tokens, user = auth_service.login_with_google(
+            payload.code, payload.redirect_uri
+        )
 
         # SECURITY: Set tokens in HttpOnly cookies
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
@@ -179,7 +189,7 @@ def google_callback(
             "user": user,
             "token_type": tokens["token_type"],
             "state": payload.state,
-            "message": "Google login successful. Tokens set in secure cookies."
+            "message": "Google login successful. Tokens set in secure cookies.",
         }
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -189,7 +199,7 @@ def google_callback(
 def refresh_token(
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service)
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     """
     Refresh access token using refresh token from cookie.
@@ -203,7 +213,7 @@ def refresh_token(
         if not refresh_token_value:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No refresh token found. Please login again."
+                detail="No refresh token found. Please login again.",
             )
 
         tokens = auth_service.refresh_token(refresh_token_value)
@@ -222,12 +232,16 @@ def refresh_token(
 
         return {
             "message": "Token refreshed successfully",
-            "token_type": tokens["token_type"]
+            "token_type": tokens["token_type"],
         }
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
 
 @router.post("/password/reset/request")
 @limiter.limit("3/hour")  # SECURITY: Rate limit to prevent abuse
@@ -251,8 +265,12 @@ def request_password_reset(
         # Log the full exception for debugging, but don't expose it to the client
         # In a real app, you would use a proper logger
         print(f"Error during password reset request: {exc}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Unable to process password reset request.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to process password reset request.",
+        )
     return {"ok": True}
+
 
 @router.post("/password/reset/confirm")
 def confirm_password_reset(
@@ -265,11 +283,16 @@ def confirm_password_reset(
             detail="Passwords do not match",
         )
     try:
-        auth_service.reset_password(payload.username, payload.new_password, payload.token)
+        auth_service.reset_password(
+            payload.username, payload.new_password, payload.token
+        )
     except Exception as exc:
         # Log the full exception for debugging
         print(f"Error during password reset confirmation: {exc}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid password reset request.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password reset request.",
+        )
     return {"ok": True}
 
 
@@ -295,14 +318,10 @@ def logout(
 
     # SECURITY: Log logout
     SecurityLogger.log_logout(
-        username=user.get("username", "unknown"),
-        ip_address=get_client_ip(request)
+        username=user.get("username", "unknown"), ip_address=get_client_ip(request)
     )
 
     # SECURITY: Clear authentication cookies
     clear_auth_cookies(response)
 
-    return {
-        "success": True,
-        "message": "Logged out successfully. Cookies cleared."
-    }
+    return {"success": True, "message": "Logged out successfully. Cookies cleared."}

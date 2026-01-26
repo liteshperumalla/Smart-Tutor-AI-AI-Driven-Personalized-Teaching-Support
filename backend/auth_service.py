@@ -213,38 +213,46 @@ class AuthService:
         # Validate input
         UserLogin(username=username, password=password)
 
-        # Check if account is locked
-        self._check_account_locked(username)
-
-        # Get user
+        # Get user - try by username first, then by email
         user = self.user_db.get_user_safe(username)
+        actual_username = username
+
+        if not user:
+            # Try to find user by email
+            user = self.user_db.get_user_by_email(username)
+            if user:
+                actual_username = user.get("username", username)
+
         if not user:
             logger.warning(f"Login attempt with non-existent user: {username}")
             raise InvalidCredentialsError()
 
+        # Check if account is locked
+        self._check_account_locked(actual_username)
+
         # Verify password
         password_hash = user.get("password_hash") or user.get("hashed_password")
         if not password_hash or not self._verify_password(password, password_hash):
-            logger.warning(f"Invalid password for user: {username}")
-            self._handle_failed_login(username)
+            logger.warning(f"Invalid password for user: {actual_username}")
+            self._handle_failed_login(actual_username)
             raise InvalidCredentialsError()
 
         # Reset failed login attempts on successful login
-        self.user_db.reset_login_attempts(username)
+        self.user_db.reset_login_attempts(actual_username)
 
         # Update last login
-        self.user_db.update_last_login(username)
+        self.user_db.update_last_login(actual_username)
 
         # Create JWT tokens
         email = user.get('email', '')
-        access_token = self.jwt_service.create_access_token(username=username, email=email)
-        refresh_token = self.jwt_service.create_refresh_token(username=username, email=email)
+        access_token = self.jwt_service.create_access_token(username=actual_username, email=email)
+        refresh_token = self.jwt_service.create_refresh_token(username=actual_username, email=email)
 
-        logger.info(f"User logged in successfully: {username}")
+        logger.info(f"User logged in successfully: {actual_username}")
 
         # Return tokens and user data without password
         safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
-        safe_user['username'] = username
+        safe_user['username'] = actual_username
 
         tokens = {
             "access_token": access_token,

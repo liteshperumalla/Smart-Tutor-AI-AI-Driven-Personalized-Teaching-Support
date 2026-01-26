@@ -72,24 +72,16 @@ function LoginPageContent() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Left: Visual side with atmosphere */}
-      <div className="relative hidden lg:flex flex-col justify-center bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 overflow-hidden p-16">
+      <div className="relative hidden lg:flex flex-col justify-center bg-zinc-900 overflow-hidden p-16">
         {/* Decorative background */}
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 h-96 w-96 bg-white rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-64 w-64 bg-amber-300 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
+          <div className="absolute top-0 right-0 h-96 w-96 bg-indigo-500 rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 left-0 h-64 w-64 bg-purple-500 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
         </div>
 
         <div className="relative z-10 text-white">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur mb-8 animate-fade-in-down">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-white"></span>
-            </span>
-            Live AI Tutoring System
-          </div>
-
           <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
-            Master Advanced<br />Computational Methods
+            Learn Advanced<br />Computational Methods
           </h2>
 
           <p className="mt-6 text-xl text-white/80 max-w-xl animate-fade-in-up stagger-1">
@@ -158,9 +150,9 @@ function LoginPageContent() {
           <div className="space-y-2">
             <label
               htmlFor="username"
-              className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              className="text-sm font-medium text-zinc-900 dark:text-zinc-300"
             >
-              Username
+              Username / Email
             </label>
             <input
               id="username"
@@ -178,7 +170,7 @@ function LoginPageContent() {
           <div className="space-y-2">
             <label
               htmlFor="password"
-              className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+              className="text-sm font-medium text-zinc-900 dark:text-zinc-300"
             >
               Password
             </label>

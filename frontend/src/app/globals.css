@@ -444,6 +444,21 @@ body.theme-dark .gradient-mesh {
   }
 }
 
+@keyframes waveform {
+  0%, 100% {
+    transform: scaleY(0.3);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.animate-waveform {
+  animation: waveform 0.4s ease-in-out infinite alternate;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 10px;

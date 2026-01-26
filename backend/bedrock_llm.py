@@ -21,18 +21,18 @@ class BedrockLLM:
     # Pricing per 1K tokens (as of December 2025)
     PRICING = {
         "anthropic.claude-3-5-sonnet-20241022-v2:0": {
-            "input": 0.003,   # $3 per 1M tokens
-            "output": 0.015   # $15 per 1M tokens
+            "input": 0.003,  # $3 per 1M tokens
+            "output": 0.015,  # $15 per 1M tokens
         },
         "meta.llama3-1-70b-instruct-v1:0": {
             "input": 0.00099,  # $0.99 per 1M tokens
-            "output": 0.00099  # $0.99 per 1M tokens
-        }
+            "output": 0.00099,  # $0.99 per 1M tokens
+        },
     }
 
     def __init__(
         self,
-        model_id: str = "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        model_id: Optional[str] = None,
         region: str = "us-east-1",
         aws_access_key_id: Optional[str] = None,
         aws_secret_access_key: Optional[str] = None,
@@ -42,12 +42,12 @@ class BedrockLLM:
         Initialize Bedrock LLM client
 
         Args:
-            model_id: Bedrock model identifier
+            model_id: Bedrock model identifier (uses config.BEDROCK_MODEL_ID if not provided)
             region: AWS region
             aws_access_key_id: Optional AWS access key (uses env/config if not provided)
             aws_secret_access_key: Optional AWS secret key
         """
-        self.model_id = model_id
+        self.model_id = model_id or config.BEDROCK_MODEL_ID
         self.region = region
 
         # Initialize boto3 client
@@ -56,10 +56,12 @@ class BedrockLLM:
         secret_key = aws_secret_access_key or config.AWS_SECRET_ACCESS_KEY
         session_token = aws_session_token or config.AWS_SESSION_TOKEN
         if access_key and secret_key:
-            client_kwargs.update({
-                "aws_access_key_id": access_key,
-                "aws_secret_access_key": secret_key,
-            })
+            client_kwargs.update(
+                {
+                    "aws_access_key_id": access_key,
+                    "aws_secret_access_key": secret_key,
+                }
+            )
             if session_token:
                 client_kwargs["aws_session_token"] = session_token
 
@@ -67,10 +69,12 @@ class BedrockLLM:
             # Configure timeouts for the boto3 client
             boto_config = Config(
                 connect_timeout=60,  # seconds
-                read_timeout=60,     # seconds
-                retries={'max_attempts': 2} # Add a retry mechanism
+                read_timeout=60,  # seconds
+                retries={"max_attempts": 2},  # Add a retry mechanism
             )
-            self.client = boto3.client('bedrock-runtime', config=boto_config, **client_kwargs)
+            self.client = boto3.client(
+                "bedrock-runtime", config=boto_config, **client_kwargs
+            )
             logger.info(f"✓ Bedrock LLM initialized: {model_id} in {region}")
         except Exception as e:
             logger.error(f"✗ Failed to initialize Bedrock client: {e}")
@@ -87,7 +91,7 @@ class BedrockLLM:
         temperature: float = 0.7,
         top_p: float = 0.9,
         system_prompt: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ) -> str:
         """
         Generate response using Bedrock model
@@ -121,23 +125,18 @@ class BedrockLLM:
         temperature: float,
         top_p: float,
         system_prompt: Optional[str],
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate using Claude model"""
 
-        messages = [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
+        messages = [{"role": "user", "content": prompt}]
 
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,
-            "messages": messages
+            "messages": messages,
         }
 
         if system_prompt:
@@ -145,16 +144,15 @@ class BedrockLLM:
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(request_body)
+                modelId=self.model_id, body=json.dumps(request_body)
             )
 
-            response_body = json.loads(response['body'].read())
+            response_body = json.loads(response["body"].read())
 
             # Extract tokens and calculate cost
-            usage = response_body.get('usage', {})
-            input_tokens = usage.get('input_tokens', 0)
-            output_tokens = usage.get('output_tokens', 0)
+            usage = response_body.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
             cost = self._calculate_cost(input_tokens, output_tokens)
 
             # Update totals
@@ -171,19 +169,14 @@ class BedrockLLM:
                 f"cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
-            return response_body['content'][0]['text']
+            return response_body["content"][0]["text"]
 
         except Exception as e:
             logger.error(f"[Bedrock] Generation error: {e}", exc_info=True)
             raise
 
     def _generate_llama(
-        self,
-        prompt: str,
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        **kwargs
+        self, prompt: str, max_tokens: int, temperature: float, top_p: float, **kwargs
     ) -> str:
         """Generate using Llama model"""
 
@@ -191,23 +184,24 @@ class BedrockLLM:
             "prompt": prompt,
             "max_gen_len": max_tokens,
             "temperature": temperature,
-            "top_p": top_p
+            "top_p": top_p,
         }
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id,
-                body=json.dumps(request_body)
+                modelId=self.model_id, body=json.dumps(request_body)
             )
 
-            response_body = json.loads(response['body'].read())
+            response_body = json.loads(response["body"].read())
 
             # Debug: Log the actual response structure
-            logger.info(f"[Bedrock Llama] Response body keys: {list(response_body.keys())}")
+            logger.info(
+                f"[Bedrock Llama] Response body keys: {list(response_body.keys())}"
+            )
             logger.info(f"[Bedrock Llama] Full response: {response_body}")
 
             # Llama response format
-            generated_text = response_body.get('generation', '')
+            generated_text = response_body.get("generation", "")
 
             # Estimate tokens (Llama doesn't provide usage stats)
             input_tokens = len(prompt.split())
@@ -222,7 +216,9 @@ class BedrockLLM:
             if config.ENABLE_COST_TRACKING:
                 self._log_cost(input_tokens, output_tokens, cost, prompt[:100])
 
-            logger.info(f"[Bedrock Llama] ~{input_tokens} in + ~{output_tokens} out, cost: ${cost:.4f} (total: ${self.total_cost:.2f})")
+            logger.info(
+                f"[Bedrock Llama] ~{input_tokens} in + ~{output_tokens} out, cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
+            )
 
             return generated_text
 
@@ -231,11 +227,7 @@ class BedrockLLM:
             raise
 
     def stream_generate(
-        self,
-        prompt: str,
-        max_tokens: int = 2048,
-        temperature: float = 0.7,
-        **kwargs
+        self, prompt: str, max_tokens: int = 2048, temperature: float = 0.7, **kwargs
     ) -> Generator[str, None, None]:
         """
         Stream response using Bedrock (for real-time display)
@@ -259,20 +251,19 @@ class BedrockLLM:
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": messages
+            "messages": messages,
         }
 
         try:
             response = self.client.invoke_model_with_response_stream(
-                modelId=self.model_id,
-                body=json.dumps(request_body)
+                modelId=self.model_id, body=json.dumps(request_body)
             )
 
-            for event in response['body']:
-                chunk = json.loads(event['chunk']['bytes'])
+            for event in response["body"]:
+                chunk = json.loads(event["chunk"]["bytes"])
 
-                if chunk['type'] == 'content_block_delta':
-                    text = chunk['delta'].get('text', '')
+                if chunk["type"] == "content_block_delta":
+                    text = chunk["delta"].get("text", "")
                     if text:
                         yield text
 
@@ -299,11 +290,7 @@ class BedrockLLM:
         return input_cost + output_cost
 
     def _log_cost(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        cost: float,
-        prompt_preview: str
+        self, input_tokens: int, output_tokens: int, cost: float, prompt_preview: str
     ):
         """Log cost tracking to S3 and local backup"""
         try:
@@ -319,8 +306,8 @@ class BedrockLLM:
                 model_id=self.model_id,
                 metadata={
                     "prompt_preview": prompt_preview,
-                    "total_cost": self.total_cost
-                }
+                    "total_cost": self.total_cost,
+                },
             )
 
         except Exception as e:
@@ -334,8 +321,10 @@ class BedrockLLM:
             "total_output_tokens": self.total_output_tokens,
             "total_cost_usd": self.total_cost,
             "avg_cost_per_request": (
-                self.total_cost / max(1, self.total_input_tokens + self.total_output_tokens)
-            ) * 1000
+                self.total_cost
+                / max(1, self.total_input_tokens + self.total_output_tokens)
+            )
+            * 1000,
         }
 
 
@@ -343,6 +332,5 @@ class BedrockLLM:
 def create_bedrock_llm(model_id: Optional[str] = None) -> BedrockLLM:
     """Create Bedrock LLM instance with config defaults"""
     return BedrockLLM(
-        model_id=model_id or config.BEDROCK_MODEL_ID,
-        region=config.AWS_REGION
+        model_id=model_id or config.BEDROCK_MODEL_ID, region=config.AWS_REGION
     )

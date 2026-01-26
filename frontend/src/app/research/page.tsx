@@ -234,6 +234,16 @@ export default function ResearchPage() {
     Array<{ id: string; channel: Channel; state: StatusRecord["state"]; message: string; timestamp: string }>
   >([]);
 
+  // Helper function to sort folders numerically by module number
+  const sortFoldersNumerically = (folders: ResearchFolder[]) => {
+    return [...folders].sort((a, b) => {
+      // Extract numbers from label (e.g., "Module 1" -> 1, "Module 10" -> 10)
+      const numA = parseInt(a.label.match(/\d+/)?.[0] || '0', 10);
+      const numB = parseInt(b.label.match(/\d+/)?.[0] || '0', 10);
+      return numA - numB;
+    });
+  };
+
   useEffect(() => {
     if (!token) return;
     let mounted = true;
@@ -244,9 +254,11 @@ export default function ResearchPage() {
         const filteredFolders = (res.folders || []).filter(
           (folder) => !folder.label.toLowerCase().includes("knowledge_uploads")
         );
-        setFolders(filteredFolders);
-        if (filteredFolders?.length) {
-          setSelectedFolders([filteredFolders[0].path]);
+        // Sort folders numerically instead of alphabetically
+        const sortedFolders = sortFoldersNumerically(filteredFolders);
+        setFolders(sortedFolders);
+        if (sortedFolders?.length) {
+          setSelectedFolders([sortedFolders[0].path]);
         }
       })
       .catch(() => mounted && setError("Unable to load folders"));
@@ -319,10 +331,10 @@ export default function ResearchPage() {
     if (!record || record.state === "idle") return null;
     const styles =
       record.state === "processing"
-        ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+        ? "bg-amber-100 text-amber-800-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
         : record.state === "success"
-        ? "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800"
-        : "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
+        ? "bg-emerald-100 text-emerald-800-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800"
+        : "bg-red-100 text-red-700-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800";
     const text =
       record.message ||
       (record.state === "processing"
@@ -331,7 +343,7 @@ export default function ResearchPage() {
         ? "Ingestion completed."
         : "Unable to ingest.");
     return (
-      <p className={`rounded-full border px-3 py-1 text-xs font-medium ${styles}`}>
+      <p className={`rounded-full-3 py-1 text-xs font-medium ${styles}`}>
         {text}
       </p>
     );
@@ -714,27 +726,9 @@ export default function ResearchPage() {
   };
 
   return (
-    <PageShell contentClassName="gap-8">
-        <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-          <div className="absolute top-0 right-0 h-64 w-64 bg-emerald-400/20 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-48 w-48 bg-blue-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-4 py-2 text-sm font-medium text-emerald-700 backdrop-blur dark:border-emerald-800 dark:bg-zinc-900/80 dark:text-emerald-300 mb-4">
-              <Search className="h-4 w-4" />
-              Research Mode
-            </div>
-            <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
-              Investigate any topic
-            </h1>
-            <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-              Upload documents, web pages, or YouTube videos and ask questions about them
-            </p>
-          </div>
-        </header>
-
+    <PageShell contentClassName="gap-8" noCard>
         {/* Upload Sources Section */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Add sources</p>
@@ -744,7 +738,7 @@ export default function ResearchPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-3">
-            <form onSubmit={handleFileUpload} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+            <form onSubmit={handleFileUpload} className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
                   <FileIcon type="docx" className="h-5 w-5" />
@@ -770,7 +764,7 @@ export default function ResearchPage() {
                 className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
                 {uploadingFile ? (
-                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Analyzing...</>
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Analyzing...</>
                 ) : (
                   fileToUpload ? `Add ${fileToUpload.name}` : "Add file"
                 )}
@@ -778,7 +772,7 @@ export default function ResearchPage() {
               <div className="mt-3">{renderStatus("file")}</div>
             </form>
 
-            <form onSubmit={handleUrlSubmit} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+            <form onSubmit={handleUrlSubmit} className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400">
                   <FileIcon type="webpage" className="h-5 w-5" />
@@ -793,7 +787,7 @@ export default function ResearchPage() {
                 value={urlInput}
                 onChange={(event) => setUrlInput(event.target.value)}
                 placeholder="https://example.com/article"
-                className="mt-3 w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-3 w-full rounded-xl-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               />
               <button
                 type="submit"
@@ -801,7 +795,7 @@ export default function ResearchPage() {
                 className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
                 {submittingUrl ? (
-                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Fetching...</>
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Fetching...</>
                 ) : (
                   "Add URL"
                 )}
@@ -809,7 +803,7 @@ export default function ResearchPage() {
               <div className="mt-3">{renderStatus("url")}</div>
             </form>
 
-            <form onSubmit={handleYoutubeSubmit} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+            <form onSubmit={handleYoutubeSubmit} className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400">
                   <FileIcon type="youtube" className="h-5 w-5" />
@@ -824,7 +818,7 @@ export default function ResearchPage() {
                 value={youtubeInput}
                 onChange={(event) => setYoutubeInput(event.target.value)}
                 placeholder="https://www.youtube.com/watch?v=..."
-                className="mt-3 w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                className="mt-3 w-full rounded-xl-zinc-200 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
               />
               <button
                 type="submit"
@@ -832,7 +826,7 @@ export default function ResearchPage() {
                 className="mt-4 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
               >
                 {submittingYoutube ? (
-                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Transcribing...</>
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Transcribing...</>
                 ) : (
                   "Add YouTube"
                 )}
@@ -844,7 +838,7 @@ export default function ResearchPage() {
 
         {/* Previews Section - Improved */}
         {previews.length > 0 && (
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm dark:border-emerald-800 dark:bg-emerald-900/20">
+          <section className="rounded-2xl-emerald-200 bg-emerald-50 p-6 shadow-sm dark:border-emerald-800 dark:bg-emerald-900/20">
             <div className="flex items-center justify-between pb-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400">
@@ -879,7 +873,7 @@ export default function ResearchPage() {
               {previews.map((preview, index) => (
                 <div
                   key={`${preview.title}-${index}`}
-                  className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-700 dark:bg-zinc-800"
+                  className="rounded-xl-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-700 dark:bg-zinc-800"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
@@ -895,7 +889,7 @@ export default function ResearchPage() {
                     </div>
                   </div>
                   {preview.thumbnail && (
-                    <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-700">
+                    <div className="mt-3 overflow-hidden rounded-lg-zinc-200 dark:border-zinc-700">
                       <Image
                         src={preview.thumbnail}
                         alt={preview.title}
@@ -919,7 +913,7 @@ export default function ResearchPage() {
 
         {/* Research Chat Section */}
         {(showResearchChat && researchChatHistory.length > 0) || loading ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Research Chat</p>
@@ -930,7 +924,7 @@ export default function ResearchPage() {
                   type="button"
                   onClick={handleExportChat}
                   disabled={researchChatHistory.length === 0}
-                  className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                  className="rounded-full-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
                 >
                   Export Chat
                 </button>
@@ -938,14 +932,14 @@ export default function ResearchPage() {
                   type="button"
                   onClick={handleClearChat}
                   disabled={researchChatHistory.length === 0}
-                  className="rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30"
+                  className="rounded-full-red-300 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30"
                 >
                   Clear Chat
                 </button>
               </div>
             </div>
 
-            <div className="max-h-96 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+            <div className="max-h-96 overflow-y-auto rounded-xl-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
               {researchChatHistory.map((msg, index) => (
                 <div
                   key={index}
@@ -955,7 +949,7 @@ export default function ResearchPage() {
                     className={`inline-block max-w-[85%] rounded-2xl p-4 ${
                       msg.role === "user"
                         ? "bg-blue-600 text-white dark:bg-blue-600 dark:text-white"
-                        : "bg-white text-zinc-900 shadow-sm border border-zinc-200 dark:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-600"
+                        : "bg-white text-zinc-900 shadow-sm-zinc-200 dark:bg-zinc-700 dark:text-zinc-100 dark:border-zinc-600"
                     }`}
                   >
                     <p className={`mb-1 text-xs font-semibold ${msg.role === "user" ? "text-blue-100" : "text-zinc-500 dark:text-zinc-400"}`}>
@@ -963,7 +957,7 @@ export default function ResearchPage() {
                     </p>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
                     {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 border-t border-zinc-200 pt-3 dark:border-zinc-600">
+                      <div className="mt-3-t-zinc-200 pt-3 dark:border-zinc-600">
                         <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">Sources:</p>
                         {msg.sources.map((source, idx) => (
                           <div key={idx} className="mb-2 rounded-lg bg-zinc-100 p-2 text-xs dark:bg-zinc-600">
@@ -987,7 +981,7 @@ export default function ResearchPage() {
               {/* Loading Animation */}
               {loading && (
                 <div className="mb-4 text-left">
-                  <div className="inline-block max-w-[85%] rounded-2xl bg-white p-4 shadow-sm border border-zinc-200 dark:bg-zinc-700 dark:border-zinc-600">
+                  <div className="inline-block max-w-[85%] rounded-2xl bg-white p-4 shadow-sm-zinc-200 dark:bg-zinc-700 dark:border-zinc-600">
                     <p className="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">Research Assistant</p>
                     <div className="flex items-center gap-2">
                       <div className="flex gap-1">
@@ -1007,7 +1001,7 @@ export default function ResearchPage() {
         ) : null}
 
         {/* Query Section */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <form onSubmit={handleSearch} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="query" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -1018,20 +1012,20 @@ export default function ResearchPage() {
                 rows={3}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="w-full rounded-2xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+                className="w-full rounded-2xl-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
                 placeholder={queryUploadedOnly ? "Ask questions about your uploaded documents..." : "Ask about INFO 5731 materials, assignments, grading, etc."}
               />
             </div>
 
             {/* Source Selection Toggle */}
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <p className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">Query source:</p>
               <div className="flex flex-wrap gap-3">
                 <label
                   className={`flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
                     queryUploadedOnly
-                      ? "bg-emerald-600 text-white border border-emerald-600 dark:bg-emerald-600 dark:text-white dark:border-emerald-600"
-                      : "bg-zinc-100 text-zinc-700 border border-zinc-300 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-600 dark:hover:bg-zinc-700"
+                      ? "bg-emerald-600 text-white-emerald-600 dark:bg-emerald-600 dark:text-white dark:border-emerald-600"
+                      : "bg-zinc-100 text-zinc-700-zinc-300 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-600 dark:hover:bg-zinc-700"
                   }`}
                 >
                   <input
@@ -1049,8 +1043,8 @@ export default function ResearchPage() {
                 <label
                   className={`flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition ${
                     !queryUploadedOnly
-                      ? "bg-blue-600 text-white border border-blue-600 dark:bg-blue-600 dark:text-white dark:border-blue-600"
-                      : "bg-zinc-100 text-zinc-700 border border-zinc-300 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-600 dark:hover:bg-zinc-700"
+                      ? "bg-blue-600 text-white-blue-600 dark:bg-blue-600 dark:text-white dark:border-blue-600"
+                      : "bg-zinc-100 text-zinc-700-zinc-300 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-600 dark:hover:bg-zinc-700"
                   }`}
                 >
                   <input
@@ -1076,7 +1070,7 @@ export default function ResearchPage() {
                   {folders.map((folder) => (
                     <label
                       key={folder.path}
-                      className={`flex cursor-pointer flex-col rounded-2xl border px-4 py-3 text-sm transition ${
+                      className={`flex cursor-pointer flex-col rounded-2xl-4 py-3 text-sm transition ${
                         selectedFolders.includes(folder.path)
                           ? "border-zinc-900 bg-zinc-900/5 dark:border-white dark:bg-white/5"
                           : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
@@ -1100,7 +1094,7 @@ export default function ResearchPage() {
             )}
 
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="rounded-xl-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -1111,7 +1105,7 @@ export default function ResearchPage() {
               className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
             >
               {loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Searching...</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Searching...</>
               ) : (
                 <>{queryUploadedOnly ? "Ask about uploaded documents" : "Search course materials"} <span className="transition-transform group-hover:translate-x-1">→</span></>
               )}
@@ -1126,7 +1120,7 @@ export default function ResearchPage() {
         </section>
 
         {/* ==================== RESEARCH TOOLS SECTION ==================== */}
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex flex-col gap-2 pb-4">
             <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Advanced Tools</p>
             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Research Capabilities</h2>
@@ -1160,7 +1154,7 @@ export default function ResearchPage() {
 
           {/* Academic Search Panel */}
           {activeResearchTool === "academic" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Academic Paper Search</h3>
               <form onSubmit={handleAcademicSearch} className="space-y-4">
                 <input
@@ -1168,7 +1162,7 @@ export default function ResearchPage() {
                   value={academicQuery}
                   onChange={(e) => setAcademicQuery(e.target.value)}
                   placeholder="Search for academic papers..."
-                  className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                  className="w-full rounded-xl-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                 />
                 <div className="flex flex-wrap gap-2">
                   {["arxiv", "pubmed", "scholar"].map((source) => (
@@ -1217,7 +1211,7 @@ export default function ResearchPage() {
 
           {/* Compare Sources Panel */}
           {activeResearchTool === "compare" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Compare Sources</h3>
               <form onSubmit={handleCompare} className="space-y-4">
                 <input
@@ -1225,7 +1219,7 @@ export default function ResearchPage() {
                   value={compareTopic}
                   onChange={(e) => setCompareTopic(e.target.value)}
                   placeholder="Enter a topic to compare across documents..."
-                  className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                  className="w-full rounded-xl-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                 />
                 <button
                   type="submit"
@@ -1271,7 +1265,7 @@ export default function ResearchPage() {
 
           {/* Citations Panel */}
           {activeResearchTool === "citations" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Extract Citations</h3>
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
@@ -1279,7 +1273,7 @@ export default function ResearchPage() {
                   <select
                     value={citationFormat}
                     onChange={(e) => setCitationFormat(e.target.value)}
-                    className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                    className="rounded-lg-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                   >
                     <option value="apa">APA</option>
                     <option value="mla">MLA</option>
@@ -1335,7 +1329,7 @@ export default function ResearchPage() {
 
           {/* Summary Panel */}
           {activeResearchTool === "summary" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Generate Summary</h3>
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-4">
@@ -1385,7 +1379,7 @@ export default function ResearchPage() {
 
           {/* Questions Panel */}
           {activeResearchTool === "questions" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Generate Study Questions</h3>
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-4">
@@ -1394,7 +1388,7 @@ export default function ResearchPage() {
                     <select
                       value={questionDifficulty}
                       onChange={(e) => setQuestionDifficulty(e.target.value)}
-                      className="rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                      className="rounded-lg-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                     >
                       <option value="easy">Easy</option>
                       <option value="medium">Medium</option>
@@ -1409,7 +1403,7 @@ export default function ResearchPage() {
                       onChange={(e) => setQuestionCount(Math.min(20, Math.max(1, parseInt(e.target.value) || 5)))}
                       min={1}
                       max={20}
-                      className="w-16 rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                      className="w-16 rounded-lg-zinc-300 px-3 py-2 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                     />
                   </div>
                   <button
@@ -1483,7 +1477,7 @@ export default function ResearchPage() {
 
           {/* Fact Check Panel */}
           {activeResearchTool === "factcheck" && (
-            <div className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+            <div className="rounded-xl-zinc-200 p-4 dark:border-zinc-700">
               <h3 className="text-lg font-semibold mb-3 text-zinc-900 dark:text-white">Fact Check</h3>
               <form onSubmit={handleFactCheck} className="space-y-4">
                 <textarea
@@ -1491,7 +1485,7 @@ export default function ResearchPage() {
                   onChange={(e) => setFactCheckClaim(e.target.value)}
                   placeholder="Enter a claim to verify against your documents..."
                   rows={3}
-                  className="w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+                  className="w-full rounded-xl-zinc-300 px-4 py-3 text-sm dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                 />
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2">
@@ -1579,7 +1573,7 @@ export default function ResearchPage() {
 
         {/* Ingestion Activity */}
         {statusLog.length > 0 && (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Recent activity</h3>
             <div className="mt-4 space-y-2">
               {statusLog.map((entry) => (

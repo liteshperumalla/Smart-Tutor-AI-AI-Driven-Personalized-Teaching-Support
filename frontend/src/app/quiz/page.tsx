@@ -36,6 +36,16 @@ export default function QuizPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Helper function to sort folders numerically by module number
+  const sortFoldersNumerically = (folders: QuizFolder[]) => {
+    return [...folders].sort((a, b) => {
+      // Extract numbers from label (e.g., "Module 1" -> 1, "Module 10" -> 10)
+      const numA = parseInt(a.label.match(/\d+/)?.[0] || '0', 10);
+      const numB = parseInt(b.label.match(/\d+/)?.[0] || '0', 10);
+      return numA - numB;
+    });
+  };
+
   useEffect(() => {
     if (!token) return;
     let mounted = true;
@@ -43,10 +53,12 @@ export default function QuizPage() {
     fetchQuizFolders(token)
       .then((data) => {
         if (!mounted) return;
-        setFolders(data);
+        // Sort folders numerically instead of alphabetically
+        const sortedFolders = sortFoldersNumerically(data);
+        setFolders(sortedFolders);
         setFoldersError(null);
-        if (data.length > 0) {
-          setSelectedFolders([data[0].path]);
+        if (sortedFolders.length > 0) {
+          setSelectedFolders([sortedFolders[0].path]);
         }
       })
       .catch((error) => {
@@ -139,49 +151,31 @@ export default function QuizPage() {
   };
 
   return (
-    <PageShell contentClassName="gap-10">
-        <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-          <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/80 px-4 py-2 text-sm font-medium text-indigo-700 backdrop-blur dark:border-indigo-800 dark:bg-zinc-900/80 dark:text-indigo-300 mb-4">
-              <Brain className="h-4 w-4" />
-              Quiz Generator
-            </div>
-            <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
-              Master the course material
-            </h1>
-            <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-              Generate custom quizzes from your course materials and track your progress
-            </p>
-          </div>
-        </header>
-
+    <PageShell contentClassName="gap-10" noCard>
         <section className="grid gap-6 lg:grid-cols-3 animate-fade-in-up">
           <form
             onSubmit={handleGenerate}
             className="card lg:col-span-2"
           >
             {foldersError && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="mb-4 rounded-xl-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                 {foldersError}
               </div>
             )}
 
             <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Select folders</p>
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-400">Select folders</p>
               {loadingFolders ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="rounded-2xl p-4 border-2 border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800 animate-pulse">
+                    <div key={i} className="rounded-2xl p-4-2-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800 animate-pulse">
                       <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
                       <div className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
                     </div>
                   ))}
                 </div>
               ) : folders.length === 0 ? (
-                <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+                <div className="rounded-2xl-2-dashed-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
                   <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
                     <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -203,7 +197,7 @@ export default function QuizPage() {
                       className={`group relative cursor-pointer overflow-hidden rounded-2xl p-4 text-sm transition hover:-translate-y-1 ${
                         isSelected
                           ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30"
-                          : "border-2 border-zinc-200 bg-white hover:border-indigo-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-indigo-600"
+                          : "border-2-zinc-200 bg-white hover:border-indigo-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-indigo-600"
                       }`}
                     >
                       <input
@@ -219,12 +213,7 @@ export default function QuizPage() {
                           </svg>
                         </div>
                       )}
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl mb-3 ${
-                        isSelected ? 'bg-white/20' : 'bg-indigo-100 dark:bg-indigo-900/30'
-                      }`}>
-                        <div className={`h-5 w-5 rounded-full ${isSelected ? 'bg-white/40' : 'bg-indigo-600 dark:bg-indigo-400'}`}></div>
-                      </div>
-                      <span className={`font-bold block ${isSelected ? '' : 'text-zinc-900 dark:text-white'}`}>{folder.label}</span>
+                       <span className={`font-bold block ${isSelected ? '' : 'text-zinc-900 dark:text-white'}`}>{folder.label}</span>
                       <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}>{folder.file_count} files</span>
                     </label>
                   );
@@ -234,7 +223,7 @@ export default function QuizPage() {
             </div>
 
             <div className="mt-6 space-y-2">
-              <label htmlFor="numQuestions" className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+              <label htmlFor="numQuestions" className="text-sm font-medium text-zinc-900 dark:text-zinc-400">
                 Number of questions
               </label>
               <input
@@ -246,11 +235,11 @@ export default function QuizPage() {
                 onChange={(event) => setNumQuestions(Number(event.target.value))}
                 className="w-full"
               />
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">Generating {numQuestions} questions</p>
+              <p className="text-sm text-zinc-700 dark:text-zinc-400">Generating {numQuestions} questions</p>
             </div>
 
             {actionError && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="mt-4 rounded-xl-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                 {actionError}
               </div>
             )}
@@ -261,7 +250,7 @@ export default function QuizPage() {
               className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
               {isGenerating ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Building quiz…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Building quiz…</>
               ) : (
                 <>Generate quiz <span className="transition-transform group-hover:translate-x-1">→</span></>
               )}
@@ -277,10 +266,10 @@ export default function QuizPage() {
             </div>
             <div className="space-y-3 text-sm">
               {history.slice(0, 4).map((attempt, index) => (
-                <div
-                  key={`${attempt.id}-${attempt.created_at ?? index}`}
-                  className="rounded-xl border-2 border-zinc-100 bg-zinc-50 p-3 transition hover:border-indigo-200 hover:shadow-sm dark:border-zinc-800 dark:bg-zinc-800/50 dark:hover:border-indigo-800"
-                >
+                 <div
+                   key={`${attempt.id}-${attempt.created_at ?? index}`}
+                   className="rounded-xl p-3 transition hover:shadow-sm"
+                 >
                   <div className="flex items-center justify-between">
                     <p className="font-bold text-zinc-900 dark:text-white">
                       {attempt.score}/{attempt.total_questions}
@@ -304,8 +293,8 @@ export default function QuizPage() {
         </section>
 
         {quiz && (
-          <section className="rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-col gap-2 border-b border-zinc-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800">
+          <section className="rounded-3xl-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Active quiz</p>
                 <h2 className="text-2xl font-semibold text-zinc-900 dark:text-white">
@@ -321,7 +310,7 @@ export default function QuizPage() {
               {quiz.questions.map((question, index) => (
                 <div
                   key={question.id}
-                  className="rounded-2xl border border-zinc-100 bg-zinc-50 p-5 shadow-inner dark:border-zinc-800 dark:bg-zinc-800/50"
+                  className="rounded-2xl p-5 shadow-inner"
                 >
                   <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Question {index + 1}</p>
                   <h3 className="mt-2 text-lg font-semibold text-zinc-900 dark:text-white">{question.question}</h3>
@@ -333,7 +322,7 @@ export default function QuizPage() {
                       return (
                         <label
                           key={letter}
-                          className={`flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-sm transition ${
+                          className={`flex cursor-pointer items-center gap-3 rounded-2xl-4 py-3 text-sm transition ${
                             answers[question.id] === letter
                               ? "border-zinc-900 bg-white dark:border-white dark:bg-zinc-700"
                               : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
@@ -367,7 +356,7 @@ export default function QuizPage() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               {result && (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                <div className="rounded-2xl-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
                   Score: {result.score}/{result.total_questions} ({result.percentage.toFixed(1)}%)
                 </div>
               )}

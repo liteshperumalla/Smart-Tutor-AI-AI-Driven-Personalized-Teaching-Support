@@ -116,25 +116,7 @@ export default function EvaluationDashboard() {
   }
 
   return (
-    <PageShell contentClassName="gap-8">
-      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-        <div className="absolute top-0 right-0 h-64 w-64 bg-blue-400/20 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-cyan-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white/80 px-4 py-2 text-sm font-medium text-blue-700 backdrop-blur dark:border-blue-800 dark:bg-zinc-900/80 dark:text-blue-300 mb-4">
-            <BarChart3 className="h-4 w-4" />
-            Evaluation
-          </div>
-          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
-            RAG test harness
-          </h1>
-          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            Test and evaluate the Retrieval-Augmented Generation (RAG) pipeline performance
-          </p>
-        </div>
-      </header>
-
+    <PageShell contentClassName="gap-8" noCard>
       {analysis && (
         <section className="grid gap-4 md:grid-cols-3">
           {[{
@@ -152,7 +134,7 @@ export default function EvaluationDashboard() {
             value: `${Math.round(analysis.generation_summary.hallucination_rate * 100)}%`,
             sub: `${analysis.total_tests} tests run`,
           }].map((card) => (
-            <div key={card.label} className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div key={card.label} className="rounded-3xl-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">{card.label}</p>
               <p className="pt-2 text-2xl font-semibold text-zinc-950 dark:text-white">{card.value}</p>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">{card.sub}</p>
@@ -162,7 +144,7 @@ export default function EvaluationDashboard() {
       )}
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={handleRunSuite} className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <form onSubmit={handleRunSuite} className="rounded-3xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">Run suite</p>
           <h2 className="pt-2 text-xl font-semibold text-zinc-950 dark:text-white">Configure filters</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Pick a subset of dataset cases to evaluate.</p>
@@ -179,7 +161,7 @@ export default function EvaluationDashboard() {
               </div>
             </div>
           ) : cases.length === 0 ? (
-            <div className="mt-5 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 p-6 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+            <div className="mt-5 rounded-xl-2-dashed-zinc-200 bg-zinc-50 p-6 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
               <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
                 <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -197,7 +179,7 @@ export default function EvaluationDashboard() {
                 max={100}
                 value={runLimit}
                 onChange={(event) => setRunLimit(Number(event.target.value))}
-                className="mt-2 w-full rounded-2xl border border-zinc-200 px-4 py-2 text-base focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+                className="mt-2 w-full rounded-2xl-zinc-200 px-4 py-2 text-base focus:border-zinc-900 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
               />
             </label>
           )}
@@ -211,7 +193,7 @@ export default function EvaluationDashboard() {
                     type="button"
                     key={category}
                     onClick={() => toggleSelection(category, selectedCategories, setSelectedCategories)}
-                    className={`rounded-full border px-4 py-1 text-sm ${
+                    className={`rounded-full-4 py-1 text-sm ${
                       selectedCategories.includes(category)
                         ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-900"
                         : "border-zinc-200 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
@@ -233,7 +215,7 @@ export default function EvaluationDashboard() {
                     type="button"
                     key={difficulty}
                     onClick={() => toggleSelection(difficulty, selectedDifficulties, setSelectedDifficulties)}
-                    className={`rounded-full border px-4 py-1 text-sm ${
+                    className={`rounded-full-4 py-1 text-sm ${
                       selectedDifficulties.includes(difficulty)
                         ? "border-zinc-900 bg-zinc-900 text-white dark:border-white dark:bg-white dark:text-zinc-900"
                         : "border-zinc-200 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
@@ -255,7 +237,7 @@ export default function EvaluationDashboard() {
               className="btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
               {isRunning ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Running…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Running…</>
               ) : (
                 <>Run evaluation <span className="transition-transform group-hover:translate-x-1">→</span></>
               )}
@@ -274,13 +256,13 @@ export default function EvaluationDashboard() {
           </div>
         </form>
 
-        <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="rounded-3xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">Dataset preview</p>
           <h2 className="pt-2 text-xl font-semibold text-zinc-950 dark:text-white">Latest configured cases</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Showing the first five prompts from the evaluation dataset.</p>
           <ul className="mt-4 space-y-4">
             {cases.slice(0, 5).map((testCase) => (
-              <li key={testCase.id} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <li key={testCase.id} className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">{testCase.category || "general"}</p>
                 <p className="pt-1 font-semibold text-zinc-900 dark:text-white">{testCase.query}</p>
                 <p className="pt-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -293,7 +275,7 @@ export default function EvaluationDashboard() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-3xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">Metrics log</p>
@@ -303,7 +285,7 @@ export default function EvaluationDashboard() {
             <button onClick={handleRefreshSummary} className="btn-secondary">
               Refresh
             </button>
-            <button onClick={handleClearLogs} className="rounded-full border-2 border-red-200 px-4 py-2 font-medium text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
+            <button onClick={handleClearLogs} className="rounded-full-2-red-200 px-4 py-2 font-medium text-red-600 transition hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20">
               Clear logs
             </button>
           </div>
@@ -314,17 +296,17 @@ export default function EvaluationDashboard() {
             <p className="mt-4 text-sm text-red-600 dark:text-red-400">{logSummary.error}</p>
           ) : (
             <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <div className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <dt className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">Queries</dt>
                 <dd className="pt-1 text-2xl font-semibold text-zinc-950 dark:text-white">{logSummary.total_queries_analyzed ?? 0}</dd>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">Logged entries</p>
               </div>
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <div className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <dt className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">Avg latency</dt>
                 <dd className="pt-1 text-2xl font-semibold text-zinc-950 dark:text-white">{(logSummary.avg_total_time_seconds ?? 0).toFixed(2)}s</dd>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">Retrieval + generation</p>
               </div>
-              <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <div className="rounded-2xl-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <dt className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">Avg relevance</dt>
                 <dd className="pt-1 text-2xl font-semibold text-zinc-950 dark:text-white">{(logSummary.avg_relevance_score ?? 0).toFixed(2)}</dd>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">Retriever scores</p>
@@ -337,12 +319,12 @@ export default function EvaluationDashboard() {
       </section>
 
       {results.length > 0 && (
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-3xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">Latest run</p>
           <h2 className="pt-1 text-xl font-semibold text-zinc-950 dark:text-white">Detailed results</h2>
           <div className="mt-6 space-y-5">
             {results.map((result) => (
-              <article key={result.test_id} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-800/50">
+              <article key={result.test_id} className="rounded-2xl-zinc-100 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-800/50">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">{result.category || "general"}</p>

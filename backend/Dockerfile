@@ -14,7 +14,13 @@ RUN apt-get update && apt-get install -y \
     g++ \
     libpq-dev \
     curl \
+    nodejs \
+    default-jdk \
+    golang-go \
     && rm -rf /var/lib/apt/lists/*
+
+# Install TypeScript globally (as root)
+RUN npm install -g typescript 2>/dev/null || true
 
 # Copy requirements
 COPY requirements.txt .

@@ -96,27 +96,9 @@ export default function FeedbackPage() {
   }
 
   return (
-    <PageShell className="max-w-5xl" contentClassName="gap-8">
-      <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12 animate-fade-in-down">
-        <div className="absolute top-0 right-0 h-64 w-64 bg-pink-400/20 rounded-full blur-3xl animate-float"></div>
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
-
-        <div className="relative z-10">
-          <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-white/80 px-4 py-2 text-sm font-medium text-pink-700 backdrop-blur dark:border-pink-800 dark:bg-zinc-900/80 dark:text-pink-300 mb-4">
-            <MessageSquare className="h-4 w-4" />
-            Feedback
-          </div>
-          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
-            Tell us how we can improve
-          </h1>
-          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            All submissions are stored securely. Our team reviews new entries weekly and follows up if contact information is provided
-          </p>
-        </div>
-      </header>
-
+    <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
       <section className="grid gap-6 md:grid-cols-2">
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-medium text-zinc-900">Give general feedback</h2>
           <p className="mt-1 text-sm text-zinc-600">Share usability notes, feature wishes, or content ideas.</p>
           <form className="mt-4 space-y-4" onSubmit={handleFeedbackSubmit}>
@@ -143,7 +125,7 @@ export default function FeedbackPage() {
               className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
               {feedbackState.loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Submitting…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Submitting…</>
               ) : (
                 "Submit feedback"
               )}
@@ -151,7 +133,7 @@ export default function FeedbackPage() {
           </form>
         </article>
 
-        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-xl font-medium text-zinc-900">Report a bug</h2>
           <p className="mt-1 text-sm text-zinc-600">Describe the issue so we can reproduce it quickly.</p>
           <form className="mt-4 space-y-4" onSubmit={handleBugSubmit}>
@@ -189,7 +171,7 @@ export default function FeedbackPage() {
               className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
             >
               {bugState.loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Submitting…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Submitting…</>
               ) : (
                 "Submit bug report"
               )}
@@ -198,7 +180,7 @@ export default function FeedbackPage() {
         </article>
       </section>
 
-      <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
+      <section className="rounded-2xl-dashed-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
         <p>
           Feedback entries are written to the server’s log folder (`logs/feedback_log.txt` and `logs/bug_reports_log.txt`
           in development). In production we’ll forward these to CloudWatch or another logging system.

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 from backend.config import config
 from backend.rag_evaluation import RAGEvaluationMetrics, get_evaluator
 from backend.s3_retriever import create_s3_retriever
+from backend.bedrock_llm import BedrockLLM
 
 
 def _percentile(values: List[float], pct: float) -> float:
@@ -205,9 +206,9 @@ class EvaluationService:
             expected_topics = []
         start = time.time()
         top_k = case.get("expected_retrieval_count") or config.SIMILARITY_TOP_K
-        # Always use S3 retriever
-        retriever = create_s3_retriever(similarity_top_k=top_k)
-        retrieved_nodes = retriever.retrieve(query)
+        # Use cached S3 retriever for performance (avoids re-downloading index)
+        retriever = self._load_index()
+        retrieved_nodes = retriever.retrieve(query)[:top_k]
         retrieval_time = time.time() - start
 
         diagnostics = {
@@ -222,10 +223,28 @@ class EvaluationService:
                 for node in retrieved_nodes
             ]
         }
-        synth = get_response_synthesizer(response_mode="compact")
+        from backend.bedrock_llm import BedrockLLM
+
         gen_start = time.time()
-        response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
-        response_text = str(response_obj)
+        llm = BedrockLLM()
+
+        context = "\n\n".join(
+            [
+                node.node.get_text() if hasattr(node.node, "get_text") else ""
+                for node in retrieved_nodes[:5]
+            ]
+        )
+
+        prompt = f"""Based on the following context, provide a concise answer to the question.
+
+Context:
+{context}
+
+Question: {query}
+
+Answer:"""
+
+        response_text = llm.generate(prompt=prompt, max_tokens=512)
         generation_time = time.time() - gen_start
 
         retrieval_metrics = _compute_retrieval_metrics(
