@@ -63,7 +63,7 @@ scrape_configs:
           instance: 'docker-host'
     scrape_interval: 30s
 
-  # Frontend Application (if metrics endpoint added)
+  # Frontend Application metrics
   - job_name: 'frontend'
     metrics_path: '/api/metrics'
     static_configs:

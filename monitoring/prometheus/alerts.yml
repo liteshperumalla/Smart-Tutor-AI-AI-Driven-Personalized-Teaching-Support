@@ -194,7 +194,7 @@ groups:
     rules:
       # Low cache hit rate
       - alert: LowCacheHitRate
-        expr: (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 70
+        expr: (redis_keyspace_hits_total / clamp_min((redis_keyspace_hits_total + redis_keyspace_misses_total), 1)) * 100 < 70
         for: 10m
         labels:
           severity: warning
@@ -205,7 +205,7 @@ groups:
 
       # Critical cache hit rate
       - alert: CriticalCacheHitRate
-        expr: (redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100 < 50
+        expr: (redis_keyspace_hits_total / clamp_min((redis_keyspace_hits_total + redis_keyspace_misses_total), 1)) * 100 < 50
         for: 5m
         labels:
           severity: critical
@@ -216,7 +216,7 @@ groups:
 
       # High Redis memory usage
       - alert: HighRedisMemoryUsage
-        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 85
+        expr: (redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)) * 100 > 85
         for: 5m
         labels:
           severity: warning
@@ -227,7 +227,7 @@ groups:
 
       # Critical Redis memory usage
       - alert: CriticalRedisMemoryUsage
-        expr: (redis_memory_used_bytes / redis_memory_max_bytes) * 100 > 95
+        expr: (redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1)) * 100 > 95
         for: 2m
         labels:
           severity: critical
@@ -275,7 +275,7 @@ groups:
 
       # Low RAG retrieval quality
       - alert: LowRAGRetrievalQuality
-        expr: avg(rag_retrieval_recall_at_3) < 0.6
+        expr: avg(rag_retrieval_recall_at_3) < 0.6 and avg(rag_retrieval_recall_at_3) > 0
         for: 10m
         labels:
           severity: warning
