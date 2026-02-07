@@ -418,8 +418,6 @@ sqlvalidator==0.0.20
 stack-data==0.6.3
 starlette==0.46.1
 statsmodels==0.14.4
-streamlit==1.44.1
-streamlit-lottie==0.0.5
 striprtf==0.0.26
 sympy==1.13.1
 tavily-python==0.7.7
@@ -481,3 +479,7 @@ PyJWT>=2.8.0
 # Additional Backend Dependencies
 redis>=5.0.0
 spacy>=3.7.0
+
+# Agent System (LangGraph + Neo4j)
+langgraph>=0.2.0
+neo4j>=5.0.0

@@ -24,16 +24,25 @@ function LoginPageContent() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const signupSuccess = useMemo(
     () => searchParams.get("signup") === "success",
     [searchParams]
   );
+  const signupVerified = useMemo(
+    () => searchParams.get("signup") === "verified",
+    [searchParams]
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setUnverified(false);
+    setResendMessage(null);
     setIsSubmitting(true);
 
     try {
@@ -54,7 +63,11 @@ function LoginPageContent() {
 
       if (!response.ok) {
         const serverDetail = (payload as { detail?: string }).detail;
-        throw new Error(serverDetail ? `Unable to sign in: ${serverDetail}` : "Unable to sign in");
+        const message = serverDetail ? `Unable to sign in: ${serverDetail}` : "Unable to sign in";
+        if (serverDetail && serverDetail.toLowerCase().includes("email not verified")) {
+          setUnverified(true);
+        }
+        throw new Error(message);
       }
 
       // Authentication successful - tokens are in HttpOnly cookies
@@ -66,6 +79,29 @@ function LoginPageContent() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleResend() {
+    setResendMessage(null);
+    setError(null);
+    setIsResending(true);
+    try {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/auth/verify/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim() || undefined }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { detail?: string };
+      if (!response.ok) {
+        throw new Error(payload.detail || "Unable to resend verification code");
+      }
+      setResendMessage("Verification code sent. Check your email.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setIsResending(false);
     }
   }
 
@@ -142,6 +178,16 @@ function LoginPageContent() {
               </div>
             </div>
           )}
+          {signupVerified && (
+            <div className="mb-6 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 animate-fade-in-down">
+              <div className="flex items-center gap-2">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Email verified. You can now sign in.
+              </div>
+            </div>
+          )}
 
           <form
             onSubmit={handleSubmit}
@@ -190,6 +236,25 @@ function LoginPageContent() {
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
               {error}
+            </div>
+          )}
+          {unverified && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              <p>Email not verified.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={isResending}
+                  className="btn-secondary"
+                >
+                  {isResending ? "Resending…" : "Resend code"}
+                </button>
+                <Link href={`/verify?username=${encodeURIComponent(username.trim())}`} className="btn-secondary">
+                  Enter code
+                </Link>
+              </div>
+              {resendMessage && <p className="mt-2 text-xs">{resendMessage}</p>}
             </div>
           )}
 

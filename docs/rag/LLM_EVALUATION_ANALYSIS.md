@@ -441,7 +441,7 @@ def _interpret_cohens_d(self, d: float) -> str:
 #### 2.2 Build Human Evaluation Workflow (4-6 hours)
 
 **Components**:
-1. **Annotation UI** (Streamlit or simple web form)
+1. **Annotation UI** (Next.js or simple web form)
 2. **Guidelines document** (what makes a good answer)
 3. **Inter-rater agreement tracking** (Cohen's kappa)
 4. **Results database** (store human ratings)
@@ -547,7 +547,7 @@ Respond in JSON: {{"winner": "A" or "B" or "tie", "reasoning": "<explanation>", 
 #### 3.2 Build Evaluation Dashboard (8-12 hours)
 
 **Features**:
-- Real-time metric visualization (Grafana or Streamlit)
+- Real-time metric visualization (Grafana or Next.js)
 - Trend charts over time
 - A/B test comparison views
 - Cost tracking per model/variant
@@ -555,7 +555,7 @@ Respond in JSON: {{"winner": "A" or "B" or "tie", "reasoning": "<explanation>", 
 
 **Tech Stack**:
 - Grafana + Prometheus (metrics)
-- Or Streamlit dashboard (simpler)
+- Or Next.js dashboard (simpler)
 - Store metrics in TimeSeries DB (InfluxDB or Prometheus)
 
 **Impact**:

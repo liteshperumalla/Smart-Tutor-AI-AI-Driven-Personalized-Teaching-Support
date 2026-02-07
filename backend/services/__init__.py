@@ -2,7 +2,7 @@
 Service layer initialization utilities.
 
 Provides helpers to fetch the configured storage backend so that different
-parts of the application (Streamlit, FastAPI, tests) can share the same
+parts of the application (FastAPI, tests) can share the same
 implementation while allowing us to swap in DynamoDB/S3 adapters later.
 """
 

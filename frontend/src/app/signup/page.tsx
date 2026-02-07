@@ -56,7 +56,11 @@ export default function SignupPage() {
         );
       }
 
-      router.push("/login?signup=success");
+      const params = new URLSearchParams({
+        username: username.trim(),
+        email: email.trim(),
+      });
+      router.push(`/verify?${params.toString()}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {
@@ -153,13 +157,14 @@ export default function SignupPage() {
 
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                Email <span className="text-zinc-400">(optional)</span>
+                Email
               </label>
               <input
                 id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
+                required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 className="input"

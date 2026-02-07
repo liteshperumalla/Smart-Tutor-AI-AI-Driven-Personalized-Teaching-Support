@@ -13,14 +13,13 @@ import {
   submitQuiz,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
-import { PageShell } from "@/components/page-shell";
-import { Brain, Plus, History, Trophy, CheckCircle, HelpCircle } from "lucide-react";
+import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
 
 export default function QuizPage() {
   const { token } = useAuthToken();
   const [folders, setFolders] = useState<QuizFolder[]>([]);
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
-  const [numQuestions, setNumQuestions] = useState(3);
+  const [numQuestions, setNumQuestions] = useState(5);
   const [loadingFolders, setLoadingFolders] = useState(true);
   const [foldersError, setFoldersError] = useState<string | null>(null);
 
@@ -36,10 +35,8 @@ export default function QuizPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Helper function to sort folders numerically by module number
   const sortFoldersNumerically = (folders: QuizFolder[]) => {
     return [...folders].sort((a, b) => {
-      // Extract numbers from label (e.g., "Module 1" -> 1, "Module 10" -> 10)
       const numA = parseInt(a.label.match(/\d+/)?.[0] || '0', 10);
       const numB = parseInt(b.label.match(/\d+/)?.[0] || '0', 10);
       return numA - numB;
@@ -53,7 +50,6 @@ export default function QuizPage() {
     fetchQuizFolders(token)
       .then((data) => {
         if (!mounted) return;
-        // Sort folders numerically instead of alphabetically
         const sortedFolders = sortFoldersNumerically(data);
         setFolders(sortedFolders);
         setFoldersError(null);
@@ -126,8 +122,6 @@ export default function QuizPage() {
         token,
         payload: {
           quiz_id: quiz.quiz_id,
-          selected_folders: quiz.selected_folders,
-          questions: quiz.questions,
           answers,
         },
       });
@@ -150,229 +144,402 @@ export default function QuizPage() {
     return option.replace(pattern, "").trim();
   };
 
+  // Build a lookup from question_id -> grading details after submission
+  type QuestionResult = {
+    question_id: string;
+    correct_answer: string;
+    user_answer: string | null;
+    is_correct: boolean;
+    explanation: string;
+  };
+
+  const resultMap = useMemo(() => {
+    if (!result?.metadata) return new Map<string, QuestionResult>();
+    const responses = (result.metadata as Record<string, unknown>).responses as QuestionResult[] | undefined;
+    if (!Array.isArray(responses)) return new Map<string, QuestionResult>();
+    return new Map(responses.map((r) => [r.question_id, r]));
+  }, [result]);
+
+  const getScoreColor = (percentage: number) => {
+    if (percentage >= 80) return 'text-emerald-600 dark:text-emerald-400';
+    if (percentage >= 60) return 'text-amber-600 dark:text-amber-400';
+    return 'text-red-600 dark:text-red-400';
+  };
+
+  const getScoreBg = (percentage: number) => {
+    if (percentage >= 80) return 'bg-emerald-100 dark:bg-emerald-900/30';
+    if (percentage >= 60) return 'bg-amber-100 dark:bg-amber-900/30';
+    return 'bg-red-100 dark:bg-red-900/30';
+  };
+
   return (
-    <PageShell contentClassName="gap-10" noCard>
-        <section className="grid gap-6 lg:grid-cols-3 animate-fade-in-up">
-          <form
-            onSubmit={handleGenerate}
-            className="card lg:col-span-2"
-          >
+    <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in-up">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white">
+            <Brain className="h-6 w-6" />
+          </div>
+          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Knowledge Quiz</h1>
+        </div>
+        <p className="text-zinc-500 dark:text-zinc-400 ml-14">Test your understanding of course materials</p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-4">
+        {/* Quiz Setup */}
+        <div className="lg:col-span-3">
+          <form onSubmit={handleGenerate} className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
+                <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Create Your Quiz</h2>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">Select topics and number of questions</p>
+              </div>
+            </div>
+
             {foldersError && (
-              <div className="mb-4 rounded-xl-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
                 {foldersError}
               </div>
             )}
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-400">Select folders</p>
+            {/* Folder Selection */}
+            <div className="mb-6">
+              <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+                <Folder className="h-4 w-4" />
+                Select Topics
+              </label>
               {loadingFolders ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="rounded-2xl p-4-2-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800 animate-pulse">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 animate-pulse">
                       <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
                       <div className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
                     </div>
                   ))}
                 </div>
               ) : folders.length === 0 ? (
-                <div className="rounded-2xl-2-dashed-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-700 dark:bg-zinc-800/50">
+                <div className="rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-8 text-center">
                   <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
-                    <svg className="h-6 w-6 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                    </svg>
+                    <Folder className="h-6 w-6 text-zinc-400" />
                   </div>
                   <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No course folders found</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Upload course materials to the knowledge base to generate quizzes.</p>
-                  <a href="/research" className="inline-block mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
-                    Go to Research mode →
-                  </a>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Upload course materials to generate quizzes</p>
                 </div>
               ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {folders.map((folder) => {
-                  const isSelected = selectedFolders.includes(folder.path);
-                  return (
-                    <label
-                      key={folder.path}
-                      className={`group relative cursor-pointer overflow-hidden rounded-2xl p-4 text-sm transition hover:-translate-y-1 ${
-                        isSelected
-                          ? "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30"
-                          : "border-2-zinc-200 bg-white hover:border-indigo-300 hover:shadow-md dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-indigo-600"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={isSelected}
-                        onChange={() => toggleFolder(folder.path)}
-                      />
-                      {isSelected && (
-                        <div className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      )}
-                       <span className={`font-bold block ${isSelected ? '' : 'text-zinc-900 dark:text-white'}`}>{folder.label}</span>
-                      <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}>{folder.file_count} files</span>
-                    </label>
-                  );
-                })}
-              </div>
+                    const isSelected = selectedFolders.includes(folder.path);
+                    return (
+                      <label
+                        key={folder.path}
+                        className={`group relative cursor-pointer overflow-hidden rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5 ${
+                          isSelected
+                            ? "bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25"
+                            : "border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={isSelected}
+                          onChange={() => toggleFolder(folder.path)}
+                        />
+                        {isSelected && (
+                          <div className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 backdrop-blur">
+                            <CheckCircle className="h-4 w-4" />
+                          </div>
+                        )}
+                        <span className={`font-semibold block ${isSelected ? '' : 'text-zinc-900 dark:text-white'}`}>
+                          {folder.label}
+                        </span>
+                        <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                          {folder.file_count} files
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               )}
             </div>
 
-            <div className="mt-6 space-y-2">
-              <label htmlFor="numQuestions" className="text-sm font-medium text-zinc-900 dark:text-zinc-400">
-                Number of questions
+            {/* Question Count */}
+            <div className="mb-6">
+              <label className="flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+                <span className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Number of Questions
+                </span>
+                <span className="text-lg font-bold text-purple-600 dark:text-purple-400">{numQuestions}</span>
               </label>
               <input
-                id="numQuestions"
                 type="range"
                 min={1}
                 max={10}
                 value={numQuestions}
                 onChange={(event) => setNumQuestions(Number(event.target.value))}
-                className="w-full"
+                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer accent-purple-600"
               />
-              <p className="text-sm text-zinc-700 dark:text-zinc-400">Generating {numQuestions} questions</p>
+              <div className="flex justify-between text-xs text-zinc-400 mt-1">
+                <span>1</span>
+                <span>10</span>
+              </div>
             </div>
 
             {actionError && (
-              <div className="mt-4 rounded-xl-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
                 {actionError}
               </div>
             )}
 
+            {/* Generate Button */}
             <button
               type="submit"
               disabled={isGenerating || selectedFolders.length === 0}
-              className="btn-primary mt-6 w-full disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold hover:from-purple-700 hover:to-indigo-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Building quiz…</>
+                <>
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  Generating Quiz...
+                </>
               ) : (
-                <>Generate quiz <span className="transition-transform group-hover:translate-x-1">→</span></>
+                <>
+                  <Sparkles className="h-5 w-5" />
+                  Generate Quiz
+                </>
               )}
             </button>
           </form>
+        </div>
 
-          <aside className="card">
+        {/* History Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-                <History className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
-              <p className="font-semibold text-zinc-900 dark:text-white">Recent attempts</p>
+              <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Recent Scores</h3>
             </div>
-            <div className="space-y-3 text-sm">
-              {history.slice(0, 4).map((attempt, index) => (
-                 <div
-                   key={`${attempt.id}-${attempt.created_at ?? index}`}
-                   className="rounded-xl p-3 transition hover:shadow-sm"
-                 >
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-zinc-900 dark:text-white">
-                      {attempt.score}/{attempt.total_questions}
-                    </p>
-                    <span className={`badge ${
-                      attempt.percentage >= 80 ? 'badge-success' :
-                      attempt.percentage >= 60 ? 'badge-warning' :
-                      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                    }`}>
-                      {attempt.percentage.toFixed(0)}%
-                    </span>
+
+            <div className="space-y-2">
+              {history.length === 0 ? (
+                <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 py-6">
+                  No attempts yet. Generate a quiz to get started!
+                </p>
+              ) : (
+                history.slice(0, 5).map((attempt, index) => (
+                  <div
+                    key={`${attempt.id}-${attempt.created_at ?? index}`}
+                    className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${getScoreBg(attempt.percentage)}`}>
+                        <Award className={`h-4 w-4 ${getScoreColor(attempt.percentage)}`} />
+                      </div>
+                      <div>
+                        <p className={`font-bold text-sm ${getScoreColor(attempt.percentage)}`}>
+                          {attempt.percentage.toFixed(0)}%
+                        </p>
+                        <p className="text-xs text-zinc-500">{attempt.score}/{attempt.total_questions}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-zinc-400">
+                        {new Date(attempt.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-                    {new Date(attempt.created_at).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-              {history.length === 0 && <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 py-4">No attempts yet. Generate a quiz to get started!</p>}
+                ))
+              )}
             </div>
-          </aside>
-        </section>
+          </div>
+        </div>
+      </div>
 
-        {quiz && (
-          <section className="rounded-3xl-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Active quiz</p>
-                <h2 className="text-2xl font-semibold text-zinc-900 dark:text-white">
-                  {resolvedFolderLabels.join(", ")}
-                </h2>
-              </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Answered {answeredCount}/{quiz.questions.length}
-              </p>
+      {/* Active Quiz Section */}
+      {quiz && (
+        <div className="mt-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm animate-fade-in-up">
+          {/* Quiz Header */}
+          <div className="flex flex-col gap-2 pb-6 mb-6 border-b border-zinc-100 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-purple-600 dark:text-purple-400 font-semibold mb-1">Active Quiz</p>
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+                {resolvedFolderLabels.join(", ")}
+              </h2>
             </div>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <Clock className="h-4 w-4 text-zinc-500" />
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {answeredCount}/{quiz.questions.length} answered
+              </span>
+            </div>
+          </div>
 
-            <div className="mt-6 space-y-6">
-              {quiz.questions.map((question, index) => (
+          {/* Questions */}
+          <div className="space-y-6">
+            {quiz.questions.map((question, index) => {
+              const qResult = resultMap.get(question.id);
+              const isGraded = !!qResult;
+
+              return (
                 <div
                   key={question.id}
-                  className="rounded-2xl p-5 shadow-inner"
+                  className={`rounded-xl p-5 border ${
+                    isGraded
+                      ? qResult.is_correct
+                        ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/50"
+                        : "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50"
+                      : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-100 dark:border-zinc-700/50"
+                  }`}
                 >
-                  <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Question {index + 1}</p>
-                  <h3 className="mt-2 text-lg font-semibold text-zinc-900 dark:text-white">{question.question}</h3>
+                  <div className="flex items-start gap-3 mb-4">
+                    <span className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
+                      isGraded
+                        ? qResult.is_correct
+                          ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
+                          : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                        : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                    }`}>
+                      {isGraded ? (qResult.is_correct ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />) : index + 1}
+                    </span>
+                    <h3 className="text-base font-semibold text-zinc-900 dark:text-white leading-relaxed">
+                      {question.question}
+                    </h3>
+                  </div>
 
-                  <div className="mt-4 space-y-2">
+                  <div className="ml-11 space-y-2">
                     {question.options.map((option, optionIndex) => {
                       const letter = String.fromCharCode(65 + optionIndex);
                       const displayOption = normalizeOptionLabel(option, letter);
+                      const isSelected = answers[question.id] === letter;
+                      const isCorrectAnswer = isGraded && qResult.correct_answer === letter;
+                      const isWrongSelection = isGraded && isSelected && !qResult.is_correct;
+
+                      let optionClass = "";
+                      let circleClass = "";
+                      let textClass = "";
+
+                      if (isGraded) {
+                        if (isCorrectAnswer) {
+                          optionClass = "bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-500";
+                          circleClass = "bg-emerald-600 text-white";
+                          textClass = "text-emerald-900 dark:text-emerald-100 font-medium";
+                        } else if (isWrongSelection) {
+                          optionClass = "bg-red-100 dark:bg-red-900/30 border-2 border-red-400";
+                          circleClass = "bg-red-500 text-white";
+                          textClass = "text-red-900 dark:text-red-100 font-medium line-through";
+                        } else {
+                          optionClass = "bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 opacity-60";
+                          circleClass = "bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400";
+                          textClass = "text-zinc-700 dark:text-zinc-300";
+                        }
+                      } else {
+                        optionClass = isSelected
+                          ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-500"
+                          : "bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:border-purple-300 dark:hover:border-purple-600";
+                        circleClass = isSelected
+                          ? "bg-purple-600 text-white"
+                          : "bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400";
+                        textClass = isSelected
+                          ? "text-purple-900 dark:text-purple-100 font-medium"
+                          : "text-zinc-700 dark:text-zinc-300";
+                      }
+
                       return (
                         <label
                           key={letter}
-                          className={`flex cursor-pointer items-center gap-3 rounded-2xl-4 py-3 text-sm transition ${
-                            answers[question.id] === letter
-                              ? "border-zinc-900 bg-white dark:border-white dark:bg-zinc-700"
-                              : "border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-                          }`}
+                          className={`flex items-center gap-3 rounded-xl px-4 py-3 transition ${isGraded ? "" : "cursor-pointer"} ${optionClass}`}
                         >
                           <input
                             type="radio"
                             name={question.id}
                             value={letter}
-                            checked={answers[question.id] === letter}
+                            checked={isSelected}
+                            disabled={isGraded}
                             onChange={() =>
                               setAnswers((prev) => ({
                                 ...prev,
                                 [question.id]: letter,
                               }))
                             }
+                            className="sr-only"
                           />
-                          <span className="font-medium text-zinc-900 dark:text-white">{letter}.</span>
-                          <span className="text-zinc-700 dark:text-zinc-300">{displayOption}</span>
+                          <span className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${circleClass}`}>
+                            {isGraded && isCorrectAnswer ? <CheckCircle className="h-4 w-4" /> : isGraded && isWrongSelection ? <XCircle className="h-4 w-4" /> : letter}
+                          </span>
+                          <span className={`text-sm ${textClass}`}>
+                            {displayOption}
+                          </span>
                         </label>
                       );
                     })}
                   </div>
 
-                  {question.explanation && (
-                    <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">Source: {question.explanation}</p>
+                  {/* Explanation for wrong answers */}
+                  {isGraded && !qResult.is_correct && qResult.explanation && (
+                    <div className="ml-11 mt-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3">
+                      <div className="flex items-start gap-2">
+                        <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-amber-900 dark:text-amber-200">{qResult.explanation}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Confirmation for correct answers */}
+                  {isGraded && qResult.is_correct && qResult.explanation && (
+                    <div className="ml-11 mt-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 px-4 py-3">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-emerald-900 dark:text-emerald-200">{qResult.explanation}</p>
+                      </div>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {result && (
-                <div className="rounded-2xl-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                  Score: {result.score}/{result.total_questions} ({result.percentage.toFixed(1)}%)
+          {/* Submit Section */}
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {result && (
+              <div className={`flex items-center gap-3 px-5 py-3 rounded-xl ${getScoreBg(result.percentage)}`}>
+                <Trophy className={`h-6 w-6 ${getScoreColor(result.percentage)}`} />
+                <div>
+                  <p className={`text-lg font-bold ${getScoreColor(result.percentage)}`}>
+                    {result.score}/{result.total_questions} ({result.percentage.toFixed(0)}%)
+                  </p>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Quiz completed!</p>
                 </div>
-              )}
-              {!result && (
-                <button
-                  type="button"
-                  disabled={answeredCount !== quiz.questions.length || isSubmitting}
-                  onClick={handleSubmit}
-                  className="rounded-full bg-zinc-900 px-6 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900"
-                >
-                  {isSubmitting ? "Submitting…" : "Submit quiz"}
-                </button>
-              )}
-            </div>
-          </section>
-        )}
-    </PageShell>
+              </div>
+            )}
+            {!result && (
+              <button
+                type="button"
+                disabled={answeredCount !== quiz.questions.length || isSubmitting}
+                onClick={handleSubmit}
+                className="flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-semibold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white dark:border-zinc-900 border-t-transparent"></span>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-5 w-5" />
+                    Submit Quiz
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

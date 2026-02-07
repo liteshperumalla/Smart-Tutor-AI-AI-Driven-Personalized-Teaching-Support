@@ -204,10 +204,8 @@ if (res.status === 401 && typeof window !== "undefined") {
 ```python
 allowed_origins = [
     "http://localhost:3000",   # Next.js dev server
-    "http://localhost:8501",   # Streamlit
     "http://localhost:4000",   # Frontend production build ✅
     "http://127.0.0.1:3000",
-    "http://127.0.0.1:8501",
 ]
 
 app.add_middleware(

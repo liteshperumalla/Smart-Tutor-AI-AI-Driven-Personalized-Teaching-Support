@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import {
@@ -21,11 +21,11 @@ import { CHAT_SESSIONS_UPDATED_EVENT } from "@/lib/events";
 import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { SearchChatsModal } from "@/components/chat/search-chats-modal";
+import { useUser } from "@/hooks/useUser";
 import {
   Home,
   MessageCircle,
   Brain,
-  FileSearch,
   BarChart3,
   Calendar,
   FolderOpen,
@@ -43,21 +43,22 @@ import {
   Search,
   Pin,
   Archive,
+  ShieldAlert,
 } from "lucide-react";
 
-type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }> };
+type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }>; adminOnly?: boolean };
 
 const navIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "/": Home,
   "/chat": MessageCircle,
   "/quiz": Brain,
-  "/research": FileSearch,
   "/evaluation": BarChart3,
   "/appointments": Calendar,
   "/resources": FolderOpen,
   "/about": Info,
   "/feedback": MessageSquare,
   "/profile": User,
+  "/admin": ShieldAlert,
 };
 
 export function SiteChrome({
@@ -68,7 +69,12 @@ export function SiteChrome({
   children: React.ReactNode;
 }) {
   const { token, setToken } = useAuthToken({ redirectTo: undefined });
+  const { user, isAdmin } = useUser();
   const { theme, setTheme, hasHydrated: themeHasHydrated } = useTheme();
+  const pathname = usePathname();
+
+  // Routes that need full-height layout (no footer, no padding)
+  const isFullHeightRoute = pathname === "/chat" || pathname.startsWith("/chat/");
   const [hasHydrated, setHasHydrated] = useState(false);
   const [recentSessions, setRecentSessions] = useState<ChatSessionDTO[]>([]);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
@@ -156,13 +162,13 @@ export function SiteChrome({
   }, [menuSessionId]);
 
   // IMPORTANT: token will be "authenticated" string when logged in (not null/undefined)
-  const isLoggedIn = hasHydrated && token === "authenticated";
+  const isLoggedIn = hasHydrated && token === "authenticated" && !!user;
   // IMPORTANT: Wait for theme to hydrate before determining dark mode to avoid wrong button text
   const isDark = themeHasHydrated && theme === "dark";
   const showThemeToggle = themeHasHydrated;
 
   const sessionMenuPanelClass = [
-    "absolute right-0 top-full z-50 mt-1 w-48 rounded-xl border p-1.5 shadow-lg backdrop-blur animate-fade-in",
+    "absolute right-0 top-full z-[60] mt-1 w-48 rounded-xl border p-1.5 shadow-lg backdrop-blur animate-fade-in",
     isDark
       ? "border-white/10 bg-zinc-900/95 text-zinc-100"
       : "border-zinc-200/80 bg-white/95 text-zinc-900",
@@ -299,15 +305,18 @@ export function SiteChrome({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar Toggle Button (visible when collapsed) */}
+      {/* Sidebar Hover Zone (visible when collapsed) - shows button on hover */}
       {sidebarCollapsed && (
-        <button
-          onClick={() => setSidebarCollapsed(false)}
-          className="fixed left-4 top-4 z-40 p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors shadow-lg hidden lg:flex"
-          title="Expand sidebar"
-        >
-          <PanelLeft className="h-5 w-5" />
-        </button>
+        <div className="fixed left-0 top-0 bottom-0 w-12 z-40 hidden lg:block group cursor-pointer">
+          {/* Button appears on hover with smooth transition */}
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="absolute left-3 top-4 p-2.5 rounded-xl bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all duration-300 shadow-xl opacity-0 group-hover:opacity-100 -translate-x-3 group-hover:translate-x-0"
+            title="Expand sidebar"
+          >
+            <PanelLeft className="h-5 w-5" />
+          </button>
+        </div>
       )}
 
       {/* Fixed Sidebar */}
@@ -324,6 +333,19 @@ export function SiteChrome({
             <PanelLeftClose className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Admin Panel Link */}
+        {isLoggedIn && isAdmin && (
+          <div className="px-4 mb-3">
+            <Link
+              href="/admin"
+              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+            >
+              <ShieldAlert className="h-4 w-4" />
+              <span className="text-sm font-semibold">Admin Panel</span>
+            </Link>
+          </div>
+        )}
 
         {/* New Chat and Search Buttons */}
         {isLoggedIn && (
@@ -356,6 +378,21 @@ export function SiteChrome({
         )}
 
         <nav className="flex-1 px-4 flex flex-col min-h-0 overflow-hidden">
+          {!isLoggedIn && (
+            <div className="rounded-xl border border-dashed border-zinc-200 bg-white/70 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
+              <p className="font-semibold">You are not signed in yet.</p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                Sign in to view your recent chats and history.
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="mt-3 w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900"
+              >
+                Sign in
+              </button>
+            </div>
+          )}
           {isLoggedIn && (
             <div className="flex flex-col rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/60 flex-1 min-h-0 overflow-hidden">
               <div className="flex items-center justify-between flex-shrink-0">
@@ -380,14 +417,14 @@ export function SiteChrome({
               {displayedSessions.length === 0 && (
                 <p className="mt-2 text-xs text-zinc-500">No sessions yet.</p>
               )}
-               <ul className="mt-3 flex-1 space-y-2 overflow-y-auto min-h-0">
+               <ul className={`mt-3 flex-1 space-y-2 min-h-0 ${menuSessionId ? 'overflow-visible' : 'overflow-y-auto'}`}>
                  {displayedSessions.map((session) => (
-                 <li key={session.id}>
+                 <li key={session.id} className={menuSessionId === session.id ? 'relative z-10' : 'relative'}>
                    <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white/95 px-3 py-2 text-sm shadow-sm transition hover:-translate-y-0.5 dark:border-zinc-800 dark:bg-zinc-900/60">
                      {session.is_pinned && (
                        <Pin className="h-3 w-3 text-zinc-400 flex-shrink-0" />
                      )}
-                     <button
+                 <button
                        type="button"
                        onClick={() => handleSelectSession(session.id)}
                        className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap border-none bg-transparent text-left font-semibold text-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:text-zinc-100"
@@ -400,6 +437,7 @@ export function SiteChrome({
                          onClick={() => setMenuSessionId((current) => (current === session.id ? null : session.id))}
                          className={[
                            "flex items-center justify-center rounded-lg p-1.5 transition",
+                           menuSessionId && menuSessionId !== session.id ? "opacity-0 pointer-events-none" : "",
                            isDark
                              ? "text-zinc-400 hover:bg-white/10 hover:text-white"
                              : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
@@ -469,6 +507,20 @@ export function SiteChrome({
         </nav>
 
         <div className="border-t border-zinc-200 px-6 pb-3 pt-5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          {/* User Role Badge */}
+          {isLoggedIn && user && (
+            <div className="flex items-center gap-2 mb-3">
+              <User className="h-3.5 w-3.5 text-zinc-400" />
+              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 truncate">
+                {user.username}
+              </span>
+              {isAdmin && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                  Admin
+                </span>
+              )}
+            </div>
+          )}
           <p>
             Need help?{" "}
             <a href="mailto:support@smartaitutor.com" className="font-semibold text-zinc-900 dark:text-white">
@@ -522,29 +574,33 @@ export function SiteChrome({
 
       {/* Main content area with fixed footer */}
       <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-all duration-300 dark:bg-zinc-950 dark:text-white ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-64'}`}>
-        {/* Scrollable content area */}
-        <main className="flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-8">{children}</main>
+        {/* Scrollable content area — full-height routes get no padding/overflow so they manage their own layout */}
+        <main className={isFullHeightRoute ? "flex-1 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-8"}>{children}</main>
 
-        {/* Fixed Footer Nav */}
-        <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
-          <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-center">
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs uppercase tracking-[0.2em]">
-              {navLinks.map((link) => {
-                const Icon = navIcons[link.href] || FolderOpen;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-white transition"
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
+        {/* Fixed Footer Nav — hidden on full-height routes like Chat */}
+        {!isFullHeightRoute && (
+          <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
+            <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-center">
+              <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs uppercase tracking-[0.2em]">
+                {navLinks
+                  .filter((link) => !link.adminOnly || isAdmin)
+                  .map((link) => {
+                  const Icon = navIcons[link.href] || FolderOpen;
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-white transition"
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{link.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </footer>
+          </footer>
+        )}
       </div>
 
       {/* Delete Chat Modal */}

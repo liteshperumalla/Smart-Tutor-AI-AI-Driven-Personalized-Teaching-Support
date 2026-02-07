@@ -12,6 +12,10 @@ from backend.config import config
 from backend.rag_evaluation import RAGEvaluationMetrics, get_evaluator
 from backend.s3_retriever import create_s3_retriever
 from backend.bedrock_llm import BedrockLLM
+from backend.services.rag_quality_evaluator import (
+    evaluate_quality,
+    compute_context_precision,
+)
 
 
 def _percentile(values: List[float], pct: float) -> float:
@@ -177,6 +181,7 @@ class EvaluationService:
         limit: Optional[int] = None,
         categories: Optional[List[str]] = None,
         difficulties: Optional[List[str]] = None,
+        enable_quality_eval: bool = False,
     ) -> Dict[str, Any]:
         cases = self.dataset.get("test_cases", [])
         if categories:
@@ -190,14 +195,16 @@ class EvaluationService:
 
         results = []
         for case in cases:
-            result = self._run_single_case(case)
+            result = self._run_single_case(case, enable_quality_eval=enable_quality_eval)
             if result:
                 results.append(result)
 
         analysis = self._analyze_results(results)
         return {"analysis": analysis, "results": results}
 
-    def _run_single_case(self, case: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_single_case(
+        self, case: Dict[str, Any], enable_quality_eval: bool = False
+    ) -> Dict[str, Any]:
         query = case.get("query")
         if not query:
             return {}
@@ -223,17 +230,15 @@ class EvaluationService:
                 for node in retrieved_nodes
             ]
         }
-        from backend.bedrock_llm import BedrockLLM
 
         gen_start = time.time()
         llm = BedrockLLM()
 
-        context = "\n\n".join(
-            [
-                node.node.get_text() if hasattr(node.node, "get_text") else ""
-                for node in retrieved_nodes[:5]
-            ]
-        )
+        context_passages = [
+            node.node.get_text() if hasattr(node.node, "get_text") else ""
+            for node in retrieved_nodes[:5]
+        ]
+        context = "\n\n".join(context_passages)
 
         prompt = f"""Based on the following context, provide a concise answer to the question.
 
@@ -253,6 +258,27 @@ Answer:"""
         generation_metrics = _compute_generation_metrics(response_text, expected_topics)
         total_time = retrieval_time + generation_time
 
+        # LLM-as-judge quality evaluation (optional, on-demand)
+        quality_metrics = None
+        if enable_quality_eval:
+            try:
+                retrieval_scores = [
+                    getattr(n, "score", 0) for n in retrieved_nodes
+                ]
+                quality_metrics = evaluate_quality(
+                    question=query,
+                    context_passages=context_passages,
+                    answer=response_text,
+                )
+                quality_metrics["context_precision"] = compute_context_precision(
+                    retrieval_scores
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Quality evaluation failed for case {case.get('id')}: {e}"
+                )
+
         self.evaluator.log_query(
             query=query,
             retrieved_docs=retrieved_nodes,
@@ -264,9 +290,10 @@ Answer:"""
                 "case_id": case["id"],
                 "category": case.get("category"),
             },
+            quality_metrics=quality_metrics,
         )
 
-        return {
+        result = {
             "test_id": case["id"],
             "query": query,
             "category": case.get("category"),
@@ -278,6 +305,9 @@ Answer:"""
             "retrieval_metrics": retrieval_metrics,
             "generation_metrics": generation_metrics,
         }
+        if quality_metrics:
+            result["quality_metrics"] = quality_metrics
+        return result
 
     def _analyze_results(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
         if not results:
@@ -301,7 +331,7 @@ Answer:"""
             r["generation_metrics"] for r in results if r.get("generation_metrics")
         ]
 
-        return {
+        analysis = {
             "total_tests": len(results),
             "avg_response_time": round(statistics.mean(times), 3) if times else 0.0,
             "p95_response_time": round(_percentile(times, 0.95), 3) if times else 0.0,
@@ -335,6 +365,24 @@ Answer:"""
                 else 0.0,
             },
         }
+
+        # Aggregate quality metrics if present
+        quality_results = [
+            r["quality_metrics"]
+            for r in results
+            if r.get("quality_metrics") and isinstance(r["quality_metrics"], dict)
+        ]
+        if quality_results:
+            analysis["quality_summary"] = {
+                "avg_faithfulness": avg_metric(quality_results, "faithfulness"),
+                "avg_answer_relevance": avg_metric(quality_results, "answer_relevance"),
+                "avg_context_recall": avg_metric(quality_results, "context_recall"),
+                "avg_context_precision": avg_metric(quality_results, "context_precision"),
+                "avg_correctness": avg_metric(quality_results, "correctness"),
+                "evaluated_count": len(quality_results),
+            }
+
+        return analysis
 
     def metrics_log_summary(self) -> Dict[str, Any]:
         return self.evaluator.get_summary_stats(last_n=200)

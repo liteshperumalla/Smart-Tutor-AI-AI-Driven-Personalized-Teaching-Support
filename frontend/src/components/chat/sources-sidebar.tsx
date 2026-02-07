@@ -261,29 +261,22 @@ export function SourcesSidebar({
                 <button
                   key={index}
                   onClick={() => handleSourceClick(source)}
-                  className="w-full text-left p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all duration-200 group"
+                  className="w-full text-left p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all duration-200 group"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {isExternal ? (
-                          <Globe className="h-4 w-4 text-blue-500 flex-shrink-0" />
-                        ) : (
-                          <FileText className="h-4 w-4 text-zinc-400 flex-shrink-0" />
-                        )}
-                        <span className="font-medium text-zinc-900 dark:text-white truncate">
-                          {label}
-                        </span>
-                      </div>
-                      {location && (
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-2">
-                          {location}
-                        </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      {isExternal ? (
+                        <Globe className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-zinc-400 flex-shrink-0" />
                       )}
-                      {snippet && (
-                        <p className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3">
-                          "{snippet}"
-                        </p>
+                      <span className="font-medium text-zinc-900 dark:text-white truncate">
+                        {label}
+                      </span>
+                      {location && (
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-shrink-0">
+                          • {location}
+                        </span>
                       )}
                     </div>
                     <ExternalLink className="h-4 w-4 text-zinc-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />

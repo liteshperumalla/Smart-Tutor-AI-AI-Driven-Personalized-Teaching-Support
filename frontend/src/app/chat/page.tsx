@@ -22,8 +22,9 @@ import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/
 import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
-  Globe, Paperclip, Feather, ChevronRight, Image, FileText
+  Globe, Paperclip, Feather, ChevronRight, Image, FileText, FlaskConical, ShieldAlert
 } from "lucide-react";
+import { useUser } from "@/hooks/useUser";
 import { ResponseActionBar } from "@/components/chat/response-action-bar";
 import { SourcesSidebar } from "@/components/chat/sources-sidebar";
 import { ShareModal } from "@/components/chat/share-modal";
@@ -33,10 +34,14 @@ import { ChatHeaderActions } from "@/components/chat/chat-header-actions";
 import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { UserMessageActions, EditableUserMessage } from "@/components/chat/user-message-actions";
+import { StreamingPhaseIndicator } from "@/components/chat/streaming-phase-indicator";
+import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-preview-grid";
+import { ResearchSidebar } from "@/components/chat/research-sidebar";
 
 function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
   const { token } = useAuthToken();
+  const { user, isAdmin } = useUser();
   const [sessions, setSessions] = useState<ChatSessionDTO[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [composerText, setComposerText] = useState("");
@@ -63,7 +68,7 @@ function ChatWorkspaceContent() {
   const [isEditSending, setIsEditSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [regeneratingMessageIndex, setRegeneratingMessageIndex] = useState<number | null>(null);
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet");
+  const [selectedModel, setSelectedModel] = useState("llama-70b");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   // Plus menu state
@@ -71,9 +76,11 @@ function ChatWorkspaceContent() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(true); // On by default
   const [selectedStyle, setSelectedStyle] = useState("normal");
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
+  const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isLoggedIn = token === "authenticated" && !!user;
 
   // Response styles for students
   const RESPONSE_STYLES = [
@@ -86,32 +93,41 @@ function ChatWorkspaceContent() {
 
   const currentStyle = RESPONSE_STYLES.find(s => s.id === selectedStyle) || RESPONSE_STYLES[0];
 
-  // Available LLM models
+  // Available LLM models (admin-only models appended conditionally)
   const LLM_MODELS = [
     {
+      id: "llama-70b",
+      name: "Llama 70B",
+      shortName: "Llama 70B",
+      description: "Default model, great for most tasks",
+      modelId: "us.meta.llama3-1-70b-instruct-v1:0",
+      isDefault: true,
+      badge: "Default",
+    },
+    {
       id: "claude-sonnet",
-      name: "Claude 3.5 Sonnet",
+      name: "Sonnet 3.5",
       shortName: "Sonnet 3.5",
       description: "Most capable, best for complex tasks",
-      modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
-      isDefault: true,
+      modelId: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      badge: "Pro",
     },
     {
       id: "claude-haiku",
-      name: "Claude 3 Haiku",
+      name: "Haiku 3",
       shortName: "Haiku 3",
       description: "Fast and lightweight",
-      modelId: "anthropic.claude-3-haiku-20240307-v1:0",
+      modelId: "us.anthropic.claude-3-haiku-20240307-v1:0",
       badge: "Fast",
     },
-    {
-      id: "llama-70b",
-      name: "Llama 3.1 70B",
-      shortName: "Llama 70B",
-      description: "Open source alternative",
-      modelId: "meta.llama3-1-70b-instruct-v1:0",
-      badge: "Open",
-    },
+    ...(isAdmin ? [{
+      id: "claude-opus",
+      name: "Claude Opus 4",
+      shortName: "Opus 4",
+      description: "Most intelligent, admin-only",
+      modelId: "us.anthropic.claude-opus-4-20250514-v1:0",
+      badge: "Admin",
+    }] : []),
   ];
 
   const currentModel = LLM_MODELS.find(m => m.id === selectedModel) || LLM_MODELS[0];
@@ -122,7 +138,9 @@ function ChatWorkspaceContent() {
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   const refreshSessions = useCallback(async () => {
-    if (!token) {
+    if (!isLoggedIn || !token) {
+      setSessions([]);
+      setSelectedSessionId(null);
       return;
     }
     try {
@@ -139,7 +157,7 @@ function ChatWorkspaceContent() {
       setStreamError(error instanceof Error ? error.message : "Unable to load sessions");
       setSessions([]);
     }
-  }, [token, searchParams]);
+  }, [token, searchParams, isLoggedIn]);
 
   useEffect(() => {
     refreshSessions();
@@ -152,11 +170,17 @@ function ChatWorkspaceContent() {
     };
   }, [refreshSessions]);
 
-  // Cleanup speech recognition on unmount
+  // Cleanup speech recognition and mic stream on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      // Release microphone stream
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
       }
     };
   }, []);
@@ -192,17 +216,90 @@ function ChatWorkspaceContent() {
     };
   }, [plusMenuOpen]);
 
+  const uploadFiles = useCallback(
+    async (fileList: File[]) => {
+      if (!token) return;
+      const pendingItems: UploadedFileItem[] = fileList.map((file) => ({
+        file,
+        status: "uploading",
+      }));
+      setUploadedFiles((prev) => [...prev, ...pendingItems]);
+
+      const apiBaseUrl = getApiBaseUrl();
+      for (const file of fileList) {
+        const formData = new FormData();
+        formData.append("file", file);
+        try {
+          const response = await fetch(`${apiBaseUrl}/chat/uploads`, {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+          });
+          const payload = (await response.json().catch(() => ({}))) as {
+            preview?: { id?: string; file_name?: string };
+            detail?: string;
+          };
+          if (!response.ok) {
+            throw new Error(payload.detail || "Upload failed");
+          }
+          setUploadedFiles((prev) =>
+            prev.map((item) =>
+              item.file === file
+                ? {
+                    ...item,
+                    id: payload.preview?.id,
+                    status: "ready",
+                  }
+                : item
+            )
+          );
+        } catch (err) {
+          setUploadedFiles((prev) =>
+            prev.map((item) =>
+              item.file === file
+                ? {
+                    ...item,
+                    status: "error",
+                    error: err instanceof Error ? err.message : "Upload failed",
+                  }
+                : item
+            )
+          );
+        }
+      }
+    },
+    [token]
+  );
+
   // Handle file upload
-  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files) {
-      setUploadedFiles(prev => [...prev, ...Array.from(files)]);
-    }
-    setPlusMenuOpen(false);
-  }, []);
+  const handleFileSelect = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || !token) return;
+      await uploadFiles(Array.from(files));
+      setPlusMenuOpen(false);
+    },
+    [token, uploadFiles]
+  );
 
   const removeUploadedFile = useCallback((index: number) => {
-    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Handle adding files from research sidebar
+  const handleResearchFilesAdded = useCallback(
+    async (files: File[]) => {
+      await uploadFiles(files);
+    },
+    [uploadFiles]
+  );
+
+  // Handle URL submission from research sidebar
+  const handleResearchUrlSubmit = useCallback((url: string) => {
+    // For now, add the URL as a message context - could be expanded later
+    console.log("Research URL submitted:", url);
+    // Close the sidebar after URL submission
+    setResearchSidebarOpen(false);
   }, []);
 
   // Fetch feedback when session changes
@@ -234,7 +331,7 @@ function ChatWorkspaceContent() {
   );
 
   async function handleCreateSession() {
-    if (!token) return;
+    if (!token || !isLoggedIn) return;
     setIsCreatingSession(true);
     try {
       const next = await createChatSession({ token, title: undefined });
@@ -264,7 +361,7 @@ function ChatWorkspaceContent() {
 
   async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !selectedSessionId || !composerText.trim() || isStreaming) {
+    if (!token || !isLoggedIn || !selectedSessionId || !composerText.trim() || isStreaming) {
       return;
     }
 
@@ -301,7 +398,16 @@ function ChatWorkspaceContent() {
             "Content-Type": "application/json",
           },
           credentials: "include", // Use HttpOnly cookies for authentication
-          body: JSON.stringify({ query: content, model_id: currentModel.modelId }),
+          body: JSON.stringify({
+            query: content,
+            model_id: currentModel.modelId,
+            web_search_enabled: webSearchEnabled,
+            response_style: selectedStyle,
+            uploaded_only: uploadedFiles.length > 0,
+            uploaded_file_ids: uploadedFiles
+              .map((item) => item.id)
+              .filter((id): id is string => Boolean(id)),
+          }),
           signal: controller.signal,
         }
       );
@@ -315,19 +421,43 @@ function ChatWorkspaceContent() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
+      let agentName: string | undefined;
+      let routeReason: string | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         assistantText += decoder.decode(value, { stream: true });
-        const latestText = assistantText;
+
+        // Parse __AGENT_META__ prefix from agent system
+        let displayText = assistantText;
+        if (displayText.startsWith("__AGENT_META__")) {
+          const newlineIdx = displayText.indexOf("\n");
+          if (newlineIdx !== -1) {
+            const metaLine = displayText.substring("__AGENT_META__".length, newlineIdx);
+            try {
+              const meta = JSON.parse(metaLine);
+              agentName = meta.agent;
+              routeReason = meta.route_reason;
+            } catch { /* ignore parse errors */ }
+            displayText = displayText.substring(newlineIdx + 1);
+          } else {
+            continue; // Wait for full meta line
+          }
+        }
+
+        const latestText = displayText;
+        const latestAgent = agentName;
+        const latestReason = routeReason;
         setSessions((prev) =>
           prev.map((session) =>
             session.id === selectedSessionId
               ? {
                   ...session,
                   messages: session.messages.map((message, index, arr) =>
-                    index === arr.length - 1 ? { ...message, content: latestText } : message
+                    index === arr.length - 1
+                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason }
+                      : message
                   ),
                 }
               : session
@@ -338,8 +468,17 @@ function ChatWorkspaceContent() {
       await refreshSessions();
       dispatchChatSessionsUpdated();
     } catch (error) {
-      const errMessage =
-        error instanceof Error ? error.message : "Unable to stream a response";
+      // Handle different error types with user-friendly messages
+      let errMessage = "Unable to stream a response";
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          errMessage = "Request was cancelled or timed out. Please try again.";
+        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          errMessage = "Network error. Please check your connection and try again.";
+        } else {
+          errMessage = error.message;
+        }
+      }
       setStreamError(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
@@ -456,7 +595,7 @@ function ChatWorkspaceContent() {
 
   // Handle editing and resending a user message
   const handleEditMessage = useCallback(async (messageIndex: number, newContent: string) => {
-    if (!token || !selectedSessionId || isStreaming || isEditSending) return;
+    if (!token || !isLoggedIn || !selectedSessionId || isStreaming || isEditSending) return;
 
     setIsEditSending(true);
     setStreamError(null);
@@ -517,7 +656,16 @@ function ChatWorkspaceContent() {
             "Content-Type": "application/json",
           },
           credentials: "include",
-          body: JSON.stringify({ query: newContent, model_id: currentModel.modelId }),
+          body: JSON.stringify({
+            query: newContent,
+            model_id: currentModel.modelId,
+            web_search_enabled: webSearchEnabled,
+            response_style: selectedStyle,
+            uploaded_only: uploadedFiles.length > 0,
+            uploaded_file_ids: uploadedFiles
+              .map((item) => item.id)
+              .filter((id): id is string => Boolean(id)),
+          }),
           signal: controller.signal,
         }
       );
@@ -531,19 +679,43 @@ function ChatWorkspaceContent() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
+      let agentName: string | undefined;
+      let routeReason: string | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         assistantText += decoder.decode(value, { stream: true });
-        const latestText = assistantText;
+
+        // Parse __AGENT_META__ prefix from agent system
+        let displayText = assistantText;
+        if (displayText.startsWith("__AGENT_META__")) {
+          const newlineIdx = displayText.indexOf("\n");
+          if (newlineIdx !== -1) {
+            const metaLine = displayText.substring("__AGENT_META__".length, newlineIdx);
+            try {
+              const meta = JSON.parse(metaLine);
+              agentName = meta.agent;
+              routeReason = meta.route_reason;
+            } catch { /* ignore parse errors */ }
+            displayText = displayText.substring(newlineIdx + 1);
+          } else {
+            continue; // Wait for full meta line
+          }
+        }
+
+        const latestText = displayText;
+        const latestAgent = agentName;
+        const latestReason = routeReason;
         setSessions((prev) =>
           prev.map((session) =>
             session.id === selectedSessionId
               ? {
                   ...session,
                   messages: session.messages.map((message, index, arr) =>
-                    index === arr.length - 1 ? { ...message, content: latestText } : message
+                    index === arr.length - 1
+                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason }
+                      : message
                   ),
                 }
               : session
@@ -554,8 +726,17 @@ function ChatWorkspaceContent() {
       await refreshSessions();
       dispatchChatSessionsUpdated();
     } catch (error) {
-      const errMessage =
-        error instanceof Error ? error.message : "Unable to stream a response";
+      // Handle different error types with user-friendly messages
+      let errMessage = "Unable to stream a response";
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          errMessage = "Request was cancelled or timed out. Please try again.";
+        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          errMessage = "Network error. Please check your connection and try again.";
+        } else {
+          errMessage = error.message;
+        }
+      }
       setStreamError(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
@@ -579,7 +760,7 @@ function ChatWorkspaceContent() {
 
   // Handle regenerating a response (Try Again)
   const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
-    if (!token || !selectedSessionId || isStreaming || !activeSession) return;
+    if (!token || !isLoggedIn || !selectedSessionId || isStreaming || !activeSession) return;
 
     // Find the user message before this assistant message
     const userMessageIndex = messageIndex - 1;
@@ -620,7 +801,16 @@ function ChatWorkspaceContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ query: userQuery, model_id: currentModel.modelId }),
+          body: JSON.stringify({
+            query: userQuery,
+            model_id: currentModel.modelId,
+            web_search_enabled: webSearchEnabled,
+            response_style: selectedStyle,
+            uploaded_only: uploadedFiles.length > 0,
+            uploaded_file_ids: uploadedFiles
+              .map((item) => item.id)
+              .filter((id): id is string => Boolean(id)),
+          }),
           signal: controller.signal,
         }
       );
@@ -657,7 +847,17 @@ function ChatWorkspaceContent() {
       await refreshSessions();
       dispatchChatSessionsUpdated();
     } catch (error) {
-      const errMessage = error instanceof Error ? error.message : "Unable to regenerate response";
+      // Handle different error types with user-friendly messages
+      let errMessage = "Unable to regenerate response";
+      if (error instanceof Error) {
+        if (error.name === "AbortError") {
+          errMessage = "Request was cancelled or timed out. Please try again.";
+        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+          errMessage = "Network error. Please check your connection and try again.";
+        } else {
+          errMessage = error.message;
+        }
+      }
       setStreamError(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
@@ -677,13 +877,17 @@ function ChatWorkspaceContent() {
     }
   }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions]);
 
-  // Speech recognition handler
-  const handleToggleDictation = useCallback(() => {
+  // Persistent mic permission ref - once granted, stays for the session
+  const micPermissionGranted = useRef(false);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  // Speech recognition handler with persistent permission
+  const handleToggleDictation = useCallback(async () => {
     // Check if speech recognition is supported
-    const SpeechRecognition = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
+    const SpeechRecognitionAPI = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition; webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
                               (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
 
-    if (!SpeechRecognition) {
+    if (!SpeechRecognitionAPI) {
       setStreamError("Speech recognition is not supported in your browser. Try using Chrome or Edge.");
       return;
     }
@@ -695,63 +899,86 @@ function ChatWorkspaceContent() {
       return;
     }
 
-    // Start listening
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    // Request microphone permission once via getUserMedia - this persists for the session
+    // and prevents SpeechRecognition from re-prompting every time
+      if (!micPermissionGranted.current) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          micStreamRef.current = stream;
+          micPermissionGranted.current = true;
+      } catch (err) {
+        setStreamError("Microphone access denied. Please allow microphone access in your browser settings and try again.");
+        return;
+      }
+    }
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
+    // Reuse existing recognition instance or create new one
+    if (!recognitionRef.current) {
+      const recognition = new SpeechRecognitionAPI();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        } else {
-          interimTranscript += transcript;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          }
         }
-      }
 
-      // Append transcribed text to composer
-      if (finalTranscript) {
-        setComposerText((prev) => prev + (prev ? ' ' : '') + finalTranscript.trim());
-      }
-    };
+        // Append transcribed text to composer
+        if (finalTranscript) {
+          setComposerText((prev) => prev + (prev ? ' ' : '') + finalTranscript.trim());
+        }
+      };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
-      if (event.error === 'not-allowed') {
-        setStreamError("Microphone access denied. Please allow microphone access in your browser settings.");
-      } else if (event.error !== 'aborted') {
-        setStreamError(`Speech recognition error: ${event.error}`);
-      }
-      setIsListening(false);
-    };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          micPermissionGranted.current = false;
+          setStreamError("Microphone access was revoked. Please re-enable it in browser settings.");
+        } else if (event.error === 'no-speech') {
+          // No speech detected - just stop silently, don't show error
+          setIsListening(false);
+        } else if (event.error !== 'aborted') {
+          setStreamError(`Speech recognition error: ${event.error}`);
+        }
+        setIsListening(false);
+      };
 
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+      recognition.onend = () => {
+        setIsListening(false);
+      };
 
-    recognitionRef.current = recognition;
-    recognition.start();
+      recognitionRef.current = recognition;
+    }
+
+    try {
+      recognitionRef.current.start();
+    } catch {
+      // If start fails (e.g. already started), recreate the instance
+      recognitionRef.current = null;
+      handleToggleDictation();
+    }
   }, [isListening]);
 
   const hasMessages = activeSession && activeSession.messages.length > 0;
 
   return (
-    <PageShell className="max-w-4xl mx-auto" contentClassName="gap-0 h-full" noCard>
-      <div className="flex flex-col h-full animate-fade-in-up">
-        {/* Header with Share button and menu */}
-        {activeSession && (
-          <div className="flex items-center px-4 py-3 border-b border-zinc-200/50 dark:border-zinc-700/50">
+    <div className="flex flex-col h-full min-h-0">
+      {/* Full-width Header Bar - Outside of content constraints */}
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center px-4 py-3 max-w-6xl mx-auto w-full">
+          {activeSession ? (
             <ChatHeaderActions
               sessionTitle={activeSession.title}
               onShareClick={() => setShareChatModalOpen(true)}
@@ -762,13 +989,38 @@ function ChatWorkspaceContent() {
               isPinned={activeSession.is_pinned}
               isArchived={activeSession.is_archived}
               hasActiveSession={!!activeSession}
+              uploadedFiles={uploadedFiles}
+              onRemoveFile={removeUploadedFile}
             />
-          </div>
-        )}
+          ) : (
+            <div className="flex items-center justify-between w-full">
+              <h1 className="text-base font-medium text-zinc-800 dark:text-zinc-100">
+                New chat
+              </h1>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                <ShieldAlert className="h-3 w-3" />
+                Admin
+              </span>
+              <Link
+                href="/admin"
+                className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
+              >
+                Dashboard →
+              </Link>
+            </div>
+          )}
+        </div>
+      </div>
 
+      {/* Main content area */}
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col max-w-5xl mx-auto w-full px-6 animate-fade-in-up">
         {/* Error banner */}
         {streamError && (
-          <div className="mx-4 mt-4 rounded-xl bg-red-500/10-red-500/20 px-4 py-3">
+          <div className="mt-4 rounded-xl bg-red-500/10 px-4 py-3">
             <div className="flex items-center gap-3">
               <svg className="h-5 w-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -785,23 +1037,39 @@ function ChatWorkspaceContent() {
           </div>
         )}
 
-        {/* Main content area */}
-        <div className="flex-1 overflow-y-auto flex flex-col">
-          {/* Welcome screen when no messages */}
-          {(!activeSession || !hasMessages) && (
-            <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
-              <h1 className="text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
-                Hi there
-              </h1>
-              <p className="text-xl text-zinc-500 dark:text-zinc-400">
-                What would you like to learn today?
-              </p>
-            </div>
-          )}
+        {/* Unauthenticated state */}
+        {!isLoggedIn && (
+          <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
+            <h1 className="text-3xl font-semibold text-zinc-900 dark:text-white mb-3">
+              Sign in to start chatting
+            </h1>
+            <p className="text-base text-zinc-500 dark:text-zinc-400 mb-6 max-w-xl">
+              Your chat history and saved sessions appear after signing in.
+            </p>
+            <Link
+              href="/login"
+              className="px-6 py-3 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition"
+            >
+              Sign in
+            </Link>
+          </div>
+        )}
 
-          {/* Messages */}
-          {hasMessages && (
-            <div className="px-4 py-6 space-y-6">
+        {/* Welcome screen when no messages */}
+        {isLoggedIn && (!activeSession || !hasMessages) && (
+          <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
+            <h1 className="text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
+              {isAdmin ? `Welcome back, ${user?.display_name || user?.full_name || user?.username || "Admin"}` : "Hi there"}
+            </h1>
+            <p className="text-xl text-zinc-500 dark:text-zinc-400">
+              {isAdmin ? "What would you like to test or explore?" : "What would you like to learn today?"}
+            </p>
+          </div>
+        )}
+
+        {/* Messages */}
+        {hasMessages && (
+          <div className="py-6 space-y-6">
               {activeSession.messages.map((message, index) => {
                 const isLastMessage = index === activeSession.messages.length - 1;
                 const isStreamingMessage = isLastMessage && isStreaming && message.role === "assistant";
@@ -835,13 +1103,13 @@ function ChatWorkspaceContent() {
                     isRegenerating={regeneratingMessageIndex === index}
                   />
                 );
-              })}
-            </div>
-          )}
-        </div>
+            })}
+          </div>
+        )}
+      </div>
 
-        {/* Input area - fixed at bottom */}
-        <div className="px-4 pb-6 pt-2">
+      {/* Input area - fixed at bottom */}
+      <div className="flex-shrink-0 max-w-5xl mx-auto w-full px-6 pb-4 pt-2">
           {isListening ? (
             /* Dictation mode - waveform animation */
             <div className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3">
@@ -901,35 +1169,20 @@ function ChatWorkspaceContent() {
                   <Check className="h-5 w-5" />
                 </button>
               </div>
+              {composerText.trim() && (
+                <div className="mt-2 rounded-lg bg-zinc-900/40 px-3 py-2 text-xs text-zinc-200">
+                  {composerText}
+                </div>
+              )}
             </div>
           ) : (
             /* Normal input mode - ChatGPT-style single line */
             <form onSubmit={handleSendMessage}>
-              {/* Uploaded files preview */}
-              {uploadedFiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-2 px-2">
-                  {uploadedFiles.map((file, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-sm"
-                    >
-                      {file.type.startsWith('image/') ? (
-                        <Image className="h-4 w-4 text-zinc-500" />
-                      ) : (
-                        <FileText className="h-4 w-4 text-zinc-500" />
-                      )}
-                      <span className="text-zinc-700 dark:text-zinc-300 truncate max-w-[150px]">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeUploadedFile(index)}
-                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Enhanced file/image preview grid */}
+              <FilePreviewGrid
+                files={uploadedFiles}
+                onRemoveFile={removeUploadedFile}
+              />
 
               {/* Active options indicator */}
               {(webSearchEnabled || selectedStyle !== 'normal') && (
@@ -988,6 +1241,22 @@ function ChatWorkspaceContent() {
                           <span className="text-sm">Add files or photos</span>
                         </button>
 
+                        {/* Research Mode */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResearchSidebarOpen(true);
+                            setPlusMenuOpen(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                        >
+                          <FlaskConical className="h-5 w-5 text-indigo-500" />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">Research Mode</span>
+                            <span className="text-xs text-zinc-400">Upload sources & use research tools</span>
+                          </div>
+                        </button>
+
                         {/* Divider */}
                         <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
 
@@ -1024,7 +1293,7 @@ function ChatWorkspaceContent() {
 
                           {/* Style submenu */}
                           {styleSubmenuOpen && (
-                            <div className="absolute left-full top-0 ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+                            <div className="absolute left-full bottom-0 ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-50 animate-fade-in-up">
                               <div className="py-2">
                                 {RESPONSE_STYLES.map((style) => (
                                   <button
@@ -1062,9 +1331,9 @@ function ChatWorkspaceContent() {
                 {/* Input */}
                 <input
                   type="text"
-                  placeholder={activeSession ? "Ask anything..." : "Create a session to start"}
+                  placeholder={isLoggedIn ? (activeSession ? "Ask anything..." : "Create a session to start") : "Sign in to start chatting"}
                   value={composerText}
-                  disabled={!activeSession || isStreaming}
+                  disabled={!isLoggedIn || !activeSession || isStreaming}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
@@ -1137,7 +1406,7 @@ function ChatWorkspaceContent() {
                   <button
                     type="button"
                     onClick={handleToggleDictation}
-                    disabled={!activeSession || isStreaming}
+                    disabled={!isLoggedIn || !activeSession || isStreaming}
                     className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Start dictation"
                   >
@@ -1146,7 +1415,7 @@ function ChatWorkspaceContent() {
                   {/* Send Button */}
                   <button
                     type="submit"
-                    disabled={!activeSession || isStreaming || !composerText.trim()}
+                    disabled={!isLoggedIn || !activeSession || isStreaming || !composerText.trim()}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Send className="h-4 w-4" />
@@ -1157,39 +1426,73 @@ function ChatWorkspaceContent() {
           )}
 
           {/* Suggestion chips - only show when no messages */}
-          {(!activeSession || !hasMessages) && (
+          {isLoggedIn && (!activeSession || !hasMessages) && (
             <div className="flex flex-wrap justify-center gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setComposerText("What is the main topic of this course?")}
-                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-              >
-                Course overview
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerText("Help me understand machine learning basics")}
-                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-              >
-                ML basics
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerText("How do I use the research mode?")}
-                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-              >
-                Research mode
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerText("Explain a complex concept simply")}
-                className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-              >
-                Explain concepts
-              </button>
+              {isAdmin ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("Run a system health check on the RAG pipeline")}
+                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+                  >
+                    RAG health check
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("Test multi-model response comparison for a complex query")}
+                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+                  >
+                    Model comparison
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("What are the current system metrics and performance stats?")}
+                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+                  >
+                    System metrics
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("Evaluate the quality of responses for edge-case queries")}
+                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+                  >
+                    Edge-case testing
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("What is the main topic of this course?")}
+                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    Course overview
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("Help me understand machine learning basics")}
+                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    ML basics
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("How do I use the research mode?")}
+                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    Research mode
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerText("Explain a complex concept simply")}
+                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    Explain concepts
+                  </button>
+                </>
+              )}
             </div>
           )}
-        </div>
       </div>
 
       {/* File Viewer Modal */}
@@ -1260,7 +1563,16 @@ function ChatWorkspaceContent() {
         currentTitle={activeSession?.title || "Chat Session"}
         isRenaming={isRenamingChat}
       />
-    </PageShell>
+
+      {/* Research Sidebar */}
+      <ResearchSidebar
+        isOpen={researchSidebarOpen}
+        onClose={() => setResearchSidebarOpen(false)}
+        onFilesAdded={handleResearchFilesAdded}
+        onUrlSubmit={handleResearchUrlSubmit}
+        activeSourceCount={uploadedFiles.length}
+      />
+    </div>
   );
 }
 
@@ -1356,24 +1668,42 @@ function ChatBubble({
     );
   }
 
-  // Show thinking animation when streaming starts and no content yet
-  const showThinking = isStreaming && !message.content;
+  // Show phase indicator when streaming starts and no content yet
+  const showPhaseIndicator = isStreaming && !message.content;
+
+  // Agent badge color mapping
+  const agentBadgeConfig: Record<string, { label: string; color: string }> = {
+    tutor_agent: { label: "Tutor", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
+    doubts_agent: { label: "Doubt Resolver", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
+    personalised_agent: { label: "Personalized", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
+    quiz_helper_agent: { label: "Quiz Helper", color: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" },
+    feedback_agent: { label: "Feedback", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20" },
+  };
+  const agentInfo = message.agent ? agentBadgeConfig[message.agent] : null;
 
   // Assistant message - left aligned, no bubble
   return (
     <div className="animate-fade-in-up">
       <div className="max-w-3xl">
-        {showThinking ? (
-          <div className="flex items-center gap-3 py-2">
-            <div className="flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }}></span>
-              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }}></span>
-              <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }}></span>
-            </div>
-            <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking...</span>
-          </div>
+        {showPhaseIndicator ? (
+          <StreamingPhaseIndicator
+            isStreaming={isStreaming || false}
+            hasContent={!!message.content}
+          />
         ) : (
           <>
+            {/* Agent badge */}
+            {agentInfo && (
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${agentInfo.color}`}>
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {agentInfo.label}
+                </span>
+                {message.route_reason && (
+                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 italic">{message.route_reason}</span>
+                )}
+              </div>
+            )}
             <MarkdownContent
               content={message.content}
               sources={message.sources}
@@ -1417,17 +1747,57 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ content, sources, isStreaming, onOpenSources }: MarkdownContentProps) {
-  // Create a source chip component for inline use
+  const sanitizeText = (raw: string) =>
+    raw
+      .replace(/<[^>]*>/g, "")
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+
+  const safeContent = sanitizeText(content || "");
+
+  // Create a source chip component for inline use with hover preview
   const SourceChip = ({ sourceIndex, displayName }: { sourceIndex: number; displayName: string }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+
     if (!sources || sourceIndex >= sources.length) return null;
 
+    const source = sources[sourceIndex];
+    const snippet = typeof source?.chunk_text === 'string'
+      ? source.chunk_text.slice(0, 200) + (source.chunk_text.length > 200 ? '...' : '')
+      : null;
+    const location = source?.page ? `Page ${source.page}` : source?.slide ? `Slide ${source.slide}` : null;
+
     return (
-      <button
-        onClick={() => onOpenSources(sources)}
-        className="inline-flex items-center px-2 py-0.5 mx-0.5 rounded-full bg-zinc-700 dark:bg-zinc-700 text-xs text-zinc-300 hover:bg-zinc-600 transition-colors align-middle"
-      >
-        {displayName}
-      </button>
+      <span className="relative inline-block">
+        <button
+          onClick={() => onOpenSources(sources)}
+          onMouseEnter={() => setShowTooltip(true)}
+          onMouseLeave={() => setShowTooltip(false)}
+          className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-zinc-100 dark:bg-zinc-700 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors align-middle border border-zinc-200 dark:border-zinc-600"
+        >
+          <span className="w-3 h-3 rounded-full bg-zinc-300 dark:bg-zinc-500 flex items-center justify-center text-[8px] font-bold">
+            {sourceIndex + 1}
+          </span>
+          <span className="max-w-[120px] truncate">{displayName}</span>
+        </button>
+        {/* Hover tooltip with source preview */}
+        {showTooltip && (
+          <div className="absolute z-50 bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-white dark:bg-zinc-800 shadow-xl border border-zinc-200 dark:border-zinc-700 animate-fade-in-up">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-5 h-5 rounded bg-zinc-200 dark:bg-zinc-600 flex items-center justify-center text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                {sourceIndex + 1}
+              </div>
+              <span className="font-medium text-zinc-900 dark:text-white text-sm truncate flex-1">{displayName}</span>
+            </div>
+            {location && (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">{location}</p>
+            )}
+            {snippet && (
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed line-clamp-4">"{snippet}"</p>
+            )}
+            <p className="text-xs text-indigo-500 mt-2">Click to view all sources</p>
+          </div>
+        )}
+      </span>
     );
   };
 
@@ -1457,7 +1827,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
         sourceIndex = parseInt(currentMatch[1]) - 1; // Convert to 0-indexed
         const source = sources?.[sourceIndex];
         displayName = source
-          ? ((source.name as string) || (source.title as string) || `Source ${currentMatch[1]}`).substring(0, 15)
+          ? ((source.file_name as string) || (source.name as string) || (source.title as string) || `Source ${currentMatch[1]}`).substring(0, 15)
           : `Source ${currentMatch[1]}`;
         if (displayName.length === 15) displayName += '...';
       } else if (currentMatch[2]) {
@@ -1465,7 +1835,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
         sourceIndex = parseInt(currentMatch[2]) - 1;
         const source = sources?.[sourceIndex];
         displayName = source
-          ? ((source.name as string) || (source.title as string) || `Source ${currentMatch[2]}`).substring(0, 15)
+          ? ((source.file_name as string) || (source.name as string) || (source.title as string) || `Source ${currentMatch[2]}`).substring(0, 15)
           : `Source ${currentMatch[2]}`;
         if (displayName.length === 15) displayName += '...';
       } else if (currentMatch[3]) {
@@ -1566,21 +1936,44 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
     return result;
   };
 
-  // Parse markdown: headers, bold, paragraphs, with inline citations
+  // Parse markdown: headers, bold, paragraphs, lists, with inline citations
   const renderMarkdown = (text: string) => {
     const lines = text.split('\n');
     const elements: React.ReactNode[] = [];
     let currentParagraph: React.ReactNode[] = [];
+    let currentList: React.ReactNode[] = [];
+    let listType: 'ul' | 'ol' | null = null;
     let paragraphKey = 0;
+    let listKey = 0;
 
     const flushParagraph = () => {
       if (currentParagraph.length > 0) {
         elements.push(
-          <p key={`p-${paragraphKey++}`} className="mb-4 leading-relaxed">
+          <p key={`p-${paragraphKey++}`} className="mb-5 leading-7 text-zinc-700 dark:text-zinc-200">
             {currentParagraph}
           </p>
         );
         currentParagraph = [];
+      }
+    };
+
+    const flushList = () => {
+      if (currentList.length > 0) {
+        if (listType === 'ol') {
+          elements.push(
+            <ol key={`ol-${listKey++}`} className="mb-5 ml-6 list-decimal space-y-2">
+              {currentList}
+            </ol>
+          );
+        } else {
+          elements.push(
+            <ul key={`ul-${listKey++}`} className="mb-5 ml-6 list-disc space-y-2">
+              {currentList}
+            </ul>
+          );
+        }
+        currentList = [];
+        listType = null;
       }
     };
 
@@ -1589,35 +1982,65 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
       const h1Match = line.match(/^# (.+)$/);
       const h2Match = line.match(/^## (.+)$/);
       const h3Match = line.match(/^### (.+)$/);
+      // Check for list items
+      const unorderedListMatch = line.match(/^[-*]\s+(.+)$/);
+      const orderedListMatch = line.match(/^\d+\.\s+(.+)$/);
 
       if (h1Match) {
         flushParagraph();
+        flushList();
         elements.push(
-          <h1 key={`h1-${lineIndex}`} className="text-2xl font-bold mb-4 mt-6 text-zinc-900 dark:text-white">
+          <h1 key={`h1-${lineIndex}`} className="text-2xl font-bold mb-4 mt-8 text-zinc-900 dark:text-white">
             {renderInlineMarkdown(h1Match[1], `h1-${lineIndex}`)}
           </h1>
         );
       } else if (h2Match) {
         flushParagraph();
+        flushList();
         elements.push(
-          <h2 key={`h2-${lineIndex}`} className="text-xl font-bold mb-3 mt-5 text-zinc-900 dark:text-white">
+          <h2 key={`h2-${lineIndex}`} className="text-xl font-bold mb-3 mt-6 text-zinc-900 dark:text-white">
             {renderInlineMarkdown(h2Match[1], `h2-${lineIndex}`)}
           </h2>
         );
       } else if (h3Match) {
         flushParagraph();
+        flushList();
         elements.push(
-          <h3 key={`h3-${lineIndex}`} className="text-lg font-semibold mb-2 mt-4 text-zinc-900 dark:text-white">
+          <h3 key={`h3-${lineIndex}`} className="text-lg font-semibold mb-3 mt-5 text-zinc-900 dark:text-white">
             {renderInlineMarkdown(h3Match[1], `h3-${lineIndex}`)}
           </h3>
         );
-      } else if (line.trim() === '') {
-        // Empty line - flush current paragraph
+      } else if (unorderedListMatch) {
         flushParagraph();
+        if (listType !== 'ul') {
+          flushList();
+          listType = 'ul';
+        }
+        currentList.push(
+          <li key={`li-${lineIndex}`} className="text-zinc-700 dark:text-zinc-200 leading-relaxed">
+            {renderInlineMarkdown(unorderedListMatch[1], `li-${lineIndex}`)}
+          </li>
+        );
+      } else if (orderedListMatch) {
+        flushParagraph();
+        if (listType !== 'ol') {
+          flushList();
+          listType = 'ol';
+        }
+        currentList.push(
+          <li key={`li-${lineIndex}`} className="text-zinc-700 dark:text-zinc-200 leading-relaxed">
+            {renderInlineMarkdown(orderedListMatch[1], `li-${lineIndex}`)}
+          </li>
+        );
+      } else if (line.trim() === '') {
+        // Empty line - flush current paragraph and list
+        flushParagraph();
+        flushList();
       } else {
         // Regular text - add to current paragraph
+        flushList(); // End any active list when encountering non-list text
         if (currentParagraph.length > 0) {
-          currentParagraph.push(<br key={`br-${lineIndex}`} />);
+          currentParagraph.push(' '); // Use space instead of br for better text flow
         }
         currentParagraph.push(
           <span key={`span-${lineIndex}`}>{renderInlineMarkdown(line, `line-${lineIndex}`)}</span>
@@ -1625,15 +2048,16 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
       }
     });
 
-    // Flush remaining paragraph
+    // Flush remaining paragraph and list
     flushParagraph();
+    flushList();
 
     return elements;
   };
 
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200">
-      {renderMarkdown(content)}
+      {renderMarkdown(safeContent)}
       {isStreaming && <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse rounded-sm"></span>}
     </div>
   );
@@ -1680,7 +2104,7 @@ function FileViewerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-6xl h-[90vh] bg-white dark:bg-zinc-900 rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3-b-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white truncate">
             {title}
           </h3>
@@ -1700,7 +2124,7 @@ function FileViewerModal({
             // PDF - embed directly
             <iframe
               src={displayUrl}
-              className="w-full h-full-0"
+              className="w-full h-full"
               title={`PDF: ${title}`}
             />
           ) : isImage ? (
@@ -1749,7 +2173,7 @@ function FileViewerModal({
             // HTML - embed directly
             <iframe
               src={displayUrl}
-              className="w-full h-full-0"
+              className="w-full h-full"
               title={`HTML: ${title}`}
               sandbox="allow-scripts"
             />
@@ -1892,7 +2316,7 @@ function FileViewerModal({
         </div>
         
         {/* Footer */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-zinc-50 dark:bg-zinc-800-t-zinc-200 dark:border-zinc-700">
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
             {isPDF ? 'PDF document' : 
              isImage ? 'Image file' : 
@@ -1921,29 +2345,34 @@ export default function ChatWorkspace() {
 
 function ChatWorkspaceSkeleton() {
   return (
-    <PageShell className="max-w-4xl mx-auto" contentClassName="gap-0 h-full" noCard>
-      <div className="flex flex-col h-full">
-        {/* Welcome screen skeleton */}
-        <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] px-6">
-          <div className="h-10 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse mb-3"></div>
-          <div className="h-6 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-        </div>
-
-        {/* Input skeleton */}
-        <div className="px-4 pb-6 pt-2">
-          <div className="rounded-3xl-zinc-200 bg-zinc-100 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-800">
-            <div className="h-6 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-            <div className="flex items-center justify-end mt-2">
-              <div className="h-9 w-9 bg-indigo-600 rounded-full animate-pulse"></div>
-            </div>
-          </div>
-          <div className="flex justify-center gap-2 mt-4">
-            <div className="h-10 w-32 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
-            <div className="h-10 w-24 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
-            <div className="h-10 w-28 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
-          </div>
+    <div className="flex flex-col h-full min-h-0">
+      {/* Header skeleton */}
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center px-6 py-3 max-w-5xl mx-auto">
+          <div className="h-5 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
         </div>
       </div>
-    </PageShell>
+
+      {/* Welcome screen skeleton */}
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-6 max-w-4xl mx-auto w-full">
+        <div className="h-10 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse mb-3"></div>
+        <div className="h-6 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+      </div>
+
+      {/* Input skeleton */}
+      <div className="flex-shrink-0 max-w-4xl mx-auto w-full px-4 pb-4 pt-2">
+        <div className="rounded-3xl bg-zinc-100 px-4 py-3 dark:bg-zinc-800">
+          <div className="h-6 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+          <div className="flex items-center justify-end mt-2">
+            <div className="h-9 w-9 bg-indigo-600 rounded-full animate-pulse"></div>
+          </div>
+        </div>
+        <div className="flex justify-center gap-2 mt-4">
+          <div className="h-10 w-32 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+          <div className="h-10 w-24 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+          <div className="h-10 w-28 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+        </div>
+      </div>
+    </div>
   );
 }

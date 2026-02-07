@@ -75,6 +75,16 @@ class ChatService:
     def stream_response(
         self, query: str, user_id: str, session_id: Optional[str] = None, model_id: Optional[str] = None
     ):
+        from backend.config import config as app_config
+
+        if app_config.AGENT_SYSTEM_ENABLED:
+            from backend.agents import run_agent_pipeline
+            generator, sources = run_agent_pipeline(
+                query=query, user_id=user_id,
+                session_id=session_id, model_id=model_id,
+            )
+            return generator, sources
+
         generator, sources = generate_response_stream_and_sources(
             query, user_id=user_id, session_id=session_id, model_id=model_id
         )

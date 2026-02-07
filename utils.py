@@ -1,4 +1,7 @@
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:
+    st = None  # Running outside Streamlit (e.g. FastAPI backend)
 import os
 import re
 import base64
@@ -256,7 +259,8 @@ def get_storage_context():
     try:
         return StorageContext.from_defaults(persist_dir=PERSIST_DIR)
     except Exception as e:
-        st.error(f"Error initializing storage context: {e}")
+        if st:
+            st.error(f"Error initializing storage context: {e}")
         logging.error(f"Storage context initialization failed: {e}")
         return None
 
@@ -353,6 +357,8 @@ BASE_CSS = """
 # --- Helper Functions ---
 def render_footer():
     """Render a footer with disclaimer"""
+    if not st:
+        return
     st.markdown(
         """
         <style>
@@ -1010,15 +1016,17 @@ def image_to_document(image_file_uploader_object) -> Document:
         text = pytesseract.image_to_string(image)
         return Document(text=text, metadata={"source": image_file_uploader_object.name})
     except pytesseract.TesseractNotFoundError:
-        st.error(
-            "Tesseract is not installed or not in your PATH. OCR functionality will not work."
-        )
+        if st:
+            st.error(
+                "Tesseract is not installed or not in your PATH. OCR functionality will not work."
+            )
         return Document(
             text="Error: Tesseract not found.",
             metadata={"source": image_file_uploader_object.name, "error": True},
         )
     except Exception as e:
-        st.error(f"Error during OCR: {e}")
+        if st:
+            st.error(f"Error during OCR: {e}")
         return Document(
             text=f"Error during OCR: {e}",
             metadata={"source": image_file_uploader_object.name, "error": True},
@@ -1221,7 +1229,9 @@ def save_quiz_results(quiz_data: Dict[str, Any]) -> None:
     try:
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(quiz_data, f, indent=2, ensure_ascii=False)
-        st.success(f"Quiz results saved to `{filename}`")
+        if st:
+            st.success(f"Quiz results saved to `{filename}`")
     except Exception as e:
-        st.error(f"Failed to save quiz results: {e}")
+        if st:
+            st.error(f"Failed to save quiz results: {e}")
         logging.error(f"Failed to save quiz results to {filename}: {e}")

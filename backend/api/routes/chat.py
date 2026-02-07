@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, status
 from fastapi.responses import StreamingResponse
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session
 from backend.services.chat_service import get_chat_service, ChatService
+from backend.services.research_service import get_research_service, ResearchService
 from backend.services.share_service import get_share_service
 from backend.services.message_feedback_service import (
     get_feedback_service,
@@ -13,6 +14,8 @@ from backend.services.message_feedback_service import (
     FeedbackType,
 )
 from backend.services.models import ChatMessage
+from backend.validators import FileValidator
+from backend.exceptions import InvalidFileError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -42,6 +45,10 @@ class SendMessageRequest(BaseModel):
     """Request body for sending a chat message."""
     query: str = Field(..., min_length=1, max_length=10000)
     model_id: Optional[str] = Field(None, description="AWS Bedrock model ID to use")
+    web_search_enabled: bool = Field(default=True)
+    response_style: Optional[str] = Field(default=None)
+    uploaded_only: bool = Field(default=False)
+    uploaded_file_ids: Optional[List[str]] = None
 
 
 class MessageFeedbackRequest(BaseModel):
@@ -55,6 +62,25 @@ class MessageFeedbackResponse(BaseModel):
     success: bool
     feedback_type: Optional[str] = None
     message: Optional[str] = None
+
+
+@router.post("/uploads")
+async def upload_chat_file(
+    session_data=Depends(get_current_session),
+    research_service: ResearchService = Depends(get_research_service),
+    file: UploadFile = File(...),
+):
+    content = await file.read()
+    try:
+        sanitized_name = FileValidator.validate_file(
+            file.filename or "uploaded-file", len(content)
+        )
+        preview = research_service.preview_file(content, sanitized_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except InvalidFileError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"preview": preview}
 
 
 @router.post("/sessions")
@@ -84,6 +110,7 @@ def send_message(
     payload: SendMessageRequest,
     session_data=Depends(get_current_session),
     chat_service: ChatService = Depends(get_chat_service),
+    research_service: ResearchService = Depends(get_research_service),
 ):
     _, user = session_data
     session = chat_service.load_session(user["username"], session_id)
@@ -92,13 +119,51 @@ def send_message(
 
     query = payload.query
     model_id = payload.model_id
+    effective_query = query
+
+    style_instructions = {
+        "learning": "Respond with step-by-step explanations and short examples.",
+        "concise": "Keep the response brief and to the point.",
+        "explanatory": "Provide a detailed explanation with context and definitions.",
+        "formal": "Use an academic, formal tone.",
+    }
+    if payload.response_style and payload.response_style in style_instructions:
+        effective_query = (
+            f"{style_instructions[payload.response_style]}\n\nUser question: {effective_query}"
+        )
+
+    if payload.uploaded_only:
+        try:
+            uploaded_results = research_service.query(
+                query, uploaded_only=True
+            ).get("results", [])
+            if uploaded_results:
+                context_snippets = "\n\n".join(
+                    [r.get("text", "") for r in uploaded_results[:3] if r.get("text")]
+                ).strip()
+                if context_snippets:
+                    effective_query = (
+                        "Use the following uploaded document excerpts as context:\n"
+                        f"{context_snippets}\n\nUser question: {query}"
+                    )
+        except Exception:
+            pass
+
+    if payload.web_search_enabled is False:
+        effective_query = (
+            "Do not use web search. Answer only from available context.\n\n"
+            f"{effective_query}"
+        )
     user_message = ChatMessage(role="user", content=query)
     chat_service.append_message(session, user_message)
     chat_service.save_session(user["username"], session)
 
     def stream():
         generator, sources = chat_service.stream_response(
-            query, user_id=user["username"], session_id=session_id, model_id=model_id
+            effective_query,
+            user_id=user["username"],
+            session_id=session_id,
+            model_id=model_id,
         )
         collected = ""
         for chunk in generator:

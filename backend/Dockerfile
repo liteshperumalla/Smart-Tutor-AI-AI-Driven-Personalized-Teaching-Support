@@ -38,7 +38,7 @@ RUN --mount=type=cache,target=/usr/local/share/nltk_data \
 COPY --chown=appuser:appuser . .
 
 # Create necessary directories with proper ownership
-RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys .cache && \
+RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache && \
     chown -R appuser:appuser /app
 
 # SECURITY: Switch to non-root user

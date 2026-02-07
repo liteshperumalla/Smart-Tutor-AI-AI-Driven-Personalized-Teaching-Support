@@ -64,14 +64,14 @@ export default function SharedChatPage() {
             <div className="h-6 w-96 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
           </div>
         </header>
-        <section className="flex flex-col rounded-3xl-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between-b-zinc-100 px-6 py-4 dark:border-zinc-800">
             <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
             {[1, 2, 3].map((i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-xl rounded-2xl px-5 py-4 ${i % 2 === 0 ? "bg-gradient-to-br from-indigo-600 to-purple-600" : "border-2-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"}`}>
+                <div className={`max-w-xl rounded-2xl px-5 py-4 ${i % 2 === 0 ? "bg-gradient-to-br from-indigo-600 to-purple-600" : "border-2 border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"}`}>
                   <div className="h-4 w-3/4 bg-white/20 rounded animate-pulse"></div>
                 </div>
               </div>
@@ -177,7 +177,7 @@ export default function SharedChatPage() {
                   className={`max-w-xl rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md break-words ${
                     isUser
                       ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-indigo-600/20"
-                      : "border-2-zinc-200 bg-white text-zinc-900 shadow-zinc-200/50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-zinc-800/50"
+                      : "border-2 border-zinc-200 bg-white text-zinc-900 shadow-zinc-200/50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-zinc-800/50"
                   }`}
                 >
                   <p className="whitespace-pre-wrap break-words">{message.content || (isUser ? "" : "…")}</p>

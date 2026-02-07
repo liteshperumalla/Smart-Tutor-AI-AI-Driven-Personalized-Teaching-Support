@@ -50,29 +50,25 @@ def get_secret(secret_name: str, region: str = "us-east-1") -> Optional[Dict[str
         return None
 
 
-# Fetch secrets from AWS Secrets Manager (production only)
-_rds_credentials = None
+# Fetch consolidated secrets from AWS Secrets Manager
+# Both app secrets and RDS credentials are stored in a single secret
 _app_secrets = None
+_rds_credentials = None
 
 # Always try to fetch secrets from AWS Secrets Manager if available
 # This allows using AWS resources in development mode
 if True:  # Changed from production-only to always attempt
     logger.info("Attempting to fetch secrets from AWS Secrets Manager...")
-    _rds_credentials = get_secret("smart-tutor/rds/credentials")
     _app_secrets = get_secret("smart-tutor/app/secrets")
 
-    if _rds_credentials:
-        logger.info("✅ RDS credentials loaded from Secrets Manager")
-    else:
-        logger.warning(
-            "⚠️ RDS credentials not found in Secrets Manager, falling back to .env"
-        )
+    # RDS credentials are now consolidated into app/secrets
+    _rds_credentials = _app_secrets
 
     if _app_secrets:
-        logger.info("✅ Application secrets loaded from Secrets Manager")
+        logger.info("✅ Secrets loaded from Secrets Manager (consolidated)")
     else:
         logger.warning(
-            "⚠️ Application secrets not found in Secrets Manager, falling back to .env"
+            "⚠️ Secrets not found in Secrets Manager, falling back to .env"
         )
 
 
@@ -107,6 +103,12 @@ class Config:
     )
     PASSWORD_RESET_TOKEN_TTL_SECONDS = int(
         os.getenv("PASSWORD_RESET_TOKEN_TTL_SECONDS", "3600")
+    )
+    EMAIL_VERIFICATION_CODE_TTL_SECONDS = int(
+        os.getenv("EMAIL_VERIFICATION_CODE_TTL_SECONDS", "900")
+    )
+    PASSWORD_SETUP_TOKEN_TTL_SECONDS = int(
+        os.getenv("PASSWORD_SETUP_TOKEN_TTL_SECONDS", "900")
     )
     ALLOWED_REDIRECT_DOMAINS = os.getenv("ALLOWED_REDIRECT_DOMAINS", "").split(",")
     CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
@@ -414,6 +416,18 @@ class Config:
     SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     EMAIL_FROM = os.getenv("EMAIL_FROM", "")
+
+    # Agent System (Multi-Agent LangGraph)
+    AGENT_SYSTEM_ENABLED = os.getenv("AGENT_SYSTEM_ENABLED", "false").lower() == "true"
+    AGENT_LLM_ROUTING_ENABLED = os.getenv("AGENT_LLM_ROUTING_ENABLED", "false").lower() == "true"
+    AGENT_DEFAULT_LEVEL = os.getenv("AGENT_DEFAULT_LEVEL", "intermediate")
+    AGENT_GRAPH_RECURSION_LIMIT = int(os.getenv("AGENT_GRAPH_RECURSION_LIMIT", "10"))
+
+    # Neo4j Knowledge Graph
+    NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "smarttutor123")
+    NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 
     # Cache Settings
     CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"

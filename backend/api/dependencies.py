@@ -78,3 +78,14 @@ async def get_current_session(
 async def get_current_user(session=Depends(get_current_session)):
     _, user = session
     return user
+
+
+async def get_admin_session(session=Depends(get_current_session)):
+    """Require the authenticated user to have Admin role."""
+    token, user = session
+    if user.get("role") != "Admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return token, user
