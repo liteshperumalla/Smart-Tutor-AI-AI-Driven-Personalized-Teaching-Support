@@ -1,0 +1,12 @@
+[
+  {
+    "id": "ac56afd5-773b-48c3-91b3-45079b6387dd",
+    "title": "System Maintenance",
+    "content": "The system will be down for maintenance on Feb 5th from 2-4 AM UTC.",
+    "priority": "warning",
+    "author": "admin",
+    "active": true,
+    "created_at": "2026-02-02T05:30:34.199343",
+    "updated_at": "2026-02-02T05:30:34.199348"
+  }
+]

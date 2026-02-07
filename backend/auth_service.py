@@ -22,7 +22,8 @@ from .jwt_blacklist import init_jwt_blacklist
 from .exceptions import (
     InvalidCredentialsError, UserAlreadyExistsError,
     AccountLockedError, PasswordValidationError,
-    RateLimitError, SessionExpiredError, TokenInvalidError
+    RateLimitError, SessionExpiredError, TokenInvalidError,
+    EmailNotVerifiedError, PasswordSetupRequiredError
 )
 
 logger = get_logger(__name__)
@@ -92,6 +93,21 @@ class AuthService:
         hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
         return hashed.decode('utf-8')
 
+    @staticmethod
+    def _hash_value(value: str) -> str:
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _normalize_metadata(user: Dict[str, Any]) -> Dict[str, Any]:
+        metadata = user.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return metadata
+
+    @staticmethod
+    def _generate_verification_code() -> str:
+        return f"{secrets.randbelow(1_000_000):06d}"
+
     def _verify_password(self, password: str, hashed_password: str) -> bool:
         """Verify password against hash"""
         try:
@@ -156,6 +172,9 @@ class AuthService:
             PasswordValidationError: If password is weak
             ValidationError: If input is invalid
         """
+        if not email:
+            raise InvalidCredentialsError("Email is required for signup verification")
+
         # Validate input
         user_data = UserRegistration(
             username=username,
@@ -182,6 +201,13 @@ class AuthService:
             email=email or '',
             full_name=full_name or username
         )
+
+        metadata = self._normalize_metadata(user)
+        metadata["email_verified"] = False
+        metadata["password_set"] = True
+        self.user_db.update_user(username, {"metadata": metadata})
+
+        self.request_email_verification(username=username)
 
         logger.info(f"User registered successfully: {username}")
 
@@ -237,6 +263,11 @@ class AuthService:
             self._handle_failed_login(actual_username)
             raise InvalidCredentialsError()
 
+        metadata = self._normalize_metadata(user)
+        if metadata.get("email_verified") is False:
+            logger.warning(f"Login blocked - email not verified: {actual_username}")
+            raise EmailNotVerifiedError("Email not verified. Check your inbox for the code.")
+
         # Reset failed login attempts on successful login
         self.user_db.reset_login_attempts(actual_username)
 
@@ -262,8 +293,126 @@ class AuthService:
 
         return tokens, safe_user
 
-    def login_with_google(self, code: str, redirect_uri: str) -> Tuple[Dict[str, str], Dict[str, Any]]:
-        """Google OAuth login - returns JWT tokens"""
+    def request_email_verification(
+        self, username: Optional[str] = None, email: Optional[str] = None
+    ) -> None:
+        user = self._resolve_user_for_reset(username=username, email=email)
+        if not user:
+            return
+
+        user_email = user.get("email") or ""
+        if not user_email:
+            logger.warning("Email verification requested but no email is set for user")
+            return
+
+        metadata = self._normalize_metadata(user)
+        if metadata.get("email_verified") is True:
+            return
+
+        code = self._generate_verification_code()
+        code_hash = self._hash_value(code)
+        expires_at = (datetime.utcnow() + timedelta(
+            seconds=config.EMAIL_VERIFICATION_CODE_TTL_SECONDS
+        )).isoformat()
+
+        metadata["email_verification"] = {
+            "code_hash": code_hash,
+            "expires_at": expires_at,
+            "issued_at": datetime.utcnow().isoformat(),
+        }
+        metadata["email_verified"] = False
+        self.user_db.update_user(user["username"], {"metadata": metadata})
+
+        self._send_email_verification_code(
+            to_email=user_email,
+            username=user["username"],
+            code=code,
+        )
+
+    def confirm_email_verification(self, username: str, code: str) -> None:
+        user = self.user_db.get_user_safe(username)
+        if not user:
+            raise TokenInvalidError("Invalid verification request")
+
+        metadata = self._normalize_metadata(user)
+        verification = metadata.get("email_verification") if isinstance(metadata, dict) else None
+        if not verification:
+            raise TokenInvalidError("Verification code not found")
+
+        code_hash = verification.get("code_hash")
+        expires_at = verification.get("expires_at")
+        if not code_hash or not expires_at:
+            raise TokenInvalidError("Invalid verification code")
+
+        try:
+            expires_dt = datetime.fromisoformat(expires_at)
+        except Exception:
+            raise TokenInvalidError("Invalid verification code")
+
+        if datetime.utcnow() > expires_dt:
+            raise TokenInvalidError("Verification code expired")
+
+        if not secrets.compare_digest(self._hash_value(code), code_hash):
+            raise TokenInvalidError("Invalid verification code")
+
+        metadata["email_verified"] = True
+        metadata.pop("email_verification", None)
+        self.user_db.update_user(username, {"metadata": metadata})
+
+    def _send_email_verification_code(
+        self, to_email: str, username: str, code: str
+    ) -> None:
+        if not config.SMTP_SERVER or not config.SMTP_USERNAME or not config.SMTP_PASSWORD:
+            raise RuntimeError("SMTP is not configured")
+
+        from_email = config.EMAIL_FROM or config.SMTP_USERNAME
+        expires_minutes = int(config.EMAIL_VERIFICATION_CODE_TTL_SECONDS / 60)
+
+        subject = "Smart AI Tutor Email Verification Code"
+        body = (
+            f"Hello {username},\n\n"
+            "Use the verification code below to confirm your Smart AI Tutor account:\n"
+            f"{code}\n\n"
+            f"This code expires in {expires_minutes} minutes.\n\n"
+            "If you did not create this account, you can ignore this email."
+        )
+        html_body = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; background: #ffffff; color: #000000; padding: 24px;">
+            <div style="max-width: 600px; margin: 0 auto; border: 1px solid #000000; padding: 24px;">
+              <h2 style="margin: 0 0 12px;">Verify your Smart AI Tutor account</h2>
+              <p style="margin: 0 0 16px;">Hi {username},</p>
+              <p style="margin: 0 0 16px;">
+                Use the code below to verify your email. It expires in {expires_minutes} minutes.
+              </p>
+              <p style="margin: 0 0 24px; font-size: 24px; font-weight: 700; letter-spacing: 0.2em;">
+                {code}
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #000000;">
+                If you did not create this account, you can ignore this email.
+              </p>
+            </div>
+          </body>
+        </html>
+        """
+
+        from email.message import EmailMessage
+        import smtplib
+
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = from_email
+        msg["To"] = to_email
+        msg.set_content(body)
+        msg.add_alternative(html_body, subtype="html")
+
+        with smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT) as server:
+            server.starttls()
+            server.login(config.SMTP_USERNAME, config.SMTP_PASSWORD)
+            server.send_message(msg)
+
+    def login_with_google(self, code: str, redirect_uri: str) -> Tuple[Optional[Dict[str, str]], Dict[str, Any], Optional[str]]:
+        """Google OAuth login - returns JWT tokens or a password setup token"""
         client_id = config.GOOGLE_OAUTH_CLIENT_ID
         client_secret = config.GOOGLE_OAUTH_CLIENT_SECRET
         if not client_id or not client_secret:
@@ -308,20 +457,41 @@ class AuthService:
 
         if not self.user_db.user_exists(username):
             hashed_password = self._hash_password(secrets.token_urlsafe(16))
-            self.user_db.create_user(
+            user = self.user_db.create_user(
                 username=username,
                 password_hash=hashed_password,
                 email=email or "",
+                full_name=id_info.get("name") or username,
             )
+            metadata = self._normalize_metadata(user)
+            metadata["email_verified"] = True
+            metadata["password_set"] = False
+            metadata["auth_provider"] = "google"
+            self.user_db.update_user(username, {"metadata": metadata})
             logger.info(f"Created new Google-linked user: {username}")
+        else:
+            existing = self.user_db.get_user(username)
+            metadata = self._normalize_metadata(existing)
+            if metadata.get("email_verified") is not True:
+                metadata["email_verified"] = True
+                metadata["auth_provider"] = metadata.get("auth_provider") or "google"
+                self.user_db.update_user(username, {"metadata": metadata})
 
         self.user_db.update_last_login(username)
+
+        user = self.user_db.get_user(username)
+        metadata = self._normalize_metadata(user)
+        password_set = metadata.get("password_set")
+        if password_set is False:
+            setup_token = self.create_password_setup_token(username)
+            safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
+            safe_user['username'] = username
+            return None, safe_user, setup_token
 
         # Create JWT tokens
         access_token = self.jwt_service.create_access_token(username=username, email=email or "")
         refresh_token = self.jwt_service.create_refresh_token(username=username, email=email or "")
 
-        user = self.user_db.get_user(username)
         safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
         safe_user['username'] = username
 
@@ -331,7 +501,76 @@ class AuthService:
             "token_type": "bearer"
         }
 
-        return tokens, safe_user
+        return tokens, safe_user, None
+
+    def create_password_setup_token(self, username: str) -> str:
+        user = self.user_db.get_user_safe(username)
+        if not user:
+            raise InvalidCredentialsError("User not found")
+
+        token = secrets.token_urlsafe(32)
+        token_hash = self._hash_value(token)
+        expires_at = (datetime.utcnow() + timedelta(
+            seconds=config.PASSWORD_SETUP_TOKEN_TTL_SECONDS
+        )).isoformat()
+
+        metadata = self._normalize_metadata(user)
+        metadata["password_setup"] = {
+            "token_hash": token_hash,
+            "expires_at": expires_at,
+        }
+        metadata["password_set"] = False
+        self.user_db.update_user(username, {"metadata": metadata})
+        return token
+
+    def complete_password_setup(
+        self, username: str, token: str, new_password: str, confirm_password: str
+    ) -> Dict[str, Any]:
+        if new_password != confirm_password:
+            raise InvalidCredentialsError("Passwords do not match")
+
+        user = self.user_db.get_user_safe(username)
+        if not user:
+            raise TokenInvalidError("Invalid password setup token")
+
+        metadata = self._normalize_metadata(user)
+        token_info = metadata.get("password_setup") if isinstance(metadata, dict) else None
+        if not token_info:
+            raise TokenInvalidError("Invalid password setup token")
+
+        token_hash = token_info.get("token_hash")
+        expires_at = token_info.get("expires_at")
+        if not token_hash or not expires_at:
+            raise TokenInvalidError("Invalid password setup token")
+
+        try:
+            expires_dt = datetime.fromisoformat(expires_at)
+        except Exception:
+            raise TokenInvalidError("Invalid password setup token")
+
+        if datetime.utcnow() > expires_dt:
+            raise TokenInvalidError("Password setup token has expired")
+
+        provided_hash = self._hash_value(token)
+        if not secrets.compare_digest(provided_hash, token_hash):
+            raise TokenInvalidError("Invalid password setup token")
+
+        PasswordValidator.validate_or_raise(new_password)
+
+        hashed_password = self._hash_password(new_password)
+        metadata.pop("password_setup", None)
+        metadata["password_set"] = True
+        metadata.setdefault("email_verified", True)
+        self.user_db.update_user(username, {
+            "password_hash": hashed_password,
+            "login_attempts": 0,
+            "locked_until": None,
+            "metadata": metadata,
+        })
+
+        safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
+        safe_user['username'] = username
+        return safe_user
 
     def _create_session(self, username: str) -> str:
         """Create a new session"""

@@ -53,20 +53,16 @@ if config.ENVIRONMENT == "production":
         allowed_origins.extend([
             "http://localhost:3000",
             "http://localhost:4000",
-            "http://localhost:8501",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:4000",
-            "http://127.0.0.1:8501",
         ])
 else:
     # Development: Allow localhost
     allowed_origins = [
         "http://localhost:3000",  # Next.js frontend
         "http://localhost:4000",  # Next.js frontend port
-        "http://localhost:8501",  # Streamlit frontend
         "http://127.0.0.1:3000",
         "http://127.0.0.1:4000",
-        "http://127.0.0.1:8501",
     ]
 
 app.add_middleware(
@@ -292,6 +288,35 @@ async def startup_event():
     # Initialize Prometheus metrics metadata
     set_app_info(version="1.0.0", environment=config.ENVIRONMENT)
     logger.info("✅ Prometheus metrics initialized")
+
+    # Seed admin user if none exists
+    try:
+        from backend.database import get_user_db
+        import bcrypt
+
+        user_db = get_user_db()
+        users = user_db.list_users()
+        has_admin = any(u.get("role") == "Admin" for u in users)
+
+        if not has_admin:
+            admin_password = "Admin@123"
+            hashed = bcrypt.hashpw(
+                admin_password.encode("utf-8"), bcrypt.gensalt()
+            ).decode("utf-8")
+            user_db.create_user(
+                username="admin",
+                password_hash=hashed,
+                email="admin@infra-mind.com",
+                full_name="Admin",
+                role="Admin",
+            )
+            logger.info("=" * 60)
+            logger.info("🔑 Admin user seeded: admin / Admin@123")
+            logger.info("=" * 60)
+        else:
+            logger.info("✅ Admin user already exists")
+    except Exception as e:
+        logger.warning(f"⚠️  Admin seeding skipped: {e}")
 
     logger.info("=" * 60)
 

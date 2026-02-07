@@ -29,13 +29,13 @@ export default function RootLayout({
     { href: "/", label: "Home" },
     { href: "/chat", label: "Chat" },
     { href: "/quiz", label: "Quiz" },
-    { href: "/research", label: "Research" },
-    { href: "/evaluation", label: "Evaluation" },
     { href: "/appointments", label: "Appointments" },
     { href: "/resources", label: "Resources" },
     { href: "/about", label: "About" },
     { href: "/feedback", label: "Feedback" },
     { href: "/profile", label: "Profile" },
+    { href: "/evaluation", label: "Evaluation", adminOnly: true },
+    { href: "/admin", label: "Admin", adminOnly: true },
   ];
 
   return (

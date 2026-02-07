@@ -5,7 +5,6 @@ venv/
 .venv/
 .mypy_cache/
 .pytest_cache/
-.streamlit/
 logs/
 persisted_index/
 persisted_index_backup/
@@ -42,3 +41,4 @@ keys/
 !keys/public.pem
 .DS_Store
 Thumbs.db
+.streamlit/

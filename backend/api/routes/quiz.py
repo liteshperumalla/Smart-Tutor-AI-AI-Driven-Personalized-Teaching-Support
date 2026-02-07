@@ -20,8 +20,6 @@ class QuizGenerateRequest(BaseModel):
 
 class QuizSubmissionRequest(BaseModel):
     quiz_id: str
-    selected_folders: List[str]
-    questions: List[Dict[str, object]]
     answers: Dict[str, str]
 
 
@@ -60,13 +58,14 @@ def submit_quiz(
     quiz_service: QuizService = Depends(get_quiz_service),
 ):
     token, user = session
-    result = quiz_service.save_result(
-        user_id=user["username"],
-        quiz_id=payload.quiz_id,
-        selected_folders=payload.selected_folders,
-        questions=payload.questions,
-        answers=payload.answers,
-    )
+    try:
+        result = quiz_service.save_result(
+            user_id=user["username"],
+            quiz_id=payload.quiz_id,
+            answers=payload.answers,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     return {"result": result.to_dict()}
 
 

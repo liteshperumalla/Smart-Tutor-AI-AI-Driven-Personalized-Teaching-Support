@@ -75,6 +75,37 @@ services:
     networks:
       - smart-tutor-network
 
+  # Neo4j Knowledge Graph for Agent System
+  neo4j:
+    image: neo4j:2025-community
+    container_name: smart-tutor-neo4j
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt protocol
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-smarttutor123}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_initial_dbms_default__database=smarttutor
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "${NEO4J_PASSWORD:-smarttutor123}", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
   # Backend API service
   backend:
     build:
@@ -93,6 +124,7 @@ services:
       - TRANSFORMERS_CACHE=/app/.cache/huggingface
       - OLLAMA_HOST=http://ollama:11434
       - ENABLE_CODE_EXECUTION=true
+      # NEO4J_URI comes from .env (pointing to Neo4j Desktop via host.docker.internal)
       # For local development, uncomment these:
       # - POSTGRES_HOST=postgres
       # - POSTGRES_PORT=5432
@@ -104,6 +136,7 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+      # neo4j: Using Neo4j Desktop on host (not Docker container)
       # NOTE: When using AWS RDS + DynamoDB (current production config),
       # postgres and dynamodb-local dependencies are NOT needed.
       # Uncomment these ONLY for local-only development (without AWS):
@@ -119,6 +152,7 @@ services:
       - ./chroma_db:/app/chroma_db
       - ./previous_chats:/app/previous_chats
       - ./quiz_results:/app/quiz_results
+      - ./data:/app/data
     networks:
       - smart-tutor-network
     restart: unless-stopped
@@ -311,3 +345,5 @@ volumes:
   prometheus_data:
   grafana_data:
   ollama_data:
+  neo4j_data:
+  neo4j_logs:

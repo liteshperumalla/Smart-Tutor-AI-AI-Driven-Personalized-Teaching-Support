@@ -93,6 +93,14 @@ class HybridStorageBackend(BaseStorageBackend):
         except:
             return False
 
+    def list_users(self) -> list:
+        """List all users from PostgreSQL"""
+        return self.postgres.list_users()
+
+    def delete_user(self, username: str) -> bool:
+        """Delete user from PostgreSQL"""
+        return self.postgres.delete_user(username)
+
     # Chat session operations → DynamoDB
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         """List chat sessions from DynamoDB"""

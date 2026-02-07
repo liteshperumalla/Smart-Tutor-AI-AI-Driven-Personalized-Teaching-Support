@@ -194,7 +194,7 @@ export default function CodeSandboxPage() {
         {/* Main Code Editor - 2/3 width */}
         <div className="lg:col-span-2 space-y-4">
           {/* Language Selector */}
-          <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="flex items-center gap-4">
               <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Language:
@@ -219,14 +219,14 @@ export default function CodeSandboxPage() {
           </div>
 
           {/* Code Editor */}
-          <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
               Write or paste your {LANGUAGE_LABELS[language]} code:
             </label>
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="h-56 w-full rounded-xl-zinc-200 bg-zinc-50 p-4 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+              className="h-56 w-full rounded-xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
               placeholder={`Enter ${LANGUAGE_LABELS[language]} code here...`}
               spellCheck={false}
             />
@@ -241,7 +241,7 @@ export default function CodeSandboxPage() {
               className="rounded-full bg-gradient-to-r from-emerald-600 to-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/30 transition hover:scale-105 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
               {runningCode ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Running...</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Running...</>
               ) : (
                 "Run Code"
               )}
@@ -260,7 +260,7 @@ export default function CodeSandboxPage() {
               className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
               {explaining ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-zinc-900-t-transparent dark:border-white"></span> Explaining...</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Explaining...</>
               ) : (
                 "Explain Code"
               )}
@@ -272,7 +272,7 @@ export default function CodeSandboxPage() {
               className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
             >
               {debugging ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-zinc-900-t-transparent dark:border-white"></span> Debugging...</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Debugging...</>
               ) : (
                 "Debug Code"
               )}
@@ -283,7 +283,7 @@ export default function CodeSandboxPage() {
           {showGenerateInput && (
             <form
               onSubmit={handleGenerateCode}
-              className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+              className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
             >
               <label className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Describe what you want to code:
@@ -294,7 +294,7 @@ export default function CodeSandboxPage() {
                   value={generatePrompt}
                   onChange={(e) => setGeneratePrompt(e.target.value)}
                   placeholder="e.g., A function to calculate fibonacci numbers"
-                  className="flex-1 rounded-xl-zinc-200 px-4 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                  className="flex-1 rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
                 />
                 <button
                   type="submit"
@@ -302,7 +302,7 @@ export default function CodeSandboxPage() {
                   className="btn-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
                 >
                   {generating ? (
-                    <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Generating...</>
+                    <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Generating...</>
                   ) : (
                     "Generate"
                   )}
@@ -313,7 +313,7 @@ export default function CodeSandboxPage() {
 
           {/* Output Section */}
           {output && (
-            <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Output:</p>
                 <span
@@ -334,7 +334,7 @@ export default function CodeSandboxPage() {
 
           {/* Generated Code Section */}
           {generatedCode && (
-            <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                   Generated Code:
@@ -357,7 +357,7 @@ export default function CodeSandboxPage() {
 
           {/* Explanation Section */}
           {explanation && (
-            <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Explanation:
               </p>
@@ -369,7 +369,7 @@ export default function CodeSandboxPage() {
 
           {/* Debug Result Section */}
           {debugResult && (
-            <div className="rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Debug Analysis:
               </p>
@@ -382,7 +382,7 @@ export default function CodeSandboxPage() {
 
         {/* Chat Sidebar - 1/3 width */}
         <div className="lg:col-span-1">
-          <div className="sticky top-4 rounded-2xl-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="sticky top-4 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
               Chat with Coding LLM
             </h2>
@@ -391,7 +391,7 @@ export default function CodeSandboxPage() {
             </p>
 
             {/* Chat History */}
-            <div className="mt-4 h-80 overflow-y-auto rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-800/50">
+            <div className="mt-4 h-80 overflow-y-auto rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-800/50">
               {chatHistory.length === 0 && (
                 <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
                   Start a conversation...
@@ -426,7 +426,7 @@ export default function CodeSandboxPage() {
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 placeholder="Type your message..."
-                className="h-20 w-full rounded-xl-zinc-200 p-3 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+                className="h-20 w-full rounded-xl border border-zinc-200 p-3 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -440,7 +440,7 @@ export default function CodeSandboxPage() {
                 className="mt-2 w-full btn-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
               >
                 {chatLoading ? (
-                  <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Sending...</>
+                  <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Sending...</>
                 ) : (
                   "Send"
                 )}

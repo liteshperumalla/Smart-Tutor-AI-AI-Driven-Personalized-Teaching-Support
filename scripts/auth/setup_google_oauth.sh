@@ -78,7 +78,7 @@ echo "2. Application type: Select 'Web application'"
 echo "3. Name: Smart AI Tutor"
 echo "4. Authorized redirect URIs:"
 echo "   - Click '+ ADD URI'"
-echo "   - Enter: http://localhost:8501"
+echo "   - Enter: http://localhost:4000/auth/google/callback"
 echo "   - Click 'CREATE'"
 echo ""
 echo "5. IMPORTANT: Copy the Client ID and Client Secret"
@@ -92,20 +92,33 @@ echo ""
 read -p "Enter Client ID: " CLIENT_ID
 read -p "Enter Client Secret: " CLIENT_SECRET
 
-# Step 6: Update secrets.toml
+# Step 6: Update .env
 echo ""
-echo "Step 6: Updating secrets.toml..."
+echo "Step 6: Updating .env..."
 
-cat > "/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/.streamlit/secrets.toml" <<EOF
+ENV_FILE="/Users/liteshperumalla/Desktop/Files/masters/Smart AI Tutor/.env"
+touch "$ENV_FILE"
+
+# Remove existing Google OAuth entries to avoid duplicates
+sed -i '' '/^GOOGLE_OAUTH_CLIENT_ID=/d' "$ENV_FILE"
+sed -i '' '/^GOOGLE_OAUTH_CLIENT_SECRET=/d' "$ENV_FILE"
+sed -i '' '/^GOOGLE_OAUTH_REDIRECT_URI=/d' "$ENV_FILE"
+sed -i '' '/^NEXT_PUBLIC_GOOGLE_CLIENT_ID=/d' "$ENV_FILE"
+sed -i '' '/^NEXT_PUBLIC_GOOGLE_REDIRECT_URI=/d' "$ENV_FILE"
+
+cat >> "$ENV_FILE" <<EOF
 # Google OAuth Configuration
 # Project: Smart Tutor AI (smart-tutor-ai-478221)
-[google_oauth]
-client_id = "$CLIENT_ID"
-client_secret = "$CLIENT_SECRET"
-redirect_uri = "http://localhost:8501"
+GOOGLE_OAUTH_CLIENT_ID=$CLIENT_ID
+GOOGLE_OAUTH_CLIENT_SECRET=$CLIENT_SECRET
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:4000/auth/google/callback
+
+# Next.js public env
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=$CLIENT_ID
+NEXT_PUBLIC_GOOGLE_REDIRECT_URI=http://localhost:4000/auth/google/callback
 EOF
 
-echo "✓ secrets.toml updated"
+echo "✓ .env updated"
 echo ""
 
 # Step 7: Verify setup
@@ -121,10 +134,10 @@ echo ""
 echo "Your Google OAuth is now configured!"
 echo ""
 echo "Next steps:"
-echo "1. Go to: http://localhost:8501"
+echo "1. Go to: http://localhost:4000"
 echo "2. Click 'Sign in with Google'"
 echo "3. Authenticate with your Google account"
 echo ""
 echo "Your credentials are saved in:"
-echo "  .streamlit/secrets.toml (excluded from git)"
+echo "  .env (excluded from git)"
 echo ""

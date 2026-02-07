@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
 from backend.auth_service import AuthService, get_auth_service
+from backend.exceptions import EmailNotVerifiedError
 from backend.api.dependencies import get_current_user, get_current_session
 from backend.config import config
 from backend.security_logger import SecurityLogger, get_client_ip, get_user_agent
@@ -65,7 +67,7 @@ class SignupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8)
     confirm_password: str = Field(..., min_length=8)
-    email: Optional[EmailStr] = None
+    email: EmailStr
     full_name: Optional[str] = None
 
 
@@ -97,6 +99,23 @@ class PasswordResetConfirmRequest(BaseModel):
     confirm_password: str = Field(..., min_length=8)
 
 
+class EmailVerificationRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class PasswordSetupRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    token: str = Field(..., min_length=10)
+    new_password: str = Field(..., min_length=8)
+    confirm_password: str = Field(..., min_length=8)
+
+
 @router.post("/signup")
 def signup(
     payload: SignupRequest,
@@ -117,7 +136,11 @@ def signup(
             username=payload.username, ip_address=get_client_ip(request)
         )
 
-        return {"user": user}
+        return {
+            "user": user,
+            "verification_required": True,
+            "message": "Verification code sent to email.",
+        }
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
@@ -154,6 +177,8 @@ def login(
             "token_type": tokens["token_type"],
             "message": "Login successful. Tokens set in secure cookies.",
         }
+    except EmailNotVerifiedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except Exception as exc:
         # SECURITY: Log failed login attempt
         SecurityLogger.log_login_failed(
@@ -177,9 +202,21 @@ def google_callback(
     SECURITY: Tokens are stored in HttpOnly cookies to prevent XSS attacks.
     """
     try:
-        tokens, user = auth_service.login_with_google(
+        tokens, user, setup_token = auth_service.login_with_google(
             payload.code, payload.redirect_uri
         )
+
+        if setup_token and not tokens:
+            return JSONResponse(
+                status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+                content={
+                    "requires_password_setup": True,
+                    "username": user.get("username"),
+                    "email": user.get("email"),
+                    "password_setup_token": setup_token,
+                    "message": "Password setup required.",
+                },
+            )
 
         # SECURITY: Set tokens in HttpOnly cookies
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
@@ -191,6 +228,62 @@ def google_callback(
             "state": payload.state,
             "message": "Google login successful. Tokens set in secure cookies.",
         }
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post("/verify/request")
+@limiter.limit("5/hour")
+def request_email_verification(
+    request: Request,
+    payload: EmailVerificationRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    if not payload.username and not payload.email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Provide username or email",
+        )
+    try:
+        auth_service.request_email_verification(
+            username=payload.username,
+            email=payload.email,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/verify/confirm")
+def confirm_email_verification(
+    payload: EmailVerificationConfirmRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    try:
+        auth_service.confirm_email_verification(payload.username, payload.code)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"ok": True}
+
+
+@router.post("/password/setup")
+def setup_password(
+    payload: PasswordSetupRequest,
+    response: Response,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    try:
+        user = auth_service.complete_password_setup(
+            payload.username,
+            payload.token,
+            payload.new_password,
+            payload.confirm_password,
+        )
+
+        tokens, _ = auth_service.login(payload.username, payload.new_password)
+        set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+
+        return {"user": user, "message": "Password set successfully."}
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 

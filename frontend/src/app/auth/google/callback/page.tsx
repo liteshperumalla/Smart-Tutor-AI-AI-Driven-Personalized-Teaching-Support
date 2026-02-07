@@ -51,14 +51,28 @@ function GoogleCallbackContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code, state: intent, redirect_uri: redirectUri }),
         });
-        const payload = await response.json().catch(() => ({})) as { token?: string; detail?: string };
+        const payload = await response.json().catch(() => ({})) as {
+          detail?: string;
+          requires_password_setup?: boolean;
+          password_setup_token?: string;
+          username?: string;
+        };
+
+        if (response.status === 428 && payload.requires_password_setup) {
+          if (payload.password_setup_token && payload.username) {
+            window.sessionStorage.setItem("password_setup_token", payload.password_setup_token);
+            window.sessionStorage.setItem("password_setup_username", payload.username);
+            router.replace("/password-setup");
+            return;
+          }
+          throw new Error("Password setup required but token missing.");
+        }
+
         if (!response.ok) {
           throw new Error(payload.detail || "Failed to verify Google account.");
         }
-        // After response.ok check, we expect token to be present
-        if (payload.token) {
-          saveAuthToken(payload.token);
-        }
+
+        saveAuthToken("authenticated");
         setStatus("Signed in successfully. Redirecting…");
         setTimeout(() => {
           router.replace("/");
@@ -72,7 +86,7 @@ function GoogleCallbackContent() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
-      <div className="max-w-md space-y-4 rounded-2xl-zinc-200 bg-white p-8 shadow">
+      <div className="max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow">
         <h1 className="text-xl font-semibold text-zinc-900">Connecting Google account…</h1>
         {error ? (
           <p className="text-sm text-red-600">{error}</p>
@@ -88,7 +102,7 @@ export default function GoogleCallbackPage() {
   return (
     <Suspense fallback={
       <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
-        <div className="max-w-md space-y-4 rounded-2xl-zinc-200 bg-white p-8 shadow">
+        <div className="max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow">
           <h1 className="text-xl font-semibold text-zinc-900">Loading…</h1>
         </div>
       </div>

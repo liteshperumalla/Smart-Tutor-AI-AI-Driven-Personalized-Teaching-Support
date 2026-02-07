@@ -69,6 +69,8 @@ CREATE INDEX idx_quiz_results_username ON quiz_results(username);
 CREATE INDEX idx_quiz_results_created_at ON quiz_results(created_at DESC);
 CREATE INDEX idx_quiz_results_quiz_id ON quiz_results(quiz_id);
 
+-- Note: Agent interactions are stored in Neo4j knowledge graph (not PostgreSQL)
+
 -- Grant permissions
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO smart_tutor_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO smart_tutor_user;

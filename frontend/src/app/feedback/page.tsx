@@ -6,38 +6,33 @@ import { useRouter } from "next/navigation";
 
 import { postJSON } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
-import { PageShell } from "@/components/page-shell";
-import { MessageSquare, Bug, User, Mail, Tag, FileText, Send } from "lucide-react";
+import { MessageSquare, Bug, User, Mail, Tag, FileText, Send, CheckCircle, AlertTriangle, Sparkles, ThumbsUp, Zap, ShieldAlert } from "lucide-react";
+import { useUser } from "@/hooks/useUser";
 
-type FeedbackPayload = {
+type FeedbackType = 'feedback' | 'bug';
+
+type UnifiedPayload = {
+  type: FeedbackType;
   name?: string;
   email?: string;
-  category: string;
-  message: string;
-};
-
-type BugPayload = {
-  name?: string;
-  email?: string;
-  feature: string;
-  severity: string;
-  description: string;
+  category?: string;
+  message?: string;
+  feature?: string;
+  severity?: string;
+  description?: string;
   steps?: string;
 };
 
 export default function FeedbackPage() {
   const router = useRouter();
   const { token } = useAuthToken();
-  const [feedbackState, setFeedbackState] = useState<{
+  const { isAdmin } = useUser();
+  const [feedbackType, setFeedbackType] = useState<FeedbackType>('feedback');
+  const [formState, setFormState] = useState<{
     loading: boolean;
     error: string | null;
     success: boolean;
   }>({ loading: false, error: null, success: false });
-  const [bugState, setBugState] = useState({
-    loading: false,
-    error: null as string | null,
-    success: false,
-  });
 
   async function submitToApi(path: string, payload: unknown) {
     if (!token) {
@@ -47,152 +42,329 @@ export default function FeedbackPage() {
     await postJSON<{ success: boolean }>({ path, body: payload, token });
   }
 
-  async function handleFeedbackSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const payload: FeedbackPayload = {
-      name: formData.get("name")?.toString(),
-      email: formData.get("email")?.toString(),
-      category: formData.get("category")?.toString() || "general",
-      message: formData.get("message")?.toString() || "",
-    };
-    setFeedbackState({ loading: true, error: null, success: false });
-    try {
-      await submitToApi("/feedback", payload);
-      setFeedbackState({ loading: false, error: null, success: true });
-      event.currentTarget.reset();
-    } catch (error) {
-      setFeedbackState({
-        loading: false,
-        error: error instanceof Error ? error.message : "Failed to submit feedback",
-        success: false,
-      });
-    }
-  }
 
-  async function handleBugSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const payload: BugPayload = {
-      name: formData.get("bug-name")?.toString(),
-      email: formData.get("bug-email")?.toString(),
-      feature: formData.get("feature")?.toString() || "",
-      severity: formData.get("severity")?.toString() || "low",
-      description: formData.get("description")?.toString() || "",
-      steps: formData.get("steps")?.toString(),
-    };
-    setBugState({ loading: true, error: null, success: false });
+    setFormState({ loading: true, error: null, success: false });
+
     try {
-      await submitToApi("/feedback/bug", payload);
-      setBugState({ loading: false, error: null, success: true });
+      if (feedbackType === 'feedback') {
+        const payload = {
+          name: formData.get("name")?.toString(),
+          email: formData.get("email")?.toString(),
+          category: formData.get("category")?.toString() || "general",
+          message: formData.get("message")?.toString() || "",
+        };
+        await submitToApi("/feedback", payload);
+      } else {
+        const payload = {
+          name: formData.get("name")?.toString(),
+          email: formData.get("email")?.toString(),
+          feature: formData.get("feature")?.toString() || "",
+          severity: formData.get("severity")?.toString() || "low",
+          description: formData.get("description")?.toString() || "",
+          steps: formData.get("steps")?.toString(),
+        };
+        await submitToApi("/feedback/bug", payload);
+      }
+
+      setFormState({ loading: false, error: null, success: true });
       event.currentTarget.reset();
     } catch (error) {
-      setBugState({
+      setFormState({
         loading: false,
-        error: error instanceof Error ? error.message : "Failed to submit bug report",
+        error: error instanceof Error ? error.message : "Failed to submit",
         success: false,
       });
     }
   }
 
   return (
-    <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
-      <section className="grid gap-6 md:grid-cols-2">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-medium text-zinc-900">Give general feedback</h2>
-          <p className="mt-1 text-sm text-zinc-600">Share usability notes, feature wishes, or content ideas.</p>
-          <form className="mt-4 space-y-4" onSubmit={handleFeedbackSubmit}>
-            <input type="text" name="name" placeholder="Name (optional)" className="input" />
-            <input type="email" name="email" placeholder="Email (optional)" className="input" />
-            <select name="category" className="input">
-              <option value="general">General usability</option>
-              <option value="feature">Feature request</option>
-              <option value="content">Content quality</option>
-              <option value="performance">Performance</option>
-              <option value="other">Other</option>
-            </select>
-            <textarea
-              name="message"
-              placeholder="Your detailed feedback"
-              className="input min-h-[160px]"
-              required
-            />
-            {feedbackState.error && <p className="text-sm text-red-600">{feedbackState.error}</p>}
-            {feedbackState.success && <p className="text-sm text-emerald-600">Thanks! We received your input.</p>}
-            <button
-              type="submit"
-              disabled={feedbackState.loading}
-              className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
-            >
-              {feedbackState.loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Submitting…</>
-              ) : (
-                "Submit feedback"
-              )}
-            </button>
-          </form>
-        </article>
+    <div className="max-w-3xl mx-auto px-4 py-8 animate-fade-in-up">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white mb-4">
+          <MessageSquare className="h-8 w-8" />
+        </div>
+        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Feedback & Support</h1>
+        <p className="text-zinc-500 dark:text-zinc-400">Help us improve by sharing your thoughts or reporting issues</p>
+      </div>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-medium text-zinc-900">Report a bug</h2>
-          <p className="mt-1 text-sm text-zinc-600">Describe the issue so we can reproduce it quickly.</p>
-          <form className="mt-4 space-y-4" onSubmit={handleBugSubmit}>
-            <input type="text" name="bug-name" placeholder="Name (optional)" className="input" />
-            <input type="email" name="bug-email" placeholder="Email (optional)" className="input" />
-            <input
-              type="text"
-              name="feature"
-              placeholder="Page or feature affected"
-              className="input"
-              required
-            />
-            <select name="severity" className="input">
-              <option value="low">Low · Minor inconvenience</option>
-              <option value="medium">Medium · Affects functionality</option>
-              <option value="high">High · Blocks feature</option>
-              <option value="critical">Critical · System crash/data loss</option>
-            </select>
-            <textarea
-              name="description"
-              placeholder="Detailed description"
-              className="input min-h-[160px]"
-              required
-            />
-            <textarea
-              name="steps"
-              placeholder="Steps to reproduce (optional)"
-              className="input min-h-[120px]"
-            />
-            {bugState.error && <p className="text-sm text-red-600">{bugState.error}</p>}
-            {bugState.success && <p className="text-sm text-emerald-600">Thanks! We logged this bug.</p>}
-            <button
-              type="submit"
-              disabled={bugState.loading}
-              className="w-full btn-primary disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
-            >
-              {bugState.loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Submitting…</>
-              ) : (
-                "Submit bug report"
-              )}
-            </button>
-          </form>
-        </article>
-      </section>
+      {/* Admin Notice */}
+      {isAdmin && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/20">
+          <ShieldAlert className="h-5 w-5 text-amber-700 dark:text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            As an admin, you can review all feedback in the{" "}
+            <Link href="/admin/feedback" className="font-semibold underline hover:text-amber-900 dark:hover:text-amber-200">
+              Admin Feedback Panel
+            </Link>
+          </p>
+        </div>
+      )}
 
-      <section className="rounded-2xl-dashed-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600">
-        <p>
-          Feedback entries are written to the server’s log folder (`logs/feedback_log.txt` and `logs/bug_reports_log.txt`
-          in development). In production we’ll forward these to CloudWatch or another logging system.
-        </p>
-        <p className="mt-2">
-          Looking for other support options? Visit{" "}
-          <Link href="/" className="font-semibold text-blue-600">
-            the home hub
+      {/* Type Selector */}
+      <div className="flex gap-3 mb-6 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800">
+        <button
+          type="button"
+          onClick={() => {
+            setFeedbackType('feedback');
+            setFormState({ loading: false, error: null, success: false });
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
+            feedbackType === 'feedback'
+              ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+          }`}
+        >
+          <ThumbsUp className="h-5 w-5" />
+          General Feedback
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setFeedbackType('bug');
+            setFormState({ loading: false, error: null, success: false });
+          }}
+          className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
+            feedbackType === 'bug'
+              ? 'bg-white dark:bg-zinc-700 text-red-600 dark:text-red-400 shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+          }`}
+        >
+          <Bug className="h-5 w-5" />
+          Report a Bug
+        </button>
+      </div>
+
+      {/* Unified Form Card */}
+      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+        {/* Form Header */}
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+          <div className={`p-2.5 rounded-xl ${
+            feedbackType === 'feedback'
+              ? 'bg-indigo-100 dark:bg-indigo-900/30'
+              : 'bg-red-100 dark:bg-red-900/30'
+          }`}>
+            {feedbackType === 'feedback'
+              ? <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              : <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+            }
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+              {feedbackType === 'feedback' ? 'Share Your Feedback' : 'Report an Issue'}
+            </h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {feedbackType === 'feedback'
+                ? 'Share usability notes, feature wishes, or content ideas'
+                : 'Describe the issue so we can fix it quickly'
+              }
+            </p>
+          </div>
+        </div>
+
+        <form className="space-y-5" onSubmit={handleSubmit}>
+          {/* Personal Info - Always Shown */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <User className="h-4 w-4 inline mr-1.5" />
+                Name (Optional)
+              </label>
+              <input
+                type="text"
+                name="name"
+                placeholder="Your name"
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <Mail className="h-4 w-4 inline mr-1.5" />
+                Email (Optional)
+              </label>
+              <input
+                type="email"
+                name="email"
+                placeholder="your@email.com"
+                className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Feedback-specific fields */}
+          {feedbackType === 'feedback' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <Tag className="h-4 w-4 inline mr-1.5" />
+                  Category
+                </label>
+                <select
+                  name="category"
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                >
+                  <option value="general">General usability</option>
+                  <option value="feature">Feature request</option>
+                  <option value="content">Content quality</option>
+                  <option value="performance">Performance</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <FileText className="h-4 w-4 inline mr-1.5" />
+                  Your Feedback
+                </label>
+                <textarea
+                  name="message"
+                  placeholder="Share your detailed feedback, suggestions, or ideas..."
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  rows={5}
+                  required
+                />
+              </div>
+            </>
+          )}
+
+          {/* Bug-specific fields */}
+          {feedbackType === 'bug' && (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                    <Zap className="h-4 w-4 inline mr-1.5" />
+                    Affected Feature
+                  </label>
+                  <input
+                    type="text"
+                    name="feature"
+                    placeholder="e.g., Chat, Quiz, Login"
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                    <AlertTriangle className="h-4 w-4 inline mr-1.5" />
+                    Severity
+                  </label>
+                  <select
+                    name="severity"
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                  >
+                    <option value="low">Low · Minor inconvenience</option>
+                    <option value="medium">Medium · Affects functionality</option>
+                    <option value="high">High · Blocks feature</option>
+                    <option value="critical">Critical · System crash/data loss</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <FileText className="h-4 w-4 inline mr-1.5" />
+                  Bug Description
+                </label>
+                <textarea
+                  name="description"
+                  placeholder="Describe what happened and what you expected..."
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  rows={4}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <MessageSquare className="h-4 w-4 inline mr-1.5" />
+                  Steps to Reproduce (Optional)
+                </label>
+                <textarea
+                  name="steps"
+                  placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..."
+                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  rows={3}
+                />
+              </div>
+            </>
+          )}
+
+          {/* Status Messages */}
+          {formState.error && (
+            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
+              <div className="flex items-start gap-3">
+                <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Submission failed</p>
+                  <p className="text-sm text-red-600 dark:text-red-400/80 mt-1">{formState.error}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {formState.success && (
+            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    {feedbackType === 'feedback' ? 'Thanks for your feedback!' : 'Bug report submitted!'}
+                  </p>
+                  <p className="text-sm text-emerald-600 dark:text-emerald-400/80 mt-1">
+                    {feedbackType === 'feedback'
+                      ? 'We appreciate you taking the time to help us improve.'
+                      : 'Our team will look into this issue shortly.'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={formState.loading}
+            className={`w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
+              feedbackType === 'feedback'
+                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
+                : 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:from-red-700 hover:to-orange-700'
+            }`}
+          >
+            {formState.loading ? (
+              <>
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send className="h-5 w-5" />
+                {feedbackType === 'feedback' ? 'Submit Feedback' : 'Submit Bug Report'}
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+
+      {/* Help Link */}
+      <div className="mt-6 text-center">
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Need direct assistance?{" "}
+          <Link href="/" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+            Visit the home hub
           </Link>{" "}
-          for the latest updates.
+          or contact{" "}
+          <a href="mailto:support@smartaitutor.com" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+            support@smartaitutor.com
+          </a>
         </p>
-      </section>
-    </PageShell>
+      </div>
+    </div>
   );
 }

@@ -1,14 +1,14 @@
 # AWS Migration Plan
 
-This document tracks the detailed migration of **Smart AI Tutor** from the local Streamlit/Ollama stack to AWS-managed services.
+This document tracks the detailed migration of **Smart AI Tutor** from the local Next.js/FastAPI stack to AWS-managed services.
 
 ## 1. Current Architecture Snapshot
-- **UI:** Streamlit app (app.py) served locally, manual virtualenv.
+- **UI:** Next.js app served locally (port 4000) via `frontend/`.
 - **Auth & Profile:** JSON files under `users.json`, `user_data/`, `previous_chats/`, `quiz_results/`.
 - **Retrieval:** LlamaIndex + ChromaDB persisted on disk (`persisted_index/`, `chroma_db/`), recursive chunking pipeline defined in `Data_parsing.py`.
 - **LLM / Embeddings:** Ollama (llama3.2) for generation, HuggingFace `BAAI/bge-small-en-v1.5` for embeddings.
 - **Observability:** Langfuse SaaS plus local logs in `logs/`.
-- **Automation:** Manual execution (`streamlit run app.py`), no container, no CI/CD.
+- **Automation:** Manual execution (local dev commands), no CI/CD.
 
 ## 2. Target AWS Architecture
 | Concern | AWS Service | Notes |
@@ -40,7 +40,7 @@ This document tracks the detailed migration of **Smart AI Tutor** from the local
    - [ ] Externalize configuration loading (read from environment variables or AWS Parameter Store).
 4. **FastAPI / Next.js Implementation**
    - [ ] Scaffold FastAPI backend (auth, chat, quiz, research, profile routes) + SSE/WebSocket support for streaming.
-   - [ ] Build Next.js (React + TypeScript) frontend consuming FastAPI APIs; migrate Streamlit pages to React components.
+   - [ ] Build Next.js (React + TypeScript) frontend consuming FastAPI APIs.
    - [ ] Integrate authentication (JWT or Cognito) between FastAPI and Next.js.
 5. **Containerization & Deployment**
    - [ ] Containerize FastAPI backend (Dockerfile, Uvicorn entrypoint) and publish image to Amazon ECR.
@@ -54,7 +54,7 @@ This document tracks the detailed migration of **Smart AI Tutor** from the local
    - [ ] Monitor CloudWatch/Langfuse; rollback by pointing DNS back to local environment if issues arise.
 
 ## 4. Immediate Next Actions
-1. ✅ Add Dockerfile (+ `.dockerignore` and entrypoint) for Streamlit app.
+1. ✅ Add Dockerfile (+ `.dockerignore` and entrypoint) for FastAPI backend.
 2. Write infra bootstrap scripts (CloudFormation/Terraform skeleton) for S3, IAM roles, Bedrock access policies.
 3. Draft DynamoDB table definitions + migration scripts.
 4. Remodel UI stack: ✅ FastAPI backend skeleton + Next.js frontend scaffolding (initial routes, shared auth).

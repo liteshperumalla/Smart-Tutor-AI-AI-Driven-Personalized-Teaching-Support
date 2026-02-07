@@ -94,6 +94,18 @@ class TokenInvalidError(AuthenticationError):
         super().__init__(message, "INVALID_TOKEN")
 
 
+class EmailNotVerifiedError(AuthenticationError):
+    """Email address has not been verified"""
+    def __init__(self, message: str = "Email address is not verified"):
+        super().__init__(message, "EMAIL_NOT_VERIFIED")
+
+
+class PasswordSetupRequiredError(AuthenticationError):
+    """Password setup required after OAuth"""
+    def __init__(self, message: str = "Password setup required"):
+        super().__init__(message, "PASSWORD_SETUP_REQUIRED")
+
+
 # Database Exceptions
 class DatabaseError(SmartTutorException):
     """Base database error"""

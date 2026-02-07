@@ -357,13 +357,16 @@ class ResearchService:
                 ContentType="application/json",
             )
 
-            return self._build_preview(
+            preview = self._build_preview(
                 parsed["preview_type"],
                 filename,
                 text=parsed["excerpt"],
                 thumbnail=parsed.get("thumbnail"),
                 source=f"s3://{self._uploads_bucket}/{s3_file_key}",
             )
+            preview["id"] = safe_id
+            preview["file_name"] = filename
+            return preview
         except Exception as e:
             logger.error(f"Error processing file upload: {e}")
             raise

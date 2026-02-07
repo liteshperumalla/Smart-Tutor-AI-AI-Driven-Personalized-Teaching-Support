@@ -83,7 +83,7 @@ pip install -r requirements.txt
 - LlamaIndex (RAG framework)
 - ChromaDB (vector database)
 - Sentence Transformers (embeddings)
-- Streamlit (web interface)
+- FastAPI backend dependencies
 - Ollama (LLM interface)
 - And all other dependencies
 
@@ -104,14 +104,19 @@ curl http://localhost:11434/api/tags
 
 ### Step 5: Run the Application
 
-#### Option A: Run the Web Interface (Streamlit)
+#### Option A: Run the Web Interface (Next.js)
 
 ```bash
-# Start the Streamlit app
-streamlit run app.py
+# Terminal 1: start the backend API
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010
+
+# Terminal 2: start the Next.js frontend
+cd frontend
+npm install
+npm run dev
 ```
 
-**Access at:** http://localhost:8501
+**Access at:** http://localhost:4000
 
 #### Option B: Test the RAG Pipeline First (Recommended)
 
@@ -132,22 +137,20 @@ cat test_results.json | jq '.analysis'
 
 ```
 Smart-Tutor-AI/
-├── app.py                      # Main Streamlit application
 ├── Data_parsing.py            # Document parsing and indexing
 ├── Tutor_chat.py              # RAG query engine
 ├── requirements.txt           # Python dependencies
+│
+├── frontend/                  # Next.js frontend
+│   ├── src/
+│   ├── package.json
+│   └── ...
 │
 ├── backend/                   # Backend services
 │   ├── config.py             # Configuration settings
 │   ├── rag_evaluation.py     # Evaluation framework
 │   ├── exceptions.py         # Custom exceptions
 │   └── cache.py              # Caching layer
-│
-├── views/                     # Streamlit pages
-│   ├── chat.py               # Chat interface
-│   ├── research.py           # Research mode
-│   ├── quiz.py               # Quiz generation
-│   └── download.py           # Download results
 │
 ├── data/                      # Course materials
 │   ├── Module_1/             # Course modules
@@ -298,10 +301,16 @@ python test_rag_pipeline.py --limit 5
 ### Step 3: Test the Web Interface
 
 ```bash
-streamlit run app.py
+# Terminal 1: backend
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010
+
+# Terminal 2: frontend
+cd frontend
+npm install
+npm run dev
 ```
 
-Open http://localhost:8501 and try:
+Open http://localhost:4000 and try:
 1. **Chat Tab** - Ask: "What is Python?"
 2. **Research Tab** - Upload a document and ask questions
 3. **Quiz Tab** - Generate a quiz on a topic
@@ -389,13 +398,11 @@ python Data_parsing.py
 # This will take 5-15 minutes depending on your data
 ```
 
-### Issue 4: "Port 8501 already in use"
+### Issue 4: "Port 4000 already in use"
 ```bash
-# Kill existing Streamlit process
-pkill -f streamlit
-
-# Or use a different port
-streamlit run app.py --server.port 8502
+# Change the Next.js dev port
+cd frontend
+npm run dev -- -p 4001
 ```
 
 ### Issue 5: "Out of memory"
@@ -454,7 +461,7 @@ cat FINE_TUNING_GUIDE.md | less
 export EVALUATION_ENABLED=true
 
 # Run your app normally
-streamlit run app.py
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010
 
 # View metrics
 tail -f logs/rag_evaluation.jsonl | jq .metadata.reflection
@@ -475,7 +482,9 @@ print(json.dumps(stats, indent=2))
 
 ### Option 1: Local Development (This Guide)
 ```bash
-streamlit run app.py
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010
+cd frontend
+npm run dev
 ```
 
 ### Option 2: Docker (Coming Soon)
@@ -484,12 +493,6 @@ docker-compose up
 ```
 
 ### Option 3: Cloud Deployment
-
-**Streamlit Cloud:**
-1. Push to GitHub
-2. Go to share.streamlit.io
-3. Connect repository
-4. Deploy
 
 **AWS/GCP/Azure:**
 - Deploy as containerized app
@@ -519,7 +522,8 @@ pip install -r requirements.txt
 
 # Start services
 ollama serve                      # Terminal 1
-streamlit run app.py              # Terminal 2
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010  # Terminal 2
+cd frontend && npm run dev        # Terminal 3
 
 # Testing
 python check_system.py            # Verify setup
@@ -546,7 +550,8 @@ Before considering setup complete:
 - [ ] Data indexed (`python Data_parsing.py`)
 - [ ] System check passes (`python check_system.py`)
 - [ ] Quick test works (`python test_rag_pipeline.py --limit 5`)
-- [ ] Streamlit app launches (`streamlit run app.py`)
+- [ ] Backend API launches (`uvicorn backend.api.main:app --host 0.0.0.0 --port 8010`)
+- [ ] Next.js app launches (`npm run dev` in `frontend/`)
 - [ ] Can ask questions and get responses
 
 ---
@@ -564,7 +569,7 @@ Before considering setup complete:
    ```
 
 3. **Try the web interface**
-   - Open http://localhost:8501
+   - Open http://localhost:4000
    - Test Chat, Research, Quiz modes
 
 4. **Fine-tune for your use case**
@@ -593,7 +598,6 @@ Before considering setup complete:
 ### Common Resources
 - LlamaIndex docs: https://docs.llamaindex.ai/
 - Ollama docs: https://github.com/ollama/ollama
-- Streamlit docs: https://docs.streamlit.io/
 
 ### Debugging
 ```bash
@@ -602,12 +606,11 @@ cat logs/rag_evaluation.jsonl | tail -20
 
 # Verify services
 curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8501/_stcore/health  # Streamlit
+curl http://localhost:8010/health  # FastAPI
 
 # Test components
 python -c "import llama_index; print('✅ LlamaIndex OK')"
 python -c "import chromadb; print('✅ ChromaDB OK')"
-python -c "import streamlit; print('✅ Streamlit OK')"
 ```
 
 ---
@@ -624,7 +627,8 @@ python Data_parsing.py
 # Every time you run
 ollama serve &                    # Start Ollama
 python check_system.py            # Verify ready
-streamlit run app.py              # Launch app
+uvicorn backend.api.main:app --host 0.0.0.0 --port 8010 &
+cd frontend && npm run dev        # Launch app
 
 # Testing
 python test_rag_pipeline.py --limit 5
@@ -641,4 +645,3 @@ git checkout claude/improve-rag-pipeline-011CUq2pbPn1Ncr3bSkLrJko  # Improved
 **Branch for Phase 1 & 2:** `claude/improve-rag-pipeline-011CUq2pbPn1Ncr3bSkLrJko`
 
 **Status:** ✅ Ready to run!
-

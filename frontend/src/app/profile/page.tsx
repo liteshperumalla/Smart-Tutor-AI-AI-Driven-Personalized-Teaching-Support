@@ -23,7 +23,7 @@ import { useTheme } from "@/context/theme-context";
 import { PageShell } from "@/components/page-shell";
 import {
   User, Camera, Mail, Phone, Calendar, Trophy, Clock,
-  MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote
+  MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote, ShieldAlert, BarChart3, Users, Settings
 } from "lucide-react";
 
 function formatDate(value?: string) {
@@ -263,7 +263,7 @@ export default function ProfilePage() {
         </header>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <article className="rounded-2xl-zinc-200 bg-white p-6 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
             <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2"></div>
             <div className="flex flex-col items-center gap-3">
@@ -281,11 +281,11 @@ export default function ProfilePage() {
           <article className="rounded-2xl-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
             <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
             <div className="grid gap-3 text-sm">
-              <div className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                 <div className="h-3 w-16 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
                 <div className="h-6 w-12 bg-zinc-300 dark:bg-zinc-500 rounded"></div>
               </div>
-              <div className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                 <div className="h-3 w-20 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
                 <div className="h-6 w-12 bg-zinc-300 dark:bg-zinc-500 rounded"></div>
               </div>
@@ -293,12 +293,12 @@ export default function ProfilePage() {
           </article>
         </section>
 
-        <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                   <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
                   <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-700 rounded"></div>
                 </div>
@@ -306,7 +306,7 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+                <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
                   <div className="h-4 w-24 bg-zinc-200 dark:bg-zinc-600 rounded mb-2"></div>
                   <div className="h-3 w-32 bg-zinc-100 dark:bg-zinc-700 rounded"></div>
                 </div>
@@ -321,7 +321,7 @@ export default function ProfilePage() {
   if (error) {
     return (
       <PageShell as="section">
-        <div className="rounded-2xl-red-200 bg-red-50 px-6 py-6 text-sm text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-6 text-sm text-red-700">
           {error}
         </div>
       </PageShell>
@@ -345,8 +345,35 @@ export default function ProfilePage() {
         </div>
       </header>
 
+      {profile.user.role === "Admin" && (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6 shadow-sm dark:border-amber-800/50 dark:bg-amber-950/20">
+          <div className="flex items-center gap-3 mb-4">
+            <ShieldAlert className="h-5 w-5 text-amber-700 dark:text-amber-400" />
+            <h2 className="text-lg font-semibold text-amber-900 dark:text-amber-300">Admin Quick Access</h2>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+            <Link href="/admin" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-300 dark:hover:bg-amber-950/30 transition-colors">
+              <ShieldAlert className="h-4 w-4" />
+              Dashboard
+            </Link>
+            <Link href="/admin/evaluation" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-300 dark:hover:bg-amber-950/30 transition-colors">
+              <BarChart3 className="h-4 w-4" />
+              Evaluation
+            </Link>
+            <Link href="/admin/users" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-300 dark:hover:bg-amber-950/30 transition-colors">
+              <Users className="h-4 w-4" />
+              Users
+            </Link>
+            <Link href="/admin/feedback" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-300 dark:hover:bg-amber-950/30 transition-colors">
+              <MessageSquare className="h-4 w-4" />
+              Feedback
+            </Link>
+          </div>
+        </section>
+      )}
+
       <section className="grid gap-4 md:grid-cols-3">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Profile photo</h2>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
             Upload a square PNG or JPG. Stored locally in your user folder.
@@ -381,7 +408,7 @@ export default function ProfilePage() {
                 disabled={pictureStatus.loading}
               >
                 {pictureStatus.loading ? (
-                  <><span className="inline-block h-3 w-3 animate-spin rounded-full-2-zinc-900-t-transparent dark:border-white"></span> Uploading…</>
+                  <><span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Uploading…</>
                 ) : (
                   "Save photo"
                 )}
@@ -390,13 +417,13 @@ export default function ProfilePage() {
           </div>
         </article>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Account overview</h2>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">Signed in as {profile.user.username}</p>
             </div>
-            <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white dark:bg-white dark:text-zinc-900">
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] ${profile.user.role === "Admin" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400" : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"}`}>
               {profile.user.role}
             </span>
           </div>
@@ -410,20 +437,28 @@ export default function ProfilePage() {
               <dd className="font-medium text-zinc-900 dark:text-white">{formattedLastLogin}</dd>
             </div>
           </dl>
-          <Link href="/" className="mt-6 inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
-            Back to home →
-          </Link>
+          <div className="mt-6 flex items-center gap-4">
+            <Link href="/" className="inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+              Back to home →
+            </Link>
+            {profile.user.role === "Admin" && (
+              <Link href="/admin" className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 hover:underline">
+                <Shield className="h-3.5 w-3.5" />
+                Admin Panel →
+              </Link>
+            )}
+          </div>
         </article>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Recent highlights</h2>
           <div className="mt-4 grid gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-            <div className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">Quizzes</p>
               <p className="text-2xl font-semibold text-zinc-900 dark:text-white">{profile.recent_quizzes.length}</p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">Stored results in the last uploads folder.</p>
             </div>
-            <div className="rounded-xl-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+            <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
               <p className="text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">Appointments</p>
               <p className="text-2xl font-semibold text-zinc-900 dark:text-white">{profile.recent_appointments.length}</p>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">Showing the five most recent requests.</p>
@@ -433,7 +468,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Full quiz history</h2>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{quizHistory.length} total</span>
@@ -441,7 +476,7 @@ export default function ProfilePage() {
           <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
             {quizHistory.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No quiz attempts recorded.</p>}
             {quizHistory.map((quiz) => (
-              <div key={quiz.id} className="rounded-xl-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+              <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
                 <p className="font-semibold text-zinc-900 dark:text-white">
                   {quiz.score}/{quiz.total_questions} · {quiz.percentage.toFixed(1)}%
                 </p>
@@ -459,7 +494,7 @@ export default function ProfilePage() {
           </div>
         </article>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">All appointment requests</h2>
             <span className="text-xs text-zinc-500 dark:text-zinc-400">{appointmentHistory.length} total</span>
@@ -467,7 +502,7 @@ export default function ProfilePage() {
           <div className="mt-4 space-y-3 max-h-[360px] overflow-auto pr-1">
             {appointmentHistory.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No appointments submitted.</p>}
             {appointmentHistory.map((appt) => (
-              <div key={appt.id} className="rounded-xl-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
                 <p className="font-semibold text-zinc-900 dark:text-white">
                   {appt.preferred_date} · {appt.preferred_time}
                 </p>
@@ -481,7 +516,7 @@ export default function ProfilePage() {
         </article>
       </section>
 
-      <section className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Feedback submissions</h2>
           <Link href="/feedback" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
@@ -494,7 +529,7 @@ export default function ProfilePage() {
             <div className="mt-2 space-y-3 max-h-[260px] overflow-auto pr-1">
               {feedbackHistory.feedback.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No submissions yet.</p>}
               {feedbackHistory.feedback.map((entry, index) => (
-                <div key={`fb-${index}`} className="rounded-xl-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <div key={`fb-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
                   <p className="font-semibold text-zinc-900 dark:text-white">{entry.category}</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">{formatDate(entry.created_at)}</p>
                   <p className="text-xs text-zinc-600 dark:text-zinc-300">{entry.message}</p>
@@ -507,7 +542,7 @@ export default function ProfilePage() {
             <div className="mt-2 space-y-3 max-h-[260px] overflow-auto pr-1">
               {feedbackHistory.bugs.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">No bugs reported.</p>}
               {feedbackHistory.bugs.map((entry, index) => (
-                <div key={`bug-${index}`} className="rounded-xl-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+                <div key={`bug-${index}`} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm dark:border-zinc-700 dark:bg-zinc-800">
                   <p className="font-semibold text-zinc-900 dark:text-white">{entry.feature}</p>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     Severity: {entry.severity} · {formatDate(entry.created_at)}
@@ -522,7 +557,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Contact details & theme</h2>
           <form className="mt-4 space-y-4" onSubmit={handleProfileSubmit}>
             <input
@@ -556,7 +591,7 @@ export default function ProfilePage() {
               disabled={profileStatus.saving}
             >
               {profileStatus.saving ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Saving…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Saving…</>
               ) : (
                 "Save changes"
               )}
@@ -564,7 +599,7 @@ export default function ProfilePage() {
           </form>
         </article>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Personal notes</h2>
           <form className="mt-4 space-y-3" onSubmit={handleNotesSave}>
             <textarea
@@ -581,7 +616,7 @@ export default function ProfilePage() {
               disabled={notesStatus.saving}
             >
               {notesStatus.saving ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-zinc-900-t-transparent dark:border-white"></span> Saving…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Saving…</>
               ) : (
                 "Save notes"
               )}
@@ -591,7 +626,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Recent quiz history</h2>
             <Link href="/quiz" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
@@ -608,7 +643,7 @@ export default function ProfilePage() {
                   ? (quiz.metadata["selected_folders"] as string[])
                   : null;
               return (
-                <div key={quiz.id} className="rounded-xl-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                <div key={quiz.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                   <p className="font-semibold text-zinc-900 dark:text-white">
                     {quiz.score}/{quiz.total_questions} · {quiz.percentage.toFixed(1)}%
                   </p>
@@ -622,7 +657,7 @@ export default function ProfilePage() {
           </div>
         </article>
 
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Recent appointment requests</h2>
             <Link href="/appointments" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
@@ -634,7 +669,7 @@ export default function ProfilePage() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400">No appointments logged yet.</p>
             )}
             {profile.recent_appointments.map((appt) => (
-              <div key={appt.id} className="rounded-xl-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+              <div key={appt.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                 <p className="font-semibold text-zinc-900 dark:text-white">{appt.appointment_with}</p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
                   {appt.preferred_date} at {appt.preferred_time} · {appt.primary_reason}
@@ -647,7 +682,7 @@ export default function ProfilePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
+        <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Password & security</h2>
           <form className="mt-4 space-y-3" onSubmit={handlePasswordSubmit}>
             <input
@@ -685,7 +720,7 @@ export default function ProfilePage() {
               disabled={passwordStatus.saving}
             >
               {passwordStatus.saving ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Updating…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Updating…</>
               ) : (
                 "Update password"
               )}
@@ -693,14 +728,14 @@ export default function ProfilePage() {
           </form>
         </article>
 
-        <article className="rounded-2xl-red-200 bg-red-50 p-6 shadow-sm dark:border-red-900/50 dark:bg-red-900/20">
+        <article className="rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-900/50 dark:bg-red-900/20">
           <h2 className="text-xl font-semibold text-red-900 dark:text-red-400">Danger zone</h2>
           <p className="mt-2 text-sm text-red-700 dark:text-red-400/80">
             Deleting your account removes stored chat logs, quizzes, and research files from the local filesystem.
           </p>
-          <form className="mt-4 space-y-3" onSubmit={handleDeleteAccount}>
+          <form className="mt-4 space-y-4" onSubmit={handleDeleteAccount}>
             <input
-              className="input-red-200 bg-white/80 dark:border-red-900/50 dark:bg-red-900/20 dark:text-white"
+              className="input w-full border-red-200 bg-white/80 dark:border-red-900/50 dark:bg-red-900/20 dark:text-white"
               placeholder="Type your username to confirm"
               value={deleteConfirm}
               onChange={(event) => setDeleteConfirm(event.target.value)}
@@ -708,11 +743,11 @@ export default function ProfilePage() {
             {deleteStatus.error && <p className="text-sm text-red-700 dark:text-red-400">{deleteStatus.error}</p>}
             <button
               type="submit"
-              className="rounded-full bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:scale-105 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="w-full rounded-full bg-red-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:scale-105 hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100"
               disabled={deleteStatus.loading}
             >
               {deleteStatus.loading ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Deleting…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Deleting…</>
               ) : (
                 "Delete account"
               )}

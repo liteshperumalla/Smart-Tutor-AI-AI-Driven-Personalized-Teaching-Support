@@ -29,7 +29,8 @@ class RAGEvaluationMetrics:
         response: str,
         retrieval_time: float,
         generation_time: float,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        quality_metrics: Optional[Dict[str, Any]] = None,
     ):
         """
         Log a complete query execution with metrics
@@ -41,6 +42,8 @@ class RAGEvaluationMetrics:
             retrieval_time: Time taken for retrieval (seconds)
             generation_time: Time taken for response generation (seconds)
             metadata: Additional metadata (mode, web_search_used, etc.)
+            quality_metrics: Optional LLM-as-judge quality scores
+                (faithfulness, answer_relevance, context_recall, etc.)
         """
         try:
             # Calculate retrieval metrics
@@ -49,10 +52,25 @@ class RAGEvaluationMetrics:
                 getattr(doc, 'score', 0) for doc in retrieved_docs
             ) / max(num_retrieved, 1)
 
+            # Extract context passages for batch quality evaluation later
+            context_passages = []
+            for doc in retrieved_docs:
+                node = getattr(doc, 'node', None)
+                if node:
+                    text = ""
+                    if hasattr(node, 'get_text'):
+                        text = node.get_text()
+                    elif hasattr(node, 'text'):
+                        text = node.text
+                    if text:
+                        context_passages.append(text[:500])
+
             # Build metrics record
             metrics_record = {
                 "timestamp": datetime.now().isoformat(),
                 "query": query,
+                "response": response[:2000],  # Store truncated response for batch eval
+                "context_passages": context_passages[:5],  # Store top 5 passages
                 "retrieval_metrics": {
                     "num_retrieved": num_retrieved,
                     "avg_relevance_score": round(avg_score, 4),
@@ -68,6 +86,7 @@ class RAGEvaluationMetrics:
                 "end_to_end_metrics": {
                     "total_time_seconds": round(retrieval_time + generation_time, 3),
                 },
+                "quality_metrics": quality_metrics,
                 "metadata": metadata or {}
             }
 

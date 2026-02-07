@@ -101,6 +101,20 @@ class PostgresStorageBackend(BaseStorageBackend):
             finally:
                 cursor.close()
 
+    def _enrich_user_dict(self, user_dict: dict) -> dict:
+        """Extract role and profile fields from metadata into top-level keys."""
+        for key, value in list(user_dict.items()):
+            if isinstance(value, datetime):
+                user_dict[key] = value.isoformat()
+        metadata = user_dict.get("metadata") or {}
+        if isinstance(metadata, dict):
+            for key in ("display_name", "phone_number", "theme", "role"):
+                if key not in user_dict and key in metadata:
+                    user_dict[key] = metadata[key]
+        # Default role when not set
+        user_dict.setdefault("role", "User")
+        return user_dict
+
     def get_user(self, username: str) -> Optional[dict]:
         """Get user by username"""
         try:
@@ -118,17 +132,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 user = cursor.fetchone()
 
                 if user:
-                    # Convert RealDictRow to dict and handle datetime serialization
-                    user_dict = dict(user)
-                    for key, value in user_dict.items():
-                        if isinstance(value, datetime):
-                            user_dict[key] = value.isoformat()
-                    metadata = user_dict.get("metadata") or {}
-                    if isinstance(metadata, dict):
-                        for key in ("display_name", "phone_number", "theme"):
-                            if key not in user_dict and key in metadata:
-                                user_dict[key] = metadata[key]
-                    return user_dict
+                    return self._enrich_user_dict(dict(user))
 
                 return None
 
@@ -155,16 +159,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 user = cursor.fetchone()
 
                 if user:
-                    user_dict = dict(user)
-                    for key, value in user_dict.items():
-                        if isinstance(value, datetime):
-                            user_dict[key] = value.isoformat()
-                    metadata = user_dict.get("metadata") or {}
-                    if isinstance(metadata, dict):
-                        for key in ("display_name", "phone_number", "theme"):
-                            if key not in user_dict and key in metadata:
-                                user_dict[key] = metadata[key]
-                    return user_dict
+                    return self._enrich_user_dict(dict(user))
                 return None
         except Exception as e:
             logger.error(f"Error getting user by email {email}: {e}")
@@ -178,35 +173,34 @@ class PostgresStorageBackend(BaseStorageBackend):
                 email = extras.get("email", username)
                 full_name = extras.get("full_name", username)
 
+                # Store role and extra profile fields in metadata JSONB
+                metadata = {}
+                for meta_key in ("role", "display_name", "phone_number", "theme"):
+                    if meta_key in extras:
+                        metadata[meta_key] = extras[meta_key]
+
                 cursor.execute(
                     """
                     INSERT INTO users (
-                        username, email, password_hash, full_name
+                        username, email, password_hash, full_name, metadata
                     )
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING
                         username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until
+                        created_at, last_login, login_attempts, locked_until, metadata
                     """,
-                    (username, email, password_hash, full_name)
+                    (username, email, password_hash, full_name,
+                     psycopg2.extras.Json(metadata) if metadata else None)
                 )
 
                 user = cursor.fetchone()
-                user_dict = dict(user)
-
-                # Convert datetime to ISO format
-                for key, value in user_dict.items():
-                    if isinstance(value, datetime):
-                        user_dict[key] = value.isoformat()
-
                 logger.info(f"Created user: {username}")
-                return user_dict
+                return self._enrich_user_dict(dict(user))
 
-        except psycopg2.IntegrityError as e:
-            # User already exists - this is expected in tests
+        except psycopg2.IntegrityError:
             raise ValueError(f"User {username} already exists")
         except Exception as e:
-            print(f"Error creating user {username}: {e}")
+            logger.error(f"Error creating user {username}: {e}")
             raise
 
     def update_user(self, username: str, updates: dict) -> dict:
@@ -223,7 +217,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 'email', 'password_hash', 'full_name',
                 'locked_until', 'login_attempts', 'last_login', 'metadata'
             }
-            profile_fields = {"display_name", "phone_number", "theme"}
+            profile_fields = {"display_name", "phone_number", "theme", "role"}
             metadata_updates = {
                 key: value for key, value in updates.items()
                 if key in profile_fields
@@ -272,13 +266,8 @@ class PostgresStorageBackend(BaseStorageBackend):
                 if not user:
                     raise ValueError(f"User {username} not found")
 
-                user_dict = dict(user)
-                for key, value in user_dict.items():
-                    if isinstance(value, datetime):
-                        user_dict[key] = value.isoformat()
-
                 logger.debug(f"Updated user: {username}")
-                return user_dict
+                return self._enrich_user_dict(dict(user))
 
         except Exception as e:
             logger.error(f"Error updating user {username}: {e}")
@@ -423,6 +412,42 @@ class PostgresStorageBackend(BaseStorageBackend):
         except Exception as e:
             logger.error(f"Error listing quiz results for {username}: {e}")
             return []
+
+    def list_users(self) -> List[dict]:
+        """List all users (without passwords)"""
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        username, email, full_name,
+                        created_at, last_login, login_attempts, locked_until, metadata
+                    FROM users
+                    ORDER BY created_at DESC
+                    """
+                )
+                users = []
+                for row in cursor.fetchall():
+                    user_dict = self._enrich_user_dict(dict(row))
+                    user_dict.pop("password_hash", None)
+                    users.append(user_dict)
+                return users
+        except Exception as e:
+            logger.error(f"Error listing users: {e}")
+            return []
+
+    def delete_user(self, username: str) -> bool:
+        """Delete a user by username"""
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted user: {username}")
+                    return True
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting user {username}: {e}")
+            return False
 
     def close(self):
         """Close all connections in pool"""

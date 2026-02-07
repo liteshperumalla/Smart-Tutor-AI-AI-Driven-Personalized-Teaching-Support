@@ -49,7 +49,6 @@ Thumbs.db
 .env.backup
 *.key
 *.pem
-.streamlit/secrets.toml
 
 # User Data & Databases
 users.json
@@ -120,3 +119,4 @@ archive_test_scripts/
 # Log directories
 logs/
 *.log
+.streamlit/secrets.toml

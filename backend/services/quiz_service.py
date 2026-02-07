@@ -9,27 +9,49 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
+from backend.redis_cache import get_redis_cache
 from backend.services import get_storage_backend
 from backend.services.models import QuizResult
 from backend.s3_retriever import S3Retriever
-from backend.bedrock_llm import BedrockLLM
+from backend.bedrock_llamaindex import BedrockLLM
 from backend.bedrock_embeddings import BedrockEmbeddings
 
 logger = logging.getLogger(__name__)
 
-QUESTION_TEMPLATE = """Based on the following context, generate a unique multiple-choice question with four options (A, B, C, D).
+# Diverse query angles to get varied RAG context per attempt
+_QUERY_VARIANTS = [
+    "Explain the key definitions and terminology from this topic",
+    "What are the main differences and comparisons between concepts",
+    "Describe a real-world application or use case of these ideas",
+    "What are the advantages and disadvantages discussed in the material",
+    "Summarize the step-by-step process or methodology described",
+    "What are the common pitfalls or misconceptions about this subject",
+    "How do the components or layers of this system interact",
+    "What are the security or performance considerations mentioned",
+]
+
+QUESTION_TEMPLATE = """You are an expert quiz question writer. Based on the following context, generate ONE high-quality multiple-choice question with four options (A, B, C, D).
 
 Context:
 {context_str}
 
-Generate a question that tests understanding of key concepts from this material. Return ONLY a JSON object in this format:
+Requirements:
+- The question should test UNDERSTANDING, not just memorization of facts.
+- All four options must be plausible — avoid obviously wrong distractors.
+- Include a 2-3 sentence explanation of why the correct answer is right.
+
+Return ONLY a JSON object in this exact format:
 {{
   "question": "Your question here?",
-  "options": ["Option A", "Option B", "Option C", "Option D"],
-  "correct_answer_letter": "A"
+  "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+  "correct_answer_letter": "A",
+  "explanation": "2-3 sentence explanation of why this answer is correct."
 }}
 
-Do not include any other text or formatting. The correct answer should be clearly indicated."""
+Do not include any text outside the JSON object."""
+
+# TTL for quiz store entries (1 hour)
+_QUIZ_STORE_TTL_SECONDS = 3600
 
 
 class QuizGenerationError(RuntimeError):
@@ -37,11 +59,15 @@ class QuizGenerationError(RuntimeError):
 
 
 class QuizService:
+    _QUIZ_KEY_PREFIX = "quiz:"
+
     def __init__(self) -> None:
         self.storage = get_storage_backend()
         self.s3_retriever = S3Retriever(similarity_top_k=5)
-        self.llm = BedrockLLM()
+        self.llm = BedrockLLM(model_id="us.anthropic.claude-3-haiku-20240307-v1:0")
         self._folder_cache: Optional[Dict[str, List[str]]] = None
+        # Redis-backed quiz store shared across all workers
+        self._redis = get_redis_cache()
 
     def _get_folder_structure(self) -> Dict[str, List[str]]:
         if self._folder_cache is not None:
@@ -82,11 +108,28 @@ class QuizService:
         return folders
 
     def _get_context_for_query(self, query: str, file_paths: List[str]) -> str:
-        """Get context from S3 for a specific query and files"""
+        """Get context from S3 for a specific query, filtered to selected folders."""
         try:
             nodes = self.s3_retriever.retrieve(query)
+
+            # Post-retrieval filtering: keep only nodes from selected folders
+            filtered_nodes = []
+            for node in nodes:
+                metadata = getattr(node.node, "metadata", {}) or {}
+                source = metadata.get("source_file") or metadata.get("s3_key") or ""
+                # Check if this node's source matches any of the selected file paths
+                if file_paths and source:
+                    if any(source.endswith(fp) or fp in source for fp in file_paths):
+                        filtered_nodes.append(node)
+                else:
+                    # If no metadata to filter on, include all nodes
+                    filtered_nodes.append(node)
+
+            # Use filtered nodes if any matched, otherwise fall back to all nodes
+            nodes_to_use = filtered_nodes if filtered_nodes else nodes
+
             context_parts = []
-            for node in nodes[:3]:
+            for node in nodes_to_use:
                 text = node.node.text if hasattr(node.node, "text") else str(node.node)
                 context_parts.append(text)
             return "\n\n".join(context_parts)
@@ -117,8 +160,9 @@ class QuizService:
         while len(questions) < num_questions and attempts < max_attempts:
             attempts += 1
 
-            # Create a query for quiz generation
-            query = "Generate a multiple-choice question about key concepts"
+            # Rotate through diverse query variants for varied context
+            query = _QUERY_VARIANTS[(attempts - 1) % len(_QUERY_VARIANTS)]
+            logger.info(f"Quiz generation attempt {attempts} using query: {query[:60]}...")
             context_str = self._get_context_for_query(query, files)
 
             if not context_str:
@@ -128,8 +172,8 @@ class QuizService:
                 continue
 
             try:
-                prompt = QUESTION_TEMPLATE.format(context_str=context_str[:3000])
-                llm_response = self.llm.complete(prompt)
+                prompt = QUESTION_TEMPLATE.format(context_str=context_str[:4000])
+                llm_response = self.llm.complete(prompt, temperature=0.5)
                 response_text = str(llm_response).strip()
 
                 # Extract JSON from response
@@ -152,8 +196,8 @@ class QuizService:
             if question_text in generated_questions:
                 continue
 
-            # Get explanation using the context
-            explanation = (
+            # Use LLM-generated explanation, fall back to context snippet
+            explanation = payload.get("explanation") or (
                 context_str[:500] + "..." if len(context_str) > 500 else context_str
             )
 
@@ -176,10 +220,29 @@ class QuizService:
             )
 
         quiz_id = uuid.uuid4().hex
+
+        # Store full questions in Redis (shared across all workers, auto-expires)
+        self._redis.set(
+            f"{self._QUIZ_KEY_PREFIX}{quiz_id}",
+            {"questions": questions, "selected_folders": selected_folders},
+            ttl=_QUIZ_STORE_TTL_SECONDS,
+        )
+
+        # Strip correct answers and explanations from the response sent to frontend
+        safe_questions = []
+        for q in questions:
+            safe_questions.append(
+                {
+                    "id": q["id"],
+                    "question": q["question"],
+                    "options": q["options"],
+                }
+            )
+
         return {
             "quiz_id": quiz_id,
             "generated_at": datetime.utcnow().isoformat(),
-            "questions": questions,
+            "questions": safe_questions,
             "selected_folders": selected_folders,
         }
 
@@ -202,10 +265,21 @@ class QuizService:
         self,
         user_id: str,
         quiz_id: str,
-        selected_folders: List[str],
-        questions: List[Dict[str, object]],
         answers: Dict[str, str],
     ) -> QuizResult:
+        # Look up correct answers from Redis (shared across all workers)
+        redis_key = f"{self._QUIZ_KEY_PREFIX}{quiz_id}"
+        quiz_data = self._redis.get(redis_key)
+        if quiz_data is None:
+            raise ValueError(
+                "Quiz not found or already submitted. Please generate a new quiz."
+            )
+        # One-time use: delete after retrieval so quiz can't be re-submitted
+        self._redis.delete(redis_key)
+
+        questions = quiz_data["questions"]
+        selected_folders = quiz_data["selected_folders"]
+
         score = 0
         total_questions = len(questions)
         detailed_results = []
@@ -224,6 +298,7 @@ class QuizService:
                     "correct_answer": correct,
                     "user_answer": user_answer,
                     "is_correct": is_correct,
+                    "explanation": question.get("explanation", ""),
                 }
             )
 
