@@ -35,11 +35,12 @@ export default function QuizPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const sortFoldersNumerically = (folders: QuizFolder[]) => {
+  const sortFoldersByPath = (folders: QuizFolder[]) => {
     return [...folders].sort((a, b) => {
-      const numA = parseInt(a.label.match(/\d+/)?.[0] || '0', 10);
-      const numB = parseInt(b.label.match(/\d+/)?.[0] || '0', 10);
-      return numA - numB;
+      const numA = parseInt(a.path.match(/module\\s*(\\d+)/i)?.[1] || "0", 10);
+      const numB = parseInt(b.path.match(/module\\s*(\\d+)/i)?.[1] || "0", 10);
+      if (numA !== numB) return numA - numB;
+      return a.label.localeCompare(b.label);
     });
   };
 
@@ -50,7 +51,7 @@ export default function QuizPage() {
     fetchQuizFolders(token)
       .then((data) => {
         if (!mounted) return;
-        const sortedFolders = sortFoldersNumerically(data);
+        const sortedFolders = sortFoldersByPath(data);
         setFolders(sortedFolders);
         setFoldersError(null);
         if (sortedFolders.length > 0) {
