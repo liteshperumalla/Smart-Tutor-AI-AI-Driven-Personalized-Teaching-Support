@@ -42,7 +42,7 @@ jobs:
 
       - name: GitGuardian Secret Scanning
         uses: GitGuardian/ggshield-action@master
-        if: ${{ secrets.GITGUARDIAN_API_KEY != '' }}
+        if: ${{ vars.ENABLE_GITGUARDIAN == 'true' }}
         env:
           GITGUARDIAN_API_KEY: ${{ secrets.GITGUARDIAN_API_KEY }}
         with:
@@ -60,7 +60,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Snyk for Backend
-        if: matrix.component == 'backend' && secrets.SNYK_TOKEN != ''
+        if: matrix.component == 'backend' && vars.ENABLE_SNYK == 'true'
         uses: snyk/actions/python@master
         continue-on-error: true
         env:
@@ -69,7 +69,7 @@ jobs:
           args: --severity-threshold=high --file=backend/requirements.txt
 
       - name: Run Snyk for Frontend
-        if: matrix.component == 'frontend' && secrets.SNYK_TOKEN != ''
+        if: matrix.component == 'frontend' && vars.ENABLE_SNYK == 'true'
         uses: snyk/actions/node@master
         continue-on-error: true
         env:
@@ -210,7 +210,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        if: ${{ vars.ENABLE_CODECOV == 'true' }}
         with:
           file: ./backend/coverage.xml
           flags: backend
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        if: ${{ vars.ENABLE_CODECOV == 'true' }}
         with:
           file: ./frontend/coverage/coverage-final.json
           flags: frontend
@@ -402,7 +402,7 @@ jobs:
       - name: Scan with Snyk Container
         continue-on-error: true
         uses: snyk/actions/docker@master
-        if: ${{ secrets.SNYK_TOKEN != '' }}
+        if: ${{ vars.ENABLE_SNYK == 'true' }}
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -518,7 +518,7 @@ jobs:
     name: Deploy to Staging (Kubernetes)
     runs-on: ubuntu-latest
     needs: build-and-push
-    if: github.ref == 'refs/heads/develop' && secrets.AWS_ROLE_ARN_STAGING != ''
+    if: github.ref == 'refs/heads/develop' && vars.ENABLE_DEPLOY_STAGING == 'true'
     environment:
       name: staging
       url: https://staging.smart-ai-tutor.com
@@ -581,7 +581,7 @@ jobs:
     name: Deploy to Production (Kubernetes)
     runs-on: ubuntu-latest
     needs: [build-and-push, e2e-tests]
-    if: github.ref == 'refs/heads/main' && secrets.AWS_ROLE_ARN_PRODUCTION != '' && secrets.SLACK_WEBHOOK != ''
+    if: github.ref == 'refs/heads/main' && vars.ENABLE_DEPLOY_PRODUCTION == 'true'
     environment:
       name: production
       url: https://smart-ai-tutor.com
@@ -653,6 +653,7 @@ jobs:
 
       - name: Notify deployment success
         uses: 8398a7/action-slack@v3
+        if: ${{ vars.ENABLE_SLACK_NOTIFICATIONS == 'true' }}
         with:
           status: success
           text: |
@@ -662,8 +663,8 @@ jobs:
           webhook_url: ${{ secrets.SLACK_WEBHOOK }}
 
       - name: Notify deployment failure
-        if: failure()
         uses: 8398a7/action-slack@v3
+        if: ${{ failure() && vars.ENABLE_SLACK_NOTIFICATIONS == 'true' }}
         with:
           status: failure
           text: |
