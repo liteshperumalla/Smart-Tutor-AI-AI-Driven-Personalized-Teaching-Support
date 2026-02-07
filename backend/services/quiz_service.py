@@ -18,6 +18,34 @@ from backend.bedrock_embeddings import BedrockEmbeddings
 
 logger = logging.getLogger(__name__)
 
+_MODULE_TOPIC_LABELS = {
+    1: "Orientation & Core Concepts",
+    2: "Python Basics",
+    3: "Python Basics (Part 2)",
+    4: "Web Scraping",
+    5: "Data Cleaning & Preprocessing",
+    6: "Feature Extraction & Word Embeddings",
+    8: "Information Extraction & Knowledge Graphs",
+    10: "Topic Modeling",
+    12: "Sentiment Analysis",
+    13: "Text Classification & Clustering",
+    14: "LLM Overview & RAG",
+}
+
+
+def _extract_module_number(value: str) -> Optional[int]:
+    match = re.search(r"module\s*(\d+)", value, re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _resolve_topic_label(folder: str) -> str:
+    module_number = _extract_module_number(folder)
+    if module_number and module_number in _MODULE_TOPIC_LABELS:
+        return _MODULE_TOPIC_LABELS[module_number]
+    return folder
+
 # Diverse query angles to get varied RAG context per attempt
 _QUERY_VARIANTS = [
     "Explain the key definitions and terminology from this topic",
@@ -94,6 +122,7 @@ class QuizService:
         buckets: Dict[str, Dict[str, str]] = {}
         for folder, files in structure.items():
             label = folder.split("/")[-1] or folder
+            label = _resolve_topic_label(label)
             key = re.sub(r"[^a-z0-9]", "", label.lower())
             entry = buckets.get(key)
             candidate = {
@@ -104,7 +133,13 @@ class QuizService:
             if entry is None or candidate["file_count"] > entry["file_count"]:
                 buckets[key] = candidate
         folders = list(buckets.values())
-        folders.sort(key=lambda item: item["label"].lower())
+        folders.sort(
+            key=lambda item: (
+                _extract_module_number(item["path"]) is None,
+                _extract_module_number(item["path"]) or 0,
+                item["label"].lower(),
+            )
+        )
         return folders
 
     def _get_context_for_query(self, query: str, file_paths: List[str]) -> str:
