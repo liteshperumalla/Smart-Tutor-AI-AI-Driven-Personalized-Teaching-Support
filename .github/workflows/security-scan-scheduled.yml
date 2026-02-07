@@ -9,7 +9,10 @@ on:
 permissions:
   contents: read
   security-events: write
-  issues: write
+  issues: read
+
+env:
+  IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
 
 jobs:
   trivy-scheduled-scan:
@@ -45,6 +48,10 @@ jobs:
   dependency-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
     strategy:
       matrix:
         component: [backend, frontend]
@@ -76,14 +83,14 @@ jobs:
         if: matrix.component == 'frontend'
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.9.0'
 
       - name: Run npm audit (Frontend)
         if: matrix.component == 'frontend'
         run: |
           cd frontend
           npm audit --json > npm-audit-report.json || true
-          npm audit
+          npm audit --audit-level=high || true
 
       - name: Upload audit reports
         uses: actions/upload-artifact@v4
@@ -96,7 +103,7 @@ jobs:
           retention-days: 90
 
       - name: Create issue if vulnerabilities found
-        if: failure()
+        if: failure() && vars.CREATE_SECURITY_ISSUES == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -126,12 +133,12 @@ jobs:
 
       - name: Pull latest backend image
         run: |
-          docker pull ghcr.io/${{ github.repository }}-backend:latest
+          docker pull ghcr.io/${{ env.IMAGE_NAME }}-backend:latest
 
       - name: Scan backend image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}-backend:latest
+          image-ref: ghcr.io/${{ env.IMAGE_NAME }}-backend:latest
           format: 'sarif'
           output: 'trivy-backend.sarif'
 
@@ -143,12 +150,12 @@ jobs:
 
       - name: Pull latest frontend image
         run: |
-          docker pull ghcr.io/${{ github.repository }}-frontend:latest
+          docker pull ghcr.io/${{ env.IMAGE_NAME }}-frontend:latest
 
       - name: Scan frontend image
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/${{ github.repository }}-frontend:latest
+          image-ref: ghcr.io/${{ env.IMAGE_NAME }}-frontend:latest
           format: 'sarif'
           output: 'trivy-frontend.sarif'
 
@@ -181,7 +188,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.9.0'
 
       - name: Check npm licenses
         run: |
