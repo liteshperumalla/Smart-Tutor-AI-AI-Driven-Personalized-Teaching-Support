@@ -11,6 +11,7 @@ import {
   migrateStaticResources,
   Resource,
 } from "@/lib/api";
+import { toast } from "sonner";
 import {
   FolderOpen,
   Plus,
@@ -89,8 +90,9 @@ export default function AdminResourcesPage() {
       });
       resetForm();
       await load();
+      toast.success("Resource created");
     } catch {
-      /* silently fail */
+      toast.error("Failed to create resource");
     } finally {
       setSaving(false);
     }
@@ -109,8 +111,9 @@ export default function AdminResourcesPage() {
       });
       resetForm();
       await load();
+      toast.success("File uploaded");
     } catch {
-      /* silently fail */
+      toast.error("Failed to upload file");
     } finally {
       setSaving(false);
     }
@@ -128,8 +131,9 @@ export default function AdminResourcesPage() {
       });
       resetForm();
       await load();
+      toast.success("Resource updated");
     } catch {
-      /* silently fail */
+      toast.error("Failed to update resource");
     } finally {
       setSaving(false);
     }
@@ -142,8 +146,9 @@ export default function AdminResourcesPage() {
       setResources((prev) =>
         prev.map((r) => (r.id === id ? { ...r, active: !currentActive } : r))
       );
+      toast.success(currentActive ? "Resource hidden" : "Resource shown");
     } catch {
-      /* silently fail */
+      toast.error("Failed to toggle resource");
     }
   };
 
@@ -153,8 +158,9 @@ export default function AdminResourcesPage() {
       await deleteResource(token, id);
       setResources((prev) => prev.filter((r) => r.id !== id));
       setDeleteConfirm(null);
+      toast.success("Resource deleted");
     } catch {
-      /* silently fail */
+      toast.error("Failed to delete resource");
     }
   };
 
@@ -164,16 +170,17 @@ export default function AdminResourcesPage() {
     setMigrateResult(null);
     try {
       const result = await migrateStaticResources(token);
-      setMigrateResult(
-        result.success
-          ? `Imported ${result.imported} resources (${result.total} total)`
-          : result.imported === 0
-            ? "No new resources to import"
-            : "Migration failed"
-      );
+      const msg = result.success
+        ? `Imported ${result.imported} resources (${result.total} total)`
+        : result.imported === 0
+          ? "No new resources to import"
+          : "Migration failed";
+      setMigrateResult(msg);
       await load();
+      toast.success(msg);
     } catch {
       setMigrateResult("Migration failed");
+      toast.error("Migration failed");
     } finally {
       setMigrating(false);
     }

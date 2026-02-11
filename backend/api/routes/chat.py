@@ -134,16 +134,23 @@ def send_message(
 
     if payload.uploaded_only:
         try:
-            uploaded_results = research_service.query(
-                query, uploaded_only=True
-            ).get("results", [])
+            # When specific file IDs are provided, fetch all their chunks directly
+            if payload.uploaded_file_ids:
+                uploaded_results = research_service.get_chunks_by_file_ids(
+                    payload.uploaded_file_ids
+                )
+            else:
+                uploaded_results = research_service.query(
+                    query, uploaded_only=True
+                ).get("results", [])
             if uploaded_results:
                 context_snippets = "\n\n".join(
-                    [r.get("text", "") for r in uploaded_results[:3] if r.get("text")]
+                    [r.get("text", "") for r in uploaded_results[:10] if r.get("text")]
                 ).strip()
                 if context_snippets:
                     effective_query = (
-                        "Use the following uploaded document excerpts as context:\n"
+                        "Use the following uploaded document excerpts as context. "
+                        "Base your answer on this content:\n"
                         f"{context_snippets}\n\nUser question: {query}"
                     )
         except Exception:
@@ -166,14 +173,24 @@ def send_message(
             model_id=model_id,
         )
         collected = ""
-        for chunk in generator:
-            collected += chunk
-            yield chunk
-        assistant_message = ChatMessage(
-            role="assistant", content=collected, sources=sources
-        )
-        chat_service.append_message(session, assistant_message)
-        chat_service.save_session(user["username"], session)
+        try:
+            for chunk in generator:
+                collected += chunk
+                yield chunk
+        finally:
+            # Save even when the client disconnects mid-stream (GeneratorExit).
+            # No yield allowed inside finally — that would raise RuntimeError.
+            if collected:
+                clean_content = collected
+                if clean_content.startswith("__AGENT_META__"):
+                    newline_idx = clean_content.find("\n")
+                    if newline_idx != -1:
+                        clean_content = clean_content[newline_idx + 1:]
+                assistant_message = ChatMessage(
+                    role="assistant", content=clean_content, sources=sources
+                )
+                chat_service.append_message(session, assistant_message)
+                chat_service.save_session(user["username"], session)
 
     return StreamingResponse(stream(), media_type="text/plain")
 

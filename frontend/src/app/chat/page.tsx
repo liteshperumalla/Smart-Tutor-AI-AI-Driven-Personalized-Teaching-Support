@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ChatMessageDTO,
+  ChatAttachment,
   ChatSessionDTO,
   createChatSession,
   getApiBaseUrl,
@@ -37,6 +38,7 @@ import { UserMessageActions, EditableUserMessage } from "@/components/chat/user-
 import { StreamingPhaseIndicator } from "@/components/chat/streaming-phase-indicator";
 import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-preview-grid";
 import { ResearchSidebar } from "@/components/chat/research-sidebar";
+import { toast } from "sonner";
 
 function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
@@ -80,6 +82,7 @@ function ChatWorkspaceContent() {
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const isLoggedIn = token === "authenticated" && !!user;
 
   // Response styles for students
@@ -151,7 +154,11 @@ function ChatWorkspaceContent() {
         const validSessions = data.filter((s): s is ChatSessionDTO => Boolean(s && typeof s === 'object' && 'id' in s));
         const matchFromQuery: ChatSessionDTO | undefined = querySession ? validSessions.find((s) => s.id === querySession) : undefined;
         const firstSession = validSessions[0];
-        setSelectedSessionId((current) => current || matchFromQuery?.id || firstSession?.id || null);
+        // Prefer the URL query param so sidebar "New chat" / session clicks switch correctly
+        setSelectedSessionId((current) => {
+          if (querySession && matchFromQuery) return matchFromQuery.id;
+          return current || firstSession?.id || null;
+        });
       }
     } catch (error) {
       setStreamError(error instanceof Error ? error.message : "Unable to load sessions");
@@ -170,7 +177,7 @@ function ChatWorkspaceContent() {
     };
   }, [refreshSessions]);
 
-  // Cleanup speech recognition and mic stream on unmount
+  // Cleanup speech recognition, mic stream, and active fetch on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
@@ -181,6 +188,11 @@ function ChatWorkspaceContent() {
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
         micStreamRef.current = null;
+      }
+      // Abort any in-flight streaming request (backend try/finally saves the response)
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, []);
@@ -338,8 +350,11 @@ function ChatWorkspaceContent() {
       setSessions((prev) => [next, ...prev.filter((s) => s.id !== next.id)]);
       setSelectedSessionId(next.id);
       dispatchChatSessionsUpdated();
+      toast.success("New chat created");
     } catch (error) {
-      setStreamError(error instanceof Error ? error.message : "Failed to create session");
+      const msg = error instanceof Error ? error.message : "Failed to create session";
+      setStreamError(msg);
+      toast.error(msg);
     } finally {
       setIsCreatingSession(false);
     }
@@ -369,10 +384,25 @@ function ChatWorkspaceContent() {
     setComposerText("");
     setStreamError(null);
 
+    // Snapshot uploaded file info before clearing
+    const attachments: ChatAttachment[] = uploadedFiles
+      .filter((f) => f.status === "ready")
+      .map((f) => {
+        const ext = f.file.name.split(".").pop()?.toLowerCase() || "";
+        const isImage = f.file.type.startsWith("image/");
+        return {
+          name: f.file.name,
+          ext,
+          isImage,
+          previewUrl: isImage ? URL.createObjectURL(f.file) : undefined,
+        };
+      });
+
     const userMessage: ChatMessageDTO = {
       role: "user",
       content,
       timestamp: new Date().toISOString(),
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
 
     const assistantMessage: ChatMessageDTO = {
@@ -382,12 +412,13 @@ function ChatWorkspaceContent() {
     };
 
     updateActiveSessionMessages((messages) => [...messages, userMessage, assistantMessage]);
+    setUploadedFiles([]);
     setIsStreaming(true);
 
     try {
       const apiBaseUrl = getApiBaseUrl();
-      // Use AbortController with 5 minute timeout for initial S3 index download
       const controller = new AbortController();
+      abortControllerRef.current = controller;
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
 
       const response = await fetch(
@@ -397,7 +428,7 @@ function ChatWorkspaceContent() {
           headers: {
             "Content-Type": "application/json",
           },
-          credentials: "include", // Use HttpOnly cookies for authentication
+          credentials: "include",
           body: JSON.stringify({
             query: content,
             model_id: currentModel.modelId,
@@ -467,19 +498,22 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Response ready");
     } catch (error) {
-      // Handle different error types with user-friendly messages
+      if (error instanceof Error && error.name === "AbortError") {
+        // User navigated away — backend try/finally saves the response
+        return;
+      }
       let errMessage = "Unable to stream a response";
       if (error instanceof Error) {
-        if (error.name === "AbortError") {
-          errMessage = "Request was cancelled or timed out. Please try again.";
-        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
           errMessage = "Network error. Please check your connection and try again.";
         } else {
           errMessage = error.message;
         }
       }
       setStreamError(errMessage);
+      toast.error(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
           session.id === selectedSessionId
@@ -495,6 +529,7 @@ function ChatWorkspaceContent() {
         )
       );
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
     }
   }
@@ -536,17 +571,18 @@ function ChatWorkspaceContent() {
     try {
       await deleteChatSession(token, selectedSessionId);
       setDeleteChatModalOpen(false);
-      // Select next session or clear selection
       const remainingSessions = sessions.filter(s => s.id !== selectedSessionId);
       if (remainingSessions.length > 0) {
         setSelectedSessionId(remainingSessions[0].id);
       } else {
         setSelectedSessionId(null);
       }
+      toast.success("Chat deleted");
       await refreshSessions();
       dispatchChatSessionsUpdated();
     } catch (error) {
       console.error("Failed to delete chat:", error);
+      toast.error("Failed to delete chat");
     } finally {
       setIsDeletingChat(false);
     }
@@ -562,8 +598,10 @@ function ChatWorkspaceContent() {
       await pinChatSession(token, activeSession.id, !activeSession.is_pinned);
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success(activeSession.is_pinned ? "Chat unpinned" : "Chat pinned");
     } catch (error) {
       console.error("Failed to pin chat:", error);
+      toast.error("Failed to pin chat");
     }
   }, [token, activeSession, refreshSessions]);
 
@@ -573,8 +611,10 @@ function ChatWorkspaceContent() {
       await archiveChatSession(token, activeSession.id, !activeSession.is_archived);
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success(activeSession.is_archived ? "Chat unarchived" : "Chat archived");
     } catch (error) {
       console.error("Failed to archive chat:", error);
+      toast.error("Failed to archive chat");
     }
   }, [token, activeSession, refreshSessions]);
 
@@ -586,8 +626,10 @@ function ChatWorkspaceContent() {
       setRenameChatModalOpen(false);
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Chat renamed");
     } catch (error) {
       console.error("Failed to rename chat:", error);
+      toast.error("Failed to rename chat");
     } finally {
       setIsRenamingChat(false);
     }
@@ -644,9 +686,9 @@ function ChatWorkspaceContent() {
 
     try {
       const apiBaseUrl = getApiBaseUrl();
-      // Use AbortController with 5 minute timeout for initial S3 index download
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+      abortControllerRef.current = controller;
+      const timeoutId = setTimeout(() => controller.abort(), 300000);
 
       const response = await fetch(
         `${apiBaseUrl}/chat/sessions/${selectedSessionId}/messages`,
@@ -687,7 +729,6 @@ function ChatWorkspaceContent() {
         if (done) break;
         assistantText += decoder.decode(value, { stream: true });
 
-        // Parse __AGENT_META__ prefix from agent system
         let displayText = assistantText;
         if (displayText.startsWith("__AGENT_META__")) {
           const newlineIdx = displayText.indexOf("\n");
@@ -700,7 +741,7 @@ function ChatWorkspaceContent() {
             } catch { /* ignore parse errors */ }
             displayText = displayText.substring(newlineIdx + 1);
           } else {
-            continue; // Wait for full meta line
+            continue;
           }
         }
 
@@ -725,19 +766,21 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Response ready");
     } catch (error) {
-      // Handle different error types with user-friendly messages
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
       let errMessage = "Unable to stream a response";
       if (error instanceof Error) {
-        if (error.name === "AbortError") {
-          errMessage = "Request was cancelled or timed out. Please try again.";
-        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
           errMessage = "Network error. Please check your connection and try again.";
         } else {
           errMessage = error.message;
         }
       }
       setStreamError(errMessage);
+      toast.error(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
           session.id === selectedSessionId
@@ -753,6 +796,7 @@ function ChatWorkspaceContent() {
         )
       );
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setIsEditSending(false);
     }
@@ -793,6 +837,7 @@ function ChatWorkspaceContent() {
     try {
       const apiBaseUrl = getApiBaseUrl();
       const controller = new AbortController();
+      abortControllerRef.current = controller;
       const timeoutId = setTimeout(() => controller.abort(), 300000);
 
       const response = await fetch(
@@ -846,19 +891,21 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Response ready");
     } catch (error) {
-      // Handle different error types with user-friendly messages
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
       let errMessage = "Unable to regenerate response";
       if (error instanceof Error) {
-        if (error.name === "AbortError") {
-          errMessage = "Request was cancelled or timed out. Please try again.";
-        } else if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+        if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
           errMessage = "Network error. Please check your connection and try again.";
         } else {
           errMessage = error.message;
         }
       }
       setStreamError(errMessage);
+      toast.error(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
           session.id === selectedSessionId
@@ -872,6 +919,7 @@ function ChatWorkspaceContent() {
         )
       );
     } finally {
+      abortControllerRef.current = null;
       setIsStreaming(false);
       setRegeneratingMessageIndex(null);
     }
@@ -1017,7 +1065,8 @@ function ChatWorkspaceContent() {
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col max-w-5xl mx-auto w-full px-6 animate-fade-in-up">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex flex-col max-w-5xl mx-auto w-full px-6 animate-fade-in-up">
         {/* Error banner */}
         {streamError && (
           <div className="mt-4 rounded-xl bg-red-500/10 px-4 py-3">
@@ -1057,9 +1106,9 @@ function ChatWorkspaceContent() {
 
         {/* Welcome screen when no messages */}
         {isLoggedIn && (!activeSession || !hasMessages) && (
-          <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
+          <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
             <h1 className="text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
-              {isAdmin ? `Welcome back, ${user?.display_name || user?.full_name || user?.username || "Admin"}` : "Hi there"}
+              {`Hi, ${user?.display_name || user?.full_name || user?.username || "there"}`}
             </h1>
             <p className="text-xl text-zinc-500 dark:text-zinc-400">
               {isAdmin ? "What would you like to test or explore?" : "What would you like to learn today?"}
@@ -1106,6 +1155,7 @@ function ChatWorkspaceContent() {
             })}
           </div>
         )}
+      </div>
       </div>
 
       {/* Input area - fixed at bottom */}
@@ -1227,7 +1277,7 @@ function ChatWorkspaceContent() {
                         onChange={handleFileSelect}
                         className="hidden"
                         multiple
-                        accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.gif,.webp"
+                        accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.gif,.webp,.py,.ipynb"
                       />
 
                       <div className="py-2">
@@ -1644,6 +1694,19 @@ function ChatBubble({
       );
     }
 
+    // Helper: get icon + color for document attachments
+    const getAttachmentStyle = (ext: string) => {
+      switch (ext) {
+        case "pdf": return { color: "bg-red-500", label: "PDF" };
+        case "docx": case "doc": return { color: "bg-blue-500", label: "Word" };
+        case "pptx": case "ppt": return { color: "bg-orange-500", label: "PPT" };
+        case "py": return { color: "bg-yellow-500", label: "Python" };
+        case "ipynb": return { color: "bg-orange-600", label: "Notebook" };
+        case "txt": case "md": case "csv": return { color: "bg-zinc-500", label: ext.toUpperCase() };
+        default: return { color: "bg-zinc-500", label: ext.toUpperCase() || "File" };
+      }
+    };
+
     // Normal view with Copy/Edit buttons (shown on hover)
     return (
       <div
@@ -1651,7 +1714,30 @@ function ChatBubble({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-end gap-2">
+          {/* Attached files - shown above the message */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {message.attachments.map((att, i) =>
+                att.isImage && att.previewUrl ? (
+                  <div key={i} className="w-48 rounded-xl overflow-hidden border border-zinc-600 shadow-md">
+                    <img src={att.previewUrl} alt={att.name} className="w-full h-auto object-cover max-h-48" />
+                    <div className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-400 truncate">{att.name}</div>
+                  </div>
+                ) : (
+                  <div key={i} className="flex items-center gap-2 rounded-xl bg-zinc-800 border border-zinc-600 px-3 py-2 max-w-[200px]">
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${getAttachmentStyle(att.ext).color} flex items-center justify-center`}>
+                      <FileText className="h-4 w-4 text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-zinc-200 truncate">{att.name}</p>
+                      <p className="text-[10px] text-zinc-400">{getAttachmentStyle(att.ext).label}</p>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
           <div className="max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
           </div>
@@ -1668,8 +1754,21 @@ function ChatBubble({
     );
   }
 
+  // Strip __AGENT_META__ prefix and unwanted headings from stored messages (safety net)
+  const cleanContent = (() => {
+    let c = message.content || "";
+    if (c.startsWith("__AGENT_META__")) {
+      const idx = c.indexOf("\n");
+      c = idx !== -1 ? c.substring(idx + 1) : c;
+    }
+    // Remove "Concise Answer:" / "Elaboration:" section headings (with or without bold markdown)
+    c = c.replace(/^#{0,3}\s*\*{0,2}Concise\s+Answer:?\*{0,2}\s*\n?/gim, "");
+    c = c.replace(/^#{0,3}\s*\*{0,2}Elaboration:?\*{0,2}\s*\n?/gim, "");
+    return c.trim();
+  })();
+
   // Show phase indicator when streaming starts and no content yet
-  const showPhaseIndicator = isStreaming && !message.content;
+  const showPhaseIndicator = isStreaming && !cleanContent;
 
   // Agent badge color mapping
   const agentBadgeConfig: Record<string, { label: string; color: string }> = {
@@ -1688,7 +1787,8 @@ function ChatBubble({
         {showPhaseIndicator ? (
           <StreamingPhaseIndicator
             isStreaming={isStreaming || false}
-            hasContent={!!message.content}
+            hasContent={!!cleanContent}
+            agentName={message.agent}
           />
         ) : (
           <>
@@ -1705,7 +1805,7 @@ function ChatBubble({
               </div>
             )}
             <MarkdownContent
-              content={message.content}
+              content={cleanContent}
               sources={message.sources}
               isStreaming={isStreaming}
               onOpenSources={onOpenSources}
@@ -1713,14 +1813,14 @@ function ChatBubble({
             {/* Response Action Bar - only show when not streaming */}
             {!isStreaming && (
               <ResponseActionBar
-                messageContent={message.content}
+                messageContent={cleanContent}
                 sessionId={sessionId}
                 messageIndex={messageIndex}
                 token={token || null}
                 hasSources={hasSources || false}
                 currentFeedback={currentFeedback}
                 onFeedbackChange={onFeedbackChange}
-                onShareClick={() => onOpenShare(message.content)}
+                onShareClick={() => onOpenShare(cleanContent)}
                 onReportClick={() => onOpenReport(messageIndex)}
                 onSourcesClick={() => {
                   if (message.sources) {

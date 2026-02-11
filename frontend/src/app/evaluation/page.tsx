@@ -28,6 +28,8 @@ import {
   AgentMetrics,
   fetchKnowledgeGraphMetrics,
   KnowledgeGraphMetrics,
+  runDatasetQuality,
+  DatasetQualityResult,
 } from "@/lib/api";
 import {
   LineChart,
@@ -115,6 +117,10 @@ export function EvaluationContent() {
   const [qualityResult, setQualityResult] = useState<BatchQualityResult | null>(null);
   const [qualityLoading, setQualityLoading] = useState(false);
   const [qualityError, setQualityError] = useState<string | null>(null);
+  const [datasetResult, setDatasetResult] = useState<DatasetQualityResult | null>(null);
+  const [datasetLoading, setDatasetLoading] = useState(false);
+  const [datasetError, setDatasetError] = useState<string | null>(null);
+  const [datasetLimit, setDatasetLimit] = useState(10);
 
   // Fetch evaluation data
   useEffect(() => {
@@ -258,6 +264,21 @@ export function EvaluationContent() {
       console.error("Failed to fetch real-time RAG metrics:", err);
     } finally {
       setRealtimeLoading(false);
+    }
+  };
+
+  // Run dataset quality evaluation (manual trigger — runs full pipeline)
+  const handleRunDatasetQuality = async () => {
+    if (!token) return;
+    setDatasetLoading(true);
+    setDatasetError(null);
+    try {
+      const result = await runDatasetQuality(token, datasetLimit);
+      setDatasetResult(result);
+    } catch (err) {
+      setDatasetError(err instanceof Error ? err.message : "Dataset evaluation failed");
+    } finally {
+      setDatasetLoading(false);
     }
   };
 
@@ -1093,6 +1114,225 @@ export function EvaluationContent() {
                   </div>
                 </section>
               )}
+
+              {/* Section 7: Dataset Pipeline Evaluation */}
+              <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-xl bg-teal-50 p-2.5 dark:bg-teal-900/20">
+                      <FileText className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-zinc-900 dark:text-white">Dataset Pipeline Evaluation</h3>
+                      <p className="text-xs text-zinc-500">
+                        Run evaluation dataset through the live RAG pipeline (retrieve → generate → judge)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={datasetLimit}
+                      onChange={(e) => setDatasetLimit(Number(e.target.value))}
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                    >
+                      <option value={5}>5 questions</option>
+                      <option value={10}>10 questions</option>
+                      <option value={20}>20 questions</option>
+                      <option value={40}>40 questions</option>
+                      <option value={64}>All 64 questions</option>
+                    </select>
+                    <button
+                      onClick={handleRunDatasetQuality}
+                      disabled={datasetLoading}
+                      className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:opacity-50"
+                    >
+                      {datasetLoading ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Running...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-4 w-4" />
+                          Run Dataset Evaluation
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {datasetError && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
+                    {datasetError}
+                  </div>
+                )}
+
+                {datasetLoading && !datasetResult ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <RefreshCw className="h-8 w-8 text-teal-500 animate-spin mb-3" />
+                    <p className="text-sm text-zinc-500">Running {datasetLimit} questions through the RAG pipeline...</p>
+                    <p className="text-xs text-zinc-400 mt-1">This may take a few minutes</p>
+                  </div>
+                ) : datasetResult ? (
+                  <div className="space-y-6">
+                    {datasetResult.message && !datasetResult.quality_summary && (
+                      <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                        {datasetResult.message}
+                      </div>
+                    )}
+
+                    {/* Quality Score Cards */}
+                    {datasetResult.quality_summary && (
+                      <div className="grid gap-4 md:grid-cols-5">
+                        {[
+                          { label: "Faithfulness", value: datasetResult.quality_summary.avg_faithfulness, icon: Shield },
+                          { label: "Answer Relevance", value: datasetResult.quality_summary.avg_answer_relevance, icon: Target },
+                          { label: "Context Precision", value: datasetResult.quality_summary.avg_context_precision, icon: Layers },
+                          { label: "Context Recall", value: datasetResult.quality_summary.avg_context_recall, icon: Database },
+                          { label: "Correctness", value: datasetResult.quality_summary.avg_correctness, icon: CheckCircle },
+                        ].map((metric) => (
+                          <div
+                            key={metric.label}
+                            className={`rounded-2xl border border-zinc-200 p-5 shadow-sm dark:border-zinc-800 ${qualityBg(metric.value)}`}
+                          >
+                            <div className="flex items-center gap-2 mb-3">
+                              <metric.icon className={`h-4 w-4 ${qualityColor(metric.value)}`} />
+                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{metric.label}</span>
+                            </div>
+                            <p className={`text-2xl font-bold ${qualityColor(metric.value)}`}>
+                              {metric.value.toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Summary Stats + Radar Chart */}
+                    {datasetResult.quality_summary && (
+                      <div className="grid gap-6 lg:grid-cols-2">
+                        {/* Radar Chart */}
+                        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
+                          <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Quality Radar</h4>
+                          <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <RadarChart
+                                outerRadius="70%"
+                                data={[
+                                  { dimension: "Faithfulness", value: datasetResult.quality_summary.avg_faithfulness, fullMark: 1 },
+                                  { dimension: "Relevance", value: datasetResult.quality_summary.avg_answer_relevance, fullMark: 1 },
+                                  { dimension: "Ctx Precision", value: datasetResult.quality_summary.avg_context_precision, fullMark: 1 },
+                                  { dimension: "Ctx Recall", value: datasetResult.quality_summary.avg_context_recall, fullMark: 1 },
+                                  { dimension: "Correctness", value: datasetResult.quality_summary.avg_correctness, fullMark: 1 },
+                                ]}
+                              >
+                                <PolarGrid stroke="#e4e4e7" />
+                                <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "#71717a" }} />
+                                <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9 }} />
+                                <Radar name="Dataset" dataKey="value" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.3} strokeWidth={2} />
+                              </RadarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-2 gap-4 content-start">
+                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                            <p className="text-xs text-zinc-500 mb-1">Questions Evaluated</p>
+                            <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                              {datasetResult.total_evaluated}/{datasetResult.total_dataset_questions || datasetResult.total_evaluated}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                            <p className="text-xs text-zinc-500 mb-1">Avg Latency</p>
+                            <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                              {datasetResult.avg_latency?.toFixed(2) || "—"}s
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                            <p className="text-xs text-zinc-500 mb-1">Avg Correctness</p>
+                            <p className={`text-xl font-bold ${qualityColor(datasetResult.quality_summary.avg_correctness)}`}>
+                              {(datasetResult.quality_summary.avg_correctness * 100).toFixed(1)}%
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                            <p className="text-xs text-zinc-500 mb-1">Avg Faithfulness</p>
+                            <p className={`text-xl font-bold ${qualityColor(datasetResult.quality_summary.avg_faithfulness)}`}>
+                              {(datasetResult.quality_summary.avg_faithfulness * 100).toFixed(1)}%
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Individual Results Table */}
+                    {datasetResult.individual_results.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Activity className="h-4 w-4 text-teal-500" />
+                          <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                            Per-Question Results ({datasetResult.individual_results.length})
+                          </h4>
+                        </div>
+                        <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-zinc-100 dark:border-zinc-800">
+                          <table className="w-full text-sm">
+                            <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800">
+                              <tr className="border-b border-zinc-200 dark:border-zinc-700">
+                                <th className="px-3 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Question</th>
+                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Faithful</th>
+                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Relevance</th>
+                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Recall</th>
+                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Correct</th>
+                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Latency</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {datasetResult.individual_results.map((item, idx) => (
+                                <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800 last:border-0">
+                                  <td className="px-3 py-2 max-w-[280px]">
+                                    <p className="font-medium text-zinc-900 dark:text-white truncate">{item.query}</p>
+                                    {item.reasoning && (
+                                      <p className="text-xs text-zinc-400 truncate mt-0.5">{item.reasoning}</p>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className={`font-bold ${qualityColor(item.faithfulness)}`}>
+                                      {item.faithfulness.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className={`font-bold ${qualityColor(item.answer_relevance)}`}>
+                                      {item.answer_relevance.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className={`font-bold ${qualityColor(item.context_recall)}`}>
+                                      {item.context_recall.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-center">
+                                    <span className={`font-bold ${qualityColor(item.correctness)}`}>
+                                      {item.correctness.toFixed(2)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-center text-zinc-600 dark:text-zinc-400">
+                                    {item.latency?.toFixed(1) || "—"}s
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <FileText className="h-12 w-12 text-zinc-300 dark:text-zinc-600 mb-3" />
+                    <p className="text-sm text-zinc-500">Click &quot;Run Dataset Evaluation&quot; to test {datasetLimit} questions from the evaluation dataset</p>
+                    <p className="text-xs text-zinc-400 mt-1">Each question will be sent through the full RAG pipeline and scored by LLM-as-judge</p>
+                  </div>
+                )}
+              </section>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">

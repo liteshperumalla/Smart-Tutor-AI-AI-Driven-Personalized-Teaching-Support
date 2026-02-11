@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
+import { toast } from "sonner";
 
 export default function QuizPage() {
   const { token } = useAuthToken();
@@ -107,8 +108,11 @@ export default function QuizPage() {
         questions: payload.questions,
       });
       setAnswers({});
+      toast.success(`Quiz generated with ${payload.questions.length} questions`);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Unable to generate quiz");
+      const msg = error instanceof Error ? error.message : "Unable to generate quiz";
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setIsGenerating(false);
     }
@@ -128,8 +132,12 @@ export default function QuizPage() {
       });
       setResult(response.result);
       setHistory((prev) => [response.result, ...prev]);
+      const pct = response.result?.percentage;
+      toast.success(pct != null ? `Score: ${pct}%` : "Quiz submitted");
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Failed to submit quiz");
+      const msg = error instanceof Error ? error.message : "Failed to submit quiz";
+      setActionError(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }

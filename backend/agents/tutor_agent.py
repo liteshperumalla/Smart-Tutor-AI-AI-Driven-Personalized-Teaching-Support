@@ -30,7 +30,7 @@ Instructions:
 - Answer the student's question using the context provided.
 - Adapt your explanation depth to the student's level ({student_level}).
 - If the student recently studied a related topic, briefly connect to it.
-- Use clear structure: start with a concise answer, then elaborate.
+- Write in a natural, flowing style without section headings like "Concise Answer" or "Elaboration".
 - Include citations like [Source 1] when referencing context.
 
 Student question: {query}

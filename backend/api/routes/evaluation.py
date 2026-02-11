@@ -477,6 +477,190 @@ def get_metrics_history(
     }
 
 
+class DatasetQualityRequest(BaseModel):
+    limit: int = Field(default=10, ge=1, le=64, description="Number of dataset questions to evaluate")
+    model_id: Optional[str] = Field(default=None, description="Optional Bedrock model ID for judging")
+
+
+@router.post("/run-dataset-quality")
+def run_dataset_quality_evaluation(
+    payload: DatasetQualityRequest,
+    session=Depends(get_current_session),
+):
+    """
+    Run the evaluation dataset questions through the current RAG pipeline.
+
+    For each question:
+    1. Retrieve context from S3 vector index
+    2. Generate response with Bedrock LLM
+    3. Score with LLM-as-judge (faithfulness, answer_relevance, context_recall)
+
+    Returns aggregated quality scores + individual results.
+    """
+    import json
+    import time
+    from pathlib import Path
+    from backend.s3_retriever import create_s3_retriever
+    from backend.bedrock_llm import BedrockLLM
+    from backend.services.rag_quality_evaluator import (
+        evaluate_quality,
+        compute_context_precision,
+    )
+
+    eval_dir = Path(__file__).resolve().parents[3] / "Evaluation_files"
+    dataset_file = eval_dir / "evaluation_data.jsonl"
+
+    if not dataset_file.exists():
+        return {
+            "total_evaluated": 0,
+            "quality_summary": None,
+            "individual_results": [],
+            "message": "Evaluation dataset not found at Evaluation_files/evaluation_data.jsonl",
+        }
+
+    # Read questions from JSONL
+    questions = []
+    with open(dataset_file, "r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                entry = json.loads(line.strip())
+                q = entry.get("instruction", "").strip()
+                if q:
+                    questions.append(q)
+            except json.JSONDecodeError:
+                continue
+
+    if not questions:
+        return {
+            "total_evaluated": 0,
+            "quality_summary": None,
+            "individual_results": [],
+            "message": "No questions found in evaluation dataset.",
+        }
+
+    # Limit the number of questions
+    questions = questions[: payload.limit]
+
+    # Initialize retriever and LLM
+    retriever = create_s3_retriever(similarity_top_k=5)
+    llm = BedrockLLM(model_id=payload.model_id or config.BEDROCK_MODEL_ID)
+
+    individual_results = []
+    faithfulness_sum = 0.0
+    answer_relevance_sum = 0.0
+    context_recall_sum = 0.0
+    context_precision_sum = 0.0
+    correctness_sum = 0.0
+    total_latency = 0.0
+    evaluated_count = 0
+
+    for question in questions:
+        try:
+            # 1. Retrieve context
+            t0 = time.time()
+            retrieved_nodes = retriever.retrieve(question)[:5]
+            retrieval_time = time.time() - t0
+
+            context_passages = [
+                node.node.get_text() if hasattr(node.node, "get_text") else ""
+                for node in retrieved_nodes
+            ]
+            # Use original cosine similarity for context_precision (0-1 scale)
+            # After reranking, node.score is the cross-encoder logit; the
+            # original cosine score is stored in metadata.similarity_score.
+            retrieval_scores = [
+                node.node.metadata.get("similarity_score", getattr(node, "score", 0.0))
+                for node in retrieved_nodes
+            ]
+            context_text = "\n\n".join(context_passages)
+
+            # 2. Generate response
+            t1 = time.time()
+            prompt = (
+                f"Based on the following context, provide a concise answer.\n\n"
+                f"Context:\n{context_text}\n\n"
+                f"Question: {question}\n\nAnswer:"
+            )
+            response_text = llm.generate(prompt=prompt, max_tokens=512)
+            generation_time = time.time() - t1
+
+            # 3. LLM-as-judge quality evaluation
+            scores = evaluate_quality(
+                question=question,
+                context_passages=context_passages,
+                answer=response_text,
+                model_id=payload.model_id,
+            )
+            ctx_precision = compute_context_precision(retrieval_scores)
+            scores["context_precision"] = ctx_precision
+
+            latency = round(retrieval_time + generation_time, 3)
+            total_latency += latency
+
+            individual_results.append({
+                "query": question[:120],
+                "faithfulness": scores["faithfulness"],
+                "answer_relevance": scores["answer_relevance"],
+                "context_recall": scores["context_recall"],
+                "context_precision": ctx_precision,
+                "correctness": scores["correctness"],
+                "reasoning": scores.get("reasoning", ""),
+                "latency": latency,
+                "docs_retrieved": len(retrieved_nodes),
+                "avg_retrieval_score": round(
+                    sum(retrieval_scores) / len(retrieval_scores), 4
+                ) if retrieval_scores else 0,
+            })
+
+            faithfulness_sum += scores["faithfulness"]
+            answer_relevance_sum += scores["answer_relevance"]
+            context_recall_sum += scores["context_recall"]
+            context_precision_sum += ctx_precision
+            correctness_sum += scores["correctness"]
+            evaluated_count += 1
+
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                f"Dataset eval failed for question: {question[:80]}: {e}"
+            )
+            individual_results.append({
+                "query": question[:120],
+                "faithfulness": 0,
+                "answer_relevance": 0,
+                "context_recall": 0,
+                "context_precision": 0,
+                "correctness": 0,
+                "reasoning": f"Error: {e}",
+                "latency": 0,
+                "docs_retrieved": 0,
+                "avg_retrieval_score": 0,
+            })
+
+    if evaluated_count == 0:
+        return {
+            "total_evaluated": 0,
+            "quality_summary": None,
+            "individual_results": individual_results,
+            "message": "All evaluations failed.",
+        }
+
+    return {
+        "total_evaluated": evaluated_count,
+        "total_dataset_questions": len(questions),
+        "avg_latency": round(total_latency / evaluated_count, 3),
+        "quality_summary": {
+            "avg_faithfulness": round(faithfulness_sum / evaluated_count, 4),
+            "avg_answer_relevance": round(answer_relevance_sum / evaluated_count, 4),
+            "avg_context_recall": round(context_recall_sum / evaluated_count, 4),
+            "avg_context_precision": round(context_precision_sum / evaluated_count, 4),
+            "avg_correctness": round(correctness_sum / evaluated_count, 4),
+            "evaluated_count": evaluated_count,
+        },
+        "individual_results": individual_results,
+    }
+
+
 @router.get("/export")
 def export_all_metrics(
     format: str = Query(default="json", regex="^(json|csv)$"),

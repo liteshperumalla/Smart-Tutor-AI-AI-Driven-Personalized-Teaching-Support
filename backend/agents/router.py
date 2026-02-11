@@ -34,9 +34,9 @@ _RULES: list[Tuple[str, str, str]] = [
     (
         "doubts_agent",
         "Detected confusion or doubt",
-        r"\b(confused|don'?t understand|doubt|unclear|what (does|is|are)|"
+        r"\b(confused|don'?t understand|doubt|unclear|"
         r"can you clarify|explain again|stuck on|struggling with|help me understand|"
-        r"i'?m lost|makes no sense|difference between)\b",
+        r"i'?m lost|makes no sense|difference between|what does .+ mean)\b",
     ),
     (
         "personalised_agent",

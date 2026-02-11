@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createAppointment, fetchAppointments, AppointmentRecord } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { Calendar, User, Mail, Clock, MessageSquare, Send, CheckCircle, CalendarDays, Users, FileText } from "lucide-react";
+import { toast } from "sonner";
 
 const REASONS = [
   "Discuss course material/concepts",
@@ -52,12 +53,11 @@ export default function AppointmentsPage() {
       setAppointments((prev) => [response.appointment, ...prev]);
       setFormState({ loading: false, error: null, success: true });
       event.currentTarget.reset();
+      toast.success("Appointment requested");
     } catch (error) {
-      setFormState({
-        loading: false,
-        success: false,
-        error: error instanceof Error ? error.message : "Failed to submit request",
-      });
+      const msg = error instanceof Error ? error.message : "Failed to submit request";
+      setFormState({ loading: false, success: false, error: msg });
+      toast.error(msg);
     }
   }
 

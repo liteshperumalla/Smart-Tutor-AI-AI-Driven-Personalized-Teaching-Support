@@ -18,7 +18,7 @@ export function PageShell({
   noCard = false,
 }: PageShellProps) {
   const outerClassName = [
-    "h-full w-full px-4 py-8 sm:px-6 lg:px-8",
+    "mx-auto h-full w-full px-4 py-8 sm:px-6 lg:px-8",
     className,
   ]
     .filter(Boolean)

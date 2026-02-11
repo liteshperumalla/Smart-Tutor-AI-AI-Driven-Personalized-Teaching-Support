@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     nodejs \
     default-jdk \
     golang-go \
+    tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 # Install TypeScript globally (as root)
@@ -34,11 +35,20 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/usr/local/share/nltk_data \
     python -c "import nltk; nltk.download('punkt', download_dir='/usr/local/share/nltk_data'); nltk.download('punkt_tab', download_dir='/usr/local/share/nltk_data')"
 
+# Set HuggingFace / model cache to a writable directory inside /app
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
+ENV HOME=/app
+
+# Pre-download cross-encoder model during build (while still root)
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-12-v2')" || true
+
 # Copy application code with proper ownership
 COPY --chown=appuser:appuser . .
 
 # Create necessary directories with proper ownership
-RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache && \
+RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \
     chown -R appuser:appuser /app
 
 # SECURITY: Switch to non-root user
