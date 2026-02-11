@@ -1,6 +1,10 @@
 """
 S3-based Retriever for LlamaIndex RAG Pipeline
-Wraps S3VectorStore to work with LlamaIndex's retriever interface
+Wraps S3VectorStore to work with LlamaIndex's retriever interface.
+
+Supports optional cross-encoder reranking (controlled by config flags):
+  RERANKING_ENABLED=true   → over-fetch, filter, rerank, return top results
+  RERANKING_ENABLED=false  → original cosine-only retrieval
 """
 
 from typing import Dict, List, Optional
@@ -10,9 +14,28 @@ from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode, QueryBundle
 from backend.s3_vector_store import S3VectorStore
 from backend.bedrock_embeddings import BedrockEmbeddings
+from backend.config import config
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Lazy singleton for cross-encoder (loaded once, reused across requests)
+_cross_encoder_reranker = None
+_cross_encoder_lock = threading.Lock()
+
+
+def _get_cross_encoder():
+    """Return a singleton CrossEncoderReranker (lazy init, thread-safe)."""
+    global _cross_encoder_reranker
+    if _cross_encoder_reranker is None:
+        with _cross_encoder_lock:
+            if _cross_encoder_reranker is None:
+                from backend.rag.reranker import create_cross_encoder_reranker
+                _cross_encoder_reranker = create_cross_encoder_reranker(
+                    model_name=config.RERANK_MODEL
+                )
+                logger.info("Cross-encoder reranker loaded (singleton)")
+    return _cross_encoder_reranker
 
 
 class S3Retriever(BaseRetriever):
@@ -88,9 +111,13 @@ class S3Retriever(BaseRetriever):
                 self._stats["errors"] += 1
             return []
 
+        # Decide how many candidates to fetch
+        use_reranking = config.RERANKING_ENABLED and self.similarity_top_k <= config.RETRIEVAL_FETCH_K
+        fetch_k = config.RETRIEVAL_FETCH_K if use_reranking else self.similarity_top_k
+
         try:
             results = self.vector_store.search(
-                query_embedding=query_embedding, top_k=self.similarity_top_k
+                query_embedding=query_embedding, top_k=fetch_k
             )
         except Exception as e:
             logger.error(f"Error searching S3 vectors: {e}")
@@ -98,9 +125,17 @@ class S3Retriever(BaseRetriever):
                 self._stats["errors"] += 1
             return []
 
-        nodes_with_scores = []
-        chunk_ids = [chunk_id for chunk_id, _, _ in results]
+        # ── Score filtering: drop low-relevance results ──────────
+        min_score = config.MIN_RETRIEVAL_SCORE
+        before_count = len(results)
+        results = [(cid, sc, meta) for cid, sc, meta in results if sc >= min_score]
+        if before_count > len(results):
+            logger.info(
+                f"Score filter: {before_count} → {len(results)} (min={min_score})"
+            )
 
+        # Fetch chunk texts for all remaining candidates
+        chunk_ids = [chunk_id for chunk_id, _, _ in results]
         try:
             chunk_texts = self.vector_store.get_chunk_texts(chunk_ids)
         except Exception as e:
@@ -109,11 +144,61 @@ class S3Retriever(BaseRetriever):
             )
             chunk_texts = {}
 
-        for chunk_id, score, metadata in results:
-            text = chunk_texts.get(chunk_id)
+        # ── Cross-encoder reranking ──────────────────────────────
+        if use_reranking and len(results) > 0:
+            try:
+                reranker = _get_cross_encoder()
+                # Build dicts the reranker expects
+                rerank_input = []
+                for chunk_id, score, metadata in results:
+                    text = chunk_texts.get(chunk_id) or f"[Content from {metadata.get('source_file', 'unknown')}]"
+                    rerank_input.append({
+                        "chunk_id": chunk_id,
+                        "text": text,
+                        "score": score,
+                        "metadata": metadata,
+                    })
 
+                return_k = min(self.similarity_top_k, len(rerank_input))
+                ranked = reranker.rerank(query_str, rerank_input, top_k=return_k)
+
+                # Convert RankedResult → NodeWithScore
+                nodes_with_scores = []
+                for r in ranked:
+                    node = TextNode(
+                        text=r.text,
+                        id_=r.chunk_id,
+                        metadata={
+                            "source_file": r.metadata.get("source_file", "unknown"),
+                            "chunk_index": r.metadata.get("chunk_index", 0),
+                            "s3_key": r.metadata.get("s3_key", ""),
+                            "similarity_score": round(r.original_score or 0, 4),
+                            "rerank_score": round(r.score, 4),
+                        },
+                    )
+                    nodes_with_scores.append(NodeWithScore(node=node, score=r.score))
+
+                latency_ms = (time.time() - start_time) * 1000
+                with self._stats_lock:
+                    self._stats["total_retrievals"] += 1
+                    self._stats["total_nodes_retrieved"] += len(nodes_with_scores)
+                    self._stats["total_latency_ms"] += latency_ms
+
+                logger.info(
+                    f"Reranked {len(rerank_input)} → {len(nodes_with_scores)} nodes "
+                    f"(latency: {latency_ms:.1f}ms) for query: '{query_str[:50]}...'"
+                )
+                return nodes_with_scores
+
+            except Exception as e:
+                logger.warning(f"Reranking failed, falling back to cosine: {e}")
+                # Fall through to cosine-only path below
+
+        # ── Cosine-only fallback (no reranking) ──────────────────
+        nodes_with_scores = []
+        for chunk_id, score, metadata in results[: self.similarity_top_k]:
+            text = chunk_texts.get(chunk_id)
             if not text:
-                logger.debug(f"No text found for chunk {chunk_id}, using metadata")
                 text = f"[Content from {metadata.get('source_file', 'unknown')}]"
 
             node = TextNode(
@@ -126,9 +211,7 @@ class S3Retriever(BaseRetriever):
                     "similarity_score": round(score, 4),
                 },
             )
-
-            node_with_score = NodeWithScore(node=node, score=score)
-            nodes_with_scores.append(node_with_score)
+            nodes_with_scores.append(NodeWithScore(node=node, score=score))
 
         latency_ms = (time.time() - start_time) * 1000
         with self._stats_lock:

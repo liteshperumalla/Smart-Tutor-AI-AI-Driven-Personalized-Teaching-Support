@@ -7,6 +7,7 @@ import {
   updateFeedbackStatus,
   AdminFeedbackEntry,
 } from "@/lib/api";
+import { toast } from "sonner";
 import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp } from "lucide-react";
 
 type TabFilter = "all" | "feedback" | "bug";
@@ -53,8 +54,9 @@ export default function AdminFeedbackPage() {
           e.id === id ? { ...e, status: newStatus as AdminFeedbackEntry["status"] } : e
         )
       );
+      toast.success(`Status changed to ${newStatus}`);
     } catch {
-      // silently fail
+      toast.error("Failed to update status");
     } finally {
       setActionLoading(null);
     }

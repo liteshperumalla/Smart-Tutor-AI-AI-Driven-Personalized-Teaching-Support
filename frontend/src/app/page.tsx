@@ -21,7 +21,6 @@ const DEFAULT_OVERVIEW: HomeOverview = {
   quick_actions: [
     { title: "Chat", description: "Ask the tutor questions about course material.", href: "/chat", icon: "chat" },
     { title: "Generate a quiz", description: "Create practice quizzes from course content.", href: "/quiz", icon: "quiz" },
-    { title: "Research mode", description: "Upload and search your own sources.", href: "/research", icon: "research" },
     { title: "Code sandbox", description: "Write and execute code in multiple languages.", href: "/code", icon: "code" },
     { title: "Appointments", description: "Schedule time with the professor or TA.", href: "/appointments", icon: "calendar" },
     { title: "Evaluation", description: "Run RAG system evaluations and benchmarks.", href: "/evaluation", icon: "chart" },

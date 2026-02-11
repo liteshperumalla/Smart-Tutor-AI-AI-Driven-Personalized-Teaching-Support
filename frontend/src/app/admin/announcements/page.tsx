@@ -9,6 +9,7 @@ import {
   deleteAnnouncement,
   Announcement,
 } from "@/lib/api";
+import { toast } from "sonner";
 import { Megaphone, Plus, Trash2, Edit2, Eye, EyeOff } from "lucide-react";
 
 const priorityStyles: Record<string, string> = {
@@ -71,8 +72,9 @@ export default function AdminAnnouncementsPage() {
       });
       resetForm();
       await load();
+      toast.success("Announcement published");
     } catch {
-      // silently fail
+      toast.error("Failed to create announcement");
     } finally {
       setSaving(false);
     }
@@ -89,8 +91,9 @@ export default function AdminAnnouncementsPage() {
       });
       resetForm();
       await load();
+      toast.success("Announcement updated");
     } catch {
-      // silently fail
+      toast.error("Failed to update announcement");
     } finally {
       setSaving(false);
     }
@@ -103,8 +106,9 @@ export default function AdminAnnouncementsPage() {
       setAnnouncements((prev) =>
         prev.map((a) => (a.id === id ? { ...a, active: !currentActive } : a))
       );
+      toast.success(currentActive ? "Announcement hidden" : "Announcement shown");
     } catch {
-      // silently fail
+      toast.error("Failed to toggle announcement");
     }
   };
 
@@ -114,8 +118,9 @@ export default function AdminAnnouncementsPage() {
       await deleteAnnouncement(token, id);
       setAnnouncements((prev) => prev.filter((a) => a.id !== id));
       setDeleteConfirm(null);
+      toast.success("Announcement deleted");
     } catch {
-      // silently fail
+      toast.error("Failed to delete announcement");
     }
   };
 

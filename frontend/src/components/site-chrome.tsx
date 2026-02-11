@@ -22,6 +22,7 @@ import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { SearchChatsModal } from "@/components/chat/search-chats-modal";
 import { useUser } from "@/hooks/useUser";
+import { toast } from "sonner";
 import {
   Home,
   MessageCircle,
@@ -44,6 +45,7 @@ import {
   Pin,
   Archive,
   ShieldAlert,
+  GraduationCap,
 } from "lucide-react";
 
 type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }>; adminOnly?: boolean };
@@ -114,8 +116,10 @@ export function SiteChrome({
       setRecentSessions((prev) => [next, ...prev.filter((s) => s.id !== next.id)]);
       router.push(`/chat?session=${next.id}`);
       dispatchChatSessionsUpdated();
+      toast.success("New chat created");
     } catch (error) {
       console.error("Failed to create session:", error);
+      toast.error("Failed to create chat");
     } finally {
       setIsCreatingSession(false);
     }
@@ -218,8 +222,10 @@ export function SiteChrome({
       setRenameModalSession(null);
       await loadSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Chat renamed");
     } catch (error) {
       console.error(error);
+      toast.error("Failed to rename chat");
     } finally {
       setIsRenaming(false);
     }
@@ -238,8 +244,10 @@ export function SiteChrome({
       setDeleteModalSession(null);
       await loadSessions();
       dispatchChatSessionsUpdated();
+      toast.success("Chat deleted");
     } catch (error) {
       console.error(error);
+      toast.error("Failed to delete chat");
     } finally {
       setIsDeleting(false);
     }
@@ -251,18 +259,21 @@ export function SiteChrome({
     try {
       const data = await shareChatSession(token, session.id, 7);
       const shareUrl = `${window.location.origin}${data.share_url}`;
-      
+
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(shareUrl);
         setShareStatus({ sharing: false, message: "Link copied!", shareUrl });
+        toast.success("Share link copied to clipboard");
       } else {
         setShareStatus({ sharing: false, message: "Link created!", shareUrl });
+        toast.success("Share link created");
       }
-      
+
       setTimeout(() => setShareStatus({ sharing: false, message: null, shareUrl: null }), 3000);
     } catch (error) {
       console.error(error);
       setShareStatus({ sharing: false, message: "Failed to share", shareUrl: null });
+      toast.error("Failed to create share link");
     }
   };
 
@@ -277,8 +288,10 @@ export function SiteChrome({
       await pinChatSession(token, session.id, !session.is_pinned);
       await loadSessions();
       dispatchChatSessionsUpdated();
+      toast.success(session.is_pinned ? "Chat unpinned" : "Chat pinned");
     } catch (error) {
       console.error("Failed to pin session:", error);
+      toast.error("Failed to pin chat");
     }
   };
 
@@ -289,8 +302,10 @@ export function SiteChrome({
       await archiveChatSession(token, session.id, !session.is_archived);
       await loadSessions();
       dispatchChatSessionsUpdated();
+      toast.success(session.is_archived ? "Chat unarchived" : "Chat archived");
     } catch (error) {
       console.error("Failed to archive session:", error);
+      toast.error("Failed to archive chat");
     }
   };
 
@@ -507,18 +522,39 @@ export function SiteChrome({
         </nav>
 
         <div className="border-t border-zinc-200 px-6 pb-3 pt-5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-          {/* User Role Badge */}
+          {/* User Card */}
           {isLoggedIn && user && (
-            <div className="flex items-center gap-2 mb-3">
-              <User className="h-3.5 w-3.5 text-zinc-400" />
-              <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 truncate">
-                {user.username}
-              </span>
-              {isAdmin && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                  Admin
-                </span>
-              )}
+            <div className="mb-3 flex items-center gap-3 rounded-xl border border-zinc-200 bg-white/80 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/60">
+              {/* Avatar */}
+              <div
+                className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                  isAdmin
+                    ? "bg-gradient-to-br from-amber-500 to-orange-600"
+                    : "bg-gradient-to-br from-indigo-500 to-violet-600"
+                }`}
+              >
+                {(user.display_name || user.full_name || user.username || "?").charAt(0).toUpperCase()}
+              </div>
+              {/* Info */}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-zinc-900 dark:text-white">
+                  {user.display_name || user.full_name || user.username}
+                </p>
+                <p className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
+                  {user.email}
+                </p>
+                {isAdmin ? (
+                  <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                    <ShieldAlert className="h-3 w-3" />
+                    Admin
+                  </span>
+                ) : (
+                  <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
+                    <GraduationCap className="h-3 w-3" />
+                    Student
+                  </span>
+                )}
+              </div>
             </div>
           )}
           <p>
@@ -574,12 +610,11 @@ export function SiteChrome({
 
       {/* Main content area with fixed footer */}
       <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-all duration-300 dark:bg-zinc-950 dark:text-white ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-64'}`}>
-        {/* Scrollable content area — full-height routes get no padding/overflow so they manage their own layout */}
-        <main className={isFullHeightRoute ? "flex-1 flex flex-col overflow-hidden" : "flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-8"}>{children}</main>
+        {/* Scrollable content area — full-height routes get reduced bottom padding so they manage their own layout */}
+        <main className={isFullHeightRoute ? "flex-1 flex flex-col overflow-hidden pb-12" : "flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-8"}>{children}</main>
 
-        {/* Fixed Footer Nav — hidden on full-height routes like Chat */}
-        {!isFullHeightRoute && (
-          <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
+        {/* Fixed Footer Nav */}
+        <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
             <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-center">
               <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs uppercase tracking-[0.2em]">
                 {navLinks
@@ -600,7 +635,6 @@ export function SiteChrome({
               </div>
             </div>
           </footer>
-        )}
       </div>
 
       {/* Delete Chat Modal */}

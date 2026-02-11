@@ -61,10 +61,10 @@ def _quiz_profile(username: str) -> Dict[str, Any]:
             cursor.execute(
                 """
                 SELECT
-                    jsonb_array_elements_text(quiz_data->'metadata'->'selected_folders') AS folder,
+                    jsonb_array_elements_text(metadata->'selected_folders') AS folder,
                     COUNT(*) AS cnt
                 FROM quiz_results
-                WHERE username = %s AND quiz_data ? 'metadata'
+                WHERE username = %s AND metadata ? 'selected_folders'
                 GROUP BY folder
                 ORDER BY cnt DESC
                 LIMIT 5
@@ -81,10 +81,10 @@ def _quiz_profile(username: str) -> Dict[str, Any]:
                     AVG(score::float / NULLIF(total_questions, 0) * 100) AS avg_score
                 FROM (
                     SELECT
-                        jsonb_array_elements_text(quiz_data->'metadata'->'selected_folders') AS folder,
+                        jsonb_array_elements_text(metadata->'selected_folders') AS folder,
                         score, total_questions
                     FROM quiz_results
-                    WHERE username = %s AND quiz_data ? 'metadata' AND total_questions > 0
+                    WHERE username = %s AND metadata ? 'selected_folders' AND total_questions > 0
                 ) sub
                 GROUP BY folder
                 ORDER BY avg_score ASC

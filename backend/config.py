@@ -301,6 +301,15 @@ class Config:
     RERANK_TOP_K = int(os.getenv("RERANK_TOP_K", "5"))
     MIN_RERANK_SCORE = float(os.getenv("MIN_RERANK_SCORE", "0.20"))
 
+    # Cross-Encoder Reranking — fetch more candidates, rerank, return top results
+    # Disabled by default: ms-marco cross-encoder underperforms cosine for educational content.
+    # Enable for web-search-style queries or after training a domain-specific model.
+    RERANKING_ENABLED = os.getenv("RERANKING_ENABLED", "false").lower() == "true"
+    RETRIEVAL_FETCH_K = int(os.getenv("RETRIEVAL_FETCH_K", "10"))  # Over-fetch count
+    RERANK_RETURN_K = int(os.getenv("RERANK_RETURN_K", "3"))  # Final results after reranking
+    RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-12-v2")
+    MIN_RETRIEVAL_SCORE = float(os.getenv("MIN_RETRIEVAL_SCORE", "0.25"))  # Filter low-quality docs
+
     # Query Expansion Settings (Phase 1)
     QUERY_EXPANSION_ENABLED = (
         os.getenv("QUERY_EXPANSION_ENABLED", "true").lower() == "true"
@@ -453,7 +462,7 @@ class Config:
     # File Upload Settings
     MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", "10485760"))  # 10MB default
     ALLOWED_EXTENSIONS = os.getenv(
-        "ALLOWED_EXTENSIONS", ".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg"
+        "ALLOWED_EXTENSIONS", ".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg,.py,.ipynb"
     ).split(",")
 
     # Logging Settings

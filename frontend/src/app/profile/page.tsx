@@ -25,6 +25,7 @@ import {
   User, Camera, Mail, Phone, Calendar, Trophy, Clock,
   MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote, ShieldAlert, BarChart3, Users, Settings
 } from "lucide-react";
+import { toast } from "sonner";
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -161,12 +162,11 @@ export default function ProfilePage() {
       setProfile((prev) => (prev ? { ...prev, user: { ...prev.user, ...updated } } : prev));
       setTheme(updated.theme);
       setProfileStatus({ saving: false, message: "Profile updated.", error: null });
+      toast.success("Profile updated");
     } catch (err) {
-      setProfileStatus({
-        saving: false,
-        message: null,
-        error: err instanceof Error ? err.message : "Failed to save profile information.",
-      });
+      const msg = err instanceof Error ? err.message : "Failed to save profile information.";
+      setProfileStatus({ saving: false, message: null, error: msg });
+      toast.error(msg);
     }
   }
 
@@ -182,12 +182,11 @@ export default function ProfilePage() {
       setProfile((prev) => (prev ? { ...prev, profile_picture: encoded || null } : prev));
       setPictureFile(null);
       setPictureStatus({ loading: false, error: null, success: "Profile picture updated." });
+      toast.success("Profile picture updated");
     } catch (err) {
-      setPictureStatus({
-        loading: false,
-        success: null,
-        error: err instanceof Error ? err.message : "Failed to upload picture.",
-      });
+      const msg = err instanceof Error ? err.message : "Failed to upload picture.";
+      setPictureStatus({ loading: false, success: null, error: msg });
+      toast.error(msg);
     }
   }
 
@@ -199,12 +198,11 @@ export default function ProfilePage() {
       const saved = await saveProfileNotes({ token, content: notes });
       setNotes(saved);
       setNotesStatus({ saving: false, message: "Notes saved.", error: null });
+      toast.success("Notes saved");
     } catch (err) {
-      setNotesStatus({
-        saving: false,
-        message: null,
-        error: err instanceof Error ? err.message : "Failed to save notes.",
-      });
+      const msg = err instanceof Error ? err.message : "Failed to save notes.";
+      setNotesStatus({ saving: false, message: null, error: msg });
+      toast.error(msg);
     }
   }
 
@@ -224,12 +222,11 @@ export default function ProfilePage() {
       });
       setPasswordForm({ current: "", next: "", confirm: "" });
       setPasswordStatus({ saving: false, message: "Password updated.", error: null });
+      toast.success("Password updated");
     } catch (err) {
-      setPasswordStatus({
-        saving: false,
-        message: null,
-        error: err instanceof Error ? err.message : "Could not update password.",
-      });
+      const msg = err instanceof Error ? err.message : "Could not update password.";
+      setPasswordStatus({ saving: false, message: null, error: msg });
+      toast.error(msg);
     }
   }
 
@@ -271,14 +268,14 @@ export default function ProfilePage() {
               <div className="h-10 w-full bg-zinc-200 dark:bg-zinc-700 rounded"></div>
             </div>
           </article>
-          <article className="rounded-2xl-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
             <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
             <div className="h-4 w-32 bg-zinc-100 dark:bg-zinc-800 rounded mb-4"></div>
             <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2"></div>
             <div className="h-4 w-3/4 bg-zinc-100 dark:bg-zinc-800 rounded mb-4"></div>
             <div className="h-4 w-24 bg-zinc-100 dark:bg-zinc-800 rounded"></div>
           </article>
-          <article className="rounded-2xl-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <article className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
             <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
             <div className="grid gap-3 text-sm">
               <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">

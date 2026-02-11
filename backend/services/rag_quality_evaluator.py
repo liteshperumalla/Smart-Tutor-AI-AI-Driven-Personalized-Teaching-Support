@@ -58,13 +58,17 @@ Respond with ONLY a JSON object (no markdown, no extra text):
 
 def compute_context_precision(
     retrieval_scores: List[float],
-    relevance_threshold: float = 0.5,
+    relevance_threshold: float = 0.3,
 ) -> float:
     """Compute context precision from retrieval similarity scores.
 
     This is a cheap, pure-computation metric that can run on every query.
     It measures what fraction of retrieved documents exceed the relevance
     threshold — i.e., how precise the retrieval was.
+
+    Note: Bedrock Titan embeddings for educational content typically produce
+    cosine similarities in the 0.3-0.6 range.  The default threshold of 0.3
+    reflects the true score distribution for this domain.
 
     Args:
         retrieval_scores: Similarity scores from the retriever (0-1).

@@ -75,17 +75,10 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // API rewrites for development
-  async rewrites() {
-    const backendUrl = process.env.BACKEND_API_BASE_URL || "http://localhost:8010";
-
-    return [
-      {
-        source: "/api/backend/:path*",
-        destination: `${backendUrl}/:path*`,
-      },
-    ];
-  },
+  // Backend proxy is handled by /api/backend/[...path]/route.ts
+  // which supports long-running requests (maxDuration=300s).
+  // Do NOT add rewrites for /api/backend/* here — they conflict
+  // with the route handler and use a shorter proxy timeout.
 };
 
 export default nextConfig;

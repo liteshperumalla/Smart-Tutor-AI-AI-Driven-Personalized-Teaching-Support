@@ -90,9 +90,4 @@ QUICK_ACTIONS = [
         "description": "Write and execute code in multiple languages.",
         "href": "/code",
     },
-    {
-        "title": "Research mode",
-        "description": "Upload sources and preview citations.",
-        "href": "/research",
-    },
 ]

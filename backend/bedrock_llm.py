@@ -175,13 +175,27 @@ class BedrockLLM:
             logger.error(f"[Bedrock] Generation error: {e}", exc_info=True)
             raise
 
+    def _format_llama_prompt(self, prompt: str) -> str:
+        """Wrap raw prompt in Llama 3 Instruct chat template."""
+        return (
+            "<|begin_of_text|>"
+            "<|start_header_id|>system<|end_header_id|>\n\n"
+            "You are a helpful, knowledgeable AI tutor. "
+            "Always provide clear, structured, and educational responses.<|eot_id|>"
+            "<|start_header_id|>user<|end_header_id|>\n\n"
+            f"{prompt}<|eot_id|>"
+            "<|start_header_id|>assistant<|end_header_id|>\n\n"
+        )
+
     def _generate_llama(
         self, prompt: str, max_tokens: int, temperature: float, top_p: float, **kwargs
     ) -> str:
         """Generate using Llama model"""
 
+        formatted_prompt = self._format_llama_prompt(prompt)
+
         request_body = {
-            "prompt": prompt,
+            "prompt": formatted_prompt,
             "max_gen_len": max_tokens,
             "temperature": temperature,
             "top_p": top_p,

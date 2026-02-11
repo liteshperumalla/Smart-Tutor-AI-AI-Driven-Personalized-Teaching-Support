@@ -153,6 +153,7 @@ services:
       - ./previous_chats:/app/previous_chats
       - ./quiz_results:/app/quiz_results
       - ./data:/app/data
+      - ./Evaluation_files:/app/Evaluation_files
     networks:
       - smart-tutor-network
     restart: unless-stopped

@@ -197,6 +197,24 @@ export function SourcesSidebar({
     );
   };
 
+  const getExternalUrl = (source: Source): string | null => {
+    const url =
+      (typeof source.external_url === "string" ? source.external_url : null) ||
+      (typeof source.url === "string" ? source.url : null) ||
+      (typeof source.link === "string" ? source.link : null) ||
+      (typeof source.source_link === "string" ? source.source_link : null) ||
+      (typeof source.web_url === "string" ? source.web_url : null);
+    return url || null;
+  };
+
+  const getDomain = (url: string): string => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch {
+      return url;
+    }
+  };
+
   return (
     <>
       {/* Backdrop */}
@@ -256,6 +274,7 @@ export function SourcesSidebar({
               const location = getSourceLocation(source);
               const snippet = getSourceSnippet(source);
               const isExternal = isExternalSource(source);
+              const externalUrl = isExternal ? getExternalUrl(source) : null;
 
               return (
                 <button
@@ -270,9 +289,16 @@ export function SourcesSidebar({
                       ) : (
                         <FileText className="h-4 w-4 text-zinc-400 flex-shrink-0" />
                       )}
-                      <span className="font-medium text-zinc-900 dark:text-white truncate">
-                        {label}
-                      </span>
+                      <div className="flex-1 min-w-0">
+                        <span className="block font-medium text-zinc-900 dark:text-white truncate">
+                          {label}
+                        </span>
+                        {externalUrl && (
+                          <span className="block text-xs text-blue-500 dark:text-blue-400 truncate">
+                            {getDomain(externalUrl)}
+                          </span>
+                        )}
+                      </div>
                       {location && (
                         <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-shrink-0">
                           • {location}
@@ -281,6 +307,9 @@ export function SourcesSidebar({
                     </div>
                     <ExternalLink className="h-4 w-4 text-zinc-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
+                  {snippet && (
+                    <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">{snippet}</p>
+                  )}
                 </button>
               );
             })

@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { toast } from "sonner";
 import { Code2, Play, Sparkles, Bug, BookOpen, Send, Bot, Terminal } from "lucide-react";
 
 const SUPPORTED_LANGUAGES: CodeLanguage[] = ["python", "javascript", "java"];
@@ -82,9 +83,13 @@ export default function CodeSandboxPage() {
       const result = await executeCode({ token, code, language });
       setOutput(result.output);
       setOutputSuccess(result.success);
+      if (result.success) toast.success("Code executed");
+      else toast.error("Execution failed");
     } catch (err) {
-      setOutput(err instanceof Error ? err.message : "Execution failed");
+      const msg = err instanceof Error ? err.message : "Execution failed";
+      setOutput(msg);
       setOutputSuccess(false);
+      toast.error(msg);
     } finally {
       setRunningCode(false);
     }
@@ -98,8 +103,11 @@ export default function CodeSandboxPage() {
     try {
       const result = await generateCode({ token, prompt: generatePrompt, language });
       setGeneratedCode(result.code);
+      toast.success("Code generated");
     } catch (err) {
-      setGeneratedCode(`Error: ${err instanceof Error ? err.message : "Generation failed"}`);
+      const msg = err instanceof Error ? err.message : "Generation failed";
+      setGeneratedCode(`Error: ${msg}`);
+      toast.error(msg);
     } finally {
       setGenerating(false);
     }
@@ -112,8 +120,11 @@ export default function CodeSandboxPage() {
     try {
       const result = await explainCode({ token, code, language });
       setExplanation(result.explanation);
+      toast.success("Explanation ready");
     } catch (err) {
-      setExplanation(`Error: ${err instanceof Error ? err.message : "Explanation failed"}`);
+      const msg = err instanceof Error ? err.message : "Explanation failed";
+      setExplanation(`Error: ${msg}`);
+      toast.error(msg);
     } finally {
       setExplaining(false);
     }
@@ -130,8 +141,11 @@ export default function CodeSandboxPage() {
         debugOutput += `\n\n--- Fixed Code ---\n${result.fixed_code}`;
       }
       setDebugResult(debugOutput);
+      toast.success("Debug analysis complete");
     } catch (err) {
-      setDebugResult(`Error: ${err instanceof Error ? err.message : "Debugging failed"}`);
+      const msg = err instanceof Error ? err.message : "Debugging failed";
+      setDebugResult(`Error: ${msg}`);
+      toast.error(msg);
     } finally {
       setDebugging(false);
     }
@@ -158,11 +172,13 @@ export default function CodeSandboxPage() {
       };
       setChatHistory((prev) => [...prev, assistantMessage]);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Chat failed";
       const errorMessage: CodeChatMessage = {
         role: "assistant",
-        content: `Error: ${err instanceof Error ? err.message : "Chat failed"}`,
+        content: `Error: ${msg}`,
       };
       setChatHistory((prev) => [...prev, errorMessage]);
+      toast.error(msg);
     } finally {
       setChatLoading(false);
     }

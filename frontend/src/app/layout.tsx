@@ -4,6 +4,8 @@ import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { ToastProvider } from "@/components/toast-provider";
+import { AnnouncementToaster } from "@/components/announcement-toaster";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,6 +45,8 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ErrorBoundary>
           <ThemeProvider>
+            <ToastProvider />
+            <AnnouncementToaster />
             <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
           </ThemeProvider>
         </ErrorBoundary>

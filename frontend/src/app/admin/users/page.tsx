@@ -8,6 +8,7 @@ import {
   deleteAdminUser,
   AdminUser,
 } from "@/lib/api";
+import { toast } from "sonner";
 import { Users, ShieldAlert, Trash2, Search } from "lucide-react";
 
 export default function AdminUsersPage() {
@@ -44,8 +45,9 @@ export default function AdminUsersPage() {
       setUsers((prev) =>
         prev.map((u) => (u.username === username ? { ...u, role: newRole } : u))
       );
+      toast.success(`Role updated to ${newRole}`);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to update role");
+      toast.error(err instanceof Error ? err.message : "Failed to update role");
     } finally {
       setActionLoading(null);
     }
@@ -58,8 +60,9 @@ export default function AdminUsersPage() {
       await deleteAdminUser(token, username);
       setUsers((prev) => prev.filter((u) => u.username !== username));
       setDeleteConfirm(null);
+      toast.success("User deleted");
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to delete user");
+      toast.error(err instanceof Error ? err.message : "Failed to delete user");
     } finally {
       setActionLoading(null);
     }

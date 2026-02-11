@@ -37,6 +37,7 @@ function getFileIcon(file: File) {
   if (name.endsWith(".pptx") || name.endsWith(".ppt")) return FileText;
   if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) return FileSpreadsheet;
   if (name.endsWith(".py") || name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".jsx") || name.endsWith(".tsx")) return FileCode;
+  if (name.endsWith(".ipynb")) return FileCode;
   if (name.endsWith(".json") || name.endsWith(".xml") || name.endsWith(".yaml") || name.endsWith(".yml")) return FileCode;
   return File;
 }
@@ -54,6 +55,7 @@ function getFileTypeColor(file: File): string {
   if (name.endsWith(".pptx") || name.endsWith(".ppt")) return "bg-orange-500";
   if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) return "bg-emerald-500";
   if (name.endsWith(".py")) return "bg-yellow-500";
+  if (name.endsWith(".ipynb")) return "bg-orange-600";
   if (name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".jsx") || name.endsWith(".tsx")) return "bg-cyan-500";
   return "bg-zinc-500";
 }

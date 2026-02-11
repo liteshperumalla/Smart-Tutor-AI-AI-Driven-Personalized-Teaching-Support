@@ -136,7 +136,7 @@ export default function SharedChatPage() {
         </div>
       </header>
 
-      <section className="flex flex-col rounded-3xl-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div className="flex items-center justify-between-b-zinc-100 px-6 py-4 dark:border-zinc-800">
           <div>
             <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">

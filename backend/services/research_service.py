@@ -217,8 +217,24 @@ class ResearchService:
         text = ""
         thumbnail = None
 
-        if extension in {".txt", ".md", ".csv"}:
+        if extension in {".txt", ".md", ".csv", ".py"}:
             text = content.decode("utf-8", errors="ignore")
+            preview_type = "text"
+        elif extension == ".ipynb":
+            try:
+                notebook = json.loads(content.decode("utf-8", errors="ignore"))
+                cell_texts = []
+                for cell in notebook.get("cells", []):
+                    source = "".join(cell.get("source", []))
+                    cell_type = cell.get("cell_type", "code")
+                    if source.strip():
+                        if cell_type == "code":
+                            cell_texts.append(f"# Code Cell\n{source}")
+                        else:
+                            cell_texts.append(source)
+                text = "\n\n".join(cell_texts)
+            except (json.JSONDecodeError, KeyError):
+                text = content.decode("utf-8", errors="ignore")
             preview_type = "text"
         elif extension == ".pdf":
             with fitz.open(stream=content, filetype="pdf") as pdf_doc:
@@ -323,8 +339,27 @@ class ResearchService:
             parsed = self._extract_text_from_file(content, filename)
             text = parsed["text"]
 
+            # For images, allow empty OCR text — build description from image metadata
             if not text.strip():
-                raise ValueError("No readable text extracted from file")
+                extension = Path(filename or "").suffix.lower()
+                if extension in {".png", ".jpg", ".jpeg"}:
+                    try:
+                        img = Image.open(io.BytesIO(content))
+                        w, h = img.size
+                        fmt = (img.format or extension.lstrip(".")).upper()
+                        mode = img.mode  # e.g. RGB, RGBA, L (grayscale)
+                        size_kb = round(len(content) / 1024, 1)
+                        text = (
+                            f"[Uploaded image: {filename}]\n"
+                            f"Format: {fmt}, Dimensions: {w}x{h}px, "
+                            f"Color mode: {mode}, Size: {size_kb} KB"
+                        )
+                    except Exception:
+                        text = f"[Uploaded image: {filename}]"
+                    parsed["text"] = text
+                    parsed["excerpt"] = text.split("\n")[0]
+                else:
+                    raise ValueError("No readable text extracted from file")
 
             self._upload_file_to_s3(content, s3_file_key)
 
@@ -506,6 +541,55 @@ class ResearchService:
             text=transcript.strip()[:800],
             source=f"https://www.youtube.com/watch?v={video_id}",
         )
+
+    def get_chunks_by_file_ids(
+        self, file_ids: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Fetch all text chunks for the given uploaded file IDs (by metadata lookup)."""
+        try:
+            import boto3
+            s3 = boto3.client("s3", region_name="us-east-1")
+            all_chunks: List[Dict[str, Any]] = []
+
+            for fid in file_ids:
+                # Read file metadata to get chunks_prefix
+                meta_key = f"{UPLOADS_PREFIX}metadata/{fid}.json"
+                try:
+                    meta_resp = s3.get_object(Bucket=self._uploads_bucket, Key=meta_key)
+                    meta = json.loads(meta_resp["Body"].read())
+                except Exception:
+                    logger.warning("Metadata not found for file %s", fid)
+                    continue
+
+                prefix = meta.get("chunks_prefix", "")
+                if not prefix:
+                    continue
+
+                paginator = s3.get_paginator("list_objects_v2")
+                for page in paginator.paginate(Bucket=self._uploads_bucket, Prefix=prefix):
+                    for obj in page.get("Contents", []):
+                        key = obj["Key"]
+                        if not key.endswith(".json"):
+                            continue
+                        try:
+                            resp = s3.get_object(Bucket=self._uploads_bucket, Key=key)
+                            chunk = json.loads(resp["Body"].read())
+                            all_chunks.append({
+                                "id": chunk.get("chunk_id"),
+                                "text": chunk.get("text", ""),
+                                "score": 1.0,
+                                "source_file": chunk.get("source_file", fid),
+                                "chunk_index": chunk.get("chunk_index", 0),
+                                "is_uploaded": True,
+                            })
+                        except Exception:
+                            continue
+
+            all_chunks.sort(key=lambda x: x.get("chunk_index", 0))
+            return all_chunks
+        except Exception as e:
+            logger.error("Error fetching chunks by file IDs: %s", e)
+            return []
 
     def _search_uploaded_chunks(
         self, query: str, top_k: int = 5

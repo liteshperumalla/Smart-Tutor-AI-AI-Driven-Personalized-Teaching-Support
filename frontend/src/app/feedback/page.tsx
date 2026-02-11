@@ -8,6 +8,7 @@ import { postJSON } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { MessageSquare, Bug, User, Mail, Tag, FileText, Send, CheckCircle, AlertTriangle, Sparkles, ThumbsUp, Zap, ShieldAlert } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
+import { toast } from "sonner";
 
 type FeedbackType = 'feedback' | 'bug';
 
@@ -71,12 +72,11 @@ export default function FeedbackPage() {
 
       setFormState({ loading: false, error: null, success: true });
       event.currentTarget.reset();
+      toast.success("Feedback submitted, thank you!");
     } catch (error) {
-      setFormState({
-        loading: false,
-        error: error instanceof Error ? error.message : "Failed to submit",
-        success: false,
-      });
+      const msg = error instanceof Error ? error.message : "Failed to submit";
+      setFormState({ loading: false, error: msg, success: false });
+      toast.error(msg);
     }
   }
 
