@@ -39,7 +39,7 @@ spec:
 
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: 4000
               protocol: TCP
 
           # Environment variables from ConfigMap

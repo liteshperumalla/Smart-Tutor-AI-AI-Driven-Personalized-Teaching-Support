@@ -80,7 +80,7 @@ distro==1.9.0
     #   posthog
 durationpy==0.10
     # via kubernetes
-filelock==3.20.0
+filelock==3.20.3
     # via
     #   huggingface-hub
     #   torch
@@ -344,7 +344,7 @@ packaging==24.2
     #   transformers
 pandas==2.2.3
     # via llama-index-readers-file
-pillow==12.0.0
+pillow==12.1.1
     # via
     #   llama-index-core
     #   sentence-transformers
@@ -361,14 +361,14 @@ propcache==0.4.1
     #   yarl
 proto-plus==1.26.1
     # via google-api-core
-protobuf==6.33.2
+protobuf==6.33.5
     # via
     #   google-api-core
     #   googleapis-common-protos
     #   onnxruntime
     #   opentelemetry-proto
     #   proto-plus
-pyasn1==0.6.1
+pyasn1==0.6.2
     # via
     #   pyasn1-modules
     #   rsa
@@ -394,7 +394,7 @@ pygments==2.19.2
     # via rich
 pyparsing==3.2.5
     # via httplib2
-pypdf==6.4.0
+pypdf==6.6.2
     # via llama-index-readers-file
 pypika==0.48.9
     # via chromadb

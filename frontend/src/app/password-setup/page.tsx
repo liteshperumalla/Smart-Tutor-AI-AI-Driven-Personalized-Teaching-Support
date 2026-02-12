@@ -1,13 +1,14 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 
-export default function PasswordSetupPage() {
+function PasswordSetupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
@@ -16,11 +17,16 @@ export default function PasswordSetupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const storedUsername = window.sessionStorage.getItem("password_setup_username");
-    const storedToken = window.sessionStorage.getItem("password_setup_token");
-    if (storedUsername) setUsername(storedUsername);
-    if (storedToken) setToken(storedToken);
-  }, []);
+    // Read token from URL params (passed from Google callback) and clear the URL
+    const paramToken = searchParams.get("token");
+    const paramUsername = searchParams.get("username");
+    if (paramToken) setToken(paramToken);
+    if (paramUsername) setUsername(paramUsername);
+    // Clean sensitive data from URL bar
+    if (paramToken || paramUsername) {
+      window.history.replaceState({}, "", "/password-setup");
+    }
+  }, [searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,8 +54,6 @@ export default function PasswordSetupPage() {
       if (!response.ok) {
         throw new Error(payload.detail || "Unable to set password");
       }
-      window.sessionStorage.removeItem("password_setup_username");
-      window.sessionStorage.removeItem("password_setup_token");
       saveAuthToken("authenticated");
       router.replace("/");
     } catch (err) {
@@ -144,5 +148,19 @@ export default function PasswordSetupPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function PasswordSetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
+        <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-bold text-zinc-900">Loading…</h1>
+        </div>
+      </div>
+    }>
+      <PasswordSetupContent />
+    </Suspense>
   );
 }

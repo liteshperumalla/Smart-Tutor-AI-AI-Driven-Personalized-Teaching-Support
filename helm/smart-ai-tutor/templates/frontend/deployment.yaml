@@ -46,7 +46,7 @@ spec:
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: 4000
               protocol: TCP
           env:
             - name: NODE_ENV
@@ -65,7 +65,7 @@ spec:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
             initialDelaySeconds: {{ .Values.frontend.livenessProbe.initialDelaySeconds | default 30 }}
             periodSeconds: {{ .Values.frontend.livenessProbe.periodSeconds | default 10 }}
@@ -73,7 +73,7 @@ spec:
             failureThreshold: {{ .Values.frontend.livenessProbe.failureThreshold | default 3 }}
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
             initialDelaySeconds: {{ .Values.frontend.readinessProbe.initialDelaySeconds | default 10 }}
             periodSeconds: {{ .Values.frontend.readinessProbe.periodSeconds | default 5 }}
@@ -81,7 +81,7 @@ spec:
             failureThreshold: {{ .Values.frontend.readinessProbe.failureThreshold | default 3 }}
           startupProbe:
             httpGet:
-              path: /api/health
+              path: /
               port: http
             initialDelaySeconds: {{ .Values.frontend.startupProbe.initialDelaySeconds | default 0 }}
             periodSeconds: {{ .Values.frontend.startupProbe.periodSeconds | default 5 }}

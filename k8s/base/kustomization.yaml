@@ -42,8 +42,8 @@ resources:
 # Images
 images:
   - name: smart-ai-tutor-backend
-    newName: <REGISTRY>/smart-ai-tutor-backend
+    newName: ghcr.io/liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support-backend
     newTag: latest
   - name: smart-ai-tutor-frontend
-    newName: <REGISTRY>/smart-ai-tutor-frontend
+    newName: ghcr.io/liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support-frontend
     newTag: latest

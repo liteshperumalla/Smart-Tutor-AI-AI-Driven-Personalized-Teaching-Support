@@ -45,8 +45,8 @@ def get_secret(secret_name: str, region: str = "us-east-1") -> Optional[Dict[str
         else:
             logger.error(f"Error fetching secret {secret_name}: {e}")
         return None
-    except Exception as e:
-        logger.error(f"Unexpected error fetching secret {secret_name}: {e}")
+    except Exception:
+        logger.error(f"Unexpected error fetching secret {secret_name}")
         return None
 
 

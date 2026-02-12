@@ -1847,10 +1847,17 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ content, sources, isStreaming, onOpenSources }: MarkdownContentProps) {
-  const sanitizeText = (raw: string) =>
-    raw
-      .replace(/<[^>]*>/g, "")
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+  const sanitizeText = (raw: string) => {
+    // Iteratively strip HTML tags to prevent bypass via nested tags
+    // e.g. "<scr<script>ipt>" → "<script>" after one pass
+    let result = raw;
+    let prev = "";
+    while (result !== prev) {
+      prev = result;
+      result = result.replace(/<[^>]*>/g, "");
+    }
+    return result.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+  };
 
   const safeContent = sanitizeText(content || "");
 

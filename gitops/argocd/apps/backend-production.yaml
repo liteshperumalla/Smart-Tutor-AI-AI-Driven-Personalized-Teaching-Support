@@ -17,7 +17,7 @@ spec:
 
   # Source configuration
   source:
-    repoURL: https://github.com/your-org/smart-ai-tutor
+    repoURL: https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support
     targetRevision: main
     path: helm/smart-ai-tutor
 

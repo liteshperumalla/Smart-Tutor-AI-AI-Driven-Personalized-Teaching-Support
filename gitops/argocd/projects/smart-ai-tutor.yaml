@@ -11,8 +11,8 @@ spec:
 
   # Source repositories
   sourceRepos:
-    - 'https://github.com/your-org/smart-ai-tutor'
-    - 'https://github.com/your-org/smart-ai-tutor-gitops'  # Separate GitOps repo (recommended)
+    - 'https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support'
+    - 'https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support-gitops'
 
   # Destination clusters and namespaces
   destinations:
@@ -52,7 +52,7 @@ spec:
         - p, proj:smart-ai-tutor:developer, applications, sync, smart-ai-tutor/*-staging, allow
         - p, proj:smart-ai-tutor:developer, applications, override, smart-ai-tutor/*-dev, allow
       groups:
-        - your-org:developers
+        - liteshperumalla:developers
 
     # DevOps role - full access
     - name: devops
@@ -60,7 +60,7 @@ spec:
       policies:
         - p, proj:smart-ai-tutor:devops, applications, *, smart-ai-tutor/*, allow
       groups:
-        - your-org:devops
+        - liteshperumalla:devops
 
   # Sync windows - prevent deployments during certain times
   syncWindows:

@@ -11,7 +11,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Delay configuration
   delay:
@@ -50,7 +51,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Loss configuration
   loss:
@@ -78,7 +80,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Direction
   direction: to
@@ -112,7 +115,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Bandwidth configuration
   bandwidth:

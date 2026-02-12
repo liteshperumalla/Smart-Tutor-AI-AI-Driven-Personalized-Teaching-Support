@@ -93,9 +93,9 @@ def update_user_role(
     svc = get_admin_service()
     try:
         svc.update_user_role(username, payload.role)
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     return {"success": True, "username": username, "role": payload.role}
 
