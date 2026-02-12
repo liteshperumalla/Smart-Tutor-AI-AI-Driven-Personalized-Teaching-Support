@@ -6,6 +6,12 @@ This directory contains standalone scripts for setup, migration, testing, and ma
 
 ```
 scripts/
+├── _helpers.sh    — Shared functions for dev scripts
+├── dev.sh         — Rebuild & restart services
+├── health.sh      — Service health dashboard
+├── logs.sh        — Smart log viewer
+├── test.sh        — Unified test runner
+├── db.sh          — Database operations
 ├── aws/           (13 scripts) - AWS infrastructure setup
 ├── s3-vectors/    (19 scripts) - S3 vector index management
 ├── migration/     (7 scripts)  - Data migration tools
@@ -124,6 +130,64 @@ Authentication and OAuth setup.
 
 ---
 
+## Development Automation Scripts
+
+Daily-use scripts for building, testing, debugging, and managing the local Docker environment. All share a common `_helpers.sh` library for consistent output and dependency checks.
+
+```
+scripts/
+├── _helpers.sh    — Shared functions (colors, Docker checks, wait helpers)
+├── dev.sh         — Rebuild & restart services
+├── health.sh      — Service health dashboard
+├── logs.sh        — Smart log viewer with filtering
+├── test.sh        — Unified test runner (backend + frontend)
+└── db.sh          — Database operations (shell, backup, restore, reset)
+```
+
+### Quick Reference
+
+| Script | Common Usage | Description |
+|--------|-------------|-------------|
+| `dev.sh` | `./scripts/dev.sh` | Rebuild & restart backend + frontend |
+| `dev.sh` | `./scripts/dev.sh --all` | Rebuild all 12 services |
+| `dev.sh` | `./scripts/dev.sh backend` | Rebuild backend only |
+| `health.sh` | `./scripts/health.sh` | One-shot health dashboard |
+| `health.sh` | `./scripts/health.sh --watch` | Live-updating dashboard (5s) |
+| `logs.sh` | `./scripts/logs.sh -f` | Follow backend + frontend logs |
+| `logs.sh` | `./scripts/logs.sh --errors --all` | Errors across all services |
+| `logs.sh` | `./scripts/logs.sh -f backend --grep "query"` | Filter backend logs |
+| `test.sh` | `./scripts/test.sh` | Run all tests (backend + frontend) |
+| `test.sh` | `./scripts/test.sh --backend -m unit` | Backend unit tests only |
+| `test.sh` | `./scripts/test.sh --lint` | Frontend lint only |
+| `db.sh` | `./scripts/db.sh shell` | Open psql prompt |
+| `db.sh` | `./scripts/db.sh tables` | List tables with row counts |
+| `db.sh` | `./scripts/db.sh backup` | Dump DB to `backups/` |
+| `db.sh` | `./scripts/db.sh restore dump.sql --force` | Restore from backup |
+| `db.sh` | `./scripts/db.sh reset --force` | Drop all tables & re-run init-db.sql |
+
+Every script supports `--help` for full option details.
+
+### Typical Workflow
+
+```bash
+# 1. Make code changes, then rebuild
+./scripts/dev.sh
+
+# 2. Check everything came up healthy
+./scripts/health.sh
+
+# 3. Watch logs while testing
+./scripts/logs.sh -f --grep "ERROR"
+
+# 4. Run tests
+./scripts/test.sh
+
+# 5. Backup before a schema change
+./scripts/db.sh backup pre-migration.sql
+```
+
+---
+
 ## Usage Examples
 
 ```bash
@@ -148,7 +212,8 @@ python scripts/s3-vectors/rebuild_from_s3_docs.py
 - Shell scripts may need `chmod +x` to execute
 - Legacy rebuild scripts are kept for reference but `rebuild_from_s3_docs.py` is recommended
 - Always test scripts in development before running in production
+- Dev automation scripts (`dev.sh`, `health.sh`, etc.) require Docker and docker compose
 
 ---
 
-*Last updated: 2026-01-18*
+*Last updated: 2026-02-10*

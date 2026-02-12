@@ -129,7 +129,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-          port: 3000
+          port: 4000
     - host: api.smart-ai-tutor.com
       paths:
         - path: /
@@ -141,7 +141,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-          port: 3000
+          port: 4000
 
 # Network policies - strictly enforced
 networkPolicy:

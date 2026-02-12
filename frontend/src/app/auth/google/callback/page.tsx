@@ -60,9 +60,12 @@ function GoogleCallbackContent() {
 
         if (response.status === 428 && payload.requires_password_setup) {
           if (payload.password_setup_token && payload.username) {
-            window.sessionStorage.setItem("password_setup_token", payload.password_setup_token);
-            window.sessionStorage.setItem("password_setup_username", payload.username);
-            router.replace("/password-setup");
+            // Pass token via URL fragment to avoid clear-text storage in sessionStorage
+            const params = new URLSearchParams({
+              token: payload.password_setup_token,
+              username: payload.username,
+            });
+            router.replace(`/password-setup?${params.toString()}`);
             return;
           }
           throw new Error("Password setup required but token missing.");

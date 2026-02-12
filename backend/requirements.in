@@ -43,5 +43,12 @@ rouge-score>=0.1.2  # ROUGE metrics for summarization
 bert-score>=0.3.13  # Semantic similarity using BERT embeddings
 scipy>=1.11.0  # Statistical testing (t-tests, effect size)
 
+# Security: minimum versions for vulnerable transitive dependencies
+pillow>=12.1.1        # CVE-2026-25990 out-of-bounds write (PSD)
+protobuf>=6.33.5      # CVE-2026-0994 JSON recursion depth bypass
+pypdf>=6.6.2          # CVE-2026-24688 infinite loop on bookmarks
+pyasn1>=0.6.2         # CVE-2026-23490 DoS in decoder
+filelock>=3.20.3      # CVE-2026-22701 TOCTOU symlink vuln
+
 # Monitoring & Observability
 prometheus-client>=0.20.0  # Metrics collection and export

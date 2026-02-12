@@ -46,7 +46,7 @@ export default defineConfig({
   webServer: {
     command: 'cd .. && ./scripts/start-dev.sh',
     url: 'http://localhost:4000',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120000,
   },
 })

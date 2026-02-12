@@ -15,7 +15,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Duration of the experiment
   duration: "30s"
@@ -40,7 +41,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
   containerNames:
     - backend
   duration: "10s"

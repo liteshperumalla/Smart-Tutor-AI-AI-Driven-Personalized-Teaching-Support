@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from datetime import datetime, timezone
 
@@ -84,7 +85,8 @@ def run_batch_quality_evaluation(
                 except json.JSONDecodeError:
                     continue
     except Exception as e:
-        return {"error": str(e)}
+        logging.getLogger(__name__).error(f"Failed to read evaluation log: {e}")
+        return {"error": "Failed to read evaluation log file"}
 
     # Take last N records that have both query and a response
     recent = records[-payload.last_n:]
@@ -181,7 +183,8 @@ def get_realtime_rag_metrics(
                 except json.JSONDecodeError:
                     continue
     except Exception as e:
-        return {"realtime_metrics": {"status": "error", "message": str(e)}}
+        logging.getLogger(__name__).error(f"Failed to read metrics log: {e}")
+        return {"realtime_metrics": {"status": "error", "message": "Failed to read metrics log file"}}
 
     if not records:
         return {
@@ -385,7 +388,8 @@ def get_metrics_history(
                 except json.JSONDecodeError:
                     continue
     except Exception as e:
-        return {"history": {"status": "error", "message": str(e), "data_points": []}}
+        logging.getLogger(__name__).error(f"Failed to read metrics history: {e}")
+        return {"history": {"status": "error", "message": "Failed to read metrics history", "data_points": []}}
 
     if not records:
         return {
@@ -620,7 +624,6 @@ def run_dataset_quality_evaluation(
             evaluated_count += 1
 
         except Exception as e:
-            import logging
             logging.getLogger(__name__).error(
                 f"Dataset eval failed for question: {question[:80]}: {e}"
             )
@@ -631,7 +634,7 @@ def run_dataset_quality_evaluation(
                 "context_recall": 0,
                 "context_precision": 0,
                 "correctness": 0,
-                "reasoning": f"Error: {e}",
+                "reasoning": "Evaluation failed for this question",
                 "latency": 0,
                 "docs_retrieved": 0,
                 "avg_retrieval_score": 0,
@@ -788,8 +791,9 @@ def get_aws_metrics(
             ],
         }
     except Exception as e:
-        metrics["errors"].append(f"Bedrock: {str(e)}")
-        metrics["services"]["bedrock"] = {"status": "error", "error": str(e)}
+        logging.getLogger(__name__).error(f"Bedrock metrics error: {e}")
+        metrics["errors"].append("Bedrock: service unavailable")
+        metrics["services"]["bedrock"] = {"status": "error", "error": "Service unavailable"}
 
     # 2. S3 METRICS
     try:
@@ -823,14 +827,16 @@ def get_aws_metrics(
                 },
             }
         except ClientError as e:
+            logging.getLogger(__name__).error(f"S3 bucket access error: {e}")
             metrics["services"]["s3"] = {
                 "status": "limited",
                 "bucket": bucket_name,
-                "error": str(e),
+                "error": "Access denied or bucket not found",
             }
     except Exception as e:
-        metrics["errors"].append(f"S3: {str(e)}")
-        metrics["services"]["s3"] = {"status": "error", "error": str(e)}
+        logging.getLogger(__name__).error(f"S3 metrics error: {e}")
+        metrics["errors"].append("S3: service unavailable")
+        metrics["services"]["s3"] = {"status": "error", "error": "Service unavailable"}
 
     # 3. DYNAMODB METRICS
     try:
@@ -856,14 +862,16 @@ def get_aws_metrics(
                 },
             }
         except ClientError as e:
+            logging.getLogger(__name__).error(f"DynamoDB table access error: {e}")
             metrics["services"]["dynamodb"] = {
                 "status": "limited",
                 "table_name": table_name,
-                "error": str(e),
+                "error": "Access denied or table not found",
             }
     except Exception as e:
-        metrics["errors"].append(f"DynamoDB: {str(e)}")
-        metrics["services"]["dynamodb"] = {"status": "error", "error": str(e)}
+        logging.getLogger(__name__).error(f"DynamoDB metrics error: {e}")
+        metrics["errors"].append("DynamoDB: service unavailable")
+        metrics["services"]["dynamodb"] = {"status": "error", "error": "Service unavailable"}
 
     # 4. COST TRACKING
     try:
@@ -874,7 +882,8 @@ def get_aws_metrics(
             "tracking_enabled": config.ENABLE_COST_TRACKING,
         }
     except Exception as e:
-        metrics["errors"].append(f"Cost Tracking: {str(e)}")
+        logging.getLogger(__name__).error(f"Cost tracking error: {e}")
+        metrics["errors"].append("Cost Tracking: service unavailable")
         metrics["costs"] = {
             "daily": {
                 "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -895,8 +904,9 @@ def get_aws_metrics(
             "arn_suffix": identity.get("Arn", "").split("/")[-1] if identity.get("Arn") else "",
         }
     except Exception as e:
-        metrics["errors"].append(f"STS: {str(e)}")
-        metrics["services"]["sts"] = {"status": "error", "error": str(e)}
+        logging.getLogger(__name__).error(f"STS identity error: {e}")
+        metrics["errors"].append("STS: service unavailable")
+        metrics["services"]["sts"] = {"status": "error", "error": "Service unavailable"}
 
     # 6. CLOUDWATCH METRICS (if available)
     try:

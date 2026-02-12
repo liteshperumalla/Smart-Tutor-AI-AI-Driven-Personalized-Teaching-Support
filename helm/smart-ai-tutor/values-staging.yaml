@@ -100,7 +100,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-          port: 3000
+          port: 4000
     - host: api.staging.smart-ai-tutor.com
       paths:
         - path: /

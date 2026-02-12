@@ -9,7 +9,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # CPU stress
   stressors:
@@ -34,7 +35,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Memory stress
   stressors:
@@ -59,7 +61,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # I/O stress
   stressors:

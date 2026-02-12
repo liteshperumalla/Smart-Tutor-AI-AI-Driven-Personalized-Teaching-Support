@@ -4,8 +4,8 @@ metadata:
   name: backend
   namespace: production
   labels:
-    app: backend
-    component: api
+    app: smart-ai-tutor
+    component: backend
 spec:
   replicas: 10
   revisionHistoryLimit: 5
@@ -13,14 +13,14 @@ spec:
   # Selector for pods
   selector:
     matchLabels:
-      app: backend
-      component: api
+      app: smart-ai-tutor
+      component: backend
 
   # Workload reference (if migrating from Deployment)
   workloadRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: backend
+    name: backend-api
 
   # Progressive delivery strategy - Canary
   strategy:
@@ -40,7 +40,7 @@ spec:
       trafficRouting:
         # Option 1: AWS ALB Ingress Controller
         alb:
-          ingress: backend-ingress
+          ingress: smart-ai-tutor-ingress
           servicePort: 8000
           annotationPrefix: alb.ingress.kubernetes.io
 
@@ -121,15 +121,16 @@ spec:
           podAffinityTerm:
             labelSelector:
               matchLabels:
-                app: backend
+                app: smart-ai-tutor
+                component: backend
             topologyKey: kubernetes.io/hostname
 
   # Pod template
   template:
     metadata:
       labels:
-        app: backend
-        component: api
+        app: smart-ai-tutor
+        component: backend
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
@@ -208,7 +209,8 @@ metadata:
   name: backend-canary
   namespace: production
   labels:
-    app: backend
+    app: smart-ai-tutor
+    component: backend
     role: canary
 spec:
   type: ClusterIP
@@ -218,8 +220,8 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: backend
-    component: api
+    app: smart-ai-tutor
+    component: backend
 
 ---
 # Stable Service
@@ -229,7 +231,8 @@ metadata:
   name: backend-stable
   namespace: production
   labels:
-    app: backend
+    app: smart-ai-tutor
+    component: backend
     role: stable
 spec:
   type: ClusterIP
@@ -239,8 +242,8 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: backend
-    component: api
+    app: smart-ai-tutor
+    component: backend
 
 ---
 # Analysis Templates

@@ -9,7 +9,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   # Target port
   port: 8000
@@ -43,7 +44,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   port: 8000
   method: GET
@@ -69,7 +71,8 @@ spec:
     namespaces:
       - production
     labelSelectors:
-      app: backend
+      app: smart-ai-tutor
+      component: backend
 
   port: 8000
   path: /api/v1/*

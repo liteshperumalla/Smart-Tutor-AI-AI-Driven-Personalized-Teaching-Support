@@ -26,7 +26,7 @@ metadata:
 data:
   # Git repository configuration
   repositories: |
-    - url: https://github.com/your-org/smart-ai-tutor
+    - url: https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support
       name: smart-ai-tutor
       type: git
 
@@ -92,13 +92,13 @@ data:
     p, role:developer, applications, sync, */production/*, deny
 
     # DevOps role
-    p, role:devops, applications, *, */* allow
+    p, role:devops, applications, *, */*, allow
     p, role:devops, clusters, *, *, allow
     p, role:devops, repositories, *, *, allow
 
     # Group mappings (when using SSO)
-    g, your-org:devops, role:devops
-    g, your-org:developers, role:developer
+    g, liteshperumalla:devops, role:devops
+    g, liteshperumalla:developers, role:developer
 
   # Default policy for authenticated users
   policy.default: role:readonly

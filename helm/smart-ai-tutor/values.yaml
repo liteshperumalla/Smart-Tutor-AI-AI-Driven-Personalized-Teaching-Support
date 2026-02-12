@@ -7,6 +7,9 @@ global:
   environment: production
   domain: smart-ai-tutor.com
 
+# Environment setting (used by backend/frontend Helm templates)
+environment: production
+
 # Container registry configuration
 image:
   registry: docker.io
@@ -50,7 +53,7 @@ backend:
       initialDelaySeconds: 30
       periodSeconds: 10
     readiness:
-      path: /health/ready
+      path: /health
       initialDelaySeconds: 10
       periodSeconds: 5
     startup:
@@ -103,8 +106,8 @@ frontend:
 
   service:
     type: ClusterIP
-    port: 3000
-    targetPort: 3000
+    port: 4000
+    targetPort: 4000
 
   health:
     liveness:
@@ -120,6 +123,13 @@ frontend:
     NODE_ENV: production
     NEXT_TELEMETRY_DISABLED: "1"
     NEXT_PUBLIC_ENVIRONMENT: production
+
+# PostgreSQL connection settings (referenced by backend deployment template)
+postgresql:
+  host: smart-ai-tutor-postgres
+  port: "5432"
+  database: smart_tutor
+  username: smart_tutor_user
 
 # PostgreSQL configuration
 postgres:
@@ -166,6 +176,8 @@ postgres:
 redis:
   enabled: true
   name: redis
+  host: smart-ai-tutor-redis
+  port: "6379"
 
   image:
     repository: redis
@@ -243,7 +255,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-          port: 3000
+          port: 4000
     - host: api.smart-ai-tutor.com
       paths:
         - path: /
@@ -255,7 +267,7 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-          port: 3000
+          port: 4000
 
 # Network policies
 networkPolicy:

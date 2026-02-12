@@ -12,7 +12,7 @@ appdirs==1.4.4
 asgiref==3.8.1
 asttokens==3.0.0
 attrs==25.3.0
-Authlib==1.5.2
+Authlib==1.6.6
 backoff==2.2.1
 banks>=2.1.0
 
@@ -39,7 +39,7 @@ comtypes==1.4.10
 configobj==5.0.9
 configparser==7.2.0
 contourpy==1.3.2
-cryptography==44.0.2
+cryptography==46.0.5
 cycler==0.12.1
 dataclasses-json==0.6.7
 datasets==3.5.0
@@ -59,10 +59,10 @@ evaluate==0.4.3
 evidently==0.6.7
 executing==2.2.0
 Faker==37.1.0
-fastapi==0.115.11
+fastapi==0.121.0
 fastjsonschema==2.21.1
 fdf==0.1.9
-filelock==3.18.0
+filelock==3.20.3
 filetype==1.2.0
 flatbuffers==25.2.10
 fonttools==4.57.0
@@ -156,7 +156,7 @@ multiprocess==0.70.16
 mypy-extensions==1.0.0
 narwhals==1.34.0
 nbclient==0.10.2
-nbconvert==7.16.6
+nbconvert==7.17.0
 nbformat==5.10.4
 nest-asyncio==1.6.0
 networkx==3.4.2
@@ -189,12 +189,12 @@ pandocfilters==1.5.1
 parso==0.8.4
 pathlib==1.0.1
 patsy==1.0.1
-pdfminer.six==20231228
+pdfminer.six==20251230
 pdfplumber==0.11.5
 peft==0.15.2
 pexpect==4.9.0
 pfzy==0.3.4
-pillow==11.1.0
+pillow==12.1.1
 platformdirs==4.3.6
 plotly==5.24.1
 polyfactory==2.20.0
@@ -203,14 +203,14 @@ pptxtopdf==0.0.2
 prompt_toolkit==3.0.50
 propcache==0.3.0
 proto-plus==1.26.1
-protobuf==5.29.3
+protobuf==5.29.6
 prov==2.0.1
 psutil==7.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
 puremagic==1.29
 pyarrow==19.0.1
-pyasn1==0.6.1
+pyasn1==0.6.2
 pyasn1_modules==0.4.1
 pycparser==2.22
 pydantic==2.11.7
@@ -377,7 +377,7 @@ pyobjc-framework-Virtualization==11.0; platform_system == "Darwin"
 pyobjc-framework-Vision==11.0; platform_system == "Darwin"
 pyobjc-framework-WebKit==11.0; platform_system == "Darwin"
 pyparsing==3.2.3
-pypdf==5.4.0
+pypdf==6.6.2
 pypdfium2==4.30.1
 PyPika==0.48.9
 pyproject_hooks==1.2.0
@@ -417,7 +417,7 @@ SpeechRecognition==3.14.2
 SQLAlchemy==2.0.39
 sqlvalidator==0.0.20
 stack-data==0.6.3
-starlette==0.46.1
+starlette==0.49.1
 statsmodels==0.14.4
 striprtf==0.0.26
 sympy==1.13.1
