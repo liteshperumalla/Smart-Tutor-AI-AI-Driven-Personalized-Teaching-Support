@@ -128,7 +128,7 @@ export function ReportModal({
                   Report Submitted
                 </h3>
                 <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  Thank you for your feedback. We'll review this response.
+                  Thank you for your feedback. We&apos;ll review this response.
                 </p>
               </div>
             ) : (
@@ -144,7 +144,7 @@ export function ReportModal({
                 {/* Reason selection */}
                 <div className="space-y-3 mb-6">
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    What's the issue?
+                    What&apos;s the issue?
                   </label>
                   {REPORT_REASONS.map((reason) => (
                     <button

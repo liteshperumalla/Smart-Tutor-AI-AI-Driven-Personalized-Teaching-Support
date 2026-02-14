@@ -106,8 +106,8 @@ export function StreamingPhaseIndicator({ isStreaming, hasContent, agentName }: 
 
   useEffect(() => {
     if (!isStreaming || hasContent) {
-      setCurrentPhaseIndex(0);
-      return;
+      const timer = setTimeout(() => setCurrentPhaseIndex(0), 0);
+      return () => clearTimeout(timer);
     }
 
     const currentPhase = phases[currentPhaseIndex];
@@ -125,17 +125,19 @@ export function StreamingPhaseIndicator({ isStreaming, hasContent, agentName }: 
     }
   }, [isStreaming, hasContent, currentPhaseIndex, phases]);
 
-  // Reset when streaming stops or agent changes
+  // Reset when streaming stops
   useEffect(() => {
     if (!isStreaming) {
-      setCurrentPhaseIndex(0);
+      const timer = setTimeout(() => setCurrentPhaseIndex(0), 0);
+      return () => clearTimeout(timer);
     }
   }, [isStreaming]);
 
   // Reset phase index when agent is detected (switch to agent-specific phases)
   useEffect(() => {
     if (agentName) {
-      setCurrentPhaseIndex(0);
+      const timer = setTimeout(() => setCurrentPhaseIndex(0), 0);
+      return () => clearTimeout(timer);
     }
   }, [agentName]);
 

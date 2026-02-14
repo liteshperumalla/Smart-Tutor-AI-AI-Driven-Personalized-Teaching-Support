@@ -11,12 +11,12 @@ export interface UseApiState<T> {
   data: T | null;
   error: string | null;
   loading: boolean;
-  execute: (...args: any[]) => Promise<T | null>;
+  execute: (...args: unknown[]) => Promise<T | null>;
   reset: () => void;
 }
 
 export function useApi<T>(
-  apiCall: (...args: any[]) => Promise<T>,
+  apiCall: (...args: unknown[]) => Promise<T>,
   options?: {
     onSuccess?: (data: T) => void;
     onError?: (error: APIError) => void;
@@ -28,7 +28,7 @@ export function useApi<T>(
   const [loading, setLoading] = useState(options?.immediate || false);
 
   const execute = useCallback(
-    async (...args: any[]) => {
+    async (...args: unknown[]) => {
       setLoading(true);
       setError(null);
 
@@ -63,7 +63,7 @@ export interface UseAuthApiState<T> extends UseApiState<T> {
 }
 
 export function useAuthApi<T>(
-  apiCall: (token: string, ...args: any[]) => Promise<T>,
+  apiCall: (token: string, ...args: unknown[]) => Promise<T>,
   options?: {
     onSuccess?: (data: T) => void;
     onError?: (error: APIError) => void;
@@ -76,7 +76,7 @@ export function useAuthApi<T>(
   const [loading, setLoading] = useState(options?.immediate || false);
 
   const execute = useCallback(
-    async (...args: any[]) => {
+    async (...args: unknown[]) => {
       if (!token) {
         setError("Authentication required");
         return null;
@@ -239,7 +239,7 @@ export function useApiMutation<T, TVariables = void>(
     [mutationFn, options]
   );
 
-  const execute = mutate;
+  const execute = mutate as (...args: unknown[]) => Promise<T | null>;
 
   const reset = useCallback(() => {
     setData(null);

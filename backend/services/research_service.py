@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
 
+import ipaddress
+import socket
+
 import requests
 from bs4 import BeautifulSoup
 from docx import Document as DocxDocument
@@ -55,6 +58,28 @@ CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100
 UPLOADS_PREFIX = "research_uploads/"
 TEXT_CHUNKS_PREFIX = "research_chunks/"
+
+
+def _validate_url_not_internal(url: str) -> None:
+    """Reject URLs that resolve to private/reserved IP addresses (SSRF protection)."""
+    parsed = urllib.parse.urlparse(url)
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: no hostname")
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme: {scheme}")
+
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, parsed.port or 443)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {hostname}")
+
+    for family, _, _, _, sockaddr in resolved_ips:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+            raise ValueError(f"URL resolves to a non-public address")
 
 
 class ResearchService:
@@ -408,6 +433,9 @@ class ResearchService:
 
     def preview_url(self, url: str) -> Dict[str, object]:
         """Fetch URL content and create searchable chunks"""
+        # SECURITY: Reject URLs that resolve to internal/private addresses
+        _validate_url_not_internal(url)
+
         upload_id = str(uuid.uuid4())[:8]
         safe_url_id = f"url_{upload_id}"
 
@@ -415,7 +443,7 @@ class ResearchService:
             headers = {
                 "User-Agent": "Mozilla/5.0 (compatible; SmartAITutor/1.0)",
             }
-            response = requests.get(url, headers=headers, timeout=15)
+            response = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, "html.parser")
@@ -847,7 +875,7 @@ class ResearchService:
     def _search_arxiv(self, query: str, max_results: int) -> List[Dict[str, Any]]:
         """Search arXiv API for papers."""
         encoded_query = urllib.parse.quote(query)
-        url = f"http://export.arxiv.org/api/query?search_query=all:{encoded_query}&max_results={max_results}&sortBy=relevance"
+        url = f"https://export.arxiv.org/api/query?search_query=all:{encoded_query}&max_results={max_results}&sortBy=relevance"
 
         try:
             response = requests.get(url, timeout=15)

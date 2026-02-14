@@ -4,11 +4,12 @@ Implements vector similarity search using S3 + local index
 """
 
 import boto3
+import io
 import json
 import numpy as np
+import struct
 from typing import List, Dict, Tuple
 from pathlib import Path
-import pickle
 from botocore.exceptions import ClientError
 from botocore.config import Config
 import time
@@ -52,6 +53,62 @@ class S3VectorStore:
         self._chunk_ids_cache = None
 
         logger.info(f"S3VectorStore initialized: {self.bucket_name}")
+
+    @staticmethod
+    def _safe_serialize(data: dict) -> bytes:
+        """Serialize vectors + metadata without pickle.
+        Format: [8-byte meta JSON length][meta JSON bytes][numpy .npy bytes]
+        """
+        meta = {
+            "metadata": [
+                {k: v for k, v in m.items() if not isinstance(v, np.generic)}
+                for m in data["metadata"]
+            ],
+            "count": int(data["count"]),
+            "dimension": int(data["dimension"]),
+        }
+        meta_bytes = json.dumps(meta).encode("utf-8")
+
+        vectors_buf = io.BytesIO()
+        np.save(vectors_buf, data["vectors"])
+        vectors_bytes = vectors_buf.getvalue()
+
+        return struct.pack("<Q", len(meta_bytes)) + meta_bytes + vectors_bytes
+
+    @staticmethod
+    def _safe_deserialize(raw: bytes) -> dict:
+        """Deserialize vectors + metadata without pickle."""
+        meta_len = struct.unpack("<Q", raw[:8])[0]
+        meta = json.loads(raw[8 : 8 + meta_len].decode("utf-8"))
+        vectors_buf = io.BytesIO(raw[8 + meta_len :])
+        vectors = np.load(vectors_buf, allow_pickle=False)
+        return {
+            "vectors": vectors,
+            "metadata": meta["metadata"],
+            "count": meta["count"],
+            "dimension": meta["dimension"],
+        }
+
+    def _populate_from_data(self, data: dict):
+        """Populate vectors and metadata from a deserialized data dict."""
+        vectors_array = data["vectors"]
+        metadata_list = data["metadata"]
+
+        self.vectors = []
+        self.metadata = {}
+
+        for vec, meta in zip(vectors_array, metadata_list):
+            chunk_id = meta["chunk_id"]
+            self.vectors.append((chunk_id, vec))
+            s3_key = meta.get(
+                "s3_key",
+                f"chunks/{meta.get('source_file', '')}/chunk_{meta.get('chunk_index', 0):03d}.txt",
+            )
+            self.metadata[chunk_id] = {
+                "source_file": meta.get("source_file", ""),
+                "chunk_index": meta.get("chunk_index", 0),
+                "s3_key": s3_key,
+            }
 
     def _invalidate_cache(self):
         """Invalidate cached numpy arrays"""
@@ -98,39 +155,12 @@ class S3VectorStore:
         self._build_numpy_cache()
 
     def _load_from_local_cache(self) -> bool:
-        """Load index from local pickle file. Returns True if successful."""
+        """Load index from local cache file. Returns True if successful."""
         try:
             cache_path = Path(self.index_cache_path)
-            with open(cache_path, "rb") as f:
-                data = pickle.load(f)
-
-                # Handle format from rebuild_vector_index.py
-                if isinstance(data["vectors"], np.ndarray):
-                    # Convert from NumPy array format to list of tuples
-                    vectors_array = data["vectors"]
-                    metadata_list = data["metadata"]
-
-                    self.vectors = []
-                    self.metadata = {}
-
-                    for i, (vec, meta) in enumerate(zip(vectors_array, metadata_list)):
-                        chunk_id = meta["chunk_id"]
-                        self.vectors.append((chunk_id, vec))
-                        # Use s3_key from metadata if available, otherwise construct default
-                        s3_key = meta.get(
-                            "s3_key",
-                            f"chunks/{meta.get('source_file', '')}/chunk_{meta.get('chunk_index', 0):03d}.txt",
-                        )
-                        self.metadata[chunk_id] = {
-                            "source_file": meta.get("source_file", ""),
-                            "chunk_index": meta.get("chunk_index", 0),
-                            "s3_key": s3_key,
-                        }
-                else:
-                    # Old format (list of tuples)
-                    self.vectors = data["vectors"]
-                    self.metadata = data["metadata"]
-
+            raw = cache_path.read_bytes()
+            data = self._safe_deserialize(raw)
+            self._populate_from_data(data)
             return True
         except Exception as e:
             logger.warning(f"Failed to load from local cache: {e}")
@@ -144,48 +174,19 @@ class S3VectorStore:
         try:
             logger.info(f"Checking for vector index in S3: {self.s3_index_key}")
 
-            # Download from S3
             response = self.s3.get_object(
                 Bucket=self.bucket_name, Key=self.s3_index_key
             )
-            index_data = response["Body"].read()
+            raw = response["Body"].read()
 
-            # Load pickle data
-            data = pickle.loads(index_data)
-
-            # Handle different formats
-            if isinstance(data["vectors"], np.ndarray):
-                # Convert from NumPy array format
-                vectors_array = data["vectors"]
-                metadata_list = data["metadata"]
-
-                self.vectors = []
-                self.metadata = {}
-
-                for i, (vec, meta) in enumerate(zip(vectors_array, metadata_list)):
-                    chunk_id = meta["chunk_id"]
-                    self.vectors.append((chunk_id, vec))
-                    # Use s3_key from metadata if available, otherwise construct default
-                    s3_key = meta.get(
-                        "s3_key",
-                        f"chunks/{meta.get('source_file', '')}/chunk_{meta.get('chunk_index', 0):03d}.txt",
-                    )
-                    self.metadata[chunk_id] = {
-                        "source_file": meta.get("source_file", ""),
-                        "chunk_index": meta.get("chunk_index", 0),
-                        "s3_key": s3_key,
-                    }
-            else:
-                # Old format (list of tuples)
-                self.vectors = data["vectors"]
-                self.metadata = data["metadata"]
+            data = self._safe_deserialize(raw)
+            self._populate_from_data(data)
 
             # Save to local cache for faster subsequent loads
             cache_path = Path(self.index_cache_path)
-            with open(cache_path, "wb") as f:
-                pickle.dump(data, f)
+            cache_path.write_bytes(raw)
 
-            logger.info(f"✓ Downloaded index from S3 and cached locally")
+            logger.info("Downloaded index from S3 and cached locally")
             return True
 
         except ClientError as e:
@@ -204,7 +205,6 @@ class S3VectorStore:
         try:
             logger.info(f"Uploading vector index to S3: {self.s3_index_key}")
 
-            # Prepare data in NumPy format (more compact)
             vectors_array = np.array([vec for _, vec in self.vectors])
             metadata_list = [
                 {
@@ -222,10 +222,8 @@ class S3VectorStore:
                 "dimension": len(vectors_array[0]) if len(vectors_array) > 0 else 0,
             }
 
-            # Serialize to pickle
-            index_bytes = pickle.dumps(data)
+            index_bytes = self._safe_serialize(data)
 
-            # Upload to S3
             self.s3.put_object(
                 Bucket=self.bucket_name,
                 Key=self.s3_index_key,
@@ -236,16 +234,14 @@ class S3VectorStore:
                     "dimension": str(
                         len(vectors_array[0]) if len(vectors_array) > 0 else 0
                     ),
-                    "created_at": str(Path(self.index_cache_path).stat().st_mtime),
                 },
             )
 
             size_mb = len(index_bytes) / (1024 * 1024)
-            logger.info(f"✓ Uploaded index to S3 ({size_mb:.1f} MB)")
+            logger.info(f"Uploaded index to S3 ({size_mb:.1f} MB)")
 
         except Exception as e:
             logger.error(f"Failed to upload index to S3: {e}")
-            # Don't fail the whole operation if upload fails
 
     def _build_index_from_s3(self):
         """Build index by downloading all vectors from S3"""
@@ -296,7 +292,6 @@ class S3VectorStore:
         """Save index to cache for faster loading"""
         cache_path = Path(self.index_cache_path)
         try:
-            # Prepare data in NumPy format (more compact)
             vectors_array = np.array([vec for _, vec in self.vectors])
             metadata_list = [
                 {
@@ -314,9 +309,8 @@ class S3VectorStore:
                 "dimension": len(vectors_array[0]) if len(vectors_array) > 0 else 0,
             }
 
-            with open(cache_path, "wb") as f:
-                pickle.dump(data, f)
-            logger.info(f"✓ Saved index cache to {cache_path}")
+            cache_path.write_bytes(self._safe_serialize(data))
+            logger.info(f"Saved index cache to {cache_path}")
             return True
         except Exception as e:
             logger.error(f"Failed to save index cache to {cache_path}: {e}")

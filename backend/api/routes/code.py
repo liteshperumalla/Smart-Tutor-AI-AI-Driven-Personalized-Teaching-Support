@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 import os
 
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_admin_session
 
 logger = logging.getLogger(__name__)
 
@@ -412,9 +412,9 @@ def _execute_code(code: str, language: str) -> tuple[str, bool]:
 @router.post("/execute", response_model=CodeExecuteResponse)
 async def execute_code(
     request: CodeExecuteRequest,
-    user: dict = Depends(get_current_user),
+    session=Depends(get_admin_session),
 ):
-    """Execute code in the specified language."""
+    """Execute code in the specified language. Admin-only."""
     output, success = _execute_code(request.code, request.language)
     return CodeExecuteResponse(
         output=output, success=success, error=None if success else output
@@ -450,7 +450,7 @@ async def generate_code(
         code = _extract_code(response.strip())
         return CodeGenerateResponse(code=code, language=request.language)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Code generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Code generation failed")
 
 
 @router.post("/explain", response_model=CodeExplainResponse)
@@ -482,7 +482,7 @@ async def explain_code(
         return CodeExplainResponse(explanation=cleaned_response)
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Code explanation failed: {str(e)}"
+            status_code=500, detail="Code explanation failed"
         )
 
 
@@ -532,7 +532,7 @@ async def debug_code(
         return CodeDebugResponse(analysis=analysis, fixed_code=fixed_code)
     except Exception as e:
         logger.exception("Debug code failed")
-        raise HTTPException(status_code=500, detail=f"Code debugging failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Code debugging failed")
 
 
 @router.post("/chat", response_model=CodeChatResponse)
@@ -573,7 +573,7 @@ async def chat_with_code_llm(
         cleaned_response = _clean_repeated_content(response.strip())
         return CodeChatResponse(response=cleaned_response)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Chat request failed")
 
 
 @router.get("/languages")

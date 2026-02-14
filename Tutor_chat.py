@@ -19,12 +19,6 @@ from llama_index.core.schema import Document, TextNode, NodeWithScore
 from llama_index.core import VectorStoreIndex
 from llama_index.retrievers.bm25 import BM25Retriever
 from backend.s3_retriever import S3Retriever, create_s3_retriever
-from langfuse import Langfuse
-from llama_index.core.callbacks import CallbackManager
-try:
-    from llama_index.callbacks.langfuse import langfuse_callback_handler as create_langfuse_handler
-except ImportError:  # pragma: no cover - optional dependency
-    create_langfuse_handler = None
 # from llama_index.agent.openai import OpenAIAgent  # Commented out due to version incompatibility
 from dotenv import load_dotenv
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
@@ -53,56 +47,12 @@ CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.3"))
 MAX_WEB_RESULTS = int(os.getenv("MAX_WEB_RESULTS", "3"))
 
 
-# --- Langfuse Setup ---
-# Load configuration from environment variables
-try:
-    from backend.config import config as app_config
-    LANGFUSE_ENABLED = app_config.LANGFUSE_ENABLED
-    LANGFUSE_PUBLIC_KEY = app_config.LANGFUSE_PUBLIC_KEY
-    LANGFUSE_SECRET_KEY = app_config.LANGFUSE_SECRET_KEY
-    LANGFUSE_HOST = app_config.LANGFUSE_HOST
-except ImportError:
-    logging.warning("Backend config not available, using environment variables directly")
-    LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
-    LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-    LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
-    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+# --- Langfuse Setup (centralized) ---
+from backend.langfuse_setup import init_langfuse, get_langfuse_client, get_langfuse_handler
 
-langfuse_callback_handler = None
-langfuse_client = None
-
-if LANGFUSE_ENABLED and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
-    if create_langfuse_handler is None:
-        logging.warning(
-            "Langfuse callback handler not available in current llama-index build. "
-            "Upgrade llama-index or disable LANGFUSE_ENABLED."
-        )
-    else:
-        try:
-            handler = create_langfuse_handler(
-                public_key=LANGFUSE_PUBLIC_KEY,
-                secret_key=LANGFUSE_SECRET_KEY,
-                host=LANGFUSE_HOST
-            )
-            Settings.callback_manager = CallbackManager([handler])
-            langfuse_callback_handler = handler
-            logging.info("Langfuse callback handler initialized successfully.")
-        except Exception as e:
-            logging.error(f"Failed to initialize Langfuse callback handler: {e}")
-            langfuse_callback_handler = None
-
-    try:
-        langfuse_client = Langfuse(
-            public_key=LANGFUSE_PUBLIC_KEY,
-            secret_key=LANGFUSE_SECRET_KEY,
-            host=LANGFUSE_HOST
-        )
-        logging.info("Langfuse client initialized.")
-    except Exception as e:
-        logging.error(f"Failed to initialize Langfuse client: {e}. Tracing might be partially or fully disabled.")
-        langfuse_client = None
-else:
-    logging.info("Langfuse monitoring is disabled. Enable it by setting LANGFUSE_ENABLED=true and providing API keys.")
+init_langfuse()  # idempotent
+langfuse_client = get_langfuse_client()
+langfuse_callback_handler = get_langfuse_handler()
 
 # --- Evaluation Framework ---
 try:

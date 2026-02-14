@@ -44,7 +44,7 @@ services:
   # NOTE: When using AWS DynamoDB (DYNAMODB_ENDPOINT is empty in .env),
   # this local dynamodb container is NOT used. AWS DynamoDB in us-east-1 is used instead.
   dynamodb-local:
-    image: amazon/dynamodb-local:latest
+    image: amazon/dynamodb-local:2.5.3
     container_name: smart-tutor-dynamodb
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
     ports:
@@ -200,7 +200,7 @@ services:
 
   # Prometheus for metrics collection
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.2.1
     container_name: smart-tutor-prometheus
     ports:
       - "9090:9090"
@@ -221,7 +221,7 @@ services:
 
   # Grafana for metrics visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.5.2
     container_name: smart-tutor-grafana
     ports:
       - "3001:3000"
@@ -251,7 +251,7 @@ services:
 
   # Postgres Exporter for database metrics
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    image: prometheuscommunity/postgres-exporter:v0.16.0
     container_name: smart-tutor-postgres-exporter
     ports:
       - "9187:9187"
@@ -274,7 +274,7 @@ services:
 
   # Redis Exporter for cache metrics
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.67.0
     container_name: smart-tutor-redis-exporter
     ports:
       - "9121:9121"
@@ -289,7 +289,7 @@ services:
   # Node Exporter for system metrics
   # Note: Limited functionality on macOS Docker Desktop (no host filesystem access)
   node-exporter:
-    image: prom/node-exporter:latest
+    image: prom/node-exporter:v1.9.0
     container_name: smart-tutor-node-exporter
     ports:
       - "9100:9100"
@@ -314,7 +314,7 @@ services:
 
   # Ollama for Code LLM (Qwen2.5 Coder)
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.6.2
     container_name: smart-tutor-ollama
     ports:
       - "11434:11434"

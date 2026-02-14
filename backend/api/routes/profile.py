@@ -9,6 +9,8 @@ from backend.services.profile_service import ProfileService, get_profile_service
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
+MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024  # 5 MB
+
 
 class ProfileUpdatePayload(BaseModel):
     display_name: str | None = Field(None, max_length=100)
@@ -110,7 +112,13 @@ async def upload_profile_picture(
     file: UploadFile = File(...),
 ):
     _, user = session
-    content = await file.read()
+    # Read with size guard — read one byte beyond the limit to detect oversized files
+    content = await file.read(MAX_PROFILE_PICTURE_SIZE + 1)
+    if len(content) > MAX_PROFILE_PICTURE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 5 MB.",
+        )
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file provided")
     try:

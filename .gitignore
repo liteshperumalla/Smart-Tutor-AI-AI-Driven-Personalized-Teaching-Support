@@ -47,8 +47,12 @@ Thumbs.db
 .env.local
 .env.*.local
 .env.backup
+.env.production
 *.key
 *.pem
+
+# Cookie/session files
+cookies*.txt
 
 # User Data & Databases
 users.json

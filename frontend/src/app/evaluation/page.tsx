@@ -2132,7 +2132,7 @@ export function EvaluationContent() {
                         <Pie
                           data={Object.entries(agentMetrics.agent_distribution).map(([name, value]) => ({ name: name.replace("_agent", ""), value }))}
                           cx="50%" cy="50%" outerRadius={90}
-                          dataKey="value" label={({ name, percent }: any) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                          dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}
                         >
                           {Object.keys(agentMetrics.agent_distribution).map((_, i) => (
                             <Cell key={i} fill={["#3b82f6", "#f59e0b", "#8b5cf6", "#10b981", "#14b8a6", "#ef4444"][i % 6]} />

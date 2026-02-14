@@ -62,8 +62,10 @@ export function SearchChatsModal({
   // Focus input when modal opens
   useEffect(() => {
     if (isOpen) {
-      setSearchQuery("");
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => {
+        setSearchQuery("");
+        inputRef.current?.focus();
+      }, 50);
     }
   }, [isOpen]);
 
@@ -223,7 +225,7 @@ export function SearchChatsModal({
           {/* No results */}
           {filteredSessions.length === 0 && searchQuery && (
             <div className="px-5 py-8 text-center">
-              <p className="text-zinc-400">No chats found for "{searchQuery}"</p>
+              <p className="text-zinc-400">No chats found for &quot;{searchQuery}&quot;</p>
             </div>
           )}
 

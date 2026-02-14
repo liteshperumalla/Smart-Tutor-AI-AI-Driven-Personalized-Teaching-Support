@@ -1899,7 +1899,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
               <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">{location}</p>
             )}
             {snippet && (
-              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed line-clamp-4">"{snippet}"</p>
+              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed line-clamp-4">&quot;{snippet}&quot;</p>
             )}
             <p className="text-xs text-indigo-500 mt-2">Click to view all sources</p>
           </div>
@@ -2336,7 +2336,7 @@ function FileViewerModal({
                 </a>
               </div>
               <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
-                <strong>Tip:</strong> Right-click the download button and choose "Save link as..." to download the file, then open it with Microsoft Office, Google Docs, or any compatible viewer.
+                <strong>Tip:</strong> Right-click the download button and choose &quot;Save link as...&quot; to download the file, then open it with Microsoft Office, Google Docs, or any compatible viewer.
               </p>
             </div>
           ) : isNotebook ? (

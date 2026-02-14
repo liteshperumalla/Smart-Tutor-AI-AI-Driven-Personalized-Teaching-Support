@@ -1,7 +1,10 @@
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 from backend.api.dependencies import get_current_session
 from backend.validators import FileValidator
@@ -208,9 +211,9 @@ def clear_research_uploads(
     try:
         result = service.clear_uploads()
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear uploads"
         )
 
 
@@ -223,9 +226,9 @@ def clear_research_uploads_post(
     try:
         result = service.clear_uploads()
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
-    except Exception as exc:
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear uploads"
         )
 
 
@@ -243,8 +246,9 @@ def search_web(
         result = service.search_web(payload.query, payload.max_results)
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -261,8 +265,9 @@ def search_academic(
         )
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -279,8 +284,9 @@ def compare_sources(
         )
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -295,8 +301,9 @@ def extract_citations(
         result = service.extract_citations(payload.document_id, payload.format_style)
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -313,8 +320,9 @@ def generate_summary(
         )
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -334,8 +342,9 @@ def generate_questions(
         )
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )
 
 
@@ -352,6 +361,7 @@ def fact_check(
         )
         return result
     except Exception as exc:
+        logger.warning(f"Research error: {exc}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An internal error occurred"
         )

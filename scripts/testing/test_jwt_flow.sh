@@ -7,7 +7,7 @@ echo "================================"
 echo -e "\n1. Logging in..."
 curl -s -X POST 'http://localhost:8010/auth/login' \
   -H 'Content-Type: application/json' \
-  -d '{"username":"liteshperumalla@gmail.com","password":"Litesh@#12345"}' \
+  -d "{\"username\":\"${TEST_USERNAME:-testuser@example.com}\",\"password\":\"${TEST_PASSWORD:-changeme}\"}" \
   > /tmp/login.json
 
 echo "✓ Login successful"

@@ -280,7 +280,7 @@ function LoginPageContent() {
 
         <div className="mt-8 space-y-3 text-center text-sm">
           <p className="text-zinc-600 dark:text-zinc-400">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link href="/signup" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
               Create one →
             </Link>

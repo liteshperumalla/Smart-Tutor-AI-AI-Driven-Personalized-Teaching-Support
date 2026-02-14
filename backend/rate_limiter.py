@@ -5,9 +5,9 @@ Uses Redis for distributed rate limiting across multiple servers
 """
 
 from datetime import datetime, timedelta
+import hashlib
 from typing import Optional
 from fastapi import Request, HTTPException, status
-from jose import jwt, JWTError
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -58,45 +58,27 @@ class PerUserRateLimiter:
     def _get_username_from_token(self, request: Request) -> Optional[str]:
         """
         Extract JTI (JWT ID) from JWT token for rate limiting.
+        Checks both Authorization header and HttpOnly cookies.
         SECURITY: Using JTI prevents bypass via forged tokens with different usernames.
         """
+        token = None
+
+        # Check Authorization header first
         auth_header = request.headers.get("Authorization")
-        if not auth_header:
+        if auth_header:
+            parts = auth_header.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+
+        # Fall back to HttpOnly cookie
+        if not token:
+            token = request.cookies.get("access_token")
+
+        if not token:
             return None
 
-        # Extract token from "Bearer <token>"
-        parts = auth_header.split()
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            return None
-
-        token = parts[1]
-
-        try:
-            # Decode token without verification to get JTI
-            # SECURITY: Use JTI instead of username to prevent bypass
-            payload = jwt.decode(
-                token,
-                key="",  # Dummy key since we're not verifying
-                algorithms=["HS256"],
-                options={"verify_signature": False}
-            )
-
-            # Prefer JTI (JWT ID) for rate limiting - unique per token
-            jti = payload.get("jti")
-            if jti:
-                return f"jwt_{jti}"  # Prefix to distinguish from legacy limits
-
-            # Fallback to username if JTI not present (legacy tokens)
-            username = payload.get("sub")
-            if username:
-                logger.warning(f"Rate limiting token without JTI, using username: {username}")
-                return f"user_{username}"
-
-            return None
-
-        except JWTError as e:
-            logger.error(f"Rate limiter token parsing error: {e}")
-            return None
+        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+        return f"tok_{token_hash}"
 
     def _get_rate_limit_key(self, username: str, endpoint: str) -> str:
         """Generate Redis key for rate limiting"""

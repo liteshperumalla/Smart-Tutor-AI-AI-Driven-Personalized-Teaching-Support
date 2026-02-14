@@ -25,6 +25,10 @@ async def websocket_chat_endpoint(
     """
     WebSocket endpoint for real-time chat
 
+    NOTE: Token is accepted via query param because WebSocket API does not
+    support custom headers. This is an accepted trade-off; prefer short-lived
+    tokens and ensure reverse proxies strip query strings from access logs.
+
     Query Parameters:
         token: JWT access token for authentication
 
@@ -144,7 +148,7 @@ async def websocket_chat_endpoint(
                         logger.error(f"Error generating response: {e}", exc_info=True)
                         await websocket.send_json({
                             "type": "error",
-                            "message": f"Error generating response: {str(e)}"
+                            "message": "An error occurred while generating the response"
                         })
 
                 elif message_data.get("type") == "ping":
@@ -167,7 +171,7 @@ async def websocket_chat_endpoint(
                 logger.error(f"Error processing message: {e}", exc_info=True)
                 await websocket.send_json({
                     "type": "error",
-                    "message": f"Error processing message: {str(e)}"
+                    "message": "An error occurred while processing the message"
                 })
 
     except WebSocketDisconnect:
@@ -181,9 +185,8 @@ async def websocket_chat_endpoint(
 
 @router.get("/ws/status")
 async def websocket_status():
-    """Get WebSocket connection status"""
+    """Get WebSocket connection status (counts only, no user list)"""
     return {
         "total_connections": manager.get_total_connections(),
         "connected_users": len(manager.get_connected_users()),
-        "users": manager.get_connected_users()
     }

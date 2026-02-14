@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from backend.auth_service import AuthService, get_auth_service
 from backend.exceptions import EmailNotVerifiedError
@@ -59,8 +63,11 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
 
 def clear_auth_cookies(response: Response):
     """Clear authentication cookies on logout."""
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    is_production = config.ENVIRONMENT == "production"
+    cookie_domain = "localhost" if not is_production else None
+
+    response.delete_cookie(key="access_token", path="/", domain=cookie_domain)
+    response.delete_cookie(key="refresh_token", path="/", domain=cookie_domain)
 
 
 class SignupRequest(BaseModel):
@@ -79,7 +86,7 @@ class LoginRequest(BaseModel):
 class GoogleAuthRequest(BaseModel):
     code: str
     redirect_uri: str
-    state: Optional[str] = None
+    state: str = Field(..., min_length=1)
 
 
 class RefreshTokenRequest(BaseModel):
@@ -142,7 +149,8 @@ def signup(
             "message": "Verification code sent to email.",
         }
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        logger.warning(f"Registration failed: {exc}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Registration failed")
 
 
 @router.post("/login")
@@ -187,7 +195,7 @@ def login(
             reason="invalid_credentials",
             user_agent=get_user_agent(request),
         )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
 
 @router.post("/google/callback")
@@ -229,7 +237,7 @@ def google_callback(
             "message": "Google login successful. Tokens set in secure cookies.",
         }
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google authentication failed")
 
 
 @router.post("/verify/request")
@@ -250,7 +258,7 @@ def request_email_verification(
             email=payload.email,
         )
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification request failed")
     return {"ok": True}
 
 
@@ -262,7 +270,7 @@ def confirm_email_verification(
     try:
         auth_service.confirm_email_verification(payload.username, payload.code)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification failed")
     return {"ok": True}
 
 
@@ -285,7 +293,7 @@ def setup_password(
 
         return {"user": user, "message": "Password set successfully."}
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password setup failed")
 
 
 @router.post("/refresh")

@@ -27,7 +27,7 @@ backoff==2.2.1
     # via
     #   langfuse
     #   posthog
-banks==2.2.1
+banks==2.2.0
     # via llama-index-core
 bcrypt==5.0.0
     # via chromadb
@@ -398,6 +398,8 @@ pypdf==6.6.2
     # via llama-index-readers-file
 pypika==0.48.9
     # via chromadb
+psycopg2-binary>=2.9.9
+    # via -r backend/requirements.in
 pyproject-hooks==1.2.0
     # via build
 pystemmer==2.2.0.3

@@ -21,7 +21,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from functools import lru_cache
 from collections import OrderedDict
-import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -160,9 +159,9 @@ class EmbeddingCache:
             try:
                 response = self.s3_client.get_object(
                     Bucket=self.s3_bucket,
-                    Key=f"embeddings/{key}.pkl"
+                    Key=f"embeddings/{key}.json"
                 )
-                embedding = pickle.loads(response['Body'].read())
+                embedding = json.loads(response['Body'].read().decode("utf-8"))
                 logger.debug(f"Embedding cache HIT (S3): {key[:16]}")
 
                 # Populate higher-tier caches
@@ -216,8 +215,9 @@ class EmbeddingCache:
             try:
                 self.s3_client.put_object(
                     Bucket=self.s3_bucket,
-                    Key=f"embeddings/{key}.pkl",
-                    Body=pickle.dumps(embedding)
+                    Key=f"embeddings/{key}.json",
+                    Body=json.dumps(embedding).encode("utf-8"),
+                    ContentType="application/json",
                 )
             except Exception as e:
                 logger.error(f"S3 cache write error: {e}")

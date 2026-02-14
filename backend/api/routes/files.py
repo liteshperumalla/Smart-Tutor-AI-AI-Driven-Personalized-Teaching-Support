@@ -59,25 +59,29 @@ def _resolve_path(raw_path: str) -> Path:
 def view_file(
     request: Request,
     path: str = Query(...),
+    session=Depends(get_current_session),
 ):
     """
     View a file. Supports both local files and S3 documents.
     If file doesn't exist locally, redirects to S3 presigned URL.
-    Made auth-free for backward compatibility with old chat sessions.
+    Requires authentication. Local files are validated against the allowlist.
     """
     import os
     import logging
 
     logger = logging.getLogger(__name__)
 
-    # First check if the file exists locally
-    local_path = Path(path)
-    if local_path.exists():
+    # Validate local path against the allowlist (prevents path traversal)
+    try:
+        resolved = _resolve_path(path)
         return FileResponse(
-            local_path,
-            filename=local_path.name,
+            resolved,
+            filename=resolved.name,
             media_type="application/octet-stream",
         )
+    except HTTPException:
+        # File not in allowed dirs or doesn't exist locally — fall through to S3
+        pass
 
     # File doesn't exist locally - redirect to S3
     filename = os.path.basename(path)
@@ -85,13 +89,10 @@ def view_file(
 
     # Check if request came through frontend proxy (port 4000) vs direct backend access (port 8010)
     host = request.headers.get("host", "")
-    forwarded_host = request.headers.get("x-forwarded-host", "")
-
-    effective_host = forwarded_host or host
     is_via_proxy = (
-        "4000" in effective_host
-        or "localhost:4000" in effective_host
-        or "127.0.0.1:4000" in effective_host
+        "4000" in host
+        or "localhost:4000" in host
+        or "127.0.0.1:4000" in host
     )
 
     # Check X-Forwarded-Proto to detect if request came through proxy
@@ -101,7 +102,7 @@ def view_file(
     if is_via_proxy:
         # Request came through frontend proxy, return redirect through proxy
         scheme = "https" if is_https else "http"
-        base_url = f"{scheme}://{effective_host}"
+        base_url = f"{scheme}://{host}"
         redirect_url = (
             f"{base_url}/api/backend/files/s3-document?source_file={filename}"
         )
@@ -130,6 +131,7 @@ def download_file(
 @router.get("/s3-document")
 def get_s3_document(
     source_file: str = Query(..., description="Source file name from RAG metadata"),
+    session=Depends(get_current_session),
 ):
     """
     Generate presigned S3 URL for course documents.
@@ -255,15 +257,16 @@ def get_s3_document(
 
     except ClientError as e:
         logger.error(f"S3 error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"S3 error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")
     except Exception as e:
         logger.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")
 
 
 @router.get("/s3-url")
 def get_s3_url(
     source_file: str = Query(..., description="Source file name from RAG metadata"),
+    session=Depends(get_current_session),
 ):
     """
     Get the S3 presigned URL for a document.
@@ -373,7 +376,7 @@ def get_s3_url(
 
     except ClientError as e:
         logger.error(f"S3 error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"S3 error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")
     except Exception as e:
         logger.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")

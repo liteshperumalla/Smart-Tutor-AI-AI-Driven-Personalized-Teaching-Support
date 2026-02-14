@@ -225,7 +225,7 @@ export default function AppointmentsPage() {
                     <CheckCircle className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Request submitted!</p>
-                      <p className="text-sm text-emerald-600 dark:text-emerald-400/80 mt-1">We'll be in touch shortly to confirm your appointment.</p>
+                      <p className="text-sm text-emerald-600 dark:text-emerald-400/80 mt-1">We&apos;ll be in touch shortly to confirm your appointment.</p>
                     </div>
                   </div>
                 </div>

@@ -58,17 +58,12 @@ try:
 except ImportError:
     GoogleSearch = None
 
-# Import langfuse for tracing
-try:
-    from langfuse import Langfuse
-
-    langfuse_client = Langfuse()
-except ImportError:
-    logging.warning("Langfuse not available. Tracing will be disabled.")
-    langfuse_client = None
-except Exception as e:
-    logging.error(f"Failed to initialize Langfuse client: {e}")
-    langfuse_client = None
+# Langfuse tracing — centralized in backend.langfuse_setup
+from backend.langfuse_setup import (
+    create_trace,
+    update_trace,
+    traced_span,
+)
 
 # --- Constants ---
 PREV_CHAT_DIR = config.PREV_CHAT_DIR
@@ -540,23 +535,20 @@ def generate_response_with_sources(
     query: str, user_id: str = "default-user", session_id: Optional[str] = None
 ) -> Tuple[str, List[Dict]]:
     """Generate response with sources (non-streaming version)"""
-    main_trace = None
-    if langfuse_client:
-        main_trace = langfuse_client.trace(
-            name="chat-rag-interaction",
-            user_id=user_id,
-            session_id=session_id,
-            input={"query": query},
-            tags=["chat", "RAG"],
-        )
+    main_trace = create_trace(
+        "chat-rag-interaction",
+        user_id=user_id,
+        session_id=session_id,
+        input={"query": query},
+        tags=["chat", "RAG"],
+    )
 
     response_sources = []
 
     try:
         if is_greeting(query):
             response = "Hello! How can I assist you today?"
-            if main_trace:
-                main_trace.update(output={"response": response})
+            update_trace(main_trace, output={"response": response})
             return response, []
 
         # Use S3 vectors or local ChromaDB
@@ -566,15 +558,13 @@ def generate_response_with_sources(
                 retrieved_nodes = retriever.retrieve(query)
             except Exception as e:
                 err_msg = f"Error using S3 vectors: {str(e)}"
-                if main_trace:
-                    main_trace.update(output={"error": err_msg}, level="ERROR")
+                update_trace(main_trace, output={"error": err_msg}, level="ERROR")
                 return err_msg, []
         else:
             storage_context = get_storage_context()
             if storage_context is None:
                 err_msg = "Error: Storage context not initialized. Cannot query index."
-                if main_trace:
-                    main_trace.update(output={"error": err_msg}, level="ERROR")
+                update_trace(main_trace, output={"error": err_msg}, level="ERROR")
                 return err_msg, []
 
             idx = load_index_from_storage(storage_context)
@@ -617,23 +607,22 @@ def generate_response_with_sources(
         response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
         response_text = str(response_obj)
 
-        if main_trace:
-            main_trace.update(
-                output={"response": response_text},
-                metadata={
-                    "num_retrieved_sources": len(response_sources),
-                    "retrieved_source_sample": [
-                        s["file_name"] for s in response_sources[:2]
-                    ],
-                },
-            )
+        update_trace(
+            main_trace,
+            output={"response": response_text},
+            metadata={
+                "num_retrieved_sources": len(response_sources),
+                "retrieved_source_sample": [
+                    s["file_name"] for s in response_sources[:2]
+                ],
+            },
+        )
 
         return response_text, response_sources
 
     except Exception as e:
         logging.error(f"Error in generate_response_with_sources: {e}", exc_info=True)
-        if main_trace:
-            main_trace.update(output={"error": str(e)}, level="ERROR")
+        update_trace(main_trace, output={"error": str(e)}, level="ERROR")
         error_msg = f"⚠️ Error processing your query: {e}"
         return error_msg, response_sources
 
@@ -654,15 +643,13 @@ def generate_response_stream_and_sources(
         enable_llm_judge: Whether to enable LLM judge evaluation
         model_id: Optional AWS Bedrock model ID to use (e.g., 'anthropic.claude-3-5-sonnet-20241022-v2:0')
     """
-    main_trace = None
-    if langfuse_client:
-        main_trace = langfuse_client.trace(
-            name="chat-rag-interaction-stream",
-            user_id=user_id,
-            session_id=session_id,
-            input={"query": query},
-            tags=["chat", "RAG", "streaming"],
-        )
+    main_trace = create_trace(
+        "chat-rag-interaction-stream",
+        user_id=user_id,
+        session_id=session_id,
+        input={"query": query},
+        tags=["chat", "RAG", "streaming"],
+    )
 
     response_sources = []
 
@@ -672,74 +659,69 @@ def generate_response_stream_and_sources(
             def greeting_stream():
                 yield "Hello! How can I assist you today?"
 
-            if main_trace:
-                main_trace.update(
-                    output={"response": "Hello! How can I assist you today?"}
-                )
+            update_trace(main_trace, output={"response": "Hello! How can I assist you today?"})
             return greeting_stream(), []
 
-        # Use S3 vectors or local ChromaDB
-        if config.USE_S3_VECTORS:
-            try:
-                retriever = create_s3_retriever(similarity_top_k=3)
+        # ── Span: rag-retrieval ──────────────────────────────────────
+        with traced_span(main_trace, "rag-retrieval", input={"query": query}) as retrieval_span:
+            if config.USE_S3_VECTORS:
+                try:
+                    retriever = create_s3_retriever(similarity_top_k=3)
+                    retrieved_nodes = retriever.retrieve(query)
+                except Exception as e:
+                    err_msg = f"Error using S3 vectors: {str(e)}"
+                    update_trace(main_trace, output={"error": err_msg}, level="ERROR")
+
+                    def error_stream_s3():
+                        yield err_msg
+
+                    return error_stream_s3(), []
+            else:
+                storage_context = get_storage_context()
+                if storage_context is None:
+                    err_msg = "Error: Storage context not initialized. Cannot query index."
+                    update_trace(main_trace, output={"error": err_msg}, level="ERROR")
+
+                    def error_stream_storage():
+                        yield err_msg
+
+                    return error_stream_storage(), []
+
+                idx = load_index_from_storage(storage_context)
+                retriever = idx.as_retriever(similarity_top_k=3)
                 retrieved_nodes = retriever.retrieve(query)
-            except Exception as e:
-                err_msg = f"Error using S3 vectors: {str(e)}"
-                if main_trace:
-                    main_trace.update(output={"error": err_msg}, level="ERROR")
 
-                def error_stream_s3():
-                    yield err_msg
+            local_sources = []
+            for n_ws in retrieved_nodes:
+                node = n_ws.node
+                source_text = (
+                    node.get_text()
+                    if hasattr(node, "get_text")
+                    else (node.text if hasattr(node, "text") else "")
+                )
 
-                return error_stream_s3(), []
-        else:
-            storage_context = get_storage_context()
-            if storage_context is None:
-                err_msg = "Error: Storage context not initialized. Cannot query index."
-                if main_trace:
-                    main_trace.update(output={"error": err_msg}, level="ERROR")
+                fp = node.metadata.get("file_path") or node.metadata.get("source_file")
+                file_name = os.path.basename(fp) if fp else "Unknown Source"
 
-                def error_stream_storage():
-                    yield err_msg
+                source_url = (
+                    f"/api/backend/files/s3-document?source_file={quote(file_name)}"
+                    if fp
+                    else None
+                )
 
-                return error_stream_storage(), []
+                local_sources.append(
+                    {
+                        "file_name": file_name,
+                        "file_path": fp,
+                        "source_url": source_url,
+                        "page": node.metadata.get("page_number"),
+                        "slide": node.metadata.get("slide_number"),
+                        "chunk_text": source_text[:300] + "..."
+                        if len(source_text) > 300
+                        else source_text,
+                    }
+                )
 
-            idx = load_index_from_storage(storage_context)
-            retriever = idx.as_retriever(similarity_top_k=3)
-            retrieved_nodes = retriever.retrieve(query)
-
-        local_sources = []
-        for n_ws in retrieved_nodes:
-            node = n_ws.node
-            source_text = (
-                node.get_text()
-                if hasattr(node, "get_text")
-                else (node.text if hasattr(node, "text") else "")
-            )
-
-            # Check both file_path (ChromaDB) and source_file (S3)
-            fp = node.metadata.get("file_path") or node.metadata.get("source_file")
-            file_name = os.path.basename(fp) if fp else "Unknown Source"
-
-            # Generate S3 document URL instead of local file path
-            source_url = (
-                f"/api/backend/files/s3-document?source_file={quote(file_name)}"
-                if fp
-                else None
-            )
-
-            local_sources.append(
-                {
-                    "file_name": file_name,
-                    "file_path": fp,  # Keep for backwards compatibility
-                    "source_url": source_url,  # New S3 URL for frontend
-                    "page": node.metadata.get("page_number"),
-                    "slide": node.metadata.get("slide_number"),
-                    "chunk_text": source_text[:300] + "..."
-                    if len(source_text) > 300
-                    else source_text,
-                }
-            )
         nodes_for_prompt = retrieved_nodes
         # Format context with numbered sources for citation
         context_parts = []
@@ -756,8 +738,15 @@ def generate_response_stream_and_sources(
         template_for_response = CHAT_QA_TEMPLATE
         used_web_search = False
 
-        if _should_search_web(query, context_str, local_sources):
-            web_results = search_web_results(query)
+        # ── Span: web-search-decision ────────────────────────────────
+        with traced_span(main_trace, "web-search-decision", input={"query": query}) as ws_decision_span:
+            should_search = _should_search_web(query, context_str, local_sources)
+
+        if should_search:
+            # ── Span: web-search-execution ───────────────────────────
+            with traced_span(main_trace, "web-search-execution", input={"query": query}) as ws_exec_span:
+                web_results = search_web_results(query)
+
             if web_results:
                 used_web_search = True
                 template_for_response = WEB_SEARCH_TEMPLATE
@@ -803,7 +792,6 @@ def generate_response_stream_and_sources(
                     )
                 if web_nodes:
                     nodes_for_prompt = web_nodes
-                    # Format web search context with numbered sources
                     web_context_parts = []
                     for idx, n in enumerate(nodes_for_prompt, 1):
                         source_title = n.node.metadata.get("title", f"Web Source {idx}")
@@ -819,37 +807,37 @@ def generate_response_stream_and_sources(
         print(context_str)
         print("--------------------------------------")
 
-        # Create response synthesizer with optional custom LLM
-        synth_kwargs = {
-            "response_mode": "compact",
-            "streaming": True,
-            "text_qa_template": template_for_response,
-        }
+        # ── Span: llm-synthesis ──────────────────────────────────────
+        with traced_span(main_trace, "llm-synthesis", input={"query": query, "model_id": model_id}) as synth_span:
+            synth_kwargs = {
+                "response_mode": "compact",
+                "streaming": True,
+                "text_qa_template": template_for_response,
+            }
 
-        # If a specific model is requested, create a custom LLM instance
-        if model_id:
-            from backend.llm_provider import get_llm
-            custom_llm = get_llm(model_id=model_id)
-            synth_kwargs["llm"] = custom_llm
-            logging.info(f"Using custom LLM model: {model_id}")
+            if model_id:
+                from backend.llm_provider import get_llm
+                custom_llm = get_llm(model_id=model_id)
+                synth_kwargs["llm"] = custom_llm
+                logging.info(f"Using custom LLM model: {model_id}")
 
-        synth = get_response_synthesizer(**synth_kwargs)
-        streaming_response_obj = synth.synthesize(
-            query=query,
-            nodes=nodes_for_prompt,
-        )
-        response_text_generator = streaming_response_obj.response_gen
-
-        if main_trace:
-            main_trace.update(
-                metadata={
-                    "num_retrieved_sources": len(response_sources),
-                    "retrieved_source_sample": [
-                        s["file_name"] for s in response_sources[:2]
-                    ],
-                    "web_search_used": used_web_search,
-                }
+            synth = get_response_synthesizer(**synth_kwargs)
+            streaming_response_obj = synth.synthesize(
+                query=query,
+                nodes=nodes_for_prompt,
             )
+            response_text_generator = streaming_response_obj.response_gen
+
+        update_trace(
+            main_trace,
+            metadata={
+                "num_retrieved_sources": len(response_sources),
+                "retrieved_source_sample": [
+                    s["file_name"] for s in response_sources[:2]
+                ],
+                "web_search_used": used_web_search,
+            },
+        )
 
         return response_text_generator, response_sources
 
@@ -858,8 +846,7 @@ def generate_response_stream_and_sources(
             f"Error in generate_response_stream_and_sources: {e}", exc_info=True
         )
         error_message = str(e)
-        if main_trace:
-            main_trace.update(output={"error": error_message}, level="ERROR")
+        update_trace(main_trace, output={"error": error_message}, level="ERROR")
 
         def error_stream_exception():
             yield f"⚠️ Error processing your query: {error_message}"

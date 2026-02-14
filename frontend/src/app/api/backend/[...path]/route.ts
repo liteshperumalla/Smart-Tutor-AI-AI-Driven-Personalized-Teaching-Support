@@ -47,8 +47,8 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   };
 
   if (request.body) {
-    init.body = request.body as any;
-    (init as any).duplex = "half";
+    init.body = request.body as ReadableStream;
+    (init as Record<string, unknown>).duplex = "half";
   }
 
   const response = await fetch(url, init);

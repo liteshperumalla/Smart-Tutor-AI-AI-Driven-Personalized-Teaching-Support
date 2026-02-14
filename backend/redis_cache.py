@@ -3,7 +3,7 @@ Redis Cache Implementation
 Production-grade distributed caching using Redis
 """
 
-import pickle
+import json
 import time
 from typing import Any, Optional
 from threading import RLock
@@ -84,12 +84,12 @@ class RedisCache:
             raise
 
     def _serialize(self, value: Any) -> bytes:
-        """Serialize value for storage"""
-        return pickle.dumps(value)
+        """Serialize value for storage using JSON (safe, no arbitrary code execution)"""
+        return json.dumps(value).encode("utf-8")
 
     def _deserialize(self, data: bytes) -> Any:
-        """Deserialize value from storage"""
-        return pickle.loads(data)
+        """Deserialize value from storage using JSON"""
+        return json.loads(data.decode("utf-8"))
 
     def get(self, key: str) -> Optional[Any]:
         """
