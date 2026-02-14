@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from backend.config import config
+from backend.langfuse_setup import create_trace, update_trace, traced_span
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +34,24 @@ def run_agent_pipeline(
     """
     start_time = time.time()
 
+    # Root Langfuse trace for the entire agent pipeline
+    main_trace = create_trace(
+        "agent-pipeline",
+        user_id=user_id,
+        session_id=session_id,
+        input={"query": query},
+        tags=["agent", "langgraph"],
+    )
+
     # ── 1. Student profile ────────────────────────────────────────
     from backend.agents.profile import load_student_profile
 
-    profile = load_student_profile(user_id)
+    with traced_span(main_trace, "load-student-profile", input={"user_id": user_id}) as profile_span:
+        profile = load_student_profile(user_id)
 
     # ── 2. RAG retrieval (reuse existing S3/Chroma logic) ─────────
-    context_str, sources = _retrieve_rag_context(query)
+    with traced_span(main_trace, "agent-rag-retrieval", input={"query": query}) as rag_span:
+        context_str, sources = _retrieve_rag_context(query)
 
     # ── 3. Build state + invoke graph ─────────────────────────────
     from backend.agents.graph import get_compiled_graph
@@ -66,11 +78,12 @@ def run_agent_pipeline(
         "agent": "",
     }
 
-    compiled_graph = get_compiled_graph()
-    result = compiled_graph.invoke(
-        initial_state,
-        {"recursion_limit": config.AGENT_GRAPH_RECURSION_LIMIT},
-    )
+    with traced_span(main_trace, "langgraph-invoke", input={"query": query}) as graph_span:
+        compiled_graph = get_compiled_graph()
+        result = compiled_graph.invoke(
+            initial_state,
+            {"recursion_limit": config.AGENT_GRAPH_RECURSION_LIMIT},
+        )
 
     response_text = result.get("response", "I couldn't generate a response.")
     agent_name = result.get("agent", "tutor_agent")
@@ -82,17 +95,30 @@ def run_agent_pipeline(
     # ── 4. Log to PostgreSQL ──────────────────────────────────────
     from backend.agents.interaction_log import log_agent_interaction
 
-    log_agent_interaction(
-        username=user_id,
-        session_id=session_id or "",
-        query=query,
-        response=response_text[:2000],
-        agent=agent_name,
-        route_reason=route_reason,
-        query_type=result.get("next", "general_tutoring"),
-        sentiment=sentiment,
-        response_time_ms=elapsed_ms,
-        model_id=model_id,
+    with traced_span(main_trace, "log-interaction", input={"agent": agent_name}) as log_span:
+        log_agent_interaction(
+            username=user_id,
+            session_id=session_id or "",
+            query=query,
+            response=response_text[:2000],
+            agent=agent_name,
+            route_reason=route_reason,
+            query_type=result.get("next", "general_tutoring"),
+            sentiment=sentiment,
+            response_time_ms=elapsed_ms,
+            model_id=model_id,
+        )
+
+    # Update root trace with final output
+    update_trace(
+        main_trace,
+        output={"response_length": len(response_text), "agent": agent_name},
+        metadata={
+            "agent": agent_name,
+            "route_reason": route_reason,
+            "elapsed_ms": elapsed_ms,
+            "num_sources": len(sources),
+        },
     )
 
     # ── 5. Stream with metadata prefix ────────────────────────────

@@ -291,8 +291,9 @@ def revoke_share(
     session_data=Depends(get_current_session),
     share_service=Depends(get_share_service),
 ):
-    """Revoke a share link."""
-    success = share_service.revoke_share(share_id)
+    """Revoke a share link. The requesting user must own the share."""
+    _, user = session_data
+    success = share_service.revoke_share(share_id, user["username"])
     if not success:
         raise HTTPException(status_code=404, detail="Share link not found")
     return {"success": True}

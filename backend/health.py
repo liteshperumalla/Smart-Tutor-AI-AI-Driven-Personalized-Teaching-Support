@@ -154,6 +154,16 @@ class HealthChecker:
             }
 
     @staticmethod
+    def check_langfuse() -> Dict[str, Any]:
+        """Check Langfuse tracing connectivity"""
+        try:
+            from backend.langfuse_setup import get_langfuse_health
+            return get_langfuse_health()
+        except Exception as e:
+            logger.error(f"Langfuse health check failed: {e}")
+            return {"status": "unhealthy", "error": str(e)}
+
+    @staticmethod
     def check_jwt_blacklist() -> Dict[str, Any]:
         """Check JWT blacklist functionality"""
         try:
@@ -196,7 +206,8 @@ class HealthChecker:
             "redis": cls.check_redis(),
             "bedrock": cls.check_bedrock(),
             "secrets_manager": cls.check_secrets_manager(),
-            "jwt_blacklist": cls.check_jwt_blacklist()
+            "jwt_blacklist": cls.check_jwt_blacklist(),
+            "langfuse": cls.check_langfuse(),
         }
 
         # Determine overall health

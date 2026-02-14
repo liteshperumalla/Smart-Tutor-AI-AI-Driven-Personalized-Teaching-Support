@@ -1,6 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import Dict, Any
 import time
+
+from backend.api.dependencies import get_admin_session
 
 router = APIRouter(prefix="/health", tags=["health"])
 
@@ -16,7 +18,7 @@ async def health_check():
 @router.get(
     "/rag", summary="RAG Pipeline Health", description="Check RAG pipeline components"
 )
-async def rag_health_check() -> Dict[str, Any]:
+async def rag_health_check(session=Depends(get_admin_session)) -> Dict[str, Any]:
     """
     Comprehensive RAG pipeline health check
     """
@@ -90,9 +92,9 @@ async def rag_health_check() -> Dict[str, Any]:
     summary="Detailed system status",
     description="Full system status including RAG",
 )
-async def detailed_status() -> Dict[str, Any]:
+async def detailed_status(session=Depends(get_admin_session)) -> Dict[str, Any]:
     """
-    Get detailed system status
+    Get detailed system status (admin-only)
     """
     import boto3
     from backend.config import config

@@ -34,12 +34,24 @@ def home_overview():
         for a in admin_svc.list_active_announcements()
     ]
 
+    # Expose only readiness flags, not internal topology details
+    safe_status = {
+        "vector_store_ready": system_status.get("vector_store_ready", False),
+        "evaluation_ready": system_status.get("evaluation_ready", False),
+        "llm_ready": system_status.get("llm", {}).get("ready", False),
+        "issues": [
+            msg for msg in system_status.get("issues", [])
+            # Strip provider-specific error details
+            if ":" not in msg
+        ] if system_status.get("issues") else [],
+    }
+
     return {
         "announcements": dynamic_announcements + ANNOUNCEMENTS,
         "professor": PROFESSOR,
         "course_topics": COURSE_TOPICS,
         "quick_actions": QUICK_ACTIONS,
-        "system_status": system_status,
+        "system_status": safe_status,
     }
 
 

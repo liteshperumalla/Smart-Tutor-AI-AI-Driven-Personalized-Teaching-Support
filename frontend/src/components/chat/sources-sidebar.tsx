@@ -109,9 +109,7 @@ export function SourcesSidebar({
         (filePath
           ? `${getApiBaseUrl()}/files/view?path=${encodeURIComponent(filePath)}${
               page ? `&page=${page}` : ""
-            }${slide ? `&slide=${slide}` : ""}${
-              token ? `&token=${encodeURIComponent(token)}` : ""
-            }`
+            }${slide ? `&slide=${slide}` : ""}`
           : null);
 
       if (!directUrl) return;

@@ -60,7 +60,7 @@ function GoogleCallbackContent() {
 
         if (response.status === 428 && payload.requires_password_setup) {
           if (payload.password_setup_token && payload.username) {
-            // Pass token via URL fragment to avoid clear-text storage in sessionStorage
+            // Pass token via query params for password setup
             const params = new URLSearchParams({
               token: payload.password_setup_token,
               username: payload.username,

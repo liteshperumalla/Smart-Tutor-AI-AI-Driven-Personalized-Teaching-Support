@@ -16,7 +16,7 @@ All credentials in the original `.env` file were exposed and MUST be rotated:
 
 ```bash
 # AWS Access Keys
-aws iam delete-access-key --access-key-id AKIASVQKHKYNYFWLE4NK --user-name smart-tutor
+aws iam delete-access-key --access-key-id AKIA**REDACTED** --user-name smart-tutor
 aws iam create-access-key --user-name smart-tutor
 
 # Database Password

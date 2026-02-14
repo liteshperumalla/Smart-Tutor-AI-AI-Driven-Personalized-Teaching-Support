@@ -39,8 +39,8 @@ jobs:
         if: ${{ github.event_name == 'pull_request' || (github.event.before != github.sha && github.event.before != '0000000000000000000000000000000000000000') }}
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: GitGuardian Secret Scanning
         uses: GitGuardian/ggshield-action@v1.32.0
@@ -66,7 +66,6 @@ jobs:
       - name: Run Snyk for Backend
         if: matrix.component == 'backend' && vars.ENABLE_SNYK == 'true'
         uses: snyk/actions/python@0.4.0
-        continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -75,7 +74,6 @@ jobs:
       - name: Run Snyk for Frontend
         if: matrix.component == 'frontend' && vars.ENABLE_SNYK == 'true'
         uses: snyk/actions/node@0.4.0
-        continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -85,14 +83,14 @@ jobs:
         if: matrix.component == 'backend'
         run: |
           pip install safety
-          safety check --file=backend/requirements.txt --json --output safety-report.json || true
+          safety check --file=backend/requirements.txt --json --output safety-report.json
 
       - name: Run npm audit (Frontend)
         if: matrix.component == 'frontend'
         run: |
           cd frontend
           npm audit --json > npm-audit-report.json || true
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high
 
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
@@ -326,10 +324,14 @@ jobs:
 
       - name: Seed test user for E2E
         run: |
-          curl -sf -X POST http://localhost:8010/api/v1/auth/register \
+          curl -sf -X POST http://localhost:8010/auth/signup \
             -H 'Content-Type: application/json' \
-            -d '{"username":"testuser","email":"testuser@example.com","password":"TestPass123!","full_name":"Test User"}' \
+            -d '{"username":"testuser","email":"testuser@example.com","password":"TestPass123!","confirm_password":"TestPass123!","full_name":"Test User"}' \
             || echo "Test user may already exist"
+          # Mark the test user email as verified so CI login is not blocked by SMTP
+          docker compose exec -T postgres psql -U "${POSTGRES_USER:-smart_tutor_user}" -d "${POSTGRES_DB:-smart_tutor}" \
+            -c "UPDATE users SET metadata = jsonb_set(COALESCE(metadata,'{}')::jsonb, '{email_verified}', 'true') WHERE username = 'testuser';" \
+            || echo "Could not mark email verified (user may not exist yet)"
 
       - name: Run E2E tests
         run: |
@@ -422,7 +424,7 @@ jobs:
         uses: anchore/scan-action@v3
         with:
           image: smart-tutor-${{ matrix.component }}:test
-          fail-build: false
+          fail-build: true
           severity-cutoff: high
 
       - name: Scan with Snyk Container

@@ -55,9 +55,8 @@ def get_secret(secret_name: str, region: str = "us-east-1") -> Optional[Dict[str
 _app_secrets = None
 _rds_credentials = None
 
-# Always try to fetch secrets from AWS Secrets Manager if available
-# This allows using AWS resources in development mode
-if True:  # Changed from production-only to always attempt
+_environment = os.getenv("ENVIRONMENT", "development").lower()
+if _environment in ("production", "staging"):
     logger.info("Attempting to fetch secrets from AWS Secrets Manager...")
     _app_secrets = get_secret("smart-tutor/app/secrets")
 
@@ -65,11 +64,13 @@ if True:  # Changed from production-only to always attempt
     _rds_credentials = _app_secrets
 
     if _app_secrets:
-        logger.info("✅ Secrets loaded from Secrets Manager (consolidated)")
+        logger.info("Secrets loaded from Secrets Manager (consolidated)")
     else:
         logger.warning(
-            "⚠️ Secrets not found in Secrets Manager, falling back to .env"
+            "Secrets not found in Secrets Manager, falling back to .env"
         )
+else:
+    logger.info(f"Skipping AWS Secrets Manager in {_environment} environment")
 
 
 class Config:

@@ -1,12 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 type GoogleAuthButtonProps = {
   intent: "login" | "signup";
 };
 
+function generateNonce(): string {
+  if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
+    return Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+  }
+  return Date.now().toString(16);
+}
+
 export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
+  const [nonce] = useState<string>(generateNonce);
+
   const config = useMemo(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     const redirectEnv = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
@@ -20,12 +31,6 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       return { ready: false } as const;
     }
 
-    const nonce =
-      typeof window !== "undefined" && window.crypto?.getRandomValues
-        ? Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
-            .map((value) => value.toString(16).padStart(2, "0"))
-            .join("")
-        : Math.random().toString(16).slice(2);
     if (typeof window !== "undefined") {
       window.sessionStorage.setItem("google_oauth_state", nonce);
     }
@@ -45,7 +50,7 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       ready: true,
       url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
     } as const;
-  }, [intent]);
+  }, [intent, nonce]);
 
   const label =
     intent === "login" ? "Sign in with Google" : "Sign up with Google";

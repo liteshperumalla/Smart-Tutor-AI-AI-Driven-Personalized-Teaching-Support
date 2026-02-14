@@ -12,9 +12,6 @@ permissions:
   security-events: write
   issues: read
 
-env:
-  IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-
 jobs:
   trivy-scheduled-scan:
     name: Trivy Full Security Scan
@@ -138,6 +135,8 @@ jobs:
     name: Container Security Scan (Latest)
     runs-on: ubuntu-latest
     if: github.ref_name == github.event.repository.default_branch
+    env:
+      IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
 
     steps:
       - name: Checkout code

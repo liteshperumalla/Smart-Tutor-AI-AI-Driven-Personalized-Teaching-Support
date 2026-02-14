@@ -16,7 +16,7 @@ test.describe('Chat Functionality', () => {
 
   test('should create new chat session', async ({ page }) => {
     await page.goto('/chat')
-    await page.click('text=Start new session')
+    await page.click('text=New chat')
 
     // Session should be created
     await expect(page.locator('text=New chat')).toBeVisible()
@@ -28,7 +28,7 @@ test.describe('Chat Functionality', () => {
     // Create session if not exists
     const sessionExists = await page.locator('text=New chat').isVisible()
     if (!sessionExists) {
-      await page.click('text=Start new session')
+      await page.click('text=New chat')
     }
 
     // Send message

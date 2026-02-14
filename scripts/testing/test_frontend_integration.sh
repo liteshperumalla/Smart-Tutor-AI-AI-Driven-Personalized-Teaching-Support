@@ -7,8 +7,8 @@ echo ""
 
 BASE_URL="http://localhost:4000"
 API_URL="http://localhost:8010"
-USERNAME="liteshperumalla@gmail.com"
-PASSWORD="Litesh@#12345"
+USERNAME="${TEST_USERNAME:-testuser@example.com}"
+PASSWORD="${TEST_PASSWORD:-changeme}"
 
 # Colors
 GREEN='\033[0;32m'

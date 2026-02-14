@@ -26,7 +26,7 @@
 ```bash
 # 1. Rotate ALL credentials immediately
 aws iam create-access-key --user-name smart-tutor
-aws iam delete-access-key --access-key-id AKIASVQKHKYNYFWLE4NK
+aws iam delete-access-key --access-key-id AKIA**REDACTED**
 
 # 2. Create new secrets in AWS Secrets Manager
 aws secretsmanager create-secret \

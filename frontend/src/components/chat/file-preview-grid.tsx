@@ -42,6 +42,11 @@ function getFileIcon(file: File) {
   return File;
 }
 
+function renderFileIcon(file: File, className: string) {
+  const Icon = getFileIcon(file);
+  return <Icon className={className} />;
+}
+
 // Get file type color
 function getFileTypeColor(file: File): string {
   const type = file.type;
@@ -72,7 +77,7 @@ function ImagePreview({ file, status, error, onRemove }: ImagePreviewProps) {
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setTimeout(() => setPreviewUrl(url), 0);
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
@@ -122,14 +127,13 @@ interface DocumentPreviewProps {
 }
 
 function DocumentPreview({ file, status, error, onRemove }: DocumentPreviewProps) {
-  const IconComponent = getFileIcon(file);
   const colorClass = getFileTypeColor(file);
 
   return (
     <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 group hover:bg-zinc-150 dark:hover:bg-zinc-750 transition-colors max-w-[200px]">
       {/* Icon */}
       <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${colorClass} flex items-center justify-center`}>
-        <IconComponent className="h-4 w-4 text-white" />
+        {renderFileIcon(file, "h-4 w-4 text-white")}
       </div>
 
       {/* File info */}

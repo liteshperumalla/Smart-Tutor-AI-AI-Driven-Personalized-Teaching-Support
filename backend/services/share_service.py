@@ -65,12 +65,14 @@ class ShareService:
 
         return None
 
-    def revoke_share(self, share_id: str) -> bool:
-        """Revoke a share link."""
-        if share_id in self._share_cache:
-            del self._share_cache[share_id]
-            return True
-        return False
+    def revoke_share(self, share_id: str, username: str) -> bool:
+        """Revoke a share link. Only the owner may revoke their own share."""
+        if share_id not in self._share_cache:
+            return False
+        if self._share_cache[share_id]["username"] != username:
+            return False
+        del self._share_cache[share_id]
+        return True
 
     def cleanup_expired_shares(self) -> int:
         """Remove expired share links from cache."""

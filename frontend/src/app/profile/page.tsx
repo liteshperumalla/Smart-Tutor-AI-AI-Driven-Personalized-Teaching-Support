@@ -91,7 +91,6 @@ export default function ProfilePage() {
   useEffect(() => {
     if (!token) return;
     let isMounted = true;
-    const frame = requestAnimationFrame(() => setLoading(true));
     fetchProfile(token)
       .then((data) => {
         if (!isMounted) return;
@@ -117,7 +116,6 @@ export default function ProfilePage() {
 
     return () => {
       isMounted = false;
-      cancelAnimationFrame(frame);
     };
   }, [token, setTheme]);
 

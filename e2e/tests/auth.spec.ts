@@ -21,9 +21,9 @@ test.describe('Authentication', () => {
 
     await page.click('button[type="submit"]')
 
-    // Should redirect to login with success message
-    await expect(page).toHaveURL(/.*login/)
-    await expect(page.locator('text=Account created successfully')).toBeVisible()
+    // Should redirect to verify page
+    await expect(page).toHaveURL(/.*verify/)
+    await expect(page.locator('text=Verification')).toBeVisible()
   })
 
   test('should login with valid credentials', async ({ page }) => {
@@ -60,14 +60,14 @@ test.describe('Authentication', () => {
 
     // Click profile/logout
     await page.click('text=Profile')
-    await page.click('text=Logout')
+    await page.click('text=Sign out')
 
     // Should redirect to login
     await expect(page).toHaveURL(/.*login/)
 
     // Token should be cleared
     const cookies = await context.cookies()
-    const authCookie = cookies.find(c => c.name === 'satAuthToken')
+    const authCookie = cookies.find(c => c.name === 'access_token')
     expect(authCookie).toBeUndefined()
   })
 })

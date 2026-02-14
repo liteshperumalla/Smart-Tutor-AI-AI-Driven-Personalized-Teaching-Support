@@ -28,7 +28,7 @@ Completed comprehensive security audit and implemented all critical, high, and m
 - **File:** `.env`
 - **Risk:** CRITICAL - Complete AWS account compromise
 - **Changes:**
-  - Removed AWS access keys (AKIASVQKHKYNYFWLE4NK)
+  - Removed AWS access keys (AKIA**REDACTED**)
   - Removed database passwords
   - Removed all API keys (Langfuse, SerpAPI, Google OAuth, SMTP)
   - Added comprehensive security documentation
@@ -171,7 +171,7 @@ Completed comprehensive security audit and implemented all critical, high, and m
 1. **Rotate ALL Credentials** (2-4 hours)
    ```bash
    # AWS Keys
-   aws iam delete-access-key --access-key-id AKIASVQKHKYNYFWLE4NK
+   aws iam delete-access-key --access-key-id AKIA**REDACTED**
    aws iam create-access-key --user-name smart-tutor
 
    # Database, API keys, OAuth secrets

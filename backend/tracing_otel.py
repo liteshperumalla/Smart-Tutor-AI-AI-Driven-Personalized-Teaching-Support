@@ -106,10 +106,11 @@ class OpenTelemetryConfig:
                 sampler=sampler,
             )
 
-            # Set up OTLP exporter
+            # Set up OTLP exporter — use TLS in production
+            use_insecure = self.environment != "production"
             otlp_exporter = OTLPSpanExporter(
                 endpoint=self.otlp_endpoint,
-                insecure=True,  # Use TLS in production
+                insecure=use_insecure,
             )
 
             # Add batch span processor

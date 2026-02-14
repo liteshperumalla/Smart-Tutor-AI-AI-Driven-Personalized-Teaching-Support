@@ -23,9 +23,9 @@ export function RenameChatModal({
   // Reset title when modal opens with new currentTitle
   useEffect(() => {
     if (isOpen) {
-      setTitle(currentTitle);
-      // Focus input after a brief delay to ensure modal is rendered
+      // Use setTimeout to avoid synchronous setState in effect body
       setTimeout(() => {
+        setTitle(currentTitle);
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 50);

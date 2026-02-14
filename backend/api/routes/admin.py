@@ -230,6 +230,12 @@ def knowledge_graph_metrics(session=Depends(get_admin_session)):
     return {"knowledge_graph_metrics": svc.get_knowledge_graph_metrics()}
 
 
+@router.get("/tracing-health")
+def tracing_health(session=Depends(get_admin_session)):
+    from backend.langfuse_setup import get_langfuse_health
+    return {"tracing": get_langfuse_health()}
+
+
 # ── Resources Management ─────────────────────────────────────────
 
 @router.get("/resources")

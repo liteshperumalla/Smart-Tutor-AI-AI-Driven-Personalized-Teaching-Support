@@ -141,17 +141,13 @@ add_security_middleware(app, config={
 
 # Trusted Host middleware (prevent host header injection)
 if config.ENVIRONMENT == "production":
-    app.add_middleware(
-        TrustedHostMiddleware,
-        allowed_hosts=[
-            "smartaitutor.yourdomain.com",
-            "app.yourdomain.com",
-            "localhost:8010",  # For local testing
-            "127.0.0.1:8010",  # For local testing
-            "localhost",
-            "127.0.0.1"
-        ]
-    )
+    _trusted_hosts = os.environ.get("TRUSTED_HOSTS", "").split(",")
+    _trusted_hosts = [h.strip() for h in _trusted_hosts if h.strip()]
+    if _trusted_hosts:
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=_trusted_hosts,
+        )
 
 
 @app.get("/")
@@ -217,12 +213,14 @@ async def metrics(
 
     # SECURITY: Require authentication for metrics endpoint
     if not authorization:
-        # Check if request is from internal network (Docker network)
-        # Allow unauthenticated access from Prometheus container
+        # Allow unauthenticated access only from explicitly trusted scrapers
         client_host = request.client.host if request else None
-        internal_hosts = ["prometheus", "localhost", "127.0.0.1", "172."]  # Docker network
+        # Only allow exact loopback addresses; Prometheus should use auth token
+        # or be configured in METRICS_ALLOWED_IPS env var
+        allowed_ips = os.environ.get("METRICS_ALLOWED_IPS", "127.0.0.1,::1").split(",")
+        allowed_ips = [ip.strip() for ip in allowed_ips if ip.strip()]
 
-        if not client_host or not any(client_host.startswith(host) for host in internal_hosts):
+        if not client_host or client_host not in allowed_ips:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required for metrics endpoint"
@@ -234,9 +232,10 @@ async def metrics(
             auth_service = get_auth_service()
             user = auth_service.validate_session(token)
 
-            # Optional: Restrict to admin role
-            # if user.get("role") != "admin":
-            #     raise HTTPException(status_code=403, detail="Admin access required")
+            if user.get("role") != "Admin":
+                raise HTTPException(status_code=403, detail="Admin access required")
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -289,6 +288,13 @@ async def startup_event():
     set_app_info(version="1.0.0", environment=config.ENVIRONMENT)
     logger.info("✅ Prometheus metrics initialized")
 
+    # Initialize Langfuse tracing
+    from backend.langfuse_setup import init_langfuse
+    if init_langfuse():
+        logger.info("✅ Langfuse tracing initialized")
+    else:
+        logger.info("ℹ️  Langfuse tracing not active")
+
     # Seed admin user if none exists
     try:
         from backend.database import get_user_db
@@ -299,20 +305,21 @@ async def startup_event():
         has_admin = any(u.get("role") == "Admin" for u in users)
 
         if not has_admin:
-            admin_password = "Admin@123"
-            hashed = bcrypt.hashpw(
-                admin_password.encode("utf-8"), bcrypt.gensalt()
-            ).decode("utf-8")
-            user_db.create_user(
-                username="admin",
-                password_hash=hashed,
-                email="admin@infra-mind.com",
-                full_name="Admin",
-                role="Admin",
-            )
-            logger.info("=" * 60)
-            logger.info("🔑 Admin user seeded: admin / Admin@123")
-            logger.info("=" * 60)
+            admin_password = os.environ.get("ADMIN_SEED_PASSWORD")
+            if not admin_password:
+                logger.warning("⚠️  No ADMIN_SEED_PASSWORD env var set — skipping admin seed")
+            else:
+                hashed = bcrypt.hashpw(
+                    admin_password.encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8")
+                user_db.create_user(
+                    username="admin",
+                    password_hash=hashed,
+                    email="admin@infra-mind.com",
+                    full_name="Admin",
+                    role="Admin",
+                )
+                logger.info("Admin user seeded (password from ADMIN_SEED_PASSWORD env var)")
         else:
             logger.info("✅ Admin user already exists")
     except Exception as e:
@@ -349,6 +356,14 @@ async def shutdown_event():
             logger.info("✅ Redis connections closed")
     except Exception as e:
         logger.error(f"❌ Error closing Redis connections: {e}")
+
+    # Flush Langfuse events
+    try:
+        from backend.langfuse_setup import shutdown_langfuse
+        shutdown_langfuse()
+        logger.info("✅ Langfuse events flushed")
+    except Exception as e:
+        logger.error(f"❌ Error flushing Langfuse: {e}")
 
     logger.info("=" * 60)
     logger.info("Shutdown complete")

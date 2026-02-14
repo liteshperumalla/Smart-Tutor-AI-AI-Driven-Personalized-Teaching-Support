@@ -20,8 +20,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        username: 'liteshperumalla@gmail.com',
-                        password: 'Litesh@#12345'
+                        username: document.getElementById('username')?.value || 'testuser@example.com',
+                        password: document.getElementById('password')?.value || 'changeme'
                     })
                 });
                 const data = await resp.json();
