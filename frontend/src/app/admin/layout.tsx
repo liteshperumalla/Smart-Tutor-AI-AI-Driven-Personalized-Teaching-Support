@@ -74,31 +74,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </span>
       </div>
 
-      {/* Admin Navigation Tabs */}
-      <nav className="flex flex-wrap gap-2 rounded-2xl border border-zinc-200 bg-white/70 p-2 dark:border-zinc-800 dark:bg-zinc-900/60">
-        {adminNav.map((item) => {
-          const Icon = item.icon;
-          const isActive =
-            item.href === "/admin"
-              ? pathname === "/admin"
-              : pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={[
-                "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition",
-                isActive
-                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                  : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white",
-              ].join(" ")}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Admin Navigation Tabs — horizontally scrollable on small screens */}
+      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white/70 dark:border-zinc-800 dark:bg-zinc-900/60">
+        <nav className="flex gap-1 p-2 min-w-max sm:flex-wrap sm:min-w-0">
+          {adminNav.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.href === "/admin"
+                ? pathname === "/admin"
+                : pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={[
+                  "flex min-h-[40px] items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition whitespace-nowrap sm:px-4",
+                  isActive
+                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white",
+                ].join(" ")}
+              >
+                <Icon className="h-4 w-4 flex-shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
 
       {/* Admin Page Content */}
       <div>{children}</div>

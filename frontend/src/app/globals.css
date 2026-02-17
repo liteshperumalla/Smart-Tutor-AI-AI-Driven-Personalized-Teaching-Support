@@ -51,6 +51,18 @@ body {
   font-family: var(--font-body), 'Cabinet Grotesk', Arial, Helvetica, sans-serif;
 }
 
+/* Cross-browser backdrop-blur support
+   Safari < 15.4 requires -webkit-backdrop-filter vendor prefix.
+   Tailwind v4 + Lightning CSS auto-prefixes this, but we add it explicitly
+   for any edge cases where the build pipeline misses it. */
+.backdrop-blur-sm  { -webkit-backdrop-filter: blur(4px);   backdrop-filter: blur(4px);   }
+.backdrop-blur     { -webkit-backdrop-filter: blur(8px);   backdrop-filter: blur(8px);   }
+.backdrop-blur-md  { -webkit-backdrop-filter: blur(12px);  backdrop-filter: blur(12px);  }
+.backdrop-blur-lg  { -webkit-backdrop-filter: blur(16px);  backdrop-filter: blur(16px);  }
+.backdrop-blur-xl  { -webkit-backdrop-filter: blur(24px);  backdrop-filter: blur(24px);  }
+.backdrop-blur-2xl { -webkit-backdrop-filter: blur(40px);  backdrop-filter: blur(40px);  }
+.backdrop-blur-3xl { -webkit-backdrop-filter: blur(64px);  backdrop-filter: blur(64px);  }
+
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display), 'Clash Display', sans-serif;
   font-weight: 700;
@@ -146,6 +158,8 @@ body.theme-dark .input:focus {
   align-items: center;
   gap: 0.5rem;
   border-radius: 9999px;
+  background-color: #1e3a8a; /* fallback for browsers without gradient support */
+  background: -webkit-linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
   background: linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
   padding: 0.75rem 1.5rem;
   font-weight: 600;
@@ -157,6 +171,7 @@ body.theme-dark .input:focus {
 .btn-primary:hover {
   transform: scale(1.05);
   box-shadow: 0 20px 25px -5px rgba(30, 58, 138, 0.4);
+  background: -webkit-linear-gradient(135deg, #1e40af 0%, #0f766e 100%);
   background: linear-gradient(135deg, #1e40af 0%, #0f766e 100%);
 }
 
@@ -241,6 +256,8 @@ body.theme-dark .card {
 
 .card-gradient {
   border-radius: 1.5rem;
+  background-color: #1e3a8a;
+  background: -webkit-linear-gradient(135deg, #1e3a8a 0%, #0d9488 50%, #06b6d4 100%);
   background: linear-gradient(135deg, #1e3a8a 0%, #0d9488 50%, #06b6d4 100%);
   padding: 2rem;
   color: white;
@@ -347,14 +364,20 @@ body.theme-dark .badge-warning {
 
 /* Gradient utilities */
 .gradient-primary {
+  background-color: #1e3a8a;
+  background: -webkit-linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
   background: linear-gradient(135deg, #1e3a8a 0%, #0d9488 100%);
 }
 
 .gradient-secondary {
+  background-color: #0d9488;
+  background: -webkit-linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #a78bfa 100%);
   background: linear-gradient(135deg, #0d9488 0%, #06b6d4 50%, #a78bfa 100%);
 }
 
 .gradient-accent {
+  background-color: #f97316;
+  background: -webkit-linear-gradient(135deg, #f97316 0%, #fb923c 100%);
   background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
 }
 

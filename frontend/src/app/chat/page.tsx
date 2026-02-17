@@ -40,6 +40,14 @@ import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-p
 import { ResearchSidebar } from "@/components/chat/research-sidebar";
 import { toast } from "sonner";
 
+// Model ID → display name map (module-level for ChatBubble access)
+const MODEL_DISPLAY_NAMES: Record<string, string> = {
+  "us.meta.llama3-1-70b-instruct-v1:0": "Llama 70B",
+  "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "Sonnet 3.5",
+  "us.anthropic.claude-3-haiku-20240307-v1:0": "Haiku 3",
+  "us.anthropic.claude-opus-4-20250514-v1:0": "Opus 4",
+};
+
 function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
   const { token } = useAuthToken();
@@ -70,7 +78,7 @@ function ChatWorkspaceContent() {
   const [isEditSending, setIsEditSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [regeneratingMessageIndex, setRegeneratingMessageIndex] = useState<number | null>(null);
-  const [selectedModel, setSelectedModel] = useState("llama-70b");
+  const [selectedModel, setSelectedModel] = useState("auto");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   // Plus menu state
@@ -96,16 +104,40 @@ function ChatWorkspaceContent() {
 
   const currentStyle = RESPONSE_STYLES.find(s => s.id === selectedStyle) || RESPONSE_STYLES[0];
 
+  // Model quota state for per-model rate limits
+  const [modelQuota, setModelQuota] = useState<Record<string, { remaining: number; limit: number }>>({});
+
+  const fetchModelQuota = useCallback(async () => {
+    try {
+      const apiBaseUrl = getApiBaseUrl();
+      const res = await fetch(`${apiBaseUrl}/chat/model-limits`, { credentials: "include" });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.models) setModelQuota(d.models);
+      }
+    } catch { /* ignore fetch errors */ }
+  }, []);
+
   // Available LLM models (admin-only models appended conditionally)
   const LLM_MODELS = [
+    {
+      id: "auto",
+      name: "Auto",
+      shortName: "Auto",
+      description: "Picks the best model for your query",
+      modelId: null as string | null,
+      isDefault: true,
+      badge: "Smart",
+      family: null as string | null,
+    },
     {
       id: "llama-70b",
       name: "Llama 70B",
       shortName: "Llama 70B",
       description: "Default model, great for most tasks",
       modelId: "us.meta.llama3-1-70b-instruct-v1:0",
-      isDefault: true,
       badge: "Default",
+      family: "default",
     },
     {
       id: "claude-sonnet",
@@ -114,6 +146,7 @@ function ChatWorkspaceContent() {
       description: "Most capable, best for complex tasks",
       modelId: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
       badge: "Pro",
+      family: "pro",
     },
     {
       id: "claude-haiku",
@@ -122,6 +155,7 @@ function ChatWorkspaceContent() {
       description: "Fast and lightweight",
       modelId: "us.anthropic.claude-3-haiku-20240307-v1:0",
       badge: "Fast",
+      family: "fast",
     },
     ...(isAdmin ? [{
       id: "claude-opus",
@@ -130,6 +164,7 @@ function ChatWorkspaceContent() {
       description: "Most intelligent, admin-only",
       modelId: "us.anthropic.claude-opus-4-20250514-v1:0",
       badge: "Admin",
+      family: "admin",
     }] : []),
   ];
 
@@ -176,6 +211,11 @@ function ChatWorkspaceContent() {
       window.removeEventListener(CHAT_SESSIONS_UPDATED_EVENT, handleUpdate);
     };
   }, [refreshSessions]);
+
+  // Fetch per-model quota on mount
+  useEffect(() => {
+    if (isLoggedIn) fetchModelQuota();
+  }, [isLoggedIn, fetchModelQuota]);
 
   // Cleanup speech recognition, mic stream, and active fetch on unmount
   useEffect(() => {
@@ -385,18 +425,20 @@ function ChatWorkspaceContent() {
     setStreamError(null);
 
     // Snapshot uploaded file info before clearing
-    const attachments: ChatAttachment[] = uploadedFiles
-      .filter((f) => f.status === "ready")
-      .map((f) => {
-        const ext = f.file.name.split(".").pop()?.toLowerCase() || "";
-        const isImage = f.file.type.startsWith("image/");
-        return {
-          name: f.file.name,
-          ext,
-          isImage,
-          previewUrl: isImage ? URL.createObjectURL(f.file) : undefined,
-        };
-      });
+    const readyFiles = uploadedFiles.filter((f) => f.status === "ready");
+    const attachments: ChatAttachment[] = readyFiles.map((f) => {
+      const ext = f.file.name.split(".").pop()?.toLowerCase() || "";
+      const isImage = f.file.type.startsWith("image/");
+      return {
+        name: f.file.name,
+        ext,
+        isImage,
+        previewUrl: isImage ? URL.createObjectURL(f.file) : undefined,
+      };
+    });
+    const uploadedFileIds = readyFiles
+      .map((item) => item.id)
+      .filter((id): id is string => Boolean(id));
 
     const userMessage: ChatMessageDTO = {
       role: "user",
@@ -434,16 +476,40 @@ function ChatWorkspaceContent() {
             model_id: currentModel.modelId,
             web_search_enabled: webSearchEnabled,
             response_style: selectedStyle,
-            uploaded_only: uploadedFiles.length > 0,
-            uploaded_file_ids: uploadedFiles
-              .map((item) => item.id)
-              .filter((id): id is string => Boolean(id)),
+            uploaded_only: attachments.length > 0,
+            uploaded_file_ids: uploadedFileIds.length > 0 ? uploadedFileIds : undefined,
+            attachments: attachments.length > 0
+              ? attachments.map(({ name, ext, isImage }) => ({ name, ext, isImage }))
+              : undefined,
           }),
           signal: controller.signal,
         }
       );
 
       clearTimeout(timeoutId);
+
+      // Handle per-model rate limit (429)
+      if (response.status === 429) {
+        const err = await response.json();
+        const detail = err.detail || {};
+        const mins = Math.ceil((detail.retry_after || 3600) / 60);
+        toast.error(`${detail.model_family || "Model"} limit reached. Resets in ${mins}m. Try a different model.`);
+        // Remove the placeholder assistant message
+        updateActiveSessionMessages((messages) => messages.slice(0, -1));
+        setIsStreaming(false);
+        fetchModelQuota();
+        return;
+      }
+
+      // Handle LLM unavailable / server busy (503)
+      if (response.status === 503) {
+        const err = await response.json();
+        const secs = err.detail?.retry_after || 60;
+        toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
+        updateActiveSessionMessages((messages) => messages.slice(0, -1));
+        setIsStreaming(false);
+        return;
+      }
 
       if (!response.ok || !response.body) {
         throw new Error("Chat endpoint unavailable");
@@ -454,6 +520,7 @@ function ChatWorkspaceContent() {
       let assistantText = "";
       let agentName: string | undefined;
       let routeReason: string | undefined;
+      let modelUsed: string | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -470,6 +537,7 @@ function ChatWorkspaceContent() {
               const meta = JSON.parse(metaLine);
               agentName = meta.agent;
               routeReason = meta.route_reason;
+              if (meta.model_used) modelUsed = meta.model_used;
             } catch { /* ignore parse errors */ }
             displayText = displayText.substring(newlineIdx + 1);
           } else {
@@ -480,6 +548,7 @@ function ChatWorkspaceContent() {
         const latestText = displayText;
         const latestAgent = agentName;
         const latestReason = routeReason;
+        const latestModelUsed = modelUsed;
         setSessions((prev) =>
           prev.map((session) =>
             session.id === selectedSessionId
@@ -487,7 +556,7 @@ function ChatWorkspaceContent() {
                   ...session,
                   messages: session.messages.map((message, index, arr) =>
                     index === arr.length - 1
-                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason }
+                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason, model_used: latestModelUsed }
                       : message
                   ),
                 }
@@ -498,6 +567,7 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      fetchModelQuota();
       toast.success("Response ready");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -714,6 +784,28 @@ function ChatWorkspaceContent() {
 
       clearTimeout(timeoutId);
 
+      // Handle per-model rate limit (429)
+      if (response.status === 429) {
+        const err = await response.json();
+        const detail = err.detail || {};
+        const mins = Math.ceil((detail.retry_after || 3600) / 60);
+        toast.error(`${detail.model_family || "Model"} limit reached. Resets in ${mins}m. Try a different model.`);
+        setIsStreaming(false);
+        setIsEditSending(false);
+        fetchModelQuota();
+        return;
+      }
+
+      // Handle LLM unavailable / server busy (503)
+      if (response.status === 503) {
+        const err = await response.json();
+        const secs = err.detail?.retry_after || 60;
+        toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
+        setIsStreaming(false);
+        setIsEditSending(false);
+        return;
+      }
+
       if (!response.ok || !response.body) {
         throw new Error("Chat endpoint unavailable");
       }
@@ -723,6 +815,7 @@ function ChatWorkspaceContent() {
       let assistantText = "";
       let agentName: string | undefined;
       let routeReason: string | undefined;
+      let modelUsed: string | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -738,6 +831,7 @@ function ChatWorkspaceContent() {
               const meta = JSON.parse(metaLine);
               agentName = meta.agent;
               routeReason = meta.route_reason;
+              if (meta.model_used) modelUsed = meta.model_used;
             } catch { /* ignore parse errors */ }
             displayText = displayText.substring(newlineIdx + 1);
           } else {
@@ -748,6 +842,7 @@ function ChatWorkspaceContent() {
         const latestText = displayText;
         const latestAgent = agentName;
         const latestReason = routeReason;
+        const latestModelUsed = modelUsed;
         setSessions((prev) =>
           prev.map((session) =>
             session.id === selectedSessionId
@@ -755,7 +850,7 @@ function ChatWorkspaceContent() {
                   ...session,
                   messages: session.messages.map((message, index, arr) =>
                     index === arr.length - 1
-                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason }
+                      ? { ...message, content: latestText, agent: latestAgent, route_reason: latestReason, model_used: latestModelUsed }
                       : message
                   ),
                 }
@@ -766,6 +861,7 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      fetchModelQuota();
       toast.success("Response ready");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -862,6 +958,28 @@ function ChatWorkspaceContent() {
 
       clearTimeout(timeoutId);
 
+      // Handle per-model rate limit (429)
+      if (response.status === 429) {
+        const err = await response.json();
+        const detail = err.detail || {};
+        const mins = Math.ceil((detail.retry_after || 3600) / 60);
+        toast.error(`${detail.model_family || "Model"} limit reached. Resets in ${mins}m. Try a different model.`);
+        setIsStreaming(false);
+        setRegeneratingMessageIndex(null);
+        fetchModelQuota();
+        return;
+      }
+
+      // Handle LLM unavailable / server busy (503)
+      if (response.status === 503) {
+        const err = await response.json();
+        const secs = err.detail?.retry_after || 60;
+        toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
+        setIsStreaming(false);
+        setRegeneratingMessageIndex(null);
+        return;
+      }
+
       if (!response.ok || !response.body) {
         throw new Error("Chat endpoint unavailable");
       }
@@ -869,19 +987,38 @@ function ChatWorkspaceContent() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
+      let modelUsed: string | undefined;
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         assistantText += decoder.decode(value, { stream: true });
-        const latestText = assistantText;
+
+        // Parse __AGENT_META__ for model_used in regeneration too
+        let displayText = assistantText;
+        if (displayText.startsWith("__AGENT_META__")) {
+          const newlineIdx = displayText.indexOf("\n");
+          if (newlineIdx !== -1) {
+            const metaLine = displayText.substring("__AGENT_META__".length, newlineIdx);
+            try {
+              const meta = JSON.parse(metaLine);
+              if (meta.model_used) modelUsed = meta.model_used;
+            } catch { /* ignore parse errors */ }
+            displayText = displayText.substring(newlineIdx + 1);
+          } else {
+            continue;
+          }
+        }
+
+        const latestText = displayText;
+        const latestModelUsed = modelUsed;
         setSessions((prev) =>
           prev.map((session) =>
             session.id === selectedSessionId
               ? {
                   ...session,
                   messages: session.messages.map((message, index) =>
-                    index === messageIndex ? { ...message, content: latestText } : message
+                    index === messageIndex ? { ...message, content: latestText, model_used: latestModelUsed } : message
                   ),
                 }
               : session
@@ -891,6 +1028,7 @@ function ChatWorkspaceContent() {
 
       await refreshSessions();
       dispatchChatSessionsUpdated();
+      fetchModelQuota();
       toast.success("Response ready");
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
@@ -1107,10 +1245,10 @@ function ChatWorkspaceContent() {
         {/* Welcome screen when no messages */}
         {isLoggedIn && (!activeSession || !hasMessages) && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
-            <h1 className="text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
+            <h1 className="text-2xl sm:text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
               {`Hi, ${user?.display_name || user?.full_name || user?.username || "there"}`}
             </h1>
-            <p className="text-xl text-zinc-500 dark:text-zinc-400">
+            <p className="text-base sm:text-xl text-zinc-500 dark:text-zinc-400">
               {isAdmin ? "What would you like to test or explore?" : "What would you like to learn today?"}
             </p>
           </div>
@@ -1417,36 +1555,42 @@ function ChatWorkspaceContent() {
                           <p className="text-sm font-semibold text-zinc-900 dark:text-white">Models</p>
                         </div>
                         <div className="py-2">
-                          {LLM_MODELS.map((model) => (
-                            <button
-                              key={model.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedModel(model.id);
-                                setModelDropdownOpen(false);
-                              }}
-                              className={`w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
-                                selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
-                              }`}
-                            >
-                              <div className="text-left">
-                                <p className="text-sm font-medium text-zinc-900 dark:text-white">{model.name}</p>
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400">{model.description}</p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {model.badge && (
-                                  <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300 rounded">
-                                    {model.badge}
-                                  </span>
-                                )}
-                                {selectedModel === model.id && (
-                                  <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
-                                    <Check className="h-3 w-3 text-white" />
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          ))}
+                          {LLM_MODELS.map((model) => {
+                            const family = model.family;
+                            const quota = family ? modelQuota[family] : null;
+                            return (
+                              <button
+                                key={model.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedModel(model.id);
+                                  setModelDropdownOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
+                                  selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
+                                }`}
+                              >
+                                <div className="text-left">
+                                  <p className="text-sm font-medium text-zinc-900 dark:text-white">{model.name}</p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                    {quota ? `${quota.remaining}/${quota.limit} remaining` : model.description}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {model.badge && (
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300 rounded">
+                                      {model.badge}
+                                    </span>
+                                  )}
+                                  {selectedModel === model.id && (
+                                    <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+                                      <Check className="h-3 w-3 text-white" />
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1802,6 +1946,14 @@ function ChatBubble({
                 {message.route_reason && (
                   <span className="text-[11px] text-zinc-400 dark:text-zinc-500 italic">{message.route_reason}</span>
                 )}
+              </div>
+            )}
+            {/* Auto-routed model chip */}
+            {message.model_used && !message.agent && (
+              <div className="mb-1.5">
+                <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                  via {MODEL_DISPLAY_NAMES[message.model_used] || "Auto"}
+                </span>
               </div>
             )}
             <MarkdownContent

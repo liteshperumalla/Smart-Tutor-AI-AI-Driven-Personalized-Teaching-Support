@@ -346,7 +346,8 @@ class AdminService:
             }
         except Exception as e:
             logger.error(f"Error getting quiz metrics: {e}")
-            return {"error": str(e), "total_quizzes": 0}
+            logger.warning(f"Admin service error: {e}")
+            return {"error": "Failed to fetch quiz metrics", "total_quizzes": 0}
 
     # ── Dashboard Stats ──────────────────────────────────────────
 
@@ -476,7 +477,8 @@ class AdminService:
             }
         except Exception as e:
             logger.error("Error getting agent metrics: %s", e)
-            return {"error": str(e), "total_agent_interactions": 0}
+            logger.warning(f"Admin service error: {e}")
+            return {"error": "Failed to fetch agent metrics", "total_agent_interactions": 0}
 
     # ── Knowledge Graph Metrics ───────────────────────────────────
 
@@ -561,7 +563,8 @@ class AdminService:
             }
         except Exception as e:
             logger.error("Error getting knowledge graph metrics: %s", e)
-            return {"error": str(e), "total_nodes": 0, "total_relationships": 0}
+            logger.warning(f"Admin service error: {e}")
+            return {"error": "Failed to fetch knowledge graph metrics", "total_nodes": 0, "total_relationships": 0}
 
 
 _admin_service: Optional[AdminService] = None

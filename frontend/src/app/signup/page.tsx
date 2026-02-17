@@ -188,7 +188,7 @@ export default function SignupPage() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="input"
-                placeholder="Min 8 characters"
+                placeholder="Min 12 characters"
               />
             </div>
 
@@ -213,7 +213,7 @@ export default function SignupPage() {
             </div>
 
             {error && (
-              <div className="rounded-xl-2-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
                 {error}
               </div>
             )}
@@ -224,7 +224,7 @@ export default function SignupPage() {
               className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-75 disabled:hover:scale-100"
             >
               {isSubmitting ? (
-                <><span className="inline-block h-4 w-4 animate-spin rounded-full-2-white-t-transparent"></span> Creating account…</>
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span> Creating account…</>
               ) : (
                 <>Create account <span className="transition-transform group-hover:translate-x-1">→</span></>
               )}

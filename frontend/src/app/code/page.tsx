@@ -195,12 +195,12 @@ export default function CodeSandboxPage() {
 
   return (
     <PageShell contentClassName="gap-6" noCard>
-      <header className="relative overflow-hidden rounded-3xl p-12 animate-fade-in-down">
+      <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
         <div className="relative z-10">
-          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+          <h1 className="font-display text-3xl sm:text-5xl font-bold text-zinc-900 dark:text-white">
             Coding Agent
           </h1>
-          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+          <p className="mt-3 text-base sm:mt-4 sm:text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
             Write, run, explain, and debug code with AI assistance powered by Qwen2.5 Coder
           </p>
         </div>

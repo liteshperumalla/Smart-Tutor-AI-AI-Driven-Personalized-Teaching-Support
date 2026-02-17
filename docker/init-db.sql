@@ -5,17 +5,20 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Users table
+-- Column names match the Python ORM code in backend/services/storage/postgres.py
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    hashed_password VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
     display_name VARCHAR(255),
     phone_number VARCHAR(50),
     role VARCHAR(50) DEFAULT 'User',
     theme VARCHAR(20) DEFAULT 'light',
     notes TEXT,
     profile_picture_path VARCHAR(500),
+    metadata JSONB,
 
     -- Security fields
     is_locked BOOLEAN DEFAULT FALSE,
@@ -50,13 +53,15 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE
     EXECUTE PROCEDURE update_updated_at_column();
 
 -- Quiz results table (for local storage, chat sessions will be in DynamoDB)
+-- Column names match the Python ORM code in backend/services/storage/postgres.py
 CREATE TABLE IF NOT EXISTS quiz_results (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(255) NOT NULL REFERENCES users(username) ON DELETE CASCADE,
     quiz_id VARCHAR(255) NOT NULL,
     score FLOAT NOT NULL,
     total_questions INTEGER NOT NULL,
-    correct_answers INTEGER NOT NULL,
+    answers JSONB,
+    metadata JSONB,
     time_taken_seconds INTEGER,
     quiz_data JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -68,6 +73,8 @@ CREATE TABLE IF NOT EXISTS quiz_results (
 CREATE INDEX idx_quiz_results_username ON quiz_results(username);
 CREATE INDEX idx_quiz_results_created_at ON quiz_results(created_at DESC);
 CREATE INDEX idx_quiz_results_quiz_id ON quiz_results(quiz_id);
+-- Composite index for the most common query pattern
+CREATE INDEX idx_quiz_results_user_date ON quiz_results(username, created_at DESC);
 
 -- Note: Agent interactions are stored in Neo4j knowledge graph (not PostgreSQL)
 

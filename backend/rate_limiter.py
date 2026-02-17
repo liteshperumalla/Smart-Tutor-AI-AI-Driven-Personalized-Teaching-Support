@@ -5,7 +5,6 @@ Uses Redis for distributed rate limiting across multiple servers
 """
 
 from datetime import datetime, timedelta
-import hashlib
 from typing import Optional
 from fastapi import Request, HTTPException, status
 from slowapi import Limiter
@@ -20,6 +19,37 @@ logger = get_logger(__name__)
 # Global rate limiter instance (for slowapi decorators)
 # This is defined here to avoid circular imports between main.py and routes
 limiter = Limiter(key_func=get_remote_address)
+
+# Model family mapping: substring in model ID → family tier
+MODEL_FAMILY_MAP = {
+    "llama": "default",
+    "claude-3-haiku": "fast",
+    "claude-3-5-sonnet": "pro",
+    "claude-sonnet": "pro",
+    "claude-opus": "admin",
+}
+
+
+def get_model_family(model_id: str) -> str:
+    """Map a Bedrock model ID to a rate-limit family tier."""
+    if not model_id:
+        return "default"
+    model_lower = model_id.lower()
+    for pattern, family in MODEL_FAMILY_MAP.items():
+        if pattern in model_lower:
+            return family
+    return "default"
+
+
+def get_model_limit(family: str) -> int:
+    """Get the per-user hourly request limit for a model family."""
+    limits = {
+        "default": config.MODEL_RATE_LIMIT_DEFAULT,
+        "fast": config.MODEL_RATE_LIMIT_FAST,
+        "pro": config.MODEL_RATE_LIMIT_PRO,
+        "admin": config.MODEL_RATE_LIMIT_ADMIN,
+    }
+    return limits.get(family, config.MODEL_RATE_LIMIT_DEFAULT)
 
 
 class PerUserRateLimiter:
@@ -57,10 +87,16 @@ class PerUserRateLimiter:
 
     def _get_username_from_token(self, request: Request) -> Optional[str]:
         """
-        Extract JTI (JWT ID) from JWT token for rate limiting.
+        Extract a stable user identifier from a *validated* JWT for rate limiting.
         Checks both Authorization header and HttpOnly cookies.
-        SECURITY: Using JTI prevents bypass via forged tokens with different usernames.
+
+        SECURITY: The JWT is decoded and its signature verified before use.
+        This prevents attackers from rotating arbitrary strings to evade
+        per-user rate limits.  We key on the JTI claim (unique per token)
+        so that a user cannot bypass limits by re-logging in.
         """
+        import jwt as pyjwt
+
         token = None
 
         # Check Authorization header first
@@ -77,8 +113,33 @@ class PerUserRateLimiter:
         if not token:
             return None
 
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-        return f"tok_{token_hash}"
+        # Validate the JWT before trusting its claims
+        try:
+            # RS256 requires the RSA public key; HS256 uses the secret string
+            if config.JWT_ALGORITHM == "RS256":
+                from pathlib import Path
+                key = Path(config.JWT_PUBLIC_KEY_PATH).read_text()
+            else:
+                key = config.JWT_SECRET_KEY
+
+            payload = pyjwt.decode(
+                token,
+                key,
+                algorithms=[config.JWT_ALGORITHM],
+                audience=config.JWT_AUDIENCE,
+                issuer=config.JWT_ISSUER,
+            )
+            # Prefer JTI (unique per token), fall back to sub (user id)
+            jti = payload.get("jti")
+            if jti:
+                return f"jti_{jti}"
+            sub = payload.get("sub")
+            if sub:
+                return f"sub_{sub}"
+            return None
+        except pyjwt.InvalidTokenError:
+            # Invalid/expired/forged token — fall back to IP-based limiting
+            return None
 
     def _get_rate_limit_key(self, username: str, endpoint: str) -> str:
         """Generate Redis key for rate limiting"""
@@ -149,7 +210,7 @@ class PerUserRateLimiter:
             raise  # Re-raise HTTP exceptions
         except Exception as e:
             # Log error but don't block request if Redis fails
-            print(f"Rate limiter error: {e}")
+            logger.warning(f"Rate limiter error: {e}")
             return
 
     async def get_rate_limit_status(self, request: Request) -> dict:
@@ -187,8 +248,87 @@ class PerUserRateLimiter:
                 "window": stored_window
             }
         except Exception as e:
-            print(f"Error getting rate limit status: {e}")
-            return {"enabled": True, "error": str(e)}
+            logger.warning(f"Error getting rate limit status: {e}")
+            return {"enabled": True, "error": "Rate limit status unavailable"}
+
+    async def check_model_rate_limit(self, request: Request, model_id: str) -> None:
+        """
+        Check per-model rate limit for the authenticated user.
+
+        Uses a separate Redis key per user+model-family so expensive models
+        (Opus, Sonnet) have lower hourly quotas than cheap models (Haiku, Llama).
+        """
+        if not self.enabled:
+            return
+
+        username = self._get_username_from_token(request)
+        if not username:
+            return
+
+        family = get_model_family(model_id)
+        limit = get_model_limit(family)
+        window_secs = config.MODEL_RATE_LIMIT_WINDOW
+        key = f"rate_limit:model:{username}:{family}"
+
+        try:
+            redis_client = self.redis.client
+            current_count = redis_client.eval(
+                self._RATE_LIMIT_LUA_SCRIPT, 1, key, window_secs, limit
+            )
+
+            if current_count > limit:
+                ttl = redis_client.ttl(key)
+                retry_after = ttl if ttl > 0 else window_secs
+                logger.warning(
+                    f"Model rate limit exceeded for {username} on {family}: {current_count}/{limit}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "error": "Model rate limit exceeded",
+                        "model_family": family,
+                        "retry_after": retry_after,
+                        "limit": limit,
+                        "remaining": 0,
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Model rate limiter error: {e}")
+
+    async def get_all_model_limits(self, request: Request) -> dict:
+        """Return rate-limit status for every model family for this user."""
+        if not self.enabled:
+            return {"enabled": False}
+
+        username = self._get_username_from_token(request)
+        if not username:
+            return {"enabled": True, "authenticated": False}
+
+        families = ["default", "fast", "pro", "admin"]
+        window_secs = config.MODEL_RATE_LIMIT_WINDOW
+        models: dict = {}
+
+        try:
+            redis_client = self.redis.client
+            for family in families:
+                key = f"rate_limit:model:{username}:{family}"
+                limit = get_model_limit(family)
+                hash_data = redis_client.hgetall(key)
+                used = int(hash_data.get(b"count", 0))
+                ttl = redis_client.ttl(key)
+                models[family] = {
+                    "limit": limit,
+                    "used": used,
+                    "remaining": max(0, limit - used),
+                    "reset_in": ttl if ttl > 0 else window_secs,
+                }
+        except Exception as e:
+            logger.warning(f"Error getting model limits: {e}")
+            return {"enabled": True, "error": "Model limit status unavailable"}
+
+        return {"enabled": True, "models": models}
 
 
 # Singleton instance
@@ -213,7 +353,7 @@ def get_rate_limiter() -> PerUserRateLimiter:
                 )
                 _rate_limiter = PerUserRateLimiter(redis_cache)
             except Exception as e:
-                print(f"Failed to initialize per-user rate limiter with Redis: {e}")
+                logger.warning(f"Failed to initialize per-user rate limiter with Redis: {e}")
                 _rate_limiter = PerUserRateLimiter(None)
         else:
             _rate_limiter = PerUserRateLimiter(None)

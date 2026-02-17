@@ -1,10 +1,9 @@
 """
-AWS Cost Tracking Service
-Tracks Bedrock API costs and stores them in S3 for analysis
+Cost Tracking Service
+Tracks LLM API costs and stores them via the object storage abstraction.
 """
 
 import json
-import boto3
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from pathlib import Path
@@ -16,7 +15,7 @@ logger = get_logger(__name__)
 
 
 class CostTracker:
-    """Track and store AWS Bedrock costs in S3"""
+    """Track and store LLM costs in object storage"""
 
     def __init__(
         self,
@@ -28,8 +27,8 @@ class CostTracker:
         Initialize cost tracker
 
         Args:
-            s3_bucket: S3 bucket for cost logs (defaults to config.S3_DOCUMENTS_BUCKET)
-            s3_prefix: S3 prefix for cost logs
+            s3_bucket: Bucket for cost logs (defaults to config.S3_DOCUMENTS_BUCKET)
+            s3_prefix: Key prefix for cost logs
             local_backup: Whether to also write to local file
         """
         self.s3_bucket = s3_bucket or config.S3_DOCUMENTS_BUCKET
@@ -37,20 +36,15 @@ class CostTracker:
         self.local_backup = local_backup
         self.local_file = Path(config.COST_LOG_FILE) if local_backup else None
 
-        # Initialize S3 client
-        client_kwargs = {"region_name": config.AWS_REGION}
-        if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
-            client_kwargs["aws_access_key_id"] = config.AWS_ACCESS_KEY_ID
-            client_kwargs["aws_secret_access_key"] = config.AWS_SECRET_ACCESS_KEY
-            if config.AWS_SESSION_TOKEN:
-                client_kwargs["aws_session_token"] = config.AWS_SESSION_TOKEN
-        self.s3 = boto3.client('s3', **client_kwargs)
+        # Use cloud-agnostic object storage
+        from backend.cloud.object_storage import get_object_storage
+        self._storage = get_object_storage()
 
         # Ensure local directory exists if using backup
         if self.local_backup and self.local_file:
             self.local_file.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"Cost tracker initialized (S3: {self.s3_bucket}/{self.s3_prefix})")
+        logger.info(f"Cost tracker initialized (bucket: {self.s3_bucket}/{self.s3_prefix})")
 
     def log_cost(
         self,
@@ -107,30 +101,27 @@ class CostTracker:
                 logger.error(f"Failed to write cost log to local file: {e}")
 
     def _write_to_s3(self, entry: Dict[str, Any], timestamp: datetime):
-        """Write cost entry to S3"""
-        # Organize by date: cost_tracking/2025/12/18/HHMMSS-uuid.json
+        """Write cost entry to object storage"""
         date_path = timestamp.strftime("%Y/%m/%d")
         time_str = timestamp.strftime("%H%M%S")
 
-        # Generate unique key
         import uuid
         key = f"{self.s3_prefix}{date_path}/{time_str}-{uuid.uuid4().hex[:8]}.json"
 
-        # Upload to S3
-        self.s3.put_object(
-            Bucket=self.s3_bucket,
-            Key=key,
-            Body=json.dumps(entry, indent=2),
-            ContentType='application/json',
-            Metadata={
-                'service': entry['service'],
-                'operation': entry['operation'],
-                'cost_usd': str(entry['cost_usd']),
-                'total_tokens': str(entry['tokens']['total'])
-            }
+        self._storage.put_object(
+            bucket=self.s3_bucket,
+            key=key,
+            body=json.dumps(entry, indent=2).encode(),
+            content_type="application/json",
+            metadata={
+                "service": entry["service"],
+                "operation": entry["operation"],
+                "cost_usd": str(entry["cost_usd"]),
+                "total_tokens": str(entry["tokens"]["total"]),
+            },
         )
 
-        logger.debug(f"Cost log written to S3: s3://{self.s3_bucket}/{key}")
+        logger.debug(f"Cost log written: {self.s3_bucket}/{key}")
 
     def get_daily_costs(self, date: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -151,12 +142,12 @@ class CostTracker:
 
         # List objects for the day
         try:
-            response = self.s3.list_objects_v2(
-                Bucket=self.s3_bucket,
-                Prefix=prefix
+            objects = self._storage.list_objects(
+                bucket=self.s3_bucket,
+                prefix=prefix,
             )
 
-            if 'Contents' not in response:
+            if not objects:
                 return {
                     "date": date,
                     "total_cost_usd": 0,
@@ -170,10 +161,9 @@ class CostTracker:
             entries = 0
             service_costs = {}
 
-            for obj in response['Contents']:
-                # Download entry
-                file_obj = self.s3.get_object(Bucket=self.s3_bucket, Key=obj['Key'])
-                entry = json.loads(file_obj['Body'].read())
+            for obj in objects:
+                file_obj = self._storage.get_object(bucket=self.s3_bucket, key=obj.key)
+                entry = json.loads(file_obj.read())
 
                 total_cost += entry['cost_usd']
                 total_tokens += entry['tokens']['total']

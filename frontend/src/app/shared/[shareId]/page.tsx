@@ -57,7 +57,7 @@ export default function SharedChatPage() {
   if (loading) {
     return (
       <PageShell className="max-w-4xl" contentClassName="gap-8">
-        <header className="relative overflow-hidden rounded-3xl p-12">
+        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
           <div className="relative z-10 space-y-4">
             <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
             <div className="h-10 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
@@ -87,7 +87,7 @@ export default function SharedChatPage() {
       <PageShell className="max-w-2xl" contentClassName="gap-8">
         <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12">
           <div className="relative z-10">
-            <h1 className="font-display text-4xl font-bold text-zinc-900 dark:text-white">
+            <h1 className="font-display text-2xl sm:text-4xl font-bold text-zinc-900 dark:text-white">
               Shared Chat Unavailable
             </h1>
             <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">{error}</p>
@@ -109,10 +109,10 @@ export default function SharedChatPage() {
 
   return (
     <PageShell className="max-w-4xl" contentClassName="gap-8">
-      <header className="relative overflow-hidden rounded-3xl p-12">
+      <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
         <div className="absolute bottom-0 left-0 h-48 w-48 bg-purple-400/20 rounded-full blur-3xl" style={{ animationDelay: "1s" }}></div>
         <div className="relative z-10">
-          <h1 className="font-display text-4xl font-bold text-zinc-900 dark:text-white">
+          <h1 className="font-display text-2xl sm:text-4xl font-bold text-zinc-900 dark:text-white">
             {session.title}
           </h1>
           <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">

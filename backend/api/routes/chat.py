@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
-from backend.api.dependencies import get_current_session
-from backend.services.chat_service import get_chat_service, ChatService
+from backend.api.dependencies import get_current_session, get_rate_limiter_dep
+from backend.rate_limiter import PerUserRateLimiter
+from backend.services.chat_service import get_chat_service, ChatService, get_llm_semaphore
 from backend.services.research_service import get_research_service, ResearchService
 from backend.services.share_service import get_share_service
 from backend.services.message_feedback_service import (
@@ -41,6 +42,13 @@ class SessionUpdate(BaseModel):
     is_archived: Optional[bool] = None
 
 
+class AttachmentInfo(BaseModel):
+    """Metadata for a file attached to a chat message."""
+    name: str = Field(..., max_length=255)
+    ext: str = Field(..., max_length=20)
+    isImage: bool = False
+
+
 class SendMessageRequest(BaseModel):
     """Request body for sending a chat message."""
     query: str = Field(..., min_length=1, max_length=10000)
@@ -49,6 +57,7 @@ class SendMessageRequest(BaseModel):
     response_style: Optional[str] = Field(default=None)
     uploaded_only: bool = Field(default=False)
     uploaded_file_ids: Optional[List[str]] = None
+    attachments: Optional[List[AttachmentInfo]] = None
 
 
 class MessageFeedbackRequest(BaseModel):
@@ -105,12 +114,14 @@ def list_sessions(
 
 
 @router.post("/sessions/{session_id}/messages")
-def send_message(
+async def send_message(
     session_id: str,
     payload: SendMessageRequest,
+    request: Request,
     session_data=Depends(get_current_session),
     chat_service: ChatService = Depends(get_chat_service),
     research_service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     _, user = session_data
     session = chat_service.load_session(user["username"], session_id)
@@ -161,23 +172,83 @@ def send_message(
             "Do not use web search. Answer only from available context.\n\n"
             f"{effective_query}"
         )
-    user_message = ChatMessage(role="user", content=query)
+    attachment_dicts = (
+        [a.model_dump() for a in payload.attachments] if payload.attachments else None
+    )
+    user_message = ChatMessage(role="user", content=query, attachments=attachment_dicts)
     chat_service.append_message(session, user_message)
     chat_service.save_session(user["username"], session)
 
-    def stream():
-        generator, sources = chat_service.stream_response(
+    # Pre-check: resolve model for rate limiting without triggering the full pipeline
+    from backend.config import config as app_config
+    if model_id:
+        effective_model = model_id
+    elif app_config.LLM_ROUTING_ENABLED:
+        from backend.llm_router import classify_query_complexity, select_model_for_complexity
+        tier, _ = classify_query_complexity(effective_query)
+        effective_model = select_model_for_complexity(tier)
+    else:
+        effective_model = app_config.BEDROCK_MODEL_ID
+    await rate_limiter.check_model_rate_limit(request, effective_model)
+
+    # Resolve the generator before opening the stream — this lets FastAPI return
+    # a proper 503 JSON body if the circuit is open or the LLM is unavailable,
+    # rather than sending a partial streamed response then aborting.
+    from backend.circuit_breaker import CircuitBreakerOpenError, bedrock_circuit_breaker
+    try:
+        generator, sources, resolved_model_id = chat_service.stream_response(
             effective_query,
             user_id=user["username"],
             session_id=session_id,
             model_id=model_id,
         )
+    except CircuitBreakerOpenError as e:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "LLM service temporarily unavailable", "retry_after": int(e.retry_after)},
+        )
+
+    # Acquire a concurrency slot — non-blocking after 5s timeout so bursts get
+    # an immediate 503 instead of queueing indefinitely and starving real users.
+    sem = get_llm_semaphore()
+    acquired = sem.acquire(blocking=True, timeout=5)
+    if not acquired:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Server busy — too many concurrent requests", "retry_after": 5},
+        )
+
+    def stream():
+        import time as _time
+        from backend.llmops import record_llm_call
+        _stream_start = _time.time()
+        _stream_failed = False
         collected = ""
         try:
+            # Emit auto-routed model info when user didn't specify a model
+            if not model_id and resolved_model_id:
+                import json
+                meta = json.dumps({"model_used": resolved_model_id})
+                yield f"__AGENT_META__{meta}\n"
             for chunk in generator:
                 collected += chunk
                 yield chunk
+            bedrock_circuit_breaker._on_success()
+        except Exception:
+            _stream_failed = True
+            bedrock_circuit_breaker._on_failure()
+            raise
         finally:
+            sem.release()
+            # LLMOps: record call telemetry (fire-and-forget, never raises)
+            record_llm_call(
+                model=resolved_model_id or "unknown",
+                latency_ms=(_time.time() - _stream_start) * 1000,
+                output_chars=len(collected),
+                success=not _stream_failed,
+                user_id=user["username"],
+                session_id=session_id,
+            )
             # Save even when the client disconnects mid-stream (GeneratorExit).
             # No yield allowed inside finally — that would raise RuntimeError.
             if collected:
@@ -363,6 +434,14 @@ def submit_message_feedback(
     )
     feedback_service.save_feedback(username, feedback)
 
+    # LLMOps: track satisfaction signal in Prometheus
+    if feedback_type in ("thumbs_up", "thumbs_down"):
+        try:
+            from backend.metrics import track_llm_satisfaction
+            track_llm_satisfaction(vote=feedback_type)
+        except Exception:
+            pass
+
     return MessageFeedbackResponse(
         success=True,
         feedback_type=feedback_type,
@@ -409,3 +488,13 @@ def get_session_feedback(
             feedback_map[fb.message_index] = fb.feedback_type
 
     return {"feedback": feedback_map}
+
+
+@router.get("/model-limits")
+async def get_model_limits(
+    request: Request,
+    session_data=Depends(get_current_session),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
+):
+    """Get per-model rate limit status for the current user."""
+    return await rate_limiter.get_all_model_limits(request)

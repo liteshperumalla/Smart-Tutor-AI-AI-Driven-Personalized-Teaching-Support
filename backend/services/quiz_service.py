@@ -13,7 +13,6 @@ from backend.redis_cache import get_redis_cache
 from backend.services import get_storage_backend
 from backend.services.models import QuizResult
 from backend.s3_retriever import S3Retriever
-from backend.bedrock_llamaindex import BedrockLLM
 from backend.bedrock_embeddings import BedrockEmbeddings
 
 logger = logging.getLogger(__name__)
@@ -92,7 +91,8 @@ class QuizService:
     def __init__(self) -> None:
         self.storage = get_storage_backend()
         self.s3_retriever = S3Retriever(similarity_top_k=5)
-        self.llm = BedrockLLM(model_id="us.anthropic.claude-3-haiku-20240307-v1:0")
+        from backend.llm_provider import get_llm
+        self.llm = get_llm()
         self._folder_cache: Optional[Dict[str, List[str]]] = None
         # Redis-backed quiz store shared across all workers
         self._redis = get_redis_cache()
@@ -101,13 +101,13 @@ class QuizService:
         if self._folder_cache is not None:
             return self._folder_cache
 
-        import boto3
+        from backend.cloud.aws_helpers import get_boto3_client
 
-        s3 = boto3.client("s3", region_name="us-east-1")
+        s3 = get_boto3_client("s3")
         structure: Dict[str, List[str]] = {}
 
         paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket="smart-ai-tutor-docs", Prefix="modules/"):
+        for page in paginator.paginate(Bucket=config.S3_DOCUMENTS_BUCKET, Prefix="modules/"):
             for obj in page.get("Contents", []):
                 key = obj["Key"]
                 if key.endswith((".pdf", ".pptx", ".ppt", ".docx", ".ipynb")):

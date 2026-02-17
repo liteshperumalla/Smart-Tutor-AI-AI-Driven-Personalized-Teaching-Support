@@ -15,6 +15,7 @@ from backend.security_logger import SecurityLogger, get_client_ip, get_user_agen
 from backend.rate_limiter import (
     limiter,
 )  # Import from rate_limiter to avoid circular imports
+from backend.csrf_protection import csrf_protect
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -72,8 +73,8 @@ def clear_auth_cookies(response: Response):
 
 class SignupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
-    password: str = Field(..., min_length=8)
-    confirm_password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=12)
+    confirm_password: str = Field(..., min_length=12)
     email: EmailStr
     full_name: Optional[str] = None
 
@@ -102,8 +103,8 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirmRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     token: str = Field(..., min_length=10)
-    new_password: str = Field(..., min_length=8)
-    confirm_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=12)
+    confirm_password: str = Field(..., min_length=12)
 
 
 class EmailVerificationRequest(BaseModel):
@@ -119,11 +120,12 @@ class EmailVerificationConfirmRequest(BaseModel):
 class PasswordSetupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     token: str = Field(..., min_length=10)
-    new_password: str = Field(..., min_length=8)
-    confirm_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=12)
+    confirm_password: str = Field(..., min_length=12)
 
 
 @router.post("/signup")
+@limiter.limit("5/hour")
 def signup(
     payload: SignupRequest,
     request: Request,
@@ -154,6 +156,7 @@ def signup(
 
 
 @router.post("/login")
+@limiter.limit("20/minute")
 def login(
     payload: LoginRequest,
     request: Request,
@@ -171,6 +174,10 @@ def login(
 
         # SECURITY: Set tokens in HttpOnly cookies
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+
+        # Set CSRF token cookie for subsequent state-changing requests
+        from backend.csrf_protection import CSRFProtection
+        CSRFProtection.set_csrf_cookie(response)
 
         # SECURITY: Log successful login
         SecurityLogger.log_login_success(
@@ -263,7 +270,9 @@ def request_email_verification(
 
 
 @router.post("/verify/confirm")
+@limiter.limit("10/hour")
 def confirm_email_verification(
+    request: Request,
     payload: EmailVerificationConfirmRequest,
     auth_service: AuthService = Depends(get_auth_service),
 ):
@@ -365,7 +374,7 @@ def request_password_reset(
     except Exception as exc:
         # Log the full exception for debugging, but don't expose it to the client
         # In a real app, you would use a proper logger
-        print(f"Error during password reset request: {exc}")
+        logger.warning(f"Password reset request error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to process password reset request.",
@@ -374,7 +383,9 @@ def request_password_reset(
 
 
 @router.post("/password/reset/confirm")
+@limiter.limit("10/hour")
 def confirm_password_reset(
+    request: Request,
     payload: PasswordResetConfirmRequest,
     auth_service: AuthService = Depends(get_auth_service),
 ):
@@ -389,7 +400,7 @@ def confirm_password_reset(
         )
     except Exception as exc:
         # Log the full exception for debugging
-        print(f"Error during password reset confirmation: {exc}")
+        logger.warning(f"Password reset confirmation error: {exc}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid password reset request.",
@@ -402,7 +413,7 @@ def me(current_user: dict = Depends(get_current_user)):
     return {"user": current_user}
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(csrf_protect)])
 def logout(
     request: Request,
     response: Response,

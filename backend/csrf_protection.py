@@ -4,6 +4,11 @@ CSRF (Cross-Site Request Forgery) Protection
 Implements double-submit cookie pattern for CSRF protection.
 This is used in addition to SameSite=Lax cookies for defense in depth.
 
+NOTE: Currently not wired into routes because all authentication cookies
+use SameSite=Lax, which prevents cross-site POST/PUT/DELETE requests from
+sending cookies at the browser level. This module is available for
+additional defense-in-depth if the cookie policy changes.
+
 References:
 - OWASP CSRF Prevention Cheat Sheet
 - Double Submit Cookie pattern

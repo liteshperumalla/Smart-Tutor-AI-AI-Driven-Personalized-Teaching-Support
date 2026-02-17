@@ -627,6 +627,103 @@ def generate_response_with_sources(
         return error_msg, response_sources
 
 
+def _get_answer_cache():
+    """Singleton RAGCache instance for answer caching, backed by Redis."""
+    global _answer_cache
+    if _answer_cache is not None:
+        return _answer_cache
+
+    try:
+        if config.USE_REDIS_CACHE:
+            import redis
+            redis_client = redis.Redis(
+                host=config.REDIS_HOST,
+                port=config.REDIS_PORT,
+                db=config.REDIS_DB,
+                password=config.REDIS_PASSWORD or None,
+                ssl=config.REDIS_SSL,
+                decode_responses=True,
+            )
+            redis_client.ping()
+        else:
+            redis_client = None
+    except Exception as exc:
+        logging.warning(f"Answer cache: Redis unavailable ({exc}), using in-memory only")
+        redis_client = None
+
+    from backend.rag.caching_layer import RAGCache
+    _answer_cache = RAGCache(redis_client=redis_client, enable_all=True)
+    # Apply configured TTL
+    _answer_cache.query_cache.ttl = config.ANSWER_CACHE_TTL
+    _answer_cache.query_cache.fuzzy_threshold = config.ANSWER_CACHE_FUZZY_THRESHOLD
+    return _answer_cache
+
+
+_answer_cache = None
+
+# ── Enhanced RAG singletons ──────────────────────────────────────────
+_query_enhancer = None
+
+
+def _get_query_enhancer():
+    """Return a singleton QueryEnhancementPipeline (rule-based, no LLM)."""
+    global _query_enhancer
+    if _query_enhancer is None:
+        from backend.rag.query_enhancement import QueryEnhancementPipeline
+        _query_enhancer = QueryEnhancementPipeline(llm_provider=None, enable_all=False)
+    return _query_enhancer
+
+
+def _self_rag_wrapper(generator, context_str: str):
+    """Wrap a streaming generator to append a grounding disclaimer if needed."""
+    from backend.rag.self_rag import check_response_grounding, DISCLAIMER
+
+    chunks = []
+    for chunk in generator:
+        chunks.append(chunk)
+        yield chunk
+
+    full_response = "".join(chunks)
+    score, is_grounded = check_response_grounding(full_response, context_str)
+    logging.info(f"Self-RAG grounding score: {score:.2f}, grounded={is_grounded}")
+    if not is_grounded:
+        yield DISCLAIMER
+
+
+def _check_answer_cache(query: str) -> Optional[Dict]:
+    """Check exact then fuzzy cache. Returns {response, sources} or None."""
+    try:
+        cache = _get_answer_cache()
+        return cache.get_query_result(query)
+    except Exception as exc:
+        logging.warning(f"Answer cache lookup failed: {exc}")
+        return None
+
+
+def _caching_generator(original_gen, query, sources):
+    """Tee pattern: yield chunks to frontend AND collect for caching."""
+    chunks = []
+    for chunk in original_gen:
+        chunks.append(chunk)
+        yield chunk
+    # After exhaustion, cache the complete response
+    full_response = "".join(chunks)
+    if full_response.strip():
+        try:
+            cache = _get_answer_cache()
+            cache.put_query_result(
+                query,
+                {
+                    "response": full_response,
+                    "sources": sources,
+                    "cached_at": datetime.datetime.utcnow().isoformat(),
+                },
+            )
+            logging.info(f"Answer cached for query: {query[:60]}...")
+        except Exception as exc:
+            logging.warning(f"Answer cache write failed: {exc}")
+
+
 def generate_response_stream_and_sources(
     query: str,
     user_id: str = "default-user",
@@ -662,12 +759,41 @@ def generate_response_stream_and_sources(
             update_trace(main_trace, output={"response": "Hello! How can I assist you today?"})
             return greeting_stream(), []
 
+        # Answer Cache: check for cached response before RAG retrieval
+        if config.ANSWER_CACHE_ENABLED:
+            cached = _check_answer_cache(query)
+            if cached:
+                logging.info(f"Answer cache HIT for: {query[:60]}...")
+                def cached_stream():
+                    yield cached["response"]
+                return cached_stream(), cached.get("sources", [])
+
+        # ── Query Enhancement (pre-retrieval) ─────────────────────────
+        retrieval_query = query  # keep original for LLM prompt
+        rag_enhanced = config.ENHANCED_RAG_ENABLED
+        if rag_enhanced and (config.QUERY_REWRITING_ENABLED or config.QUERY_EXPANSION_ENABLED):
+            try:
+                enhancer = _get_query_enhancer()
+                enhanced = enhancer.enhance(
+                    query,
+                    enable_rewriting=config.QUERY_REWRITING_ENABLED,
+                    enable_expansion=config.QUERY_EXPANSION_ENABLED,
+                    enable_decomposition=False,
+                )
+                if enhanced.rewritten_query and enhanced.rewritten_query != query:
+                    retrieval_query = enhanced.rewritten_query
+                    logging.info(
+                        f"Query rewritten: '{query[:50]}' -> '{retrieval_query[:50]}'"
+                    )
+            except Exception as exc:
+                logging.warning(f"Query enhancement failed, using original: {exc}")
+
         # ── Span: rag-retrieval ──────────────────────────────────────
-        with traced_span(main_trace, "rag-retrieval", input={"query": query}) as retrieval_span:
+        with traced_span(main_trace, "rag-retrieval", input={"query": retrieval_query}) as retrieval_span:
             if config.USE_S3_VECTORS:
                 try:
                     retriever = create_s3_retriever(similarity_top_k=3)
-                    retrieved_nodes = retriever.retrieve(query)
+                    retrieved_nodes = retriever.retrieve(retrieval_query)
                 except Exception as e:
                     err_msg = f"Error using S3 vectors: {str(e)}"
                     update_trace(main_trace, output={"error": err_msg}, level="ERROR")
@@ -689,7 +815,7 @@ def generate_response_stream_and_sources(
 
                 idx = load_index_from_storage(storage_context)
                 retriever = idx.as_retriever(similarity_top_k=3)
-                retrieved_nodes = retriever.retrieve(query)
+                retrieved_nodes = retriever.retrieve(retrieval_query)
 
             local_sources = []
             for n_ws in retrieved_nodes:
@@ -838,6 +964,18 @@ def generate_response_stream_and_sources(
                 "web_search_used": used_web_search,
             },
         )
+
+        # Self-RAG: wrap generator to check grounding and append disclaimer if needed
+        if rag_enhanced and config.SELF_RAG_ENABLED and not used_web_search:
+            response_text_generator = _self_rag_wrapper(
+                response_text_generator, context_str
+            )
+
+        # Answer Cache: wrap generator to cache the full response after streaming
+        if config.ANSWER_CACHE_ENABLED:
+            response_text_generator = _caching_generator(
+                response_text_generator, query, response_sources
+            )
 
         return response_text_generator, response_sources
 

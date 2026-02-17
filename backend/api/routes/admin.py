@@ -5,7 +5,7 @@ All endpoints require Admin role via get_admin_session dependency.
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 
 from backend.api.dependencies import get_admin_session
 from backend.services.admin_service import get_admin_service
@@ -234,6 +234,73 @@ def knowledge_graph_metrics(session=Depends(get_admin_session)):
 def tracing_health(session=Depends(get_admin_session)):
     from backend.langfuse_setup import get_langfuse_health
     return {"tracing": get_langfuse_health()}
+
+
+# ── LLMOps ───────────────────────────────────────────────────────────
+
+@router.get("/llmops")
+def llmops_stats(
+    last_n: int = Query(default=200, ge=10, le=1000),
+    session=Depends(get_admin_session),
+):
+    """Aggregated LLM observability stats: latency percentiles, token usage, per-model breakdown."""
+    from backend.llmops import get_llmops_logger
+    return get_llmops_logger().get_stats(last_n=last_n)
+
+
+# ── Prompt Registry ───────────────────────────────────────────────────
+
+class RegisterPromptRequest(BaseModel):
+    template: str = Field(..., min_length=1, max_length=10000)
+    description: str = Field(default="", max_length=500)
+    variables: List[str] = Field(default_factory=list)
+
+
+@router.get("/prompts")
+def list_prompts(session=Depends(get_admin_session)):
+    """List all registered prompt templates with their latest versions."""
+    from backend.prompt_registry import get_prompt_registry
+    return {"prompts": get_prompt_registry().list_prompts()}
+
+
+@router.get("/prompts/{name}")
+def get_prompt_versions(
+    name: str,
+    session=Depends(get_admin_session),
+):
+    """List all versions of a specific prompt."""
+    from backend.prompt_registry import get_prompt_registry
+    versions = get_prompt_registry().list_versions(name)
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    return {"name": name, "versions": versions}
+
+
+@router.post("/prompts/{name}", status_code=201)
+def register_prompt(
+    name: str,
+    payload: RegisterPromptRequest,
+    session=Depends(get_admin_session),
+):
+    """Register a new version of a prompt template."""
+    from backend.prompt_registry import get_prompt_registry
+    entry = get_prompt_registry().register(
+        name=name,
+        template=payload.template,
+        description=payload.description,
+        variables=payload.variables,
+    )
+    return entry
+
+
+@router.delete("/prompts/{name}", status_code=200)
+def delete_prompt(name: str, session=Depends(get_admin_session)):
+    """Delete all versions of a prompt (irreversible)."""
+    from backend.prompt_registry import get_prompt_registry
+    deleted = get_prompt_registry().delete(name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+    return {"success": True, "deleted": name}
 
 
 # ── Resources Management ─────────────────────────────────────────

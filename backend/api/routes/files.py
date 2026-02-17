@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
-import boto3
-from botocore.exceptions import ClientError
-from botocore.config import Config
 
 from backend.api.dependencies import get_current_session
 from backend.validators import PathValidator
 from backend.exceptions import InvalidInputError
 from backend.config import config
+
+try:
+    from botocore.exceptions import ClientError
+except ImportError:
+    ClientError = Exception  # fallback if boto3 not installed
 
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -17,9 +19,25 @@ router = APIRouter(prefix="/files", tags=["files"])
 S3_DOCUMENTS_BUCKET = config.S3_DOCUMENTS_BUCKET
 S3_DOCUMENTS_PREFIX = "modules/"
 
-# Configure S3 client with signature v4 for presigned URLs
-s3_config = Config(signature_version="s3v4", region_name="us-east-1")
-s3_client = boto3.client("s3", config=s3_config, region_name="us-east-1")
+
+def _get_s3_client():
+    """Get S3 client with signature v4 for presigned URL generation."""
+    from backend.cloud.aws_helpers import get_boto3_client
+    from botocore.config import Config as BotoConfig
+    return get_boto3_client(
+        "s3", config=BotoConfig(signature_version="s3v4")
+    )
+
+
+# Lazy-initialized S3 client (replaces module-level boto3.client)
+_s3_client = None
+
+
+def _get_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = _get_s3_client()
+    return _s3_client
 
 
 def _resolve_path(raw_path: str) -> Path:
@@ -169,7 +187,7 @@ def get_s3_document(
     best_match_score = 0
 
     try:
-        paginator = s3_client.get_paginator("list_objects_v2")
+        paginator = _get_client().get_paginator("list_objects_v2")
         pages = paginator.paginate(
             Bucket=S3_DOCUMENTS_BUCKET, Prefix=S3_DOCUMENTS_PREFIX
         )
@@ -243,7 +261,7 @@ def get_s3_document(
             # Default to attachment for other files
             response_content_disposition = f'attachment; filename="{filename}"'
 
-        presigned_url = s3_client.generate_presigned_url(
+        presigned_url = _get_client().generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": S3_DOCUMENTS_BUCKET,
@@ -293,7 +311,7 @@ def get_s3_url(
     best_match_score = 0
 
     try:
-        paginator = s3_client.get_paginator("list_objects_v2")
+        paginator = _get_client().get_paginator("list_objects_v2")
         pages = paginator.paginate(
             Bucket=S3_DOCUMENTS_BUCKET, Prefix=S3_DOCUMENTS_PREFIX
         )
@@ -362,7 +380,7 @@ def get_s3_url(
         else:
             response_content_disposition = f'attachment; filename="{filename}"'
 
-        presigned_url = s3_client.generate_presigned_url(
+        presigned_url = _get_client().generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": S3_DOCUMENTS_BUCKET,

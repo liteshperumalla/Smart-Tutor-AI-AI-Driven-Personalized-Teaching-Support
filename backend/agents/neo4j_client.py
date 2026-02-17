@@ -2,17 +2,138 @@
 Neo4j Knowledge Graph Client
 Singleton driver for the Neo4j graph database used by the agent system.
 Provides read/write query helpers with automatic session management.
+Includes auto-resume for paused Neo4j Aura instances.
 """
 
 from __future__ import annotations
 
 import logging
+import time
+import threading
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
 
 logger = logging.getLogger(__name__)
 
+# ── Aura API helpers ──────────────────────────────────────────────
+
+AURA_API_BASE = "https://api.neo4j.io"
+_aura_token_cache: Dict[str, Any] = {"token": None, "expires_at": 0}
+_resume_lock = threading.Lock()
+
+
+def _get_aura_token() -> Optional[str]:
+    """Get an OAuth bearer token for the Neo4j Aura API (cached for 50 min)."""
+    if not config.NEO4J_AURA_API_CLIENT_ID or not config.NEO4J_AURA_API_CLIENT_SECRET:
+        return None
+
+    now = time.time()
+    if _aura_token_cache["token"] and now < _aura_token_cache["expires_at"]:
+        return _aura_token_cache["token"]
+
+    import requests
+
+    try:
+        resp = requests.post(
+            f"{AURA_API_BASE}/oauth/token",
+            auth=(config.NEO4J_AURA_API_CLIENT_ID, config.NEO4J_AURA_API_CLIENT_SECRET),
+            data={"grant_type": "client_credentials"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        token = data["access_token"]
+        expires_in = data.get("expires_in", 3600)
+        _aura_token_cache["token"] = token
+        _aura_token_cache["expires_at"] = now + expires_in - 600  # refresh 10 min early
+        return token
+    except Exception as exc:
+        logger.warning("Failed to get Aura API token: %s", exc)
+        return None
+
+
+def _get_instance_status() -> Optional[str]:
+    """Check Neo4j Aura instance status (running, paused, resuming, etc.)."""
+    if not config.NEO4J_AURA_INSTANCE_ID:
+        return None
+
+    token = _get_aura_token()
+    if not token:
+        return None
+
+    import requests
+
+    try:
+        resp = requests.get(
+            f"{AURA_API_BASE}/v1/instances/{config.NEO4J_AURA_INSTANCE_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        status = data.get("data", {}).get("status", "unknown")
+        logger.info("Aura instance %s status: %s", config.NEO4J_AURA_INSTANCE_ID, status)
+        return status
+    except Exception as exc:
+        logger.warning("Failed to get Aura instance status: %s", exc)
+        return None
+
+
+def _resume_aura_instance(max_wait: int = 120) -> bool:
+    """Resume a paused Aura instance and wait for it to become running.
+
+    Uses a lock to prevent multiple concurrent resume attempts.
+    Returns True if the instance is running, False otherwise.
+    """
+    if not config.NEO4J_AURA_INSTANCE_ID:
+        return False
+
+    with _resume_lock:
+        status = _get_instance_status()
+        if status == "running":
+            return True
+        if status not in ("paused", "resuming"):
+            logger.warning("Aura instance in unexpected state: %s", status)
+            return False
+
+        if status == "paused":
+            token = _get_aura_token()
+            if not token:
+                return False
+
+            import requests
+
+            try:
+                resp = requests.post(
+                    f"{AURA_API_BASE}/v1/instances/{config.NEO4J_AURA_INSTANCE_ID}/resume",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                logger.info("Aura resume request sent for %s", config.NEO4J_AURA_INSTANCE_ID)
+            except Exception as exc:
+                logger.warning("Failed to resume Aura instance: %s", exc)
+                return False
+
+        # Poll until running or timeout
+        start = time.time()
+        while time.time() - start < max_wait:
+            time.sleep(10)
+            status = _get_instance_status()
+            if status == "running":
+                logger.info("Aura instance is now running (waited %.0fs)", time.time() - start)
+                return True
+            logger.info("Aura instance status: %s (waiting...)", status)
+
+        logger.warning("Aura instance did not resume within %ds", max_wait)
+        return False
+
+
+# ── Neo4j Client ──────────────────────────────────────────────────
 
 class Neo4jClient:
     """Thread-safe singleton wrapper around the Neo4j Python driver."""
@@ -25,6 +146,8 @@ class Neo4jClient:
         self.driver = GraphDatabase.driver(
             config.NEO4J_URI,
             auth=(config.NEO4J_USER, config.NEO4J_PASSWORD),
+            connection_timeout=5,           # Fail fast if server unreachable
+            max_transaction_retry_time=5,    # Don't retry for 30s+ on failures
         )
         logger.info("Neo4j driver initialised (%s)", config.NEO4J_URI)
 
@@ -33,18 +156,58 @@ class Neo4jClient:
     def execute_write(
         self, query: str, params: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        with self.driver.session(database=config.NEO4J_DATABASE) as session:
-            return session.execute_write(
-                lambda tx: tx.run(query, params or {}).data()
-            )
+        return self._execute_with_resume(is_write=True, query=query, params=params)
 
     def execute_read(
         self, query: str, params: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
+        return self._execute_with_resume(is_write=False, query=query, params=params)
+
+    def _execute_with_resume(
+        self, is_write: bool, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """Execute a query, auto-resuming Aura if the first attempt fails."""
+        try:
+            return self._execute(is_write, query, params)
+        except Exception as first_err:
+            # Check if this looks like a connectivity failure (paused instance)
+            err_str = str(first_err).lower()
+            if any(k in err_str for k in ("dns", "resolve", "connect", "refused", "unavailable", "service")):
+                logger.info("Neo4j connection failed, attempting Aura auto-resume...")
+                if _resume_aura_instance():
+                    # Recreate the driver after resume
+                    self._reconnect()
+                    return self._execute(is_write, query, params)
+            raise
+
+    def _execute(
+        self, is_write: bool, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
         with self.driver.session(database=config.NEO4J_DATABASE) as session:
-            return session.execute_read(
-                lambda tx: tx.run(query, params or {}).data()
-            )
+            if is_write:
+                return session.execute_write(
+                    lambda tx: tx.run(query, params or {}).data()
+                )
+            else:
+                return session.execute_read(
+                    lambda tx: tx.run(query, params or {}).data()
+                )
+
+    def _reconnect(self) -> None:
+        """Close and recreate the driver (after Aura resumes, DNS changes)."""
+        from neo4j import GraphDatabase
+
+        try:
+            self.driver.close()
+        except Exception:
+            pass
+        self.driver = GraphDatabase.driver(
+            config.NEO4J_URI,
+            auth=(config.NEO4J_USER, config.NEO4J_PASSWORD),
+            connection_timeout=5,
+            max_transaction_retry_time=5,
+        )
+        logger.info("Neo4j driver reconnected")
 
     # ── Lifecycle ─────────────────────────────────────────────────
 

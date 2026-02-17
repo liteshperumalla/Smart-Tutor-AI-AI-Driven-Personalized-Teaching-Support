@@ -380,24 +380,32 @@ _event_bus: Optional[EventBus] = None
 
 
 def init_event_bus(
-    backend_type: str = "inmemory",
+    backend_type: Optional[str] = None,
     event_bus_name: Optional[str] = None,
     topic_arn: Optional[str] = None,
-    region: str = "us-east-1",
+    region: Optional[str] = None,
 ) -> EventBus:
     """
     Initialize global event bus
 
     Args:
-        backend_type: "inmemory", "eventbridge", or "sns"
+        backend_type: "inmemory", "eventbridge", or "sns".
+            Defaults to "inmemory" when CLOUD_PROVIDER=local, else "inmemory".
         event_bus_name: EventBridge event bus name
         topic_arn: SNS topic ARN
-        region: AWS region
+        region: AWS region (defaults to config.AWS_REGION)
 
     Returns:
         EventBus instance
     """
+    import os
+
     global _event_bus
+
+    if backend_type is None:
+        backend_type = os.getenv("EVENT_BUS_BACKEND", "inmemory")
+    if region is None:
+        region = os.getenv("AWS_REGION", "us-east-1")
 
     if backend_type == "eventbridge":
         if not event_bus_name:
@@ -410,7 +418,7 @@ def init_event_bus(
         backend = SNSBackend(topic_arn, region)
 
     else:
-        # Default to in-memory
+        # Default to in-memory (cloud-agnostic)
         backend = InMemoryEventBus()
 
     _event_bus = EventBus(backend, enable_local_cache=True)

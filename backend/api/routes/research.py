@@ -113,7 +113,7 @@ def research_uploads(
     service: ResearchService = Depends(get_research_service),
 ):
     try:
-        return {"uploads": service.list_uploads()}
+        return {"uploads": service.list_uploads(session["username"])}
     except RuntimeError as e:
         if "Knowledge base is not initialized" in str(e):
             return {"uploads": []}
@@ -209,7 +209,7 @@ def clear_research_uploads(
 ):
     """Clear all uploaded documents from knowledge_uploads folder and index."""
     try:
-        result = service.clear_uploads()
+        result = service.clear_uploads(session["username"])
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
     except Exception:
         raise HTTPException(
@@ -224,7 +224,7 @@ def clear_research_uploads_post(
 ):
     """Clear all uploaded documents (POST version for sendBeacon API)."""
     try:
-        result = service.clear_uploads()
+        result = service.clear_uploads(session["username"])
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
     except Exception:
         raise HTTPException(

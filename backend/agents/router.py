@@ -48,9 +48,24 @@ _RULES: list[Tuple[str, str, str]] = [
 ]
 
 
+def _extract_user_question(text: str) -> str:
+    """Extract the original user question from context-enriched queries.
+
+    The chat route prepends document context or style instructions before the
+    actual user question with markers like 'User question: ...'.  We classify
+    only the user's intent — not the document content — to avoid misrouting.
+    """
+    marker = "User question:"
+    idx = text.rfind(marker)
+    if idx != -1:
+        return text[idx + len(marker):].strip()
+    return text
+
+
 def classify_query(text: str) -> Tuple[str, str]:
     """Return (agent_name, route_reason) for the given query text."""
-    lower = text.lower()
+    user_q = _extract_user_question(text)
+    lower = user_q.lower()
     for agent, reason, pattern in _RULES:
         if re.search(pattern, lower):
             return agent, reason

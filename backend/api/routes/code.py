@@ -174,9 +174,6 @@ def _get_code_llm():
     except Exception:
         logger.exception("Unexpected error initializing Bedrock LLM")
         return None
-    except Exception:
-        logger.exception("Unexpected error initializing Bedrock LLM")
-        return None
 
 
 def _execute_python_code(code: str) -> tuple[str, bool]:
