@@ -3,14 +3,13 @@ WebSocket Chat Route
 Real-time chat using WebSocket for instant message streaming
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from backend.websocket.manager import manager
 from backend.auth_service import get_auth_service
 from backend.services.chat_service import get_chat_service
 from backend.services.models import ChatMessage
 from backend.logger import get_logger
 import json
-from typing import Optional
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger(__name__)
@@ -20,17 +19,13 @@ logger = get_logger(__name__)
 async def websocket_chat_endpoint(
     websocket: WebSocket,
     session_id: str,
-    token: Optional[str] = Query(None)
 ):
     """
     WebSocket endpoint for real-time chat
 
-    NOTE: Token is accepted via query param because WebSocket API does not
-    support custom headers. This is an accepted trade-off; prefer short-lived
-    tokens and ensure reverse proxies strip query strings from access logs.
-
-    Query Parameters:
-        token: JWT access token for authentication
+    Authentication: HttpOnly cookie (access_token) only.
+    SECURITY: Query param tokens are NOT supported — they leak into server logs,
+    browser history, and HTTP Referer headers.
 
     Message Format:
         Client -> Server:
@@ -56,14 +51,15 @@ async def websocket_chat_endpoint(
         }
     """
 
-    # Authenticate user
-    if not token:
+    # SECURITY: Only accept authentication via HttpOnly cookie
+    effective_token = websocket.cookies.get("access_token")
+    if not effective_token:
         await websocket.close(code=1008, reason="Missing authentication token")
         return
 
     try:
         auth_service = get_auth_service()
-        user = auth_service.validate_session(token)
+        user = auth_service.validate_session(effective_token)
         user_id = user["username"]
     except Exception as e:
         logger.warning(f"WebSocket authentication failed: {e}")

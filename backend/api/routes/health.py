@@ -96,7 +96,6 @@ async def detailed_status(session=Depends(get_admin_session)) -> Dict[str, Any]:
     """
     Get detailed system status (admin-only)
     """
-    import boto3
     from backend.config import config
 
     system_status = {
@@ -107,14 +106,15 @@ async def detailed_status(session=Depends(get_admin_session)) -> Dict[str, Any]:
     }
 
     try:
-        s3 = boto3.client("s3")
+        from backend.cloud.object_storage import get_object_storage
+        storage = get_object_storage()
         buckets = [config.S3_DOCUMENTS_BUCKET, config.S3_UPLOADS_BUCKET]
         for bucket in buckets:
             try:
-                response = s3.list_objects_v2(Bucket=bucket, MaxKeys=1)
+                objects = storage.list_objects(bucket=bucket, prefix="", max_keys=1)
                 system_status["components"][bucket] = {
                     "status": "accessible",
-                    "object_count": response.get("KeyCount", 0),
+                    "object_count": len(objects),
                 }
             except Exception as e:
                 system_status["components"][bucket] = {
@@ -122,7 +122,7 @@ async def detailed_status(session=Depends(get_admin_session)) -> Dict[str, Any]:
                     "error": str(e),
                 }
     except Exception as e:
-        system_status["components"]["s3"] = {"status": "error", "error": str(e)}
+        system_status["components"]["object_storage"] = {"status": "error", "error": str(e)}
 
     try:
         redis_status = "unknown"

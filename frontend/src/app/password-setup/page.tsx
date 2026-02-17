@@ -17,16 +17,19 @@ function PasswordSetupContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Read token from URL params (passed from Google callback) and clear the URL
-    const paramToken = searchParams.get("token");
-    const paramUsername = searchParams.get("username");
-    if (paramToken) setToken(paramToken);
-    if (paramUsername) setUsername(paramUsername);
-    // Clean sensitive data from URL bar
-    if (paramToken || paramUsername) {
-      window.history.replaceState({}, "", "/password-setup");
+    // Read token and username from URL query params (passed by the Google callback).
+    const urlToken = searchParams.get("token");
+    const urlUsername = searchParams.get("username");
+    if (urlToken) {
+      setToken(urlToken);
     }
-  }, [searchParams]);
+    if (urlUsername) {
+      setUsername(urlUsername);
+    }
+    // Immediately strip the sensitive token from the URL so it does not linger
+    // in the browser history or server logs.
+    router.replace("/password-setup");
+  }, [router, searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

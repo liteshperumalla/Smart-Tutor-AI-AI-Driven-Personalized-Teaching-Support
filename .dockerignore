@@ -27,18 +27,23 @@ quiz_results/
 *.zip
 *.tar.gz
 *.tar
+# SECURITY: Exclude ALL environment files and secrets
 .env
+.env.*
 .env.local
 .env.*.local
+.env.production
+.env.backup*
+_archive/
 terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
 *.tfvars.json
 credentials/
-keys/
-!keys/*.pem
-!keys/public.pem
+# SECURITY: Exclude private keys, allow only public keys
+keys/jwt_private.pem
+keys/*.key
 .DS_Store
 Thumbs.db
 .streamlit/

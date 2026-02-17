@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+import ipaddress
 import time
 
 from backend.api.routes import register_routes
@@ -70,7 +71,7 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 
@@ -217,10 +218,27 @@ async def metrics(
         client_host = request.client.host if request else None
         # Only allow exact loopback addresses; Prometheus should use auth token
         # or be configured in METRICS_ALLOWED_IPS env var
-        allowed_ips = os.environ.get("METRICS_ALLOWED_IPS", "127.0.0.1,::1").split(",")
-        allowed_ips = [ip.strip() for ip in allowed_ips if ip.strip()]
+        allowed_raw = os.environ.get("METRICS_ALLOWED_IPS", "127.0.0.1,::1,172.16.0.0/12").split(",")
+        allowed_raw = [ip.strip() for ip in allowed_raw if ip.strip()]
 
-        if not client_host or client_host not in allowed_ips:
+        def _ip_allowed(host: str) -> bool:
+            try:
+                addr = ipaddress.ip_address(host)
+            except ValueError:
+                return False
+            for entry in allowed_raw:
+                try:
+                    if "/" in entry:
+                        if addr in ipaddress.ip_network(entry, strict=False):
+                            return True
+                    else:
+                        if addr == ipaddress.ip_address(entry):
+                            return True
+                except ValueError:
+                    continue
+            return False
+
+        if not client_host or not _ip_allowed(client_host):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required for metrics endpoint"

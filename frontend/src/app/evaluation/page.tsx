@@ -242,6 +242,7 @@ export function EvaluationContent() {
       setQuizMetrics(data);
     } catch (err) {
       console.error("Failed to fetch quiz metrics:", err);
+      setQuizMetrics({ error: err instanceof Error ? err.message : "Failed to load quiz metrics" } as QuizMetrics);
     } finally {
       setQuizMetricsLoading(false);
     }
@@ -250,6 +251,46 @@ export function EvaluationContent() {
   useEffect(() => {
     if (token && activeTab === "quiz") {
       fetchQuizMetricsData();
+    }
+  }, [token, activeTab]);
+
+  // Fetch agent metrics
+  const fetchAgentMetricsData = async () => {
+    if (!token) return;
+    setAgentMetricsLoading(true);
+    try {
+      const data = await fetchAgentMetrics(token);
+      setAgentMetrics(data);
+    } catch (err) {
+      console.error("Failed to fetch agent metrics:", err);
+    } finally {
+      setAgentMetricsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === "agents") {
+      fetchAgentMetricsData();
+    }
+  }, [token, activeTab]);
+
+  // Fetch knowledge graph metrics
+  const fetchGraphMetricsData = async () => {
+    if (!token) return;
+    setGraphMetricsLoading(true);
+    try {
+      const data = await fetchKnowledgeGraphMetrics(token);
+      setGraphMetrics(data);
+    } catch (err) {
+      console.error("Failed to fetch knowledge graph metrics:", err);
+    } finally {
+      setGraphMetricsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === "graph") {
+      fetchGraphMetricsData();
     }
   }, [token, activeTab]);
 
@@ -532,29 +573,31 @@ export function EvaluationContent() {
       </header>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
-        {[
-          { id: "rag", label: "RAG Pipeline", icon: Brain },
-          { id: "agents", label: "Agent Analytics", icon: Zap },
-          { id: "graph", label: "Knowledge Graph", icon: GitBranch },
-          { id: "website", label: "Website Metrics", icon: Server },
-          { id: "aws", label: "AWS Services", icon: Cloud },
-          { id: "tests", label: "Test Suite", icon: BarChart3 },
-          { id: "quiz", label: "Quiz Analytics", icon: Target },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition ${
-              activeTab === tab.id
-                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-white"
-                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-            }`}
-          >
-            <tab.icon className="h-4 w-4" />
-            {tab.label}
-          </button>
-        ))}
+      <div className="overflow-x-auto rounded-xl bg-zinc-100 dark:bg-zinc-800">
+        <div className="flex gap-1 p-1 min-w-max">
+          {[
+            { id: "rag", label: "RAG Pipeline", icon: Brain },
+            { id: "agents", label: "Agent Analytics", icon: Zap },
+            { id: "graph", label: "Knowledge Graph", icon: GitBranch },
+            { id: "website", label: "Website Metrics", icon: Server },
+            { id: "aws", label: "AWS Services", icon: Cloud },
+            { id: "tests", label: "Test Suite", icon: BarChart3 },
+            { id: "quiz", label: "Quiz Analytics", icon: Target },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition whitespace-nowrap sm:px-4 sm:gap-2 ${
+                activeTab === tab.id
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-white"
+                  : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+              }`}
+            >
+              <tab.icon className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* RAG Pipeline Tab - Real-time Metrics */}
@@ -2088,12 +2131,7 @@ export function EvaluationContent() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400">Multi-agent system performance and usage metrics</p>
             </div>
             <button
-              onClick={async () => {
-                if (!token) return;
-                setAgentMetricsLoading(true);
-                try { setAgentMetrics(await fetchAgentMetrics(token)); } catch (e) { console.error(e); }
-                finally { setAgentMetricsLoading(false); }
-              }}
+              onClick={fetchAgentMetricsData}
               disabled={agentMetricsLoading}
               className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
             >
@@ -2215,12 +2253,7 @@ export function EvaluationContent() {
               <p className="text-sm text-zinc-500 dark:text-zinc-400">Neo4j graph database metrics and student learning patterns</p>
             </div>
             <button
-              onClick={async () => {
-                if (!token) return;
-                setGraphMetricsLoading(true);
-                try { setGraphMetrics(await fetchKnowledgeGraphMetrics(token)); } catch (e) { console.error(e); }
-                finally { setGraphMetricsLoading(false); }
-              }}
+              onClick={fetchGraphMetricsData}
               disabled={graphMetricsLoading}
               className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-50"
             >

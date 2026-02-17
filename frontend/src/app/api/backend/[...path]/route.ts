@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { posix } from "path";
 
 // Allow larger body sizes for file uploads
 export const config = {
@@ -13,6 +14,9 @@ export const maxDuration = 300;
 const BACKEND_BASE_URL =
   process.env.BACKEND_API_BASE_URL || "http://localhost:8010";
 
+// Admin route prefixes that must never be reachable through this proxy
+const BLOCKED_PATH_PREFIXES = ["/admin", "/api/v1/admin"];
+
 type RouteParams = { path?: string[] };
 type RouteContext = { params: RouteParams } | { params: Promise<RouteParams> };
 
@@ -25,11 +29,58 @@ async function resolvePath(paramsOrPromise: RouteParams | Promise<RouteParams>) 
 }
 
 async function proxyRequest(request: NextRequest, path: string[]) {
-  console.log("[PROXY DEBUG] proxyRequest called with path:", path);
-  const targetPath = path?.join("/") ?? "";
+  // Reject any path segment containing traversal sequences, encoded dots, or null bytes.
+  const segments = path ?? [];
+  for (const segment of segments) {
+    const decoded = decodeURIComponent(segment);
+    if (
+      decoded.includes("..") ||
+      decoded.includes("\0") ||
+      /%2e/i.test(segment) ||
+      /%00/i.test(segment)
+    ) {
+      return new Response(JSON.stringify({ detail: "Bad Request" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Normalize the path using posix.normalize to collapse any ".." traversal segments,
+  // then ensure it never escapes the root ("/").
+  const rawPath = "/" + (segments.join("/") ?? "");
+  const normalizedPath = posix.normalize(rawPath).replace(/^\/+/, "");
+
+  // Belt-and-suspenders: block requests that target admin routes directly
+  const normalizedWithSlash = "/" + normalizedPath;
+  for (const prefix of BLOCKED_PATH_PREFIXES) {
+    if (
+      normalizedWithSlash === prefix ||
+      normalizedWithSlash.startsWith(prefix + "/")
+    ) {
+      return new Response(JSON.stringify({ detail: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  // Defense in depth: require an auth cookie to be present before forwarding
+  const hasAuthCookie =
+    request.cookies.has("access_token") || request.cookies.has("refresh_token");
+  // Allow unauthenticated access only to auth-related paths (login, signup, etc.)
+  const isAuthPath =
+    normalizedWithSlash.startsWith("/auth/") ||
+    normalizedWithSlash === "/auth";
+  if (!hasAuthCookie && !isAuthPath) {
+    return new Response(JSON.stringify({ detail: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const search = request.nextUrl.search || "";
-  const url = `${BACKEND_BASE_URL.replace(/\/$/, "")}/${targetPath}${search}`;
-  console.log("[PROXY DEBUG] Proxying to URL:", url);
+  const url = `${BACKEND_BASE_URL.replace(/\/$/, "")}/${normalizedPath}${search}`;
 
   const headers = new Headers(request.headers);
   headers.delete("host");
@@ -55,30 +106,21 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   const proxyHeaders = new Headers(response.headers);
   proxyHeaders.delete("content-security-policy");
 
-  // DEBUG: Log original location header
-  const originalLocation = proxyHeaders.get("location");
-  console.log("[PROXY DEBUG] Original Location:", originalLocation);
-
   // Rewrite redirect Location headers to go through the proxy
   const location = proxyHeaders.get("location");
   if (location) {
     // If the location is a relative path starting with /files/, rewrite it to go through the proxy
     if (location.startsWith("/files/")) {
       const newLocation = `/api/backend${location}`;
-      console.log("[PROXY DEBUG] Rewritten Location:", newLocation);
       proxyHeaders.set("location", newLocation);
     }
     // If it's a redirect to the backend directly, rewrite to go through proxy
     else if (location.startsWith(BACKEND_BASE_URL)) {
       const pathPart = location.replace(BACKEND_BASE_URL, "");
       const newLocation = `/api/backend${pathPart}`;
-      console.log("[PROXY DEBUG] Rewritten Location:", newLocation);
       proxyHeaders.set("location", newLocation);
     }
   }
-
-  // DEBUG: Log final headers
-  console.log("[PROXY DEBUG] Final Location:", proxyHeaders.get("location"));
 
   return new Response(response.body, {
     status: response.status,

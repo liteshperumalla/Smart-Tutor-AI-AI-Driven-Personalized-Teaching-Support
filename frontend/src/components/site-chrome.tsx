@@ -87,6 +87,7 @@ export function SiteChrome({
   const [renameModalSession, setRenameModalSession] = useState<ChatSessionDTO | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const router = useRouter();
   const year = new Date().getFullYear();
@@ -278,6 +279,7 @@ export function SiteChrome({
   };
 
   const handleSelectSession = (sessionId: string) => {
+    setMobileNavOpen(false);
     router.push(`/chat?session=${sessionId}`);
   };
 
@@ -320,6 +322,42 @@ export function SiteChrome({
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* ── Mobile: backdrop overlay ── */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── Mobile: top header bar (only on < lg) ── */}
+      <header className="fixed top-0 left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 lg:hidden">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
+          aria-label="Open navigation"
+          aria-expanded={mobileNavOpen}
+        >
+          {/* Hamburger */}
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <Link href="/" className="text-base font-semibold text-zinc-900 dark:text-white">
+          Smart AI Tutor
+        </Link>
+        {/* Quick action: new chat */}
+        <button
+          onClick={handleCreateSession}
+          disabled={isCreatingSession}
+          className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition disabled:opacity-50"
+          aria-label="New chat"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
+      </header>
+
       {/* Sidebar Hover Zone (visible when collapsed) - shows button on hover */}
       {sidebarCollapsed && (
         <div className="fixed left-0 top-0 bottom-0 w-12 z-40 hidden lg:block group cursor-pointer">
@@ -334,16 +372,31 @@ export function SiteChrome({
         </div>
       )}
 
-      {/* Fixed Sidebar */}
-      <aside className={`hidden flex-shrink-0 flex-col border-r border-zinc-200 bg-white/90 backdrop-blur transition-all duration-300 dark:border-zinc-800 dark:bg-zinc-900/80 lg:flex fixed left-0 top-0 bottom-0 z-30 overflow-hidden ${sidebarCollapsed ? 'w-0 opacity-0' : 'w-64 opacity-100'}`}>
+      {/* Fixed Sidebar — desktop: always mounted, mobile: slide-in drawer */}
+      <aside className={[
+        "fixed left-0 top-0 bottom-0 z-50 flex flex-shrink-0 flex-col border-r border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80 overflow-hidden",
+        // Mobile: slide in/out; always full width on small screens
+        "transition-transform duration-300 w-72",
+        "lg:transition-all lg:duration-300",
+        // Mobile open/close
+        mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full",
+        // Desktop: override mobile transform; respect collapse state
+        sidebarCollapsed ? "lg:translate-x-0 lg:w-0 lg:opacity-0" : "lg:translate-x-0 lg:w-64 lg:opacity-100",
+      ].join(" ")}>
         <div className="px-6 py-6 flex items-center justify-between gap-2">
-          <Link href="/" className="text-lg font-semibold text-zinc-900 dark:text-white whitespace-nowrap">
+          <Link
+            href="/"
+            onClick={() => setMobileNavOpen(false)}
+            className="text-lg font-semibold text-zinc-900 dark:text-white whitespace-nowrap"
+          >
             Smart AI Tutor
           </Link>
+          {/* Desktop: collapse button; Mobile: close drawer button */}
           <button
-            onClick={() => setSidebarCollapsed(true)}
+            onClick={() => { setSidebarCollapsed(true); setMobileNavOpen(false); }}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-white dark:hover:bg-white/10 transition flex-shrink-0"
-            title="Collapse sidebar"
+            title="Close menu"
+            aria-label="Close navigation"
           >
             <PanelLeftClose className="h-5 w-5" />
           </button>
@@ -610,31 +663,38 @@ export function SiteChrome({
 
       {/* Main content area with fixed footer */}
       <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-all duration-300 dark:bg-zinc-950 dark:text-white ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-64'}`}>
-        {/* Scrollable content area — full-height routes get reduced bottom padding so they manage their own layout */}
-        <main className={isFullHeightRoute ? "flex-1 flex flex-col overflow-hidden pb-12" : "flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-8"}>{children}</main>
+        {/* Scrollable content area */}
+        {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
+        <main className={
+          isFullHeightRoute
+            ? "flex-1 flex flex-col overflow-hidden pt-14 pb-12 lg:pt-0"
+            : "flex-1 overflow-y-auto px-4 py-5 pt-[4.75rem] pb-20 sm:px-8 lg:pt-5"
+        }>
+          {children}
+        </main>
 
-        {/* Fixed Footer Nav */}
+        {/* Fixed Footer Nav — improved touch targets for mobile */}
         <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
-            <div className="mx-auto flex max-w-6xl flex-col gap-3 px-6 py-4 text-sm text-zinc-600 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-center">
-              <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs uppercase tracking-[0.2em]">
-                {navLinks
-                  .filter((link) => !link.adminOnly || isAdmin)
-                  .map((link) => {
+          <nav aria-label="Site navigation" className="mx-auto max-w-6xl px-4 py-2 sm:px-6">
+            <div className="flex flex-wrap justify-center gap-x-1 gap-y-0">
+              {navLinks
+                .filter((link) => !link.adminOnly || isAdmin)
+                .map((link) => {
                   const Icon = navIcons[link.href] || FolderOpen;
                   return (
                     <Link
                       key={link.href}
                       href={link.href}
-                      className="flex items-center gap-1.5 hover:text-zinc-900 dark:hover:text-white transition"
+                      className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs uppercase tracking-[0.15em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
                     >
-                      <Icon className="h-3.5 w-3.5" />
-                      <span>{link.label}</span>
+                      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="hidden xs:inline sm:inline">{link.label}</span>
                     </Link>
                   );
                 })}
-              </div>
             </div>
-          </footer>
+          </nav>
+        </footer>
       </div>
 
       {/* Delete Chat Modal */}

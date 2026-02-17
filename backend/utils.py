@@ -353,8 +353,8 @@ class TokenGenerator:
         Returns:
             Numeric code string
         """
-        import random
-        return ''.join([str(random.randint(0, 9)) for _ in range(length)])
+        import secrets
+        return ''.join([str(secrets.randbelow(10)) for _ in range(length)])
 
 
 class RetryHelper:

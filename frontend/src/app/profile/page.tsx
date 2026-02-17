@@ -250,14 +250,14 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
-        <header className="relative overflow-hidden rounded-3xl p-12 animate-pulse">
+        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-pulse">
           <div className="relative z-10 space-y-4">
             <div className="h-10 w-64 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
             <div className="h-6 w-96 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
           </div>
         </header>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <article className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm dark:border-zinc-800 dark:bg-zinc-900">
             <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
             <div className="h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded mb-2"></div>
@@ -290,7 +290,7 @@ export default function ProfilePage() {
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="h-6 w-40 bg-zinc-200 dark:bg-zinc-700 rounded mb-4"></div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
@@ -329,12 +329,12 @@ export default function ProfilePage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
-      <header className="relative overflow-hidden rounded-3xl p-12 animate-fade-in-down">
+      <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
         <div className="relative z-10">
-          <h1 className="font-display text-5xl font-bold text-zinc-900 dark:text-white">
+          <h1 className="font-display text-3xl sm:text-5xl font-bold text-zinc-900 dark:text-white">
             Manage your account
           </h1>
-          <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+          <p className="mt-3 text-base sm:mt-4 sm:text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
             Update your profile, track your progress, and manage your settings
           </p>
         </div>
@@ -346,7 +346,7 @@ export default function ProfilePage() {
             <ShieldAlert className="h-5 w-5 text-amber-700 dark:text-amber-400" />
             <h2 className="text-lg font-semibold text-amber-900 dark:text-amber-300">Admin Quick Access</h2>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4">
             <Link href="/admin" className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-50 dark:border-amber-800 dark:bg-zinc-900 dark:text-amber-300 dark:hover:bg-amber-950/30 transition-colors">
               <ShieldAlert className="h-4 w-4" />
               Dashboard
@@ -367,7 +367,7 @@ export default function ProfilePage() {
         </section>
       )}
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-600 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Profile photo</h2>
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
@@ -462,7 +462,7 @@ export default function ProfilePage() {
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Full quiz history</h2>
@@ -518,7 +518,7 @@ export default function ProfilePage() {
             Share more feedback
           </Link>
         </div>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">General feedback</p>
             <div className="mt-2 space-y-3 max-h-[260px] overflow-auto pr-1">
@@ -551,7 +551,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Contact details & theme</h2>
           <form className="mt-4 space-y-4" onSubmit={handleProfileSubmit}>
@@ -620,7 +620,7 @@ export default function ProfilePage() {
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Recent quiz history</h2>
@@ -676,7 +676,7 @@ export default function ProfilePage() {
         </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-700 dark:bg-zinc-800">
           <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Password & security</h2>
           <form className="mt-4 space-y-3" onSubmit={handlePasswordSubmit}>

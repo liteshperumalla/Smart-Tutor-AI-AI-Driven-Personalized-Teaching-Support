@@ -331,3 +331,40 @@ groups:
         annotations:
           summary: "High Prometheus scrape failure rate for {{ $labels.job }}"
           description: "Scrape failure rate is above 20% (current value: {{ $value }}%)"
+
+  # DDoS / Traffic Spike Detection
+  - name: ddos_protection
+    interval: 30s
+    rules:
+      # RPS spike: current 1-min rate > 2x rolling 1-hour average
+      - alert: RPSSpikeDetected
+        expr: sum(rate(http_requests_total[1m])) > 2 * sum(rate(http_requests_total[1h]))
+        for: 2m
+        labels:
+          severity: warning
+          component: ddos
+        annotations:
+          summary: "RPS spike detected — possible DDoS"
+          description: "Current RPS ({{ $value | printf \"%.1f\" }}) is >2x the 1-hour average"
+
+      # 4xx burst: probing, credential stuffing, 404 scanning
+      - alert: FourxxBurstDetected
+        expr: sum(rate(http_requests_total{status=~"4.."}[5m])) > 20
+        for: 2m
+        labels:
+          severity: warning
+          component: ddos
+        annotations:
+          summary: "4xx burst — possible probing or credential stuffing"
+          description: "4xx rate is {{ $value | printf \"%.1f\" }} req/s over 5 minutes"
+
+      # Chat endpoint targeted directly (most expensive endpoint)
+      - alert: ChatEndpointOverloaded
+        expr: sum(rate(http_requests_total{endpoint=~"/chat.*"}[1m])) > 50
+        for: 1m
+        labels:
+          severity: warning
+          component: ddos
+        annotations:
+          summary: "Chat endpoint receiving excessive traffic"
+          description: "Chat endpoint RPS is {{ $value | printf \"%.1f\" }} req/s"

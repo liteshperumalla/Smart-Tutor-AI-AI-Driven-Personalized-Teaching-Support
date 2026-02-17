@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import Iterable, Optional
 
@@ -76,19 +77,35 @@ class ChatService:
         self, query: str, user_id: str, session_id: Optional[str] = None, model_id: Optional[str] = None
     ):
         from backend.config import config as app_config
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        # Pre-flight circuit breaker check — fast-fail before building generator
+        from backend.circuit_breaker import bedrock_circuit_breaker, CircuitBreakerOpenError
+        if bedrock_circuit_breaker.state.value == "open":
+            raise CircuitBreakerOpenError("bedrock", bedrock_circuit_breaker.recovery_timeout)
+
+        routed_model_id = model_id
+
+        # LLM Complexity Routing: select model based on query complexity
+        if not model_id and app_config.LLM_ROUTING_ENABLED:
+            from backend.llm_router import classify_query_complexity, select_model_for_complexity
+            tier, confidence = classify_query_complexity(query)
+            routed_model_id = select_model_for_complexity(tier)
+            _logger.info(f"LLM routing: {tier} (conf={confidence:.2f}) -> {routed_model_id}")
 
         if app_config.AGENT_SYSTEM_ENABLED:
             from backend.agents import run_agent_pipeline
             generator, sources = run_agent_pipeline(
                 query=query, user_id=user_id,
-                session_id=session_id, model_id=model_id,
+                session_id=session_id, model_id=routed_model_id,
             )
-            return generator, sources
+            return generator, sources, routed_model_id
 
         generator, sources = generate_response_stream_and_sources(
-            query, user_id=user_id, session_id=session_id, model_id=model_id
+            query, user_id=user_id, session_id=session_id, model_id=routed_model_id
         )
-        return generator, sources
+        return generator, sources, routed_model_id
 
     def get_session(self, username: str, session_id: str) -> Optional[ChatSession]:
         return self.load_session(username, session_id)
@@ -102,3 +119,15 @@ def get_chat_service() -> ChatService:
     if _chat_service is None:
         _chat_service = ChatService()
     return _chat_service
+
+
+_llm_semaphore: threading.Semaphore | None = None
+
+
+def get_llm_semaphore() -> threading.Semaphore:
+    """Return the module-level semaphore that caps concurrent LLM synthesis calls."""
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        from backend.config import config as app_config
+        _llm_semaphore = threading.Semaphore(app_config.LLM_MAX_CONCURRENT)
+    return _llm_semaphore

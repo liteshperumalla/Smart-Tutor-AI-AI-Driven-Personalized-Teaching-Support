@@ -1,6 +1,10 @@
 """
 Configuration Management System
-Handles environment variables, settings, and secrets management
+Handles environment variables, settings, and secrets management.
+
+Cloud provider abstraction: secrets are fetched via the pluggable
+backend in ``backend.cloud.secrets`` (AWS Secrets Manager, env-only, etc.)
+controlled by the SECRETS_PROVIDER environment variable.
 """
 
 import os
@@ -8,8 +12,6 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
 import json
-import boto3
-from botocore.exceptions import ClientError
 import logging
 
 # Load environment variables from .env file
@@ -19,58 +21,35 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-def get_secret(secret_name: str, region: str = "us-east-1") -> Optional[Dict[str, Any]]:
-    """
-    Fetch secret from AWS Secrets Manager.
-    Returns None if secret not found or if there's an error.
-    """
-    try:
-        session = boto3.session.Session()
-        client = session.client(service_name="secretsmanager", region_name=region)
-
-        response = client.get_secret_value(SecretId=secret_name)
-
-        if "SecretString" in response:
-            return json.loads(response["SecretString"])
-        else:
-            logger.warning(f"Secret {secret_name} does not contain SecretString")
-            return None
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        if error_code == "ResourceNotFoundException":
-            logger.warning(f"Secret {secret_name} not found in Secrets Manager")
-        elif error_code == "AccessDeniedException":
-            logger.warning(f"Access denied to secret {secret_name}")
-        else:
-            logger.error(f"Error fetching secret {secret_name}: {e}")
-        return None
-    except Exception:
-        logger.error(f"Unexpected error fetching secret {secret_name}")
-        return None
-
-
-# Fetch consolidated secrets from AWS Secrets Manager
-# Both app secrets and RDS credentials are stored in a single secret
+# ---------------------------------------------------------------------------
+# Secrets: fetched via pluggable backend (no top-level boto3 import)
+# ---------------------------------------------------------------------------
 _app_secrets = None
 _rds_credentials = None
 
 _environment = os.getenv("ENVIRONMENT", "development").lower()
-if _environment in ("production", "staging"):
-    logger.info("Attempting to fetch secrets from AWS Secrets Manager...")
-    _app_secrets = get_secret("smart-tutor/app/secrets")
 
-    # RDS credentials are now consolidated into app/secrets
-    _rds_credentials = _app_secrets
+# Auto-select secrets provider: "aws" in production/staging, "env" otherwise
+_secrets_provider = os.getenv("SECRETS_PROVIDER", "").lower()
+if not _secrets_provider:
+    _secrets_provider = "aws" if _environment in ("production", "staging") else "env"
+    os.environ.setdefault("SECRETS_PROVIDER", _secrets_provider)
 
-    if _app_secrets:
-        logger.info("Secrets loaded from Secrets Manager (consolidated)")
-    else:
-        logger.warning(
-            "Secrets not found in Secrets Manager, falling back to .env"
-        )
+if _secrets_provider == "aws":
+    logger.info("Fetching secrets via AWS Secrets Manager...")
+    try:
+        from backend.cloud.secrets import get_secrets_backend
+        _secrets = get_secrets_backend()
+        _app_secrets = _secrets.get_secret("smart-tutor/app/secrets")
+        _rds_credentials = _app_secrets
+        if _app_secrets:
+            logger.info("Secrets loaded from Secrets Manager (consolidated)")
+        else:
+            logger.warning("Secrets not found in Secrets Manager, falling back to .env")
+    except Exception as exc:
+        logger.warning("Could not load secrets backend: %s — falling back to .env", exc)
 else:
-    logger.info(f"Skipping AWS Secrets Manager in {_environment} environment")
+    logger.info("Secrets provider: environment variables only (SECRETS_PROVIDER=%s)", _secrets_provider)
 
 
 class Config:
@@ -83,7 +62,13 @@ class Config:
     ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
     # Security Settings
-    SECRET_KEY = os.getenv("SECRET_KEY", "change-this-secret-key-in-production")
+    # SECURITY: No default for SECRET_KEY — must be explicitly set via env or Secrets Manager
+    SECRET_KEY = os.getenv("SECRET_KEY", "")
+    if not SECRET_KEY and _environment == "production":
+        raise RuntimeError(
+            "CRITICAL: SECRET_KEY environment variable is not set. "
+            "Application cannot start in production without a secure secret key."
+        )
     # SECURITY: Reduced from 3600 to 900 seconds (15 minutes)
     SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", "900"))  # 15 minutes default
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
@@ -168,10 +153,11 @@ class Config:
         if _rds_credentials
         else os.getenv("POSTGRES_USER", "smart_tutor_user")
     )
+    # SECURITY: No default for POSTGRES_PASSWORD — must be explicitly set
     POSTGRES_PASSWORD = (
         _rds_credentials.get("password")
         if _rds_credentials
-        else os.getenv("POSTGRES_PASSWORD", "dev_password_change_in_prod")
+        else os.getenv("POSTGRES_PASSWORD", "")
     )
     POSTGRES_MIN_CONNECTIONS = int(os.getenv("POSTGRES_MIN_CONNECTIONS", "2"))
     POSTGRES_MAX_CONNECTIONS = int(os.getenv("POSTGRES_MAX_CONNECTIONS", "10"))
@@ -234,6 +220,11 @@ class Config:
         == "true"
     )
 
+    # Cloud Provider Settings (Multi-Cloud Abstraction)
+    CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "aws")  # aws or local
+    OBJECT_STORAGE_PROVIDER = os.getenv("OBJECT_STORAGE_PROVIDER", "s3")  # s3 or local
+    SECRETS_PROVIDER = os.getenv("SECRETS_PROVIDER", _secrets_provider)  # aws or env
+
     # AWS Bedrock Settings (Phase 4)
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # bedrock or ollama
@@ -279,6 +270,11 @@ class Config:
     # Cost Tracking
     ENABLE_COST_TRACKING = os.getenv("ENABLE_COST_TRACKING", "true").lower() == "true"
     COST_LOG_FILE = os.getenv("COST_LOG_FILE", "logs/bedrock_costs.jsonl")
+
+    # Enhanced RAG Master Toggle — when false, all enhancement features
+    # (query enhancement, reranking, self-RAG) are bypassed even if their
+    # individual flags are true.  Single kill-switch for the enhanced pipeline.
+    ENHANCED_RAG_ENABLED = os.getenv("ENHANCED_RAG_ENABLED", "false").lower() == "true"
 
     # RAG & AI Settings
     PERSIST_DIR = os.getenv("PERSIST_DIR", "./persisted_index")
@@ -436,13 +432,30 @@ class Config:
     # Neo4j Knowledge Graph
     NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "smarttutor123")
+    # SECURITY: No default for NEO4J_PASSWORD — must be explicitly set
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
     NEO4J_DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+
+    # Neo4j Aura API (for auto-resume of paused instances)
+    NEO4J_AURA_INSTANCE_ID = os.getenv("NEO4J_AURA_INSTANCE_ID", "")
+    NEO4J_AURA_API_CLIENT_ID = os.getenv("NEO4J_AURA_API_CLIENT_ID", "")
+    NEO4J_AURA_API_CLIENT_SECRET = os.getenv("NEO4J_AURA_API_CLIENT_SECRET", "")
+
+    # LLM Routing (Complexity-Based Model Selection)
+    LLM_ROUTING_ENABLED = os.getenv("LLM_ROUTING_ENABLED", "false").lower() == "true"
+    LLM_ROUTING_SIMPLE_MODEL = os.getenv("LLM_ROUTING_SIMPLE_MODEL", "")  # e.g. meta.llama3-8b-instruct-v1:0
+    LLM_ROUTING_COMPLEX_MODEL = os.getenv("LLM_ROUTING_COMPLEX_MODEL", "")  # falls back to BEDROCK_MODEL_ID
+    LLM_ROUTING_COMPLEXITY_THRESHOLD = float(os.getenv("LLM_ROUTING_COMPLEXITY_THRESHOLD", "0.5"))
 
     # Cache Settings
     CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
     CACHE_TTL = int(os.getenv("CACHE_TTL", "300"))  # 5 minutes default
     CACHE_MAX_SIZE = int(os.getenv("CACHE_MAX_SIZE", "1000"))
+
+    # Answer Cache (Query→Answer caching with exact + fuzzy matching)
+    ANSWER_CACHE_ENABLED = os.getenv("ANSWER_CACHE_ENABLED", "false").lower() == "true"
+    ANSWER_CACHE_TTL = int(os.getenv("ANSWER_CACHE_TTL", "3600"))  # 1 hour
+    ANSWER_CACHE_FUZZY_THRESHOLD = float(os.getenv("ANSWER_CACHE_FUZZY_THRESHOLD", "0.95"))
 
     # Rate Limiting
     RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
@@ -454,6 +467,16 @@ class Config:
     RATE_LIMIT_PER_USER_WINDOW = int(
         os.getenv("RATE_LIMIT_PER_USER_WINDOW", "60")
     )  # seconds
+
+    # Per-Model Rate Limiting (per user, per model family, per window)
+    MODEL_RATE_LIMIT_DEFAULT = int(os.getenv("MODEL_RATE_LIMIT_DEFAULT", "30"))
+    MODEL_RATE_LIMIT_FAST = int(os.getenv("MODEL_RATE_LIMIT_FAST", "30"))
+    MODEL_RATE_LIMIT_PRO = int(os.getenv("MODEL_RATE_LIMIT_PRO", "15"))
+    MODEL_RATE_LIMIT_ADMIN = int(os.getenv("MODEL_RATE_LIMIT_ADMIN", "5"))
+    MODEL_RATE_LIMIT_WINDOW = int(os.getenv("MODEL_RATE_LIMIT_WINDOW", "3600"))  # 1 hour
+
+    # Max concurrent LLM synthesis calls — backpressure for streaming chat
+    LLM_MAX_CONCURRENT = int(os.getenv("LLM_MAX_CONCURRENT", "10"))
 
     # HTTPS Enforcement
     ENFORCE_HTTPS = (
@@ -497,10 +520,7 @@ class Config:
         # CRITICAL: Production security validation
         if cls.ENVIRONMENT == "production":
             # JWT Secret validation
-            if (
-                not cls.JWT_SECRET_KEY
-                or cls.JWT_SECRET_KEY == "change-this-secret-key-in-production"
-            ):
+            if not cls.JWT_SECRET_KEY:
                 errors.append(
                     "CRITICAL: JWT_SECRET_KEY not set in production. "
                     "Application cannot start without secure JWT secret. "
@@ -536,9 +556,16 @@ class Config:
                     "This should be disabled for security."
                 )
 
-            # Warn about weak secret key fallback
-            if cls.SECRET_KEY == "change-this-secret-key-in-production":
-                errors.append("SECRET_KEY must be changed in production environment")
+            # Validate SECRET_KEY is set
+            if not cls.SECRET_KEY:
+                errors.append("SECRET_KEY must be set in production environment")
+
+            # Validate Neo4j password if agent system is enabled
+            if cls.AGENT_SYSTEM_ENABLED and not cls.NEO4J_PASSWORD:
+                errors.append(
+                    "CRITICAL: NEO4J_PASSWORD not set in production. "
+                    "Required when AGENT_SYSTEM_ENABLED=true."
+                )
 
         if cls.LANGFUSE_ENABLED and (
             not cls.LANGFUSE_PUBLIC_KEY or not cls.LANGFUSE_SECRET_KEY

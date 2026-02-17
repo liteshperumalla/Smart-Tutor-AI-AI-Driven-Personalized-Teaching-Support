@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
-from backend.api.dependencies import get_current_session
+from backend.api.dependencies import get_current_session, get_admin_session
 from backend.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
@@ -31,7 +31,7 @@ class BatchQualityRequest(BaseModel):
 @router.get("/cases")
 def list_evaluation_cases(
     limit: Optional[int] = Query(default=None, ge=1, le=200),
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
     service: EvaluationService = Depends(get_evaluation_service),
 ):
     return {"cases": service.list_cases(limit)}
@@ -40,7 +40,7 @@ def list_evaluation_cases(
 @router.post("/run")
 def run_evaluations(
     payload: EvaluationRunRequest,
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
     service: EvaluationService = Depends(get_evaluation_service),
 ):
     return service.run_tests(
@@ -54,7 +54,7 @@ def run_evaluations(
 @router.post("/batch-quality")
 def run_batch_quality_evaluation(
     payload: BatchQualityRequest,
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
 ):
     """
     Run LLM-as-judge quality evaluation on the last N logged queries.
@@ -138,7 +138,7 @@ def run_batch_quality_evaluation(
 
 @router.get("/summary")
 def evaluation_summary(
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
     service: EvaluationService = Depends(get_evaluation_service),
 ):
     return {"summary": service.metrics_log_summary()}
@@ -147,7 +147,7 @@ def evaluation_summary(
 @router.get("/realtime-metrics")
 def get_realtime_rag_metrics(
     last_n: int = Query(default=100, ge=1, le=500),
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
 ):
     """
     Get real-time RAG pipeline metrics from actual chat queries.
@@ -342,7 +342,7 @@ def get_realtime_rag_metrics(
 
 @router.post("/logs/clear", status_code=status.HTTP_200_OK)
 def clear_evaluation_logs(
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
     service: EvaluationService = Depends(get_evaluation_service),
 ):
     service.clear_logs()
@@ -353,7 +353,7 @@ def clear_evaluation_logs(
 def get_metrics_history(
     hours: int = Query(default=24, ge=1, le=168),  # 1 hour to 7 days
     granularity: str = Query(default="hour", regex="^(minute|hour|day)$"),
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
 ):
     """
     Get historical metrics aggregated by time buckets.
@@ -489,7 +489,7 @@ class DatasetQualityRequest(BaseModel):
 @router.post("/run-dataset-quality")
 def run_dataset_quality_evaluation(
     payload: DatasetQualityRequest,
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
 ):
     """
     Run the evaluation dataset questions through the current RAG pipeline.
@@ -667,7 +667,7 @@ def run_dataset_quality_evaluation(
 @router.get("/export")
 def export_all_metrics(
     format: str = Query(default="json", regex="^(json|csv)$"),
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
     service: EvaluationService = Depends(get_evaluation_service),
 ):
     """
@@ -738,7 +738,7 @@ def export_all_metrics(
 @router.get("/aws-metrics")
 def get_aws_metrics(
     date: Optional[str] = Query(default=None, description="Date in YYYY-MM-DD format"),
-    session=Depends(get_current_session),
+    session=Depends(get_admin_session),
 ):
     """
     Get comprehensive AWS service metrics and costs.

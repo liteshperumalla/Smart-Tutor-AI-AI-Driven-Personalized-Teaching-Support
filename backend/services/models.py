@@ -12,14 +12,18 @@ class ChatMessage:
     content: str
     timestamp: datetime = field(default_factory=datetime.utcnow)
     sources: Optional[List[dict]] = None
+    attachments: Optional[List[dict]] = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
             "sources": self.sources or [],
         }
+        if self.attachments:
+            d["attachments"] = self.attachments
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> "ChatMessage":
@@ -30,6 +34,7 @@ class ChatMessage:
             content=data.get("content", ""),
             timestamp=ts,
             sources=data.get("sources"),
+            attachments=data.get("attachments"),
         )
 
 

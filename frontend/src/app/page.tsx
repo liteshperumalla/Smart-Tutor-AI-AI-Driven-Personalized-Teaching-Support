@@ -2,7 +2,8 @@ import Link from "next/link";
 import { fetchHomeOverview, type HomeOverview } from "@/lib/api";
 import { HomeHeroActions } from "@/components/home-hero-actions";
 import { PageShell } from "@/components/page-shell";
-import { Bell, GraduationCap, Upload, FolderOpen, ExternalLink } from "lucide-react";
+import { KnowledgeBaseWidget } from "@/components/knowledge-base-widget";
+import { Bell, GraduationCap, FolderOpen, ExternalLink } from "lucide-react";
 
 const DEFAULT_OVERVIEW: HomeOverview = {
   announcements: [
@@ -72,17 +73,17 @@ export default async function Home() {
 
   return (
     <PageShell contentClassName="gap-10 pb-6" noCard>
-        <header className="relative overflow-hidden rounded-3xl p-12 animate-fade-in-down">
+        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
           {/* Decorative blobs */}
           <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
           <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
 
           <div className="relative z-10">
-            <h1 className="font-display mt-6 text-6xl font-bold text-zinc-900 leading-tight dark:text-white">
-              Advanced Computational<br />Methods
+            <h1 className="font-display mt-4 text-3xl font-bold text-zinc-900 leading-tight dark:text-white sm:text-4xl lg:mt-6 lg:text-6xl">
+              Advanced Computational<br className="hidden sm:block" /> Methods
             </h1>
 
-            <p className="mt-4 text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
+            <p className="mt-3 text-base text-zinc-600 max-w-2xl dark:text-zinc-400 sm:mt-4 sm:text-lg">
               Spring 2025 · Master AI-powered learning with intelligent tutoring, dynamic quizzes, and research tools
             </p>
 
@@ -111,7 +112,7 @@ export default async function Home() {
                 <Link
                   key={action.title}
                   href={action.href}
-                  className="group relative overflow-hidden rounded-3xl p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up bg-white hover:bg-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  className="group relative overflow-hidden rounded-3xl p-5 sm:p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up bg-white hover:bg-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                   style={{animationDelay: `${i * 0.05}s`}}>
                   
                   <div className="mb-4">
@@ -175,39 +176,10 @@ export default async function Home() {
               </div>
             </article>
 
-            <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">Knowledge Base</p>
-                <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-                  stats.knowledge_base?.ready
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                }`}>
-                  <span className={`h-1.5 w-1.5 rounded-full ${stats.knowledge_base?.ready ? 'bg-emerald-500' : 'bg-amber-500'} ${stats.knowledge_base?.ready ? 'animate-pulse' : ''}`}></span>
-                  {stats.knowledge_base?.ready ? 'Active' : 'Loading'}
-                </span>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Documents</span>
-                  <span className="font-medium text-zinc-900 dark:text-white">{stats.knowledge_base?.document_count?.toLocaleString() ?? 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Sources</span>
-                  <span className="font-medium text-zinc-900 dark:text-white">{stats.knowledge_base?.source_count ?? 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500 dark:text-zinc-400">Vector chunks</span>
-                  <span className="font-medium text-zinc-900 dark:text-white">{stats.vector_store_ready ? '12,752' : '0'}</span>
-                </div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                <Link href="/research" className="text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center gap-1">
-                  <Upload className="h-4 w-4" />
-                  Upload sources <span className="transition-transform group-hover:translate-x-1">→</span>
-                </Link>
-              </div>
-            </article>
+            <KnowledgeBaseWidget
+              knowledge_base={stats.knowledge_base}
+              vector_store_ready={stats.vector_store_ready}
+            />
 
             <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <div className="flex items-center justify-between">

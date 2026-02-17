@@ -30,7 +30,7 @@ class PostgresStorageBackend(BaseStorageBackend):
         port: int = 5432,
         database: str = "smart_tutor",
         user: str = "smart_tutor_user",
-        password: str = "dev_password_change_in_prod",
+        password: str = "",
         min_connections: int = 2,
         max_connections: int = 10,
     ):
@@ -44,6 +44,7 @@ class PostgresStorageBackend(BaseStorageBackend):
             "user": user,
             "password": password,
             "sslmode": config.POSTGRES_SSL_MODE,
+            "connect_timeout": 5,  # Fail fast if database is unreachable
         }
 
         # Add SSL root certificate if provided (for RDS)
@@ -62,12 +63,16 @@ class PostgresStorageBackend(BaseStorageBackend):
 
     @contextmanager
     def _get_connection(self):
-        """Get connection from pool"""
+        """Get connection from pool with health check on return"""
         conn = self.pool.getconn()
         try:
             yield conn
         finally:
-            self.pool.putconn(conn)
+            # Return broken connections to pool with close=True
+            if conn.closed or conn.status != psycopg2.extensions.STATUS_READY:
+                self.pool.putconn(conn, close=True)
+            else:
+                self.pool.putconn(conn)
 
     @staticmethod
     def _is_valid_field_name(field_name: str) -> bool:
@@ -232,33 +237,36 @@ class PostgresStorageBackend(BaseStorageBackend):
                 updates = {k: v for k, v in updates.items() if k in allowed_fields}
                 updates["metadata"] = metadata
 
+            # SECURITY: Use psycopg2.sql.Identifier for safe column quoting
+            sql_set_clauses = []
             for key, value in updates.items():
                 if key in allowed_fields:
-                    # SECURITY: Validate field name to prevent SQL injection
                     if not self._is_valid_field_name(key):
                         logger.error(f"Invalid field name detected: {key}")
                         raise ValueError(f"Invalid field name: {key}")
 
                     if key == "metadata" and isinstance(value, dict):
                         value = psycopg2.extras.Json(value)
-                    set_clauses.append(f"{key} = %s")
+                    sql_set_clauses.append(
+                        sql.SQL("{} = %s").format(sql.Identifier(key))
+                    )
                     values.append(value)
 
-            if not set_clauses:
+            if not sql_set_clauses:
                 return self.get_user(username)
 
             # Add username to values for WHERE clause
             values.append(username)
 
             with self._get_cursor() as cursor:
-                query = f"""
+                query = sql.SQL("""
                     UPDATE users
-                    SET {', '.join(set_clauses)}
+                    SET {}
                     WHERE username = %s
                     RETURNING
                         username, email, password_hash, full_name,
                         created_at, last_login, login_attempts, locked_until, metadata
-                """
+                """).format(sql.SQL(", ").join(sql_set_clauses))
 
                 cursor.execute(query, values)
                 user = cursor.fetchone()

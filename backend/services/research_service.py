@@ -93,17 +93,10 @@ class ResearchService:
 
     @property
     def s3_uploads(self):
-        """Lazy initialize S3 client for uploads"""
+        """Lazy initialize S3 client for uploads via centralized helper"""
         if self._s3_uploads is None:
-            import boto3
-
-            client_kwargs = {"region_name": config.AWS_REGION}
-            if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
-                client_kwargs["aws_access_key_id"] = config.AWS_ACCESS_KEY_ID
-                client_kwargs["aws_secret_access_key"] = config.AWS_SECRET_ACCESS_KEY
-                if config.AWS_SESSION_TOKEN:
-                    client_kwargs["aws_session_token"] = config.AWS_SESSION_TOKEN
-            self._s3_uploads = boto3.client("s3", **client_kwargs)
+            from backend.cloud.aws_helpers import get_boto3_client
+            self._s3_uploads = get_boto3_client("s3")
         return self._s3_uploads
 
     def _sanitize(self, value: str) -> str:
@@ -123,17 +116,17 @@ class ResearchService:
             logger.info(f"Bucket {self._uploads_bucket} may not exist or error: {e}")
             pass
 
-    def list_uploads(self) -> List[Dict[str, object]]:
-        """List user uploads from S3"""
+    def list_uploads(self, username: str) -> List[Dict[str, object]]:
+        """List user uploads from S3 (scoped to the given user)"""
         try:
-            import boto3
+            from backend.cloud.aws_helpers import get_boto3_client
 
-            s3 = boto3.client("s3", region_name="us-east-1")
+            s3 = get_boto3_client("s3")
             uploads = []
             paginator = s3.get_paginator("list_objects_v2")
 
             for page in paginator.paginate(
-                Bucket=self._uploads_bucket, Prefix=UPLOADS_PREFIX, Delimiter="/"
+                Bucket=self._uploads_bucket, Prefix=f"{UPLOADS_PREFIX}{username}/", Delimiter="/"
             ):
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
@@ -156,14 +149,14 @@ class ResearchService:
     def list_folders(self) -> List[Dict[str, object]]:
         """List folders from S3 knowledge base (course materials)"""
         try:
-            import boto3
+            from backend.cloud.aws_helpers import get_boto3_client
 
-            s3 = boto3.client("s3", region_name="us-east-1")
+            s3 = get_boto3_client("s3")
             folder_counts: Dict[str, int] = {}
 
             paginator = s3.get_paginator("list_objects_v2")
             for page in paginator.paginate(
-                Bucket="smart-ai-tutor-docs", Prefix="modules/"
+                Bucket=config.S3_DOCUMENTS_BUCKET, Prefix="modules/"
             ):
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
@@ -201,13 +194,13 @@ class ResearchService:
     def list_documents(self) -> List[Dict[str, object]]:
         """List documents from S3 knowledge base (course materials)"""
         try:
-            import boto3
+            from backend.cloud.aws_helpers import get_boto3_client
 
-            s3 = boto3.client("s3", region_name="us-east-1")
+            s3 = get_boto3_client("s3")
             docs = []
             paginator = s3.get_paginator("list_objects_v2")
             for page in paginator.paginate(
-                Bucket="smart-ai-tutor-docs", Prefix="modules/"
+                Bucket=config.S3_DOCUMENTS_BUCKET, Prefix="modules/"
             ):
                 for obj in page.get("Contents", []):
                     key = obj["Key"]
@@ -576,7 +569,7 @@ class ResearchService:
         """Fetch all text chunks for the given uploaded file IDs (by metadata lookup)."""
         try:
             import boto3
-            s3 = boto3.client("s3", region_name="us-east-1")
+            s3 = boto3.client("s3", region_name=config.AWS_REGION)
             all_chunks: List[Dict[str, Any]] = []
 
             for fid in file_ids:
@@ -624,9 +617,9 @@ class ResearchService:
     ) -> List[Dict[str, Any]]:
         """Search through uploaded content chunks using keyword matching"""
         try:
-            import boto3
+            from backend.cloud.aws_helpers import get_boto3_client
 
-            s3 = boto3.client("s3", region_name="us-east-1")
+            s3 = get_boto3_client("s3")
             results = []
 
             paginator = s3.get_paginator("list_objects_v2")
@@ -747,15 +740,15 @@ class ResearchService:
                 "total": 0,
             }
 
-    def clear_uploads(self) -> Dict[str, int]:
-        """Clear all uploaded content from S3"""
+    def clear_uploads(self, username: str) -> Dict[str, int]:
+        """Clear uploaded content from S3 for the given user"""
         try:
             deleted_files = 0
             deleted_chunks = 0
 
             paginator = self.s3_uploads.get_paginator("list_objects_v2")
             for page in paginator.paginate(
-                Bucket=self._uploads_bucket, Prefix=UPLOADS_PREFIX
+                Bucket=self._uploads_bucket, Prefix=f"{UPLOADS_PREFIX}{username}/"
             ):
                 for obj in page.get("Contents", []):
                     self.s3_uploads.delete_object(
@@ -764,7 +757,7 @@ class ResearchService:
                     deleted_files += 1
 
             for page in paginator.paginate(
-                Bucket=self._uploads_bucket, Prefix=TEXT_CHUNKS_PREFIX
+                Bucket=self._uploads_bucket, Prefix=f"{TEXT_CHUNKS_PREFIX}{username}/"
             ):
                 for obj in page.get("Contents", []):
                     self.s3_uploads.delete_object(
@@ -1315,6 +1308,12 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
             }
 
 
+_research_service: Optional[ResearchService] = None
+
+
 def get_research_service() -> ResearchService:
-    """Dependency injection for ResearchService"""
-    return ResearchService()
+    """Dependency injection for ResearchService (singleton)"""
+    global _research_service
+    if _research_service is None:
+        _research_service = ResearchService()
+    return _research_service
