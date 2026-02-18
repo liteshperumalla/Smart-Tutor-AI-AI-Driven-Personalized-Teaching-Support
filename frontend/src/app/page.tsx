@@ -84,7 +84,7 @@ export default async function Home() {
             </h1>
 
             <p className="mt-3 text-base text-zinc-600 max-w-2xl dark:text-zinc-400 sm:mt-4 sm:text-lg">
-              Spring 2025 · Master AI-powered learning with intelligent tutoring, dynamic quizzes, and research tools
+              Master AI-powered learning with intelligent tutoring, dynamic quizzes, and research tools
             </p>
 
             <div className="mt-8 flex flex-wrap gap-4">

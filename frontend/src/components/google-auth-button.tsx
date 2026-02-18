@@ -91,8 +91,7 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       </button>
       {!config.ready && (
         <p className="text-center text-xs text-zinc-400">
-          Google authentication not configured. Set NEXT_PUBLIC_GOOGLE_* env
-          vars.
+          Google sign-in is currently unavailable.
         </p>
       )}
     </div>

@@ -154,7 +154,7 @@ function LoginPageContent() {
       </div>
 
       {/* Right: Login form */}
-      <main className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
         <div className="w-full max-w-md animate-scale-in">
           <div className="mb-10 text-center lg:text-left">
             <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:gap-3 transition-all">
@@ -293,7 +293,7 @@ function LoginPageContent() {
           </p>
         </div>
       </div>
-      </main>
+      </div>
     </div>
   );
 }

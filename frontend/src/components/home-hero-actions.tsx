@@ -50,9 +50,6 @@ export function HomeHeroActions() {
         <Link href="/signup" className="rounded-full bg-zinc-100 px-5 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
           Create account
         </Link>
-        <span className="rounded-full bg-zinc-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-          UNT · Fall 2025
-        </span>
       </div>
     );
 }

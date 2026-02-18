@@ -365,7 +365,7 @@ export function SiteChrome({
           <button
             onClick={() => setSidebarCollapsed(false)}
             className="absolute left-3 top-4 p-2.5 rounded-xl bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all duration-300 shadow-xl opacity-0 group-hover:opacity-100 -translate-x-3 group-hover:translate-x-0"
-            title="Expand sidebar"
+            aria-label="Expand sidebar"
           >
             <PanelLeft className="h-5 w-5" />
           </button>
@@ -620,6 +620,7 @@ export function SiteChrome({
             type="button"
             onClick={handleToggleTheme}
             disabled={!showThemeToggle}
+            aria-label="Toggle theme"
             className="mt-3 w-full rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2"
           >
             {!showThemeToggle ? (
@@ -685,10 +686,11 @@ export function SiteChrome({
                     <Link
                       key={link.href}
                       href={link.href}
+                      aria-label={link.label}
                       className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs uppercase tracking-[0.15em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
                     >
-                      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="hidden xs:inline sm:inline">{link.label}</span>
+                      <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
+                      <span className="hidden xs:inline sm:inline" aria-hidden="true">{link.label}</span>
                     </Link>
                   );
                 })}

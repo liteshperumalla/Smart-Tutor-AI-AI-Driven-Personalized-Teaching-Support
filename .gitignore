@@ -82,6 +82,9 @@ logs/*.pid
 test_results*.json
 demo_test_results.py
 
+# Playwright CLI snapshots (may capture sensitive form data / PII)
+.playwright-cli/
+
 # Jupyter Notebook Checkpoints
 .ipynb_checkpoints/
 

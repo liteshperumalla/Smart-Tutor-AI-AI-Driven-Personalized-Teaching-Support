@@ -237,7 +237,7 @@ class JWTService:
                 token,
                 verification_key,
                 algorithms=[self.algorithm],
-                options={"verify_signature": False}  # Just decode, don't verify
+                options={"verify_signature": False, "verify_exp": False}  # Just decode, don't verify
             )
             exp = payload.get("exp")
             if exp:

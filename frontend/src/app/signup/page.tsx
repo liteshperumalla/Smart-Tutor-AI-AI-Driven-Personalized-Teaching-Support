@@ -117,7 +117,7 @@ export default function SignupPage() {
       </div>
 
       {/* Right: Signup form */}
-      <main className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
         <div className="w-full max-w-md animate-scale-in">
           <div className="mb-10 text-center lg:text-left">
             <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:gap-3 transition-all">
@@ -151,7 +151,7 @@ export default function SignupPage() {
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 className="input"
-                placeholder="your@email.edu"
+                placeholder="johndoe123"
               />
             </div>
 
@@ -247,7 +247,7 @@ export default function SignupPage() {
             </p>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

@@ -70,7 +70,7 @@ function PasswordResetConfirmPageContent() {
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
+      <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
         <div className="mb-8 text-center">
           <Link href="/login" className="text-sm font-semibold text-blue-600 dark:text-blue-400">
             ← Back to sign in
@@ -168,7 +168,7 @@ function PasswordResetConfirmPageContent() {
             </Link>
           </div>
         </form>
-      </main>
+      </div>
     </div>
   );
 }

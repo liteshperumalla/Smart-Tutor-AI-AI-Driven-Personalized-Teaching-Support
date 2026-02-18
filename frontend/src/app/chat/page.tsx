@@ -1305,9 +1305,10 @@ function ChatWorkspaceContent() {
                 {/* Plus button */}
                 <button
                   type="button"
+                  aria-label="Attachments and options"
                   className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
                 >
-                  <Plus className="h-5 w-5" />
+                  <Plus className="h-5 w-5" aria-hidden="true" />
                 </button>
 
                 {/* Audio waveform animation */}
@@ -1602,22 +1603,28 @@ function ChatWorkspaceContent() {
                     onClick={handleToggleDictation}
                     disabled={!isLoggedIn || !activeSession || isStreaming}
                     className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Start dictation"
+                    aria-label={isListening ? "Stop dictation" : "Start dictation"}
                   >
-                    <Mic className="h-5 w-5" />
+                    <Mic className="h-5 w-5" aria-hidden="true" />
                   </button>
                   {/* Send Button */}
                   <button
                     type="submit"
                     disabled={!isLoggedIn || !activeSession || isStreaming || !composerText.trim()}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Send message"
                   >
-                    <Send className="h-4 w-4" />
+                    <Send className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               </div>
             </form>
           )}
+
+          {/* AI disclaimer */}
+          <p className="mt-2 text-center text-xs text-zinc-400 dark:text-zinc-500 select-none">
+            AI is experimental and can make mistakes. Please double-check responses.
+          </p>
 
           {/* Suggestion chips - only show when no messages */}
           {isLoggedIn && (!activeSession || !hasMessages) && (
