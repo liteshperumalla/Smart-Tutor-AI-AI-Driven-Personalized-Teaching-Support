@@ -176,11 +176,37 @@ def _get_code_llm():
         return None
 
 
-def _execute_python_code(code: str) -> tuple[str, bool]:
-    """Execute Python code.
+# Explicit safe builtins allowlist — no __import__, no open(), no os access.
+# Anything not in this dict raises NameError inside exec().
+_SAFE_BUILTINS: dict = {
+    "__build_class__": __build_class__,
+    "__name__": "__main__",
+    "print": print,
+    "range": range, "len": len, "int": int, "str": str,
+    "list": list, "dict": dict, "tuple": tuple, "set": set,
+    "frozenset": frozenset, "bool": bool, "float": float,
+    "complex": complex, "bytes": bytes, "bytearray": bytearray,
+    "sum": sum, "min": min, "max": max, "abs": abs,
+    "round": round, "divmod": divmod, "pow": pow,
+    "hex": hex, "oct": oct, "bin": bin,
+    "enumerate": enumerate, "zip": zip, "map": map,
+    "filter": filter, "sorted": sorted, "reversed": reversed,
+    "any": any, "all": all,
+    "isinstance": isinstance, "issubclass": issubclass, "type": type,
+    "repr": repr, "hash": hash, "id": id,
+    "Exception": Exception, "ValueError": ValueError,
+    "TypeError": TypeError, "KeyError": KeyError,
+    "IndexError": IndexError, "AttributeError": AttributeError,
+    "RuntimeError": RuntimeError, "StopIteration": StopIteration,
+    "True": True, "False": False, "None": None,
+}
 
-    Note: This function is NOT sandboxed. Use only with trusted input.
-    The exec() call has access to built-in functions like print().
+
+def _execute_python_code(code: str) -> tuple[str, bool]:
+    """Execute Python code in a restricted sandbox.
+
+    Uses an explicit safe-builtins allowlist so submitted code cannot
+    call __import__, open(), os.system(), or any other dangerous built-in.
 
     Args:
         code: Python code string to execute.
@@ -191,7 +217,7 @@ def _execute_python_code(code: str) -> tuple[str, bool]:
     output = io.StringIO()
     try:
         with contextlib.redirect_stdout(output):
-            exec(code, {"__builtins__": __builtins__, "print": print})
+            exec(code, {"__builtins__": _SAFE_BUILTINS})
         return output.getvalue(), True
     except SyntaxError:
         return f"Syntax Error:\n{traceback.format_exc()}", False
@@ -412,6 +438,12 @@ async def execute_code(
     session=Depends(get_admin_session),
 ):
     """Execute code in the specified language. Admin-only."""
+    from backend.config import config as _cfg
+    if not _cfg.ENABLE_CODE_EXECUTION:
+        raise HTTPException(
+            status_code=403,
+            detail="Code execution is disabled on this server. Set ENABLE_CODE_EXECUTION=true to enable.",
+        )
     output, success = _execute_code(request.code, request.language)
     return CodeExecuteResponse(
         output=output, success=success, error=None if success else output

@@ -10,6 +10,7 @@ from backend.services.chat_service import get_chat_service
 from backend.services.models import ChatMessage
 from backend.logger import get_logger
 import json
+import asyncio
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger(__name__)
@@ -74,7 +75,8 @@ async def websocket_chat_endpoint(
         chat_service = get_chat_service()
         session = chat_service.load_session(user_id, session_id)
 
-        if not session:
+        # SECURITY: verify the session belongs to the authenticated user
+        if not session or getattr(session, "owner", user_id) != user_id:
             await websocket.send_json({
                 "type": "error",
                 "message": f"Chat session {session_id} not found"
@@ -109,15 +111,17 @@ async def websocket_chat_endpoint(
 
                     # Stream response
                     try:
-                        generator, sources = chat_service.stream_response(
+                        generator, sources, _ = chat_service.stream_response(
                             query,
                             user_id=user_id,
                             session_id=session_id
                         )
 
-                        # Stream chunks to client
+                        # Collect chunks in a thread-pool worker so the sync generator
+                        # does not block the asyncio event loop, then stream to client.
+                        chunks: list[str] = await asyncio.to_thread(list, generator)
                         full_response = ""
-                        async for chunk in generator:
+                        for chunk in chunks:
                             full_response += chunk
                             await websocket.send_json({
                                 "type": "chunk",

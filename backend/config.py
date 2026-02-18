@@ -64,11 +64,20 @@ class Config:
     # Security Settings
     # SECURITY: No default for SECRET_KEY — must be explicitly set via env or Secrets Manager
     SECRET_KEY = os.getenv("SECRET_KEY", "")
-    if not SECRET_KEY and _environment == "production":
-        raise RuntimeError(
-            "CRITICAL: SECRET_KEY environment variable is not set. "
-            "Application cannot start in production without a secure secret key."
-        )
+    if not SECRET_KEY:
+        if _environment == "production":
+            raise RuntimeError(
+                "CRITICAL: SECRET_KEY environment variable is not set. "
+                "Application cannot start in production without a secure secret key."
+            )
+        else:
+            import secrets as _secrets_mod
+            SECRET_KEY = _secrets_mod.token_hex(32)
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "SECRET_KEY not set — generated an ephemeral random key for this process. "
+                "Set SECRET_KEY in .env to persist sessions across restarts."
+            )
     # SECURITY: Reduced from 3600 to 900 seconds (15 minutes)
     SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", "900"))  # 15 minutes default
     MAX_LOGIN_ATTEMPTS = int(os.getenv("MAX_LOGIN_ATTEMPTS", "5"))
@@ -227,8 +236,8 @@ class Config:
 
     # AWS Bedrock Settings (Phase 4)
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # bedrock or ollama
-    EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")  # bedrock or ollama
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
+    EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
 
     # Bedrock Models
     BEDROCK_MODEL_ID = os.getenv(
@@ -477,6 +486,11 @@ class Config:
 
     # Max concurrent LLM synthesis calls — backpressure for streaming chat
     LLM_MAX_CONCURRENT = int(os.getenv("LLM_MAX_CONCURRENT", "10"))
+
+    # Code Execution Feature Flag — off by default, must be explicitly enabled
+    # Set ENABLE_CODE_EXECUTION=true only in environments where sandboxed execution
+    # is intentionally exposed (e.g. a dedicated code-assistant deployment).
+    ENABLE_CODE_EXECUTION: bool = os.getenv("ENABLE_CODE_EXECUTION", "false").lower() == "true"
 
     # HTTPS Enforcement
     ENFORCE_HTTPS = (

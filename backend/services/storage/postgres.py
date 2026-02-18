@@ -4,7 +4,7 @@ Implements BaseStorageBackend using PostgreSQL for production-grade user data st
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2.pool import SimpleConnectionPool
@@ -293,18 +293,24 @@ class PostgresStorageBackend(BaseStorageBackend):
     def update_last_login(self, username: str) -> None:
         """Update last login timestamp and reset attempts"""
         self.update_user(username, {
-            "last_login": datetime.utcnow().isoformat(),
+            "last_login": datetime.now(timezone.utc).isoformat(),
             "login_attempts": 0
         })
 
     def increment_login_attempts(self, username: str) -> int:
-        """Increment failed login attempts"""
-        user = self.get_user(username)
-        if not user:
-            return 0
-        attempts = user.get("login_attempts", 0) + 1
-        self.update_user(username, {"login_attempts": attempts})
-        return attempts
+        """Increment failed login attempts atomically using a single SQL statement."""
+        with self._get_cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET login_attempts = COALESCE(login_attempts, 0) + 1
+                WHERE username = %s
+                RETURNING login_attempts
+                """,
+                (username,),
+            )
+            row = cursor.fetchone()
+            return int(row["login_attempts"]) if row else 0
 
     def reset_login_attempts(self, username: str) -> None:
         """Reset failed login attempts"""
@@ -329,7 +335,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 if isinstance(locked_until, str)
                 else locked_until
             )
-            return datetime.utcnow() < unlock_time
+            return datetime.now(timezone.utc) < unlock_time
         except Exception:
             return False
 

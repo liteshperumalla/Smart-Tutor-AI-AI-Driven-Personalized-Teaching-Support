@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
+import re
+import logging
+import threading
 
 from backend.api.dependencies import get_current_session
 from backend.validators import PathValidator
 from backend.exceptions import InvalidInputError
 from backend.config import config
+
+_files_logger = logging.getLogger(__name__)
 
 try:
     from botocore.exceptions import ClientError
@@ -29,15 +34,113 @@ def _get_s3_client():
     )
 
 
-# Lazy-initialized S3 client (replaces module-level boto3.client)
+# Lazy-initialized S3 client — double-checked locking to prevent race condition
+# when two concurrent requests both find _s3_client is None.
 _s3_client = None
+_s3_client_lock = threading.Lock()
 
 
 def _get_client():
     global _s3_client
     if _s3_client is None:
-        _s3_client = _get_s3_client()
+        with _s3_client_lock:
+            if _s3_client is None:
+                _s3_client = _get_s3_client()
     return _s3_client
+
+
+def _normalize_filename(name: str) -> str:
+    """Normalize a filename for fuzzy S3 key matching."""
+    name_no_ext = re.sub(r"\.(pptx?|pdf|docx?|ipynb)$", "", name, flags=re.IGNORECASE)
+    return re.sub(r"[\s\-_]+", "", name_no_ext.lower())
+
+
+def _find_s3_key(source_file: str) -> str:
+    """
+    Locate the best-matching S3 object key for a given source filename.
+
+    Tries exact filename match, exact path match, then fuzzy substring match.
+    Extracted to avoid duplicating the pagination + matching logic across
+    get_s3_document and get_s3_url.
+
+    Returns:
+        The matching S3 key.
+
+    Raises:
+        HTTPException 404 if no match found.
+        HTTPException 500 on S3 errors.
+    """
+    try:
+        from botocore.exceptions import ClientError as _ClientError
+    except ImportError:
+        _ClientError = Exception
+
+    source_normalized = _normalize_filename(source_file)
+    _files_logger.debug(f"S3 key lookup for '{source_file}' (normalized: '{source_normalized}')")
+
+    matching_key = None
+    best_match_score = 0
+
+    try:
+        paginator = _get_client().get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=S3_DOCUMENTS_BUCKET, Prefix=S3_DOCUMENTS_PREFIX)
+
+        for page in pages:
+            if "Contents" not in page:
+                continue
+            for obj in page["Contents"]:
+                key = obj["Key"]
+                filename = key.split("/")[-1]
+                file_path_with_prefix = key.replace(S3_DOCUMENTS_PREFIX, "", 1)
+
+                # Exact matches — stop immediately
+                if filename == source_file or key.endswith(source_file) or file_path_with_prefix == source_file:
+                    _files_logger.info(f"Exact S3 match: {key}")
+                    return key
+
+                # Fuzzy match — track best score
+                key_norm = _normalize_filename(filename)
+                path_norm = _normalize_filename(file_path_with_prefix)
+                if (
+                    source_normalized in key_norm
+                    or source_normalized in path_norm
+                    or key_norm in source_normalized
+                    or path_norm in source_normalized
+                ):
+                    score = min(len(source_normalized), len(key_norm))
+                    if score > best_match_score:
+                        best_match_score = score
+                        matching_key = key
+                        _files_logger.debug(f"Better fuzzy match: {key} (score={score})")
+
+            if matching_key and best_match_score == len(source_normalized):
+                break
+
+        if not matching_key:
+            _files_logger.warning(f"S3 key not found for: {source_file}")
+            raise HTTPException(status_code=404, detail=f"Document not found: {source_file}")
+
+        _files_logger.info(f"Fuzzy S3 match: {matching_key}")
+        return matching_key
+
+    except HTTPException:
+        raise
+    except _ClientError as exc:
+        _files_logger.error(f"S3 ClientError: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")
+    except Exception as exc:
+        _files_logger.error(f"S3 lookup error: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve document")
+
+
+def _content_disposition(key: str) -> str:
+    """Return an appropriate Content-Disposition value for a given S3 key."""
+    inline_types = {".pdf", ".pptx", ".docx", ".txt", ".ipynb",
+                    ".jpg", ".jpeg", ".png", ".gif", ".html"}
+    filename = key.split("/")[-1]
+    ext = Path(filename).suffix.lower()
+    mode = "inline" if ext in inline_types else "attachment"
+    return f'{mode}; filename="{filename}"'
 
 
 def _resolve_path(raw_path: str) -> Path:
@@ -152,133 +255,25 @@ def get_s3_document(
     session=Depends(get_current_session),
 ):
     """
-    Generate presigned S3 URL for course documents.
-    Redirects user to the document in S3 for viewing.
-
-    Note: This endpoint does not require authentication because:
-    1. It only provides access to public course materials
-    2. The presigned S3 URL is temporary (1 hour expiry)
-    3. Browser navigation requests don't reliably pass auth cookies
+    Generate presigned S3 URL for course documents and redirect the browser to it.
 
     Args:
         source_file: File name from RAG source metadata (e.g., "Module 1/Lesson 1...")
 
     Returns:
-        Redirect to presigned S3 URL (valid for 1 hour)
+        302 redirect to a presigned S3 URL (valid for 1 hour)
     """
-    import re
-    import logging
-
-    logger = logging.getLogger(__name__)
-    logger.info(f"S3 document request for: {source_file}")
-
-    def normalize_filename(name: str) -> str:
-        """Normalize filename for fuzzy matching"""
-        name_no_ext = re.sub(
-            r"\.(pptx?|pdf|docx?|ipynb)$", "", name, flags=re.IGNORECASE
-        )
-        normalized = re.sub(r"[\s\-_]+", "", name_no_ext.lower())
-        return normalized
-
-    source_normalized = normalize_filename(source_file)
-    logger.debug(f"Normalized query: '{source_normalized}'")
-
-    matching_key = None
-    best_match_score = 0
-
-    try:
-        paginator = _get_client().get_paginator("list_objects_v2")
-        pages = paginator.paginate(
-            Bucket=S3_DOCUMENTS_BUCKET, Prefix=S3_DOCUMENTS_PREFIX
-        )
-
-        for page in pages:
-            if "Contents" not in page:
-                continue
-            for obj in page["Contents"]:
-                key = obj["Key"]
-                filename = key.split("/")[-1]
-                file_path_with_prefix = key.replace(S3_DOCUMENTS_PREFIX, "", 1)
-
-                if filename == source_file:
-                    matching_key = key
-                    logger.info(f"Exact filename match: {key}")
-                    break
-
-                if key.endswith(source_file) or file_path_with_prefix == source_file:
-                    matching_key = key
-                    logger.info(f"Exact path match: {key}")
-                    break
-
-                key_normalized = normalize_filename(filename)
-                key_path_normalized = normalize_filename(file_path_with_prefix)
-
-                if (
-                    source_normalized in key_normalized
-                    or source_normalized in key_path_normalized
-                    or key_normalized in source_normalized
-                    or key_path_normalized in source_normalized
-                ):
-                    score = min(len(source_normalized), len(key_normalized))
-                    if score > best_match_score:
-                        best_match_score = score
-                        matching_key = key
-                        logger.debug(f"Better match: {key} (score: {score})")
-
-            if matching_key and best_match_score == len(source_normalized):
-                break
-
-        if not matching_key:
-            logger.warning(f"File not found in S3: {source_file}")
-            raise HTTPException(
-                status_code=404, detail=f"Document not found: {source_file}"
-            )
-
-        logger.info(f"Found S3 document: {matching_key}")
-
-        # Get the filename from the key for content disposition
-        filename = matching_key.split("/")[-1]
-
-        # File types that should be viewed inline in browser
-        inline_types = {
-            ".pdf",
-            ".pptx",
-            ".docx",
-            ".txt",
-            ".ipynb",
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".gif",
-            ".html",
-        }
-        ext = Path(filename).suffix.lower()
-
-        if ext in inline_types:
-            # Use inline content disposition for viewable files
-            response_content_disposition = f'inline; filename="{filename}"'
-        else:
-            # Default to attachment for other files
-            response_content_disposition = f'attachment; filename="{filename}"'
-
-        presigned_url = _get_client().generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": S3_DOCUMENTS_BUCKET,
-                "Key": matching_key,
-                "ResponseContentDisposition": response_content_disposition,
-            },
-            ExpiresIn=3600,
-        )
-
-        return RedirectResponse(url=presigned_url, status_code=302)
-
-    except ClientError as e:
-        logger.error(f"S3 error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve document")
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve document")
+    matching_key = _find_s3_key(source_file)
+    presigned_url = _get_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": S3_DOCUMENTS_BUCKET,
+            "Key": matching_key,
+            "ResponseContentDisposition": _content_disposition(matching_key),
+        },
+        ExpiresIn=3600,
+    )
+    return RedirectResponse(url=presigned_url, status_code=302)
 
 
 @router.get("/s3-url")
@@ -291,110 +286,17 @@ def get_s3_url(
     Returns JSON with the presigned URL instead of redirecting.
     Useful for external viewers that need the direct S3 URL.
     """
-    import re
-    import logging
-    from pathlib import Path
-
-    logger = logging.getLogger(__name__)
-    logger.info(f"S3 URL request for: {source_file}")
-
-    def normalize_filename(name: str) -> str:
-        """Normalize filename for fuzzy matching"""
-        name_no_ext = re.sub(
-            r"\.(pptx?|pdf|docx?|ipynb)$", "", name, flags=re.IGNORECASE
-        )
-        normalized = re.sub(r"[\s\-_]+", "", name_no_ext.lower())
-        return normalized
-
-    source_normalized = normalize_filename(source_file)
-    matching_key = None
-    best_match_score = 0
-
-    try:
-        paginator = _get_client().get_paginator("list_objects_v2")
-        pages = paginator.paginate(
-            Bucket=S3_DOCUMENTS_BUCKET, Prefix=S3_DOCUMENTS_PREFIX
-        )
-
-        for page in pages:
-            if "Contents" not in page:
-                continue
-            for obj in page["Contents"]:
-                key = obj["Key"]
-                filename = key.split("/")[-1]
-                file_path_with_prefix = key.replace(S3_DOCUMENTS_PREFIX, "", 1)
-
-                if filename == source_file:
-                    matching_key = key
-                    logger.info(f"Exact filename match: {key}")
-                    break
-
-                if key.endswith(source_file) or file_path_with_prefix == source_file:
-                    matching_key = key
-                    logger.info(f"Exact path match: {key}")
-                    break
-
-                key_normalized = normalize_filename(filename)
-                key_path_normalized = normalize_filename(file_path_with_prefix)
-
-                if (
-                    source_normalized in key_normalized
-                    or source_normalized in key_path_normalized
-                    or key_normalized in source_normalized
-                    or key_path_normalized in source_normalized
-                ):
-                    score = min(len(source_normalized), len(key_normalized))
-                    if score > best_match_score:
-                        best_match_score = score
-                        matching_key = key
-                        logger.debug(f"Better match: {key} (score: {score})")
-
-            if matching_key and best_match_score == len(source_normalized):
-                break
-
-        if not matching_key:
-            logger.warning(f"File not found in S3: {source_file}")
-            raise HTTPException(
-                status_code=404, detail=f"Document not found: {source_file}"
-            )
-
-        logger.info(f"Found S3 document: {matching_key}")
-
-        filename = matching_key.split("/")[-1]
-        inline_types = {
-            ".pdf",
-            ".pptx",
-            ".docx",
-            ".txt",
-            ".ipynb",
-            ".jpg",
-            ".jpeg",
-            ".png",
-            ".gif",
-            ".html",
-        }
-        ext = Path(filename).suffix.lower()
-
-        if ext in inline_types:
-            response_content_disposition = f'inline; filename="{filename}"'
-        else:
-            response_content_disposition = f'attachment; filename="{filename}"'
-
-        presigned_url = _get_client().generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": S3_DOCUMENTS_BUCKET,
-                "Key": matching_key,
-                "ResponseContentDisposition": response_content_disposition,
-            },
-            ExpiresIn=3600,
-        )
-
-        return {"url": presigned_url, "filename": filename, "content_type": ext}
-
-    except ClientError as e:
-        logger.error(f"S3 error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve document")
-    except Exception as e:
-        logger.error(f"Error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve document")
+    _files_logger.info(f"S3 URL request for: {source_file}")
+    matching_key = _find_s3_key(source_file)
+    filename = matching_key.split("/")[-1]
+    ext = Path(filename).suffix.lower()
+    presigned_url = _get_client().generate_presigned_url(
+        "get_object",
+        Params={
+            "Bucket": S3_DOCUMENTS_BUCKET,
+            "Key": matching_key,
+            "ResponseContentDisposition": _content_disposition(matching_key),
+        },
+        ExpiresIn=3600,
+    )
+    return {"url": presigned_url, "filename": filename, "content_type": ext}

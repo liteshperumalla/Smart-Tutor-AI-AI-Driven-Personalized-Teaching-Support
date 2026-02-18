@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from backend.services import get_storage_backend
@@ -24,11 +24,11 @@ class ChatService:
         return self.storage.load_chat_session(username, session_id)
 
     def save_session(self, username: str, session: ChatSession) -> None:
-        session.updated_at = datetime.utcnow()
+        session.updated_at = datetime.now(timezone.utc)
         self.storage.save_chat_session(username, session)
 
     def create_session(self, username: str, title: Optional[str] = None) -> ChatSession:
-        session_id = sanitize_filename(title or f"{username}-{datetime.utcnow().timestamp()}")
+        session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
         default_title = title.strip() if isinstance(title, str) and title.strip() else "New chat"
         session = ChatSession(
             id=session_id,
@@ -40,7 +40,7 @@ class ChatService:
 
     def append_message(self, session: ChatSession, message: ChatMessage) -> None:
         session.messages.append(message)
-        session.updated_at = datetime.utcnow()
+        session.updated_at = datetime.now(timezone.utc)
         if message.role == "assistant":
             title = make_session_title([[msg.role, msg.content] for msg in session.messages])
             if title and title != session.title:
