@@ -45,6 +45,15 @@ backend:
     RATE_LIMIT_ENABLED: "true"
     POSTGRES_SSL_MODE: require
     ENABLE_METRICS: "true"
+    ENFORCE_HTTPS: "true"
+    # Code execution is disabled in production — enable only in controlled environments
+    ENABLE_CODE_EXECUTION: "false"
+    # Restrict password-reset redirect to the production frontend domain.
+    # Override via AWS Secrets Manager if the domain changes.
+    ALLOWED_REDIRECT_DOMAINS: "smart-ai-tutor.com,www.smart-ai-tutor.com"
+    # Explicitly pin to Bedrock — never fall back to Ollama in production
+    LLM_PROVIDER: bedrock
+    EMBEDDING_PROVIDER: bedrock
 
   podDisruptionBudget:
     enabled: true

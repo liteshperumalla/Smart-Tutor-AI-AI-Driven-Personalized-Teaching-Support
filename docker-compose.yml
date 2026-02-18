@@ -205,7 +205,7 @@ services:
       - smart-tutor-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4000/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/"]
       interval: 30s
       timeout: 10s
       start_period: 30s
@@ -342,11 +342,13 @@ services:
       - smart-tutor-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      # /api/tags returns {"models":[...]} with HTTP 200 only when Ollama is fully ready.
+      # The root "/" endpoint returns plain text and is less reliable for health checks.
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 10s
-      start_period: 60s
-      retries: 3
+      start_period: 120s
+      retries: 5
     deploy:
       resources:
         limits:

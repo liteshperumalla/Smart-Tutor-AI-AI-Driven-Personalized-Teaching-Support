@@ -410,7 +410,8 @@ def get_metrics_history(
                 ts = ts.replace(tzinfo=timezone.utc)
             if ts >= cutoff:
                 filtered_records.append((ts, r))
-        except:
+        except Exception as e:
+            logger.debug(f"Skipping record with unparseable timestamp: {e}")
             continue
 
     if not filtered_records:

@@ -2,8 +2,9 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,7 @@ class SignupRequest(BaseModel):
     password: str = Field(..., min_length=12)
     confirm_password: str = Field(..., min_length=12)
     email: EmailStr
-    full_name: Optional[str] = None
+    full_name: Optional[str] = Field(None, max_length=255)
 
 
 class LoginRequest(BaseModel):
@@ -98,6 +99,18 @@ class PasswordResetRequest(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
     redirect_url: Optional[str] = None
+
+    @validator("redirect_url")
+    def validate_redirect_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        host = urlparse(v).netloc
+        allowed = [d.strip() for d in config.ALLOWED_REDIRECT_DOMAINS if d.strip()]
+        if allowed and host not in allowed:
+            raise ValueError(
+                f"redirect_url host '{host}' is not in the allowed redirect domains list"
+            )
+        return v
 
 
 class PasswordResetConfirmRequest(BaseModel):
@@ -284,7 +297,9 @@ def confirm_email_verification(
 
 
 @router.post("/password/setup")
+@limiter.limit("5/hour")
 def setup_password(
+    request: Request,
     payload: PasswordSetupRequest,
     response: Response,
     auth_service: AuthService = Depends(get_auth_service),

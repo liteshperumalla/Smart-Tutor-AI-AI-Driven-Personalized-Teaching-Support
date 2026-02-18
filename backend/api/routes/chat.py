@@ -1,9 +1,13 @@
+import asyncio
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
 from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
+from backend.csrf_protection import csrf_protect
 from backend.rate_limiter import PerUserRateLimiter
 from backend.services.chat_service import get_chat_service, ChatService, get_llm_semaphore
 from backend.services.research_service import get_research_service, ResearchService
@@ -17,6 +21,8 @@ from backend.services.message_feedback_service import (
 from backend.services.models import ChatMessage
 from backend.validators import FileValidator
 from backend.exceptions import InvalidFileError
+
+_logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -164,8 +170,8 @@ async def send_message(
                         "Base your answer on this content:\n"
                         f"{context_snippets}\n\nUser question: {query}"
                     )
-        except Exception:
-            pass
+        except Exception as _exc:  # context fetch failure is non-fatal; log and continue
+            _logger.debug("Uploaded-only context lookup failed: %s", _exc)
 
     if payload.web_search_enabled is False:
         effective_query = (
@@ -176,8 +182,6 @@ async def send_message(
         [a.model_dump() for a in payload.attachments] if payload.attachments else None
     )
     user_message = ChatMessage(role="user", content=query, attachments=attachment_dicts)
-    chat_service.append_message(session, user_message)
-    chat_service.save_session(user["username"], session)
 
     # Pre-check: resolve model for rate limiting without triggering the full pipeline
     from backend.config import config as app_config
@@ -208,10 +212,16 @@ async def send_message(
             detail={"error": "LLM service temporarily unavailable", "retry_after": int(e.retry_after)},
         )
 
-    # Acquire a concurrency slot — non-blocking after 5s timeout so bursts get
-    # an immediate 503 instead of queueing indefinitely and starving real users.
+    # Save user message only after all pre-flight checks pass — avoids orphaned
+    # messages in session history when the request is rejected by rate-limiter
+    # or circuit-breaker.
+    chat_service.append_message(session, user_message)
+    chat_service.save_session(user["username"], session)
+
+    # Acquire a concurrency slot — awaited via asyncio.to_thread so the event
+    # loop is not blocked while waiting for a slot (up to 5 s).
     sem = get_llm_semaphore()
-    acquired = sem.acquire(blocking=True, timeout=5)
+    acquired = await asyncio.to_thread(sem.acquire, True, 5)
     if not acquired:
         raise HTTPException(
             status_code=503,
@@ -279,7 +289,7 @@ def get_session(
     return {"session": session.to_dict()}
 
 
-@router.patch("/sessions/{session_id}")
+@router.patch("/sessions/{session_id}", dependencies=[Depends(csrf_protect)])
 def update_session(
     session_id: str,
     payload: SessionUpdate,
@@ -306,7 +316,7 @@ def update_session(
     return {"session": session.to_dict()}
 
 
-@router.delete("/sessions/{session_id}")
+@router.delete("/sessions/{session_id}", dependencies=[Depends(csrf_protect)])
 def delete_session(
     session_id: str,
     session_data=Depends(get_current_session),
@@ -356,7 +366,7 @@ def get_shared_session(
     )
 
 
-@router.delete("/share/{share_id}")
+@router.delete("/share/{share_id}", dependencies=[Depends(csrf_protect)])
 def revoke_share(
     share_id: str,
     session_data=Depends(get_current_session),

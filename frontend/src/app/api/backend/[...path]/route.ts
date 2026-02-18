@@ -91,6 +91,16 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     headers.set("cookie", cookies);
   }
 
+  // CSRF double-submit: for state-changing methods, read the csrf_token cookie
+  // and forward it as X-CSRF-Token so the backend can validate it.
+  const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  if (MUTATION_METHODS.has(request.method)) {
+    const csrfToken = request.cookies.get("csrf_token")?.value;
+    if (csrfToken) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+  }
+
   const init: RequestInit = {
     method: request.method,
     headers,
@@ -104,7 +114,8 @@ async function proxyRequest(request: NextRequest, path: string[]) {
 
   const response = await fetch(url, init);
   const proxyHeaders = new Headers(response.headers);
-  proxyHeaders.delete("content-security-policy");
+  // NOTE: Do NOT delete the Content-Security-Policy header — removing it would
+  // strip the backend's security directives from every proxied response.
 
   // Rewrite redirect Location headers to go through the proxy
   const location = proxyHeaders.get("location");

@@ -109,11 +109,12 @@ def research_documents(
 
 @router.get("/uploads")
 def research_uploads(
-    session=Depends(get_current_session),
+    session_data=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
+    _, user = session_data
     try:
-        return {"uploads": service.list_uploads(session["username"])}
+        return {"uploads": service.list_uploads(user["username"])}
     except RuntimeError as e:
         if "Knowledge base is not initialized" in str(e):
             return {"uploads": []}
@@ -204,14 +205,16 @@ def upload_research_youtube(
 
 @router.delete("/uploads/clear")
 def clear_research_uploads(
-    session=Depends(get_current_session),
+    session_data=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
     """Clear all uploaded documents from knowledge_uploads folder and index."""
+    _, user = session_data
     try:
-        result = service.clear_uploads(session["username"])
+        result = service.clear_uploads(user["username"])
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to clear uploads: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear uploads"
         )
@@ -219,14 +222,16 @@ def clear_research_uploads(
 
 @router.post("/uploads/clear")
 def clear_research_uploads_post(
-    session=Depends(get_current_session),
+    session_data=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
 ):
     """Clear all uploaded documents (POST version for sendBeacon API)."""
+    _, user = session_data
     try:
-        result = service.clear_uploads(session["username"])
+        result = service.clear_uploads(user["username"])
         return {"success": True, "deleted_count": result.get("deleted_count", 0)}
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Failed to clear uploads: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to clear uploads"
         )
