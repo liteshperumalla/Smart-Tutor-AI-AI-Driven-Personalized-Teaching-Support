@@ -338,14 +338,17 @@ class Config:
         os.getenv("CRAG_QUALITY_THRESHOLD", "0.5")
     )  # 0.0-1.0 scale
 
-    # Evaluation Settings
-    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "false").lower() == "true"
+    # Evaluation Settings (Enabled by default for monitoring)
+    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "true").lower() == "true"
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
     EVALUATION_DATASET_FILE = os.getenv(
         "EVALUATION_DATASET_FILE", "evaluation_dataset.json"
     )
 
-    # Phase 3: Context & Quality Improvements (2025-11-05) - DISABLED
+    # Phase 3: Context & Quality Improvements (2025-11-18) - DISABLED BY DEFAULT
+    # Note: These features provide +20-30% accuracy but increase computation time significantly
+    # Enable selectively in .env if needed for production workloads
+
     # Recursive Chunking - Parent-child relationships for better context preservation
     RECURSIVE_CHUNKING_ENABLED = (
         os.getenv("RECURSIVE_CHUNKING_ENABLED", "false").lower() == "true"
@@ -465,6 +468,15 @@ class Config:
     ANSWER_CACHE_ENABLED = os.getenv("ANSWER_CACHE_ENABLED", "false").lower() == "true"
     ANSWER_CACHE_TTL = int(os.getenv("ANSWER_CACHE_TTL", "3600"))  # 1 hour
     ANSWER_CACHE_FUZZY_THRESHOLD = float(os.getenv("ANSWER_CACHE_FUZZY_THRESHOLD", "0.95"))
+
+    # Redis Cache Settings (optional, falls back to in-memory if not available)
+    REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+    REDIS_SSL = os.getenv("REDIS_SSL", "false").lower() == "true"
+    REDIS_CONNECTION_TIMEOUT = int(os.getenv("REDIS_CONNECTION_TIMEOUT", "5"))  # seconds
 
     # Rate Limiting
     RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"

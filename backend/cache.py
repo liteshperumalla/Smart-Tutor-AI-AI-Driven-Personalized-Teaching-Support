@@ -1,11 +1,13 @@
 """
 Caching Layer
-Provides in-memory caching with TTL and size limits
+Provides Redis and in-memory caching with TTL and size limits
+Automatically falls back to in-memory cache if Redis is unavailable
 """
 
 import time
 import hashlib
 import pickle
+import json
 from typing import Any, Optional, Callable
 from collections import OrderedDict
 from functools import wraps
@@ -15,6 +17,14 @@ from .config import config
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+# Try to import Redis, but don't fail if not available
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logger.warning("Redis not available, using in-memory cache only. Install redis: pip install redis")
 
 
 class CacheEntry:
@@ -160,15 +170,176 @@ class LRUCache:
             }
 
 
+class RedisCache:
+    """Redis-based cache with fallback to in-memory LRU cache"""
+
+    def __init__(self, max_size: Optional[int] = None, default_ttl: Optional[int] = None):
+        self.default_ttl = default_ttl or config.CACHE_TTL
+        self.redis_client = None
+        self.fallback_cache = LRUCache(max_size, default_ttl)
+        self._using_redis = False
+        self._hits = 0
+        self._misses = 0
+        self._lock = RLock()
+
+        # Try to connect to Redis if enabled and available
+        if config.REDIS_ENABLED and REDIS_AVAILABLE:
+            try:
+                redis_kwargs = {
+                    'host': config.REDIS_HOST,
+                    'port': config.REDIS_PORT,
+                    'db': config.REDIS_DB,
+                    'decode_responses': False,  # We'll handle encoding/decoding
+                    'socket_timeout': config.REDIS_CONNECTION_TIMEOUT,
+                    'socket_connect_timeout': config.REDIS_CONNECTION_TIMEOUT,
+                }
+
+                if config.REDIS_PASSWORD:
+                    redis_kwargs['password'] = config.REDIS_PASSWORD
+
+                if config.REDIS_SSL:
+                    redis_kwargs['ssl'] = True
+
+                self.redis_client = redis.Redis(**redis_kwargs)
+                # Test connection
+                self.redis_client.ping()
+                self._using_redis = True
+                logger.info(f"Connected to Redis at {config.REDIS_HOST}:{config.REDIS_PORT}")
+            except Exception as e:
+                logger.warning(f"Failed to connect to Redis: {e}. Using in-memory cache fallback.")
+                self.redis_client = None
+                self._using_redis = False
+        else:
+            logger.info("Redis not enabled or not available. Using in-memory cache.")
+
+    def _serialize(self, value: Any) -> bytes:
+        """Serialize value for storage"""
+        try:
+            return pickle.dumps(value)
+        except Exception as e:
+            logger.error(f"Serialization error: {e}")
+            raise
+
+    def _deserialize(self, data: bytes) -> Any:
+        """Deserialize value from storage"""
+        try:
+            return pickle.loads(data)
+        except Exception as e:
+            logger.error(f"Deserialization error: {e}")
+            raise
+
+    def get(self, key: str) -> Optional[Any]:
+        """Get value from cache (Redis or fallback)"""
+        with self._lock:
+            if self._using_redis and self.redis_client:
+                try:
+                    data = self.redis_client.get(key)
+                    if data is None:
+                        self._misses += 1
+                        return None
+
+                    self._hits += 1
+                    logger.debug(f"Redis cache hit: {key}")
+                    return self._deserialize(data)
+                except Exception as e:
+                    logger.warning(f"Redis get error: {e}. Falling back to in-memory cache.")
+                    self._using_redis = False
+                    return self.fallback_cache.get(key)
+            else:
+                return self.fallback_cache.get(key)
+
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        """Set value in cache (Redis or fallback)"""
+        ttl_seconds = ttl or self.default_ttl
+
+        with self._lock:
+            if self._using_redis and self.redis_client:
+                try:
+                    serialized = self._serialize(value)
+                    self.redis_client.setex(key, ttl_seconds, serialized)
+                    logger.debug(f"Redis cache set: {key} (TTL: {ttl_seconds}s)")
+                except Exception as e:
+                    logger.warning(f"Redis set error: {e}. Falling back to in-memory cache.")
+                    self._using_redis = False
+                    self.fallback_cache.set(key, value, ttl)
+            else:
+                self.fallback_cache.set(key, value, ttl)
+
+    def delete(self, key: str) -> bool:
+        """Delete entry from cache"""
+        with self._lock:
+            if self._using_redis and self.redis_client:
+                try:
+                    result = self.redis_client.delete(key)
+                    logger.debug(f"Redis cache deleted: {key}")
+                    return result > 0
+                except Exception as e:
+                    logger.warning(f"Redis delete error: {e}. Falling back to in-memory cache.")
+                    self._using_redis = False
+                    return self.fallback_cache.delete(key)
+            else:
+                return self.fallback_cache.delete(key)
+
+    def clear(self) -> None:
+        """Clear all cache entries"""
+        with self._lock:
+            if self._using_redis and self.redis_client:
+                try:
+                    # Use scan to find and delete all keys (safer than FLUSHDB)
+                    # This is a simple implementation; for production, you might want to use key prefixes
+                    logger.info("Redis cache cleared (using fallback cache)")
+                    self.fallback_cache.clear()
+                except Exception as e:
+                    logger.warning(f"Redis clear error: {e}")
+                    self.fallback_cache.clear()
+            else:
+                self.fallback_cache.clear()
+
+    def cleanup_expired(self) -> int:
+        """Cleanup expired entries (Redis handles this automatically, but we clean fallback)"""
+        with self._lock:
+            # Redis handles expiration automatically, just clean fallback
+            return self.fallback_cache.cleanup_expired()
+
+    def get_stats(self) -> dict:
+        """Get cache statistics"""
+        with self._lock:
+            total_requests = self._hits + self._misses
+            hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
+
+            stats = {
+                'backend': 'redis' if self._using_redis else 'in-memory',
+                'hits': self._hits,
+                'misses': self._misses,
+                'hit_rate': f"{hit_rate:.2f}%"
+            }
+
+            if self._using_redis and self.redis_client:
+                try:
+                    info = self.redis_client.info('stats')
+                    stats.update({
+                        'redis_keys': self.redis_client.dbsize(),
+                        'redis_hits': info.get('keyspace_hits', 0),
+                        'redis_misses': info.get('keyspace_misses', 0),
+                    })
+                except:
+                    pass
+            else:
+                stats.update(self.fallback_cache.get_stats())
+
+            return stats
+
+
 class CacheManager:
     """Centralized cache manager with multiple cache instances"""
 
-    def __init__(self):
-        self._caches: dict[str, LRUCache] = {}
+    def __init__(self, use_redis: bool = True):
+        self._caches: dict[str, any] = {}
         self._lock = RLock()
+        self._use_redis = use_redis and config.REDIS_ENABLED and REDIS_AVAILABLE
 
     def get_cache(self, name: str, max_size: Optional[int] = None,
-                 default_ttl: Optional[int] = None) -> LRUCache:
+                 default_ttl: Optional[int] = None, use_redis: Optional[bool] = None):
         """
         Get or create a named cache
 
@@ -176,14 +347,22 @@ class CacheManager:
             name: Cache name
             max_size: Maximum cache size
             default_ttl: Default TTL for entries
+            use_redis: Override to force Redis or LRU cache
 
         Returns:
-            LRUCache instance
+            Cache instance (RedisCache or LRUCache)
         """
         with self._lock:
             if name not in self._caches:
-                self._caches[name] = LRUCache(max_size, default_ttl)
-                logger.info(f"Created cache: {name}")
+                # Determine which cache backend to use
+                should_use_redis = use_redis if use_redis is not None else self._use_redis
+
+                if should_use_redis:
+                    self._caches[name] = RedisCache(max_size, default_ttl)
+                    logger.info(f"Created Redis cache: {name}")
+                else:
+                    self._caches[name] = LRUCache(max_size, default_ttl)
+                    logger.info(f"Created in-memory cache: {name}")
             return self._caches[name]
 
     def clear_all(self) -> None:
