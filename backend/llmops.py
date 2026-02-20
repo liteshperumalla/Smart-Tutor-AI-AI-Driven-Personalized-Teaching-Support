@@ -106,6 +106,30 @@ class LLMOpsLogger:
         except Exception as exc:
             logger.warning("LLMOps Prometheus update failed: %s", exc)
 
+        # PostHog — async batched, never blocks the response
+        try:
+            from backend.config import Config
+            if Config.POSTHOG_ENABLED and Config.POSTHOG_API_KEY:
+                import posthog as _ph
+                _ph.api_key = Config.POSTHOG_API_KEY
+                _ph.host = Config.POSTHOG_HOST
+                _ph.capture(
+                    distinct_id=rec.user_id or "anonymous",
+                    event="llm_response_streamed",
+                    properties={
+                        "model": rec.model,
+                        "latency_ms": rec.latency_ms,
+                        "output_tokens_approx": rec.output_tokens_approx,
+                        "output_chars": rec.output_chars,
+                        "success": rec.success,
+                        "session_id": rec.session_id,
+                        "request_id": rec.request_id,
+                        "error": rec.error,
+                    },
+                )
+        except Exception as exc:
+            logger.warning("LLMOps PostHog capture failed: %s", exc)
+
     def get_stats(self, last_n: int = 200) -> Dict[str, Any]:
         """
         Read the last *last_n* records from the JSONL log and return

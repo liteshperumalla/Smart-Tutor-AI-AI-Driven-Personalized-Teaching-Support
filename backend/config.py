@@ -415,6 +415,11 @@ class Config:
     )
     LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
+    # PostHog Settings (analytics + LLM cost tracking)
+    POSTHOG_ENABLED = os.getenv("POSTHOG_ENABLED", "true").lower() == "true"
+    POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY", "phc_SaDDOcIq1AnKzpCsRHHpmRoDX7b8IEXNlv8xtPXNn7c")
+    POSTHOG_HOST = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com")
+
     # Google OAuth Settings - with AWS Secrets Manager support
     GOOGLE_OAUTH_CLIENT_ID = (
         _app_secrets.get("google_oauth_client_id")
