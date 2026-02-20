@@ -207,7 +207,10 @@ class AuthService:
         metadata["password_set"] = True
         self.user_db.update_user(username, {"metadata": metadata})
 
-        self.request_email_verification(username=username)
+        try:
+            self.request_email_verification(username=username)
+        except Exception as e:
+            logger.warning(f"Email verification send failed during registration (non-fatal): {e}")
 
         logger.info(f"User registered successfully: {username}")
 

@@ -16,6 +16,7 @@ os.environ["DEBUG"] = "true"
 os.environ["STORAGE_BACKEND"] = "filesystem"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["RATE_LIMIT_ENABLED"] = "false"  # Disable rate limiting in tests
+os.environ["SMTP_SERVER"] = ""  # Disable email sending in tests
 
 from backend.api.main import app
 from backend.database import get_user_db
@@ -55,6 +56,12 @@ def test_user(auth_service):
         email=email
     )
 
+    # Mark email as verified so tests can log in without SMTP
+    user_record = user_db.get_user(username)
+    metadata = user_record.get("metadata", {})
+    metadata["email_verified"] = True
+    user_db.update_user(username, {"metadata": metadata})
+
     yield {
         "username": username,
         "password": password,
@@ -69,7 +76,11 @@ def test_user(auth_service):
 
 @pytest.fixture(scope="function")
 def auth_token(test_client, test_user):
-    """Get authentication token for test user"""
+    """Get authentication token for test user.
+
+    Tokens are set as HttpOnly cookies (not in JSON body).
+    Extracts the access_token from the TestClient's cookie jar.
+    """
     response = test_client.post(
         "/auth/login",
         json={
@@ -78,8 +89,11 @@ def auth_token(test_client, test_user):
         }
     )
     assert response.status_code == 200
-    data = response.json()
-    return data["access_token"]
+    # Tokens are HttpOnly cookies; parse from Set-Cookie response header
+    import re
+    match = re.search(r"access_token=([^;]+)", response.headers.get("set-cookie", ""))
+    assert match, f"No access_token cookie in login response. Body: {response.json()}"
+    return match.group(1)
 
 
 @pytest.fixture(scope="function")

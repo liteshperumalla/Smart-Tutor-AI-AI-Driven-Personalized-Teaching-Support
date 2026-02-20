@@ -37,7 +37,13 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     is_production = config.ENVIRONMENT == "production"
 
     # Set cookie domain for cross-origin requests (e.g., frontend proxy)
-    cookie_domain = "localhost" if not is_production else None
+    # In test mode, use None so TestClient (testserver host) can send cookies
+    if config.ENVIRONMENT == "test":
+        cookie_domain = None
+    elif is_production:
+        cookie_domain = None  # Defaults to request's domain in production
+    else:
+        cookie_domain = "localhost"
 
     # Set access token cookie
     response.set_cookie(
@@ -67,7 +73,12 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
 def clear_auth_cookies(response: Response):
     """Clear authentication cookies on logout."""
     is_production = config.ENVIRONMENT == "production"
-    cookie_domain = "localhost" if not is_production else None
+    if config.ENVIRONMENT == "test":
+        cookie_domain = None
+    elif is_production:
+        cookie_domain = None
+    else:
+        cookie_domain = "localhost"
 
     response.delete_cookie(key="access_token", path="/", domain=cookie_domain)
     response.delete_cookie(key="refresh_token", path="/", domain=cookie_domain)

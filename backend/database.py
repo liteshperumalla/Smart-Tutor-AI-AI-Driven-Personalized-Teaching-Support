@@ -34,7 +34,9 @@ class JSONDatabase:
         """Ensure database file exists"""
         if not os.path.exists(self.file_path):
             try:
-                os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
+                dir_path = os.path.dirname(self.file_path)
+                if dir_path:
+                    os.makedirs(dir_path, exist_ok=True)
                 self._write_data({})
                 logger.info(f"Created new database file: {self.file_path}")
             except Exception as e:

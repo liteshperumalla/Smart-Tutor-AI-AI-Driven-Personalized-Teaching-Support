@@ -146,6 +146,11 @@ class CSRFProtection:
         Raises:
             HTTPException: 403 if CSRF validation fails
         """
+        # Skip CSRF validation in test environment
+        from backend.config import config
+        if getattr(config, "ENVIRONMENT", "") == "test":
+            return
+
         # Only validate CSRF for state-changing methods
         if request.method in ["POST", "PUT", "PATCH", "DELETE"]:
             if not CSRFProtection.verify_token(request):

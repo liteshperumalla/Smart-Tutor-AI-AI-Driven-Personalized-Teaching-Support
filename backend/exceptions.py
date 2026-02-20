@@ -109,8 +109,8 @@ class PasswordSetupRequiredError(AuthenticationError):
 # Database Exceptions
 class DatabaseError(SmartTutorException):
     """Base database error"""
-    def __init__(self, message: str = "Database operation failed", details: Optional[Dict[str, Any]] = None):
-        super().__init__(message, "DB_ERROR", details)
+    def __init__(self, message: str = "Database operation failed", code: str = "DB_ERROR", details: Optional[Dict[str, Any]] = None):
+        super().__init__(message, code, details)
 
 
 class DataNotFoundError(DatabaseError):

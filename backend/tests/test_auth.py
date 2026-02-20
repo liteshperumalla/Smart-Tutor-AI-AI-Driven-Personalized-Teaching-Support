@@ -45,7 +45,7 @@ class TestUserRegistration:
         assert response.status_code == 400
 
     def test_registration_weak_password(self, test_client):
-        """Test registration fails with weak password"""
+        """Test registration fails with weak password (422 Pydantic or 400 business rule)"""
         response = test_client.post(
             "/auth/signup",
             json={
@@ -55,7 +55,7 @@ class TestUserRegistration:
                 "email": "test3@example.com"
             }
         )
-        assert response.status_code == 400
+        assert response.status_code in (400, 422)
 
     def test_registration_duplicate_username(self, test_client, test_user):
         """Test registration fails with duplicate username"""
@@ -75,7 +75,7 @@ class TestUserLogin:
     """Test user login functionality"""
 
     def test_successful_login(self, test_client, test_user):
-        """Test successful login"""
+        """Test successful login — tokens returned as HttpOnly cookies"""
         response = test_client.post(
             "/auth/login",
             json={
@@ -85,10 +85,12 @@ class TestUserLogin:
         )
         assert response.status_code == 200
         data = response.json()
-        assert "access_token" in data
-        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
         assert "user" in data
+        # Tokens are set as HttpOnly cookies, not in JSON body
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "access_token" in set_cookie
+        assert "refresh_token" in set_cookie
 
     def test_login_invalid_credentials(self, test_client, test_user):
         """Test login fails with invalid credentials"""
@@ -135,8 +137,8 @@ class TestTokenManagement:
         assert response.status_code == 401
 
     def test_token_refresh(self, test_client, test_user):
-        """Test token refresh functionality"""
-        # Login to get tokens
+        """Test token refresh functionality — tokens are HttpOnly cookies"""
+        # Login to get tokens (sets cookies in TestClient jar)
         login_response = test_client.post(
             "/auth/login",
             json={
@@ -144,17 +146,13 @@ class TestTokenManagement:
                 "password": test_user["password"]
             }
         )
-        refresh_token = login_response.json()["refresh_token"]
-
-        # Refresh token
-        response = test_client.post(
-            "/auth/refresh",
-            json={"refresh_token": refresh_token}
-        )
+        assert login_response.status_code == 200
+        # Refresh via cookie-based auth (refresh_token cookie sent automatically)
+        response = test_client.post("/auth/refresh")
         assert response.status_code == 200
-        data = response.json()
-        assert "access_token" in data
-        assert data["token_type"] == "bearer"
+        # New access token is set in cookies
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "access_token" in set_cookie
 
 
 class TestLogout:
@@ -169,3 +167,77 @@ class TestLogout:
         # Verify token is blacklisted
         me_response = test_client.get("/auth/me", headers=auth_headers)
         assert me_response.status_code == 401
+
+
+class TestJWTSecurity:
+    """Test JWT security edge cases"""
+
+    def test_blacklisted_token_rejected_after_logout(self, test_client, test_user):
+        """Token used after logout must return 401"""
+        import re
+        # Login — tokens set as HttpOnly cookies
+        login = test_client.post("/auth/login", json={
+            "username": test_user["username"],
+            "password": test_user["password"]
+        })
+        # Parse access_token from Set-Cookie response header (HttpOnly not in .cookies)
+        match = re.search(r"access_token=([^;]+)", login.headers.get("set-cookie", ""))
+        assert match, "No access_token cookie in login response"
+        token = match.group(1)
+
+        # Logout — clears the cookie and blacklists the token
+        test_client.post("/auth/logout")
+
+        # Try using the blacklisted token via Authorization header (no cookie present)
+        response = test_client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert response.status_code == 401
+
+    def test_expired_token_rejected(self, test_client):
+        """A manually crafted expired token must return 401"""
+        from jose import jwt
+        from datetime import datetime, timedelta, timezone
+        expired_token = jwt.encode(
+            {
+                "sub": "testuser",
+                "email": "test@example.com",
+                "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+                "iat": datetime.now(timezone.utc) - timedelta(hours=2),
+                "iss": "smart-ai-tutor",
+                "aud": "smart-ai-tutor-api",
+                "type": "access",
+                "jti": "test-expired-jti"
+            },
+            "test-secret-key-for-testing-only",
+            algorithm="HS256"
+        )
+        headers = {"Authorization": f"Bearer {expired_token}"}
+        response = test_client.get("/auth/me", headers=headers)
+        assert response.status_code == 401
+
+    def test_malformed_token_rejected(self, test_client):
+        """Garbage token string must return 401, not 500"""
+        headers = {"Authorization": "Bearer not.a.valid.jwt.at.all"}
+        response = test_client.get("/auth/me", headers=headers)
+        assert response.status_code == 401
+
+    def test_token_type_mismatch_rejected(self, test_client, test_user):
+        """Using a refresh token as an access token must be rejected"""
+        import re
+        # Login — tokens set as HttpOnly cookies
+        login = test_client.post("/auth/login", json={
+            "username": test_user["username"],
+            "password": test_user["password"]
+        })
+        # Parse refresh_token from Set-Cookie response header
+        set_cookie = login.headers.get("set-cookie", "")
+        match = re.search(r"refresh_token=([^;]+)", set_cookie)
+        assert match, "No refresh_token found in login cookies"
+        refresh_token = match.group(1)
+
+        # Logout first — this clears auth cookies so Authorization header is used
+        test_client.post("/auth/logout")
+
+        # Using refresh token as access token must return 401
+        # (Cookie is cleared so only the Authorization header is checked)
+        response = test_client.get("/auth/me", headers={"Authorization": f"Bearer {refresh_token}"})
+        assert response.status_code == 401
