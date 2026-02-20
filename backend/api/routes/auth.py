@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 from backend.auth_service import AuthService, get_auth_service
+from backend import posthog_tracker
 from backend.exceptions import EmailNotVerifiedError
 from backend.api.dependencies import get_current_user, get_current_session
 from backend.config import config
@@ -197,6 +198,12 @@ def login(
             username=payload.username,
             ip_address=get_client_ip(request),
             user_agent=get_user_agent(request),
+        )
+
+        posthog_tracker.capture(
+            distinct_id=payload.username,
+            event="login",
+            properties={"method": "password"},
         )
 
         # Return user info only (tokens are in cookies)

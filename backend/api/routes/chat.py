@@ -7,6 +7,7 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
+from backend import posthog_tracker
 from backend.csrf_protection import csrf_protect
 from backend.rate_limiter import PerUserRateLimiter
 from backend.services.chat_service import get_chat_service, ChatService, get_llm_semaphore
@@ -136,6 +137,18 @@ async def send_message(
 
     query = payload.query
     model_id = payload.model_id
+
+    posthog_tracker.capture(
+        distinct_id=user["username"],
+        event="chat_message_sent",
+        properties={
+            "session_id": session_id,
+            "message_length": len(query),
+            "model": model_id,
+            "response_style": payload.response_style,
+            "uploaded_only": payload.uploaded_only,
+        },
+    )
     effective_query = query
 
     style_instructions = {

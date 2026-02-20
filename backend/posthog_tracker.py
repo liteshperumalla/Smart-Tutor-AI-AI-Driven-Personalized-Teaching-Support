@@ -1,0 +1,53 @@
+"""
+PostHog event tracking helper.
+
+Thin wrapper around the PostHog Python SDK so routes never import
+posthog directly.  All calls are best-effort — exceptions are logged
+as warnings and never propagated to callers.
+"""
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+from backend.logger import get_logger
+
+logger = get_logger(__name__)
+
+_initialized = False
+
+
+def _init() -> bool:
+    global _initialized
+    if _initialized:
+        return True
+    try:
+        from backend.config import Config
+        if not (Config.POSTHOG_ENABLED and Config.POSTHOG_API_KEY):
+            return False
+        import posthog
+        posthog.api_key = Config.POSTHOG_API_KEY
+        posthog.host = Config.POSTHOG_HOST
+        _initialized = True
+        return True
+    except Exception as exc:
+        logger.warning("PostHog init failed: %s", exc)
+        return False
+
+
+def capture(
+    distinct_id: str,
+    event: str,
+    properties: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Fire-and-forget PostHog event capture."""
+    try:
+        if not _init():
+            return
+        import posthog
+        posthog.capture(
+            distinct_id=distinct_id or "anonymous",
+            event=event,
+            properties=properties or {},
+        )
+    except Exception as exc:
+        logger.warning("PostHog capture(%s) failed: %s", event, exc)

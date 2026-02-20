@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session
+from backend import posthog_tracker
 from backend.services.quiz_service import (
     QuizGenerationError,
     get_quiz_service,
@@ -44,6 +45,14 @@ def generate_quiz(
             selected_folders=payload.folders,
             num_questions=payload.num_questions,
         )
+        posthog_tracker.capture(
+            distinct_id=user["username"],
+            event="quiz_started",
+            properties={
+                "num_questions": payload.num_questions,
+                "folders": payload.folders,
+            },
+        )
         return quiz
     except QuizGenerationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -66,6 +75,14 @@ def submit_quiz(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    posthog_tracker.capture(
+        distinct_id=user["username"],
+        event="quiz_completed",
+        properties={
+            "quiz_id": payload.quiz_id,
+            "score": result.to_dict().get("score"),
+        },
+    )
     return {"result": result.to_dict()}
 
 

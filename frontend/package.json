@@ -13,6 +13,7 @@
   "dependencies": {
     "lucide-react": "^0.562.0",
     "next": "16.1.5",
+    "posthog-js": "^1.240.6",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^3.7.0",

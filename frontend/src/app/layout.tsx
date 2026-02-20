@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ToastProvider } from "@/components/toast-provider";
 import { AnnouncementToaster } from "@/components/announcement-toaster";
+import { PostHogProvider } from "@/components/posthog-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,13 +44,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ErrorBoundary>
-          <ThemeProvider>
-            <ToastProvider />
-            <AnnouncementToaster />
-            <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
-          </ThemeProvider>
-        </ErrorBoundary>
+        <PostHogProvider>
+          <ErrorBoundary>
+            <ThemeProvider>
+              <ToastProvider />
+              <AnnouncementToaster />
+              <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
+            </ThemeProvider>
+          </ErrorBoundary>
+        </PostHogProvider>
       </body>
     </html>
   );
