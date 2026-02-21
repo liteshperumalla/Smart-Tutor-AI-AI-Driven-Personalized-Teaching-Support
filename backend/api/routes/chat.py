@@ -92,10 +92,15 @@ async def upload_chat_file(
             file.filename or "uploaded-file", len(content)
         )
         preview = research_service.preview_file(content, sanitized_name)
-    except ValueError as exc:
+    except (ValueError, InvalidFileError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    except InvalidFileError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except Exception as exc:
+        # Catch file-parsing errors (e.g. pymupdf FileDataError, EmptyFileError)
+        # and return 400 — malformed/empty files are a client error, not a server error
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File could not be processed: {exc}"
+        )
     return {"preview": preview}
 
 
