@@ -176,13 +176,14 @@ class SuspiciousActivityDetectionMiddleware:
     _failed_attempts = defaultdict(list)
     _blocked_ips = {}
 
-    def __init__(self, app, max_failures: int = 10, block_duration: int = 900):
+    def __init__(self, app, max_failures: int = 10, block_duration: int = 900, enabled: bool = True):
         self.app = app
         self.max_failures = max_failures
         self.block_duration = block_duration  # seconds (15 minutes default)
+        self.enabled = enabled
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
+        if scope["type"] != "http" or not self.enabled:
             await self.app(scope, receive, send)
             return
 
@@ -255,6 +256,7 @@ def add_security_middleware(app, config=None):
         app: FastAPI application instance
         config: Optional configuration dict
     """
+    import os
     config = config or {}
 
     # Add request size limit (default 10MB)
@@ -265,11 +267,13 @@ def add_security_middleware(app, config=None):
     slow_threshold = config.get("slow_request_threshold", 5.0)
     app.add_middleware(SlowRequestDetectionMiddleware, threshold_seconds=slow_threshold)
 
-    # Add suspicious activity detection
+    # Add suspicious activity detection (disabled in test environment via RATE_LIMIT_ENABLED=false)
+    ip_blocking_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
     app.add_middleware(
         SuspiciousActivityDetectionMiddleware,
         max_failures=config.get("max_auth_failures", 10),
-        block_duration=config.get("block_duration", 900)
+        block_duration=config.get("block_duration", 900),
+        enabled=ip_blocking_enabled,
     )
 
     # Add IP whitelist if configured

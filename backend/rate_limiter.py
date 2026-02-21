@@ -10,6 +10,8 @@ from fastapi import Request, HTTPException, status
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+import os
+
 from .config import config
 from .logger import get_logger
 from .redis_cache import RedisCache
@@ -18,7 +20,9 @@ logger = get_logger(__name__)
 
 # Global rate limiter instance (for slowapi decorators)
 # This is defined here to avoid circular imports between main.py and routes
-limiter = Limiter(key_func=get_remote_address)
+# Disabled in test environment so the test suite doesn't hit rate limits
+_slowapi_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
+limiter = Limiter(key_func=get_remote_address, enabled=_slowapi_enabled)
 
 # Model family mapping: substring in model ID → family tier
 MODEL_FAMILY_MAP = {
@@ -74,7 +78,8 @@ class PerUserRateLimiter:
 
     def __init__(self, redis_cache: Optional[RedisCache] = None):
         self.redis = redis_cache
-        self.enabled = config.USE_REDIS_CACHE and redis_cache is not None
+        _env_enabled = os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
+        self.enabled = _env_enabled and config.USE_REDIS_CACHE and redis_cache is not None
 
         # Rate limit settings (requests per window)
         self.default_limit = config.RATE_LIMIT_PER_USER_REQUESTS

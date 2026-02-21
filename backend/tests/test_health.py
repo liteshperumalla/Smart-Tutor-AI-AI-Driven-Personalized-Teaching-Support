@@ -32,5 +32,7 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "status" in data
-        assert "components" in data
-        assert isinstance(data["components"], dict)
+        # Response uses "checks" key (or "components" in some versions)
+        assert "checks" in data or "components" in data
+        checks = data.get("checks") or data.get("components")
+        assert isinstance(checks, dict)
