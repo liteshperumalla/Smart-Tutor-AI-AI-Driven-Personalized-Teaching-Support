@@ -70,4 +70,36 @@ test.describe('Authentication', () => {
     const authCookie = cookies.find(c => c.name === 'access_token')
     expect(authCookie).toBeUndefined()
   })
+
+  test('should redirect unauthenticated user from protected route to login', async ({ page }) => {
+    // Navigate directly to a protected route without logging in
+    await page.goto('/chat')
+
+    // Should be redirected to login page
+    await expect(page).toHaveURL(/.*login/)
+  })
+
+  test('should redirect to profile page without auth', async ({ page }) => {
+    await page.goto('/profile')
+
+    // Protected page — should land on login
+    await expect(page).toHaveURL(/.*login/)
+  })
+
+  test('should preserve login page after logout', async ({ page }) => {
+    // Login
+    await page.goto('/login')
+    await page.fill('input[name="username"]', 'testuser')
+    await page.fill('input[name="password"]', 'TestPass123!')
+    await page.click('button[type="submit"]')
+    await page.waitForURL('/')
+
+    // Logout via Profile menu
+    await page.click('text=Profile')
+    await page.click('text=Sign out')
+
+    // Must end on login page — not be served a cached protected page
+    await expect(page).toHaveURL(/.*login/)
+    await expect(page.locator('input[name="username"]')).toBeVisible()
+  })
 })

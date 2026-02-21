@@ -48,4 +48,37 @@ test.describe('Chat Functionality', () => {
     // Sessions list should be visible
     await expect(page.locator('text=Recent chats')).toBeVisible()
   })
+
+  test('should show streaming indicator while response is being generated', async ({ page }) => {
+    await page.goto('/chat')
+
+    // Create a fresh session
+    await page.click('text=New chat')
+
+    // Type a question
+    await page.fill('textarea[placeholder*="Ask anything"]', 'What is machine learning in one sentence?')
+    await page.click('button:has-text("Send")')
+
+    // User message should appear immediately
+    await expect(page.locator('text=What is machine learning in one sentence?')).toBeVisible()
+
+    // A streaming / thinking indicator should appear during generation
+    // The app may show a spinner, "Thinking…", or an animated placeholder
+    const streamingIndicator = page.locator(
+      '[data-testid="streaming-indicator"], [class*="streaming"], [class*="thinking"], [class*="animate-pulse"]'
+    ).first()
+    await expect(streamingIndicator).toBeVisible({ timeout: 10000 })
+
+    // Eventually the streaming indicator should disappear once the response is done
+    await expect(streamingIndicator).not.toBeVisible({ timeout: 60000 })
+  })
+
+  test('should not allow sending empty messages', async ({ page }) => {
+    await page.goto('/chat')
+    await page.click('text=New chat')
+
+    // The send button should be disabled when textarea is empty
+    const sendButton = page.locator('button:has-text("Send")')
+    await expect(sendButton).toBeDisabled()
+  })
 })
