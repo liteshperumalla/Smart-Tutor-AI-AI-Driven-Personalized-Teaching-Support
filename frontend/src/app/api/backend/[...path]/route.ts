@@ -14,8 +14,9 @@ export const maxDuration = 300;
 const BACKEND_BASE_URL =
   process.env.BACKEND_API_BASE_URL || "http://localhost:8010";
 
-// Admin route prefixes that must never be reachable through this proxy
-const BLOCKED_PATH_PREFIXES = ["/admin", "/api/v1/admin"];
+// Path traversal is blocked above; admin auth is enforced by the backend's
+// get_admin_session dependency (role == "Admin"). No need to block here.
+const BLOCKED_PATH_PREFIXES: string[] = [];
 
 type RouteParams = { path?: string[] };
 type RouteContext = { params: RouteParams } | { params: Promise<RouteParams> };

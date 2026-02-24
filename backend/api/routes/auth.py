@@ -10,7 +10,12 @@ logger = logging.getLogger(__name__)
 
 from backend.auth_service import AuthService, get_auth_service
 from backend import posthog_tracker
-from backend.exceptions import EmailNotVerifiedError
+from backend.exceptions import (
+    EmailNotVerifiedError,
+    UserAlreadyExistsError,
+    PasswordValidationError,
+    InvalidCredentialsError,
+)
 from backend.api.dependencies import get_current_user, get_current_session
 from backend.config import config
 from backend.security_logger import SecurityLogger, get_client_ip, get_user_agent
@@ -175,9 +180,36 @@ def signup(
             "verification_required": True,
             "message": "Verification code sent to email.",
         }
+    except UserAlreadyExistsError as exc:
+        logger.warning(f"Registration failed - username taken: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="That username is already taken. Please choose a different one.",
+        )
+    except PasswordValidationError as exc:
+        logger.warning(f"Registration failed - weak password: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc) or "Password does not meet the requirements.",
+        )
+    except InvalidCredentialsError as exc:
+        logger.warning(f"Registration failed - invalid input: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc) or "Invalid registration details.",
+        )
     except Exception as exc:
+        exc_str = str(exc).lower()
+        if "unique" in exc_str and "email" in exc_str:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An account with that email already exists. Try signing in instead.",
+            )
         logger.warning(f"Registration failed: {exc}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Registration failed")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registration failed. Please check your details and try again.",
+        )
 
 
 @router.post("/login")
@@ -233,7 +265,10 @@ def login(
             reason="invalid_credentials",
             user_agent=get_user_agent(request),
         )
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password. Please check your details or create an account.",
+        )
 
 
 @router.post("/google/callback")
@@ -266,6 +301,10 @@ def google_callback(
 
         # SECURITY: Set tokens in HttpOnly cookies
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+
+        # Set CSRF token cookie (required for state-changing requests like delete/rename)
+        from backend.csrf_protection import CSRFProtection
+        CSRFProtection.set_csrf_cookie(response)
 
         # Return user info only (tokens are in cookies)
         return {
@@ -372,6 +411,11 @@ def refresh_token(
             max_age=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
             path="/",
         )
+
+        # Renew CSRF cookie so it doesn't expire while the user is still logged in
+        from backend.csrf_protection import CSRFProtection
+        existing_csrf = request.cookies.get("csrf_token")
+        CSRFProtection.set_csrf_cookie(response, token=existing_csrf or None)
 
         return {
             "message": "Token refreshed successfully",

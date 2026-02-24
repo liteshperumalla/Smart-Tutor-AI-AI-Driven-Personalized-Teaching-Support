@@ -10,6 +10,10 @@ from typing import List, Optional
 from backend.api.dependencies import get_admin_session
 from backend.services.admin_service import get_admin_service
 from backend.services.resource_service import get_resource_service
+from backend.services.indexing_service import get_indexing_service
+
+# File extensions that the indexing pipeline can process
+_INDEXABLE_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md", ".ipynb"}
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -363,6 +367,21 @@ async def upload_resource_file(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create resource",
         )
+
+    # Auto-trigger RAG indexing for supported file types
+    from pathlib import Path
+    ext = Path(resource.get("file_name", "")).suffix.lower()
+    if ext in _INDEXABLE_EXTENSIONS and resource.get("s3_key"):
+        try:
+            get_indexing_service().start_indexing(
+                resource_id=resource["id"],
+                s3_key=resource["s3_key"],
+                filename=resource["file_name"],
+                mime_type=resource.get("mime_type", "application/octet-stream"),
+            )
+        except Exception:
+            pass  # Never block the upload response
+
     return {"resource": resource}
 
 
@@ -413,3 +432,48 @@ def migrate_static_resources(session=Depends(get_admin_session)):
     svc = get_resource_service()
     result = svc.migrate_from_catalog()
     return result
+
+
+# ── Indexing ──────────────────────────────────────────────────────
+
+@router.post("/resources/{resource_id}/reindex")
+def reindex_resource(
+    resource_id: str,
+    session=Depends(get_admin_session),
+):
+    """Kick off (or re-run) the RAG indexing pipeline for a file resource."""
+    svc = get_resource_service()
+    resource = svc.get_resource(resource_id)
+    if not resource:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    if resource.get("type") != "file":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only file resources can be indexed")
+    from pathlib import Path
+    ext = Path(resource.get("file_name", "")).suffix.lower()
+    if ext not in _INDEXABLE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '{ext}' is not supported for indexing",
+        )
+    if not resource.get("s3_key"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Resource has no S3 key")
+
+    get_indexing_service().start_indexing(
+        resource_id=resource["id"],
+        s3_key=resource["s3_key"],
+        filename=resource["file_name"],
+        mime_type=resource.get("mime_type", "application/octet-stream"),
+    )
+    return {"started": True, "resource_id": resource_id}
+
+
+@router.get("/resources/{resource_id}/reindex-status")
+def reindex_status(
+    resource_id: str,
+    session=Depends(get_admin_session),
+):
+    """Poll the current indexing progress for a resource."""
+    data = get_indexing_service().get_status(resource_id)
+    if data is None:
+        return {"status": "not_started", "progress_pct": 0, "chunks_created": 0, "total_chunks": None, "error": None}
+    return data

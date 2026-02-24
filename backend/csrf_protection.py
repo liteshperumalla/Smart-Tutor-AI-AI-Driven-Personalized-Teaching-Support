@@ -73,12 +73,15 @@ class CSRFProtection:
         if not token:
             token = CSRFProtection.generate_token()
 
+        from backend.config import config
+        is_production = config.ENVIRONMENT == "production"
+
         # Set CSRF token in regular cookie (NOT HttpOnly, so JavaScript can read it)
         response.set_cookie(
             key=CSRF_COOKIE_NAME,
             value=token,
             httponly=False,  # JavaScript needs to read this to send in header
-            secure=True,  # HTTPS only in production
+            secure=is_production,  # HTTPS only in production (matches auth cookie behaviour)
             samesite="lax",  # CSRF protection
             max_age=3600,  # 1 hour
             path="/",

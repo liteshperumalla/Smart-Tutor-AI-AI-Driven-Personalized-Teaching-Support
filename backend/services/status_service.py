@@ -74,9 +74,18 @@ def _load_docstore_stats_cached(docstore_mtime: int) -> Dict[str, Any]:
     return stats
 
 
+_S3_KB_STATS_CACHE: Dict[str, Any] = {}
+_S3_KB_STATS_TTL = 300  # Cache for 5 minutes
+
+
 def _get_s3_knowledge_base_stats() -> Dict[str, Any]:
-    """Get knowledge base stats from S3 when using S3-based vector storage."""
-    import time
+    """Get knowledge base stats from S3 when using S3-based vector storage.
+    Cached for 5 minutes to avoid slow S3 pagination on every request.
+    """
+    now = time.time()
+    cached = _S3_KB_STATS_CACHE.get("data")
+    if cached and (now - _S3_KB_STATS_CACHE.get("ts", 0)) < _S3_KB_STATS_TTL:
+        return cached
 
     stats: Dict[str, Any] = {
         "document_count": 0,
@@ -142,6 +151,8 @@ def _get_s3_knowledge_base_stats() -> Dict[str, Any]:
         stats["error"] = str(exc)
         stats["ready"] = False
 
+    _S3_KB_STATS_CACHE["data"] = stats
+    _S3_KB_STATS_CACHE["ts"] = time.time()
     return stats
 
 

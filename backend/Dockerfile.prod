@@ -1,0 +1,50 @@
+# syntax=docker/dockerfile:1.4
+# Production Dockerfile — strips code-execution dependencies (Java/Go/Node/Tesseract)
+# ENABLE_CODE_EXECUTION=false in production so these are not needed
+FROM python:3.11-slim
+
+# SECURITY: Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
+
+WORKDIR /app
+
+# Install only production system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
+
+# Download NLTK data
+RUN python -c "import nltk; nltk.download('punkt', download_dir='/usr/local/share/nltk_data'); nltk.download('punkt_tab', download_dir='/usr/local/share/nltk_data')"
+
+# Set cache dirs
+ENV HF_HOME=/app/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
+ENV HOME=/app
+
+# Copy application code
+COPY --chown=appuser:appuser . .
+
+# Create necessary directories
+RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \
+    chown -R appuser:appuser /app
+
+# SECURITY: Switch to non-root user
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)" || exit 1
+
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

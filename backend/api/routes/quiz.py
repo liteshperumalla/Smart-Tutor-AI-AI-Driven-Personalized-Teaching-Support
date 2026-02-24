@@ -1,10 +1,12 @@
 from typing import Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from backend.api.dependencies import get_current_session
+from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend import posthog_tracker
+from backend.config import config
+from backend.rate_limiter import limiter, PerUserRateLimiter
 from backend.services.quiz_service import (
     QuizGenerationError,
     get_quiz_service,
@@ -12,6 +14,10 @@ from backend.services.quiz_service import (
 )
 
 router = APIRouter(prefix="/quiz", tags=["quiz"])
+
+# Quiz-specific rate limits
+_QUIZ_GEN_LIMIT = 5      # max quiz generations per user per window
+_QUIZ_GEN_WINDOW = 3600  # 1 hour
 
 
 class QuizGenerateRequest(BaseModel):
@@ -33,11 +39,16 @@ def list_folders(
 
 
 @router.post("/generate")
-def generate_quiz(
+@limiter.limit("10/hour")
+async def generate_quiz(
+    request: Request,
     payload: QuizGenerateRequest,
     session=Depends(get_current_session),
     quiz_service: QuizService = Depends(get_quiz_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    await rate_limiter.check_rate_limit(request, limit=_QUIZ_GEN_LIMIT, window=_QUIZ_GEN_WINDOW)
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     _, user = session
     try:
         quiz = quiz_service.generate_quiz(

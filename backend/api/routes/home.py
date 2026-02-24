@@ -34,7 +34,8 @@ def home_overview():
         for a in admin_svc.list_active_announcements()
     ]
 
-    # Expose only readiness flags, not internal topology details
+    # Expose readiness flags and knowledge base stats for the KB widget
+    kb = system_status.get("knowledge_base", {})
     safe_status = {
         "vector_store_ready": system_status.get("vector_store_ready", False),
         "evaluation_ready": system_status.get("evaluation_ready", False),
@@ -44,6 +45,12 @@ def home_overview():
             # Strip provider-specific error details
             if ":" not in msg
         ] if system_status.get("issues") else [],
+        "knowledge_base": {
+            "ready": kb.get("ready", False),
+            "document_count": kb.get("document_count", 0),
+            "source_count": kb.get("source_count", 0),
+            "last_updated_display": kb.get("last_updated_display"),
+        },
     }
 
     return {

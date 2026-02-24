@@ -8,6 +8,7 @@ interface KnowledgeBaseStats {
   ready?: boolean;
   document_count?: number;
   source_count?: number;
+  last_updated_display?: string | null;
 }
 
 interface KnowledgeBaseWidgetProps {
@@ -52,28 +53,30 @@ export function KnowledgeBaseWidget({
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-zinc-500 dark:text-zinc-400">Documents</span>
+          <span className="text-zinc-500 dark:text-zinc-400">Source files</span>
           <span className="font-medium text-zinc-900 dark:text-white">
-            {knowledge_base?.document_count?.toLocaleString() ?? 0}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-zinc-500 dark:text-zinc-400">Sources</span>
-          <span className="font-medium text-zinc-900 dark:text-white">
-            {knowledge_base?.source_count ?? 0}
+            {knowledge_base?.source_count?.toLocaleString() ?? 0}
           </span>
         </div>
         <div className="flex justify-between">
           <span className="text-zinc-500 dark:text-zinc-400">Vector chunks</span>
           <span className="font-medium text-zinc-900 dark:text-white">
-            {vector_store_ready ? "12,752" : "0"}
+            {knowledge_base?.document_count?.toLocaleString() ?? 0}
           </span>
         </div>
+        {knowledge_base?.last_updated_display && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500 dark:text-zinc-400">Last updated</span>
+            <span className="font-medium text-zinc-900 dark:text-white text-xs">
+              {knowledge_base.last_updated_display}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
         <Link
-          href="/research"
+          href="/admin/resources"
           className="text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center gap-1"
         >
           <Upload className="h-4 w-4" />

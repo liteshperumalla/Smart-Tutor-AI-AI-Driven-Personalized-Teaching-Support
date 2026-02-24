@@ -141,12 +141,14 @@ body.theme-dark .text-zinc-950 {
   box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.1);
 }
 
+.theme-dark .input,
 body.theme-dark .input {
   background-color: rgba(30, 41, 59, 0.85);
   color: #F8FAFC;
   border-color: #475569;
 }
 
+.theme-dark .input:focus,
 body.theme-dark .input:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
@@ -192,11 +194,13 @@ body.theme-dark .input:focus {
   color: white;
 }
 
+.theme-dark .btn-secondary,
 body.theme-dark .btn-secondary {
   border-color: #F8FAFC;
   color: #F8FAFC;
 }
 
+.theme-dark .btn-secondary:hover,
 body.theme-dark .btn-secondary:hover {
   background-color: #F8FAFC;
   color: #0F172A;
@@ -217,10 +221,12 @@ body.theme-dark .btn-secondary:hover {
   background: rgb(244, 244, 245);
 }
 
+.theme-dark .btn-ghost,
 body.theme-dark .btn-ghost {
   color: #CBD5E1;
 }
 
+.theme-dark .btn-ghost:hover,
 body.theme-dark .btn-ghost:hover {
   background-color: rgba(71, 85, 105, 0.3);
 }
@@ -235,6 +241,7 @@ body.theme-dark .btn-ghost:hover {
   transition: all 0.2s;
 }
 
+.theme-dark .card,
 body.theme-dark .card {
   border-color: #475569;
   background-color: rgba(30, 41, 59, 0.9);
@@ -286,6 +293,7 @@ body.theme-dark .card {
   color: #1e3a8a;
 }
 
+.theme-dark .badge-primary,
 body.theme-dark .badge-primary {
   background-color: rgba(59, 130, 246, 0.2);
   color: #93c5fd;
@@ -296,6 +304,7 @@ body.theme-dark .badge-primary {
   color: #0d9488;
 }
 
+.theme-dark .badge-success,
 body.theme-dark .badge-success {
   background-color: rgba(20, 184, 166, 0.2);
   color: #5eead4;
@@ -306,6 +315,7 @@ body.theme-dark .badge-success {
   color: #f97316;
 }
 
+.theme-dark .badge-warning,
 body.theme-dark .badge-warning {
   background-color: rgba(251, 146, 60, 0.2);
   color: #fdba74;

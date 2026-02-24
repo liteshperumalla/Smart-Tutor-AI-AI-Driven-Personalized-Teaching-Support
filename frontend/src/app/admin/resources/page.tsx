@@ -9,7 +9,10 @@ import {
   updateResource,
   deleteResource,
   migrateStaticResources,
+  triggerReindex,
+  fetchIndexStatus,
   Resource,
+  IndexStatus,
 } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -24,7 +27,20 @@ import {
   Upload,
   ArrowDownToLine,
   DatabaseBackup,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
+
+const INDEXABLE_EXTENSIONS = new Set([".pdf", ".pptx", ".docx", ".txt", ".md", ".ipynb"]);
+
+function isIndexable(resource: Resource): boolean {
+  if (resource.type !== "file" || !resource.file_name) return false;
+  const dot = resource.file_name.lastIndexOf(".");
+  const ext = dot >= 0 ? resource.file_name.slice(dot).toLowerCase() : "";
+  return INDEXABLE_EXTENSIONS.has(ext);
+}
 
 type TabFilter = "all" | "link" | "file";
 
@@ -49,6 +65,7 @@ export default function AdminResourcesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migrateResult, setMigrateResult] = useState<string | null>(null);
+  const [indexStatus, setIndexStatus] = useState<Record<string, IndexStatus>>({});
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -66,6 +83,39 @@ export default function AdminResourcesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Poll indexing status for in-progress jobs every 2 seconds
+  useEffect(() => {
+    if (!token) return;
+    const activeIds = Object.entries(indexStatus)
+      .filter(([, s]) => s.status !== "complete" && s.status !== "error" && s.status !== "not_started")
+      .map(([id]) => id);
+    if (activeIds.length === 0) return;
+
+    const timer = setInterval(async () => {
+      for (const resourceId of activeIds) {
+        try {
+          const updated = await fetchIndexStatus(token, resourceId);
+          setIndexStatus((prev) => ({ ...prev, [resourceId]: updated }));
+        } catch { /* ignore — keep polling */ }
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [indexStatus, token]);
+
+  const handleReindex = async (resourceId: string) => {
+    if (!token) return;
+    try {
+      await triggerReindex(token, resourceId);
+      setIndexStatus((prev) => ({
+        ...prev,
+        [resourceId]: { status: "queued", progress_pct: 0, chunks_created: 0, total_chunks: null, error: null },
+      }));
+      toast.success("Indexing started");
+    } catch {
+      toast.error("Failed to start indexing");
+    }
+  };
 
   const resetForm = () => {
     setShowForm(false);
@@ -102,7 +152,7 @@ export default function AdminResourcesPage() {
     if (!token || !formTitle.trim() || !formCategory.trim() || !formFile) return;
     setSaving(true);
     try {
-      await uploadResourceFile({
+      const result = await uploadResourceFile({
         token,
         file: formFile,
         category: formCategory,
@@ -112,6 +162,16 @@ export default function AdminResourcesPage() {
       resetForm();
       await load();
       toast.success("File uploaded");
+
+      // Auto-trigger indexing for supported file types (backend already started it;
+      // we just initialise the local status so the progress bar shows immediately)
+      if (result?.id && isIndexable(result)) {
+        setIndexStatus((prev) => ({
+          ...prev,
+          [result.id]: { status: "queued", progress_pct: 0, chunks_created: 0, total_chunks: null, error: null },
+        }));
+        toast.info("Indexing started automatically");
+      }
     } catch {
       toast.error("Failed to upload file");
     } finally {
@@ -486,9 +546,67 @@ export default function AdminResourcesPage() {
                       by {res.created_by} · {new Date(res.created_at).toLocaleDateString()}
                     </span>
                   </p>
+
+                  {/* Indexing progress (file resources only) */}
+                  {isIndexable(res) && indexStatus[res.id] && (() => {
+                    const idx = indexStatus[res.id];
+                    const isActive = idx.status !== "complete" && idx.status !== "error" && idx.status !== "not_started";
+                    return (
+                      <div className="mt-2">
+                        {idx.status === "complete" ? (
+                          <p className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Indexed — {idx.chunks_created} chunks
+                          </p>
+                        ) : idx.status === "error" ? (
+                          <p className="flex items-center gap-1 text-xs text-red-500">
+                            <AlertCircle className="h-3.5 w-3.5" />
+                            Index error: {idx.error ?? "unknown"}
+                          </p>
+                        ) : isActive ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <p className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                {idx.status === "queued" ? "Queued…"
+                                  : idx.status === "extracting" ? "Extracting text…"
+                                  : idx.status === "chunking" ? "Chunking…"
+                                  : idx.status === "embedding" ? `Embedding${idx.total_chunks ? ` (${idx.chunks_created}/${idx.total_chunks})` : "…"}`
+                                  : `Uploading chunks (${idx.chunks_created})`}
+                              </p>
+                              <span className="text-xs text-zinc-500">{idx.progress_pct}%</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-700">
+                              <div
+                                className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
+                                style={{ width: `${idx.progress_pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center gap-1">
+                  {/* Re-index button for indexable file resources */}
+                  {isIndexable(res) && (() => {
+                    const idx = indexStatus[res.id];
+                    const busy = idx && idx.status !== "complete" && idx.status !== "error" && idx.status !== "not_started";
+                    return (
+                      <button
+                        onClick={() => handleReindex(res.id)}
+                        disabled={!!busy}
+                        className="rounded-lg p-2 text-indigo-500 transition hover:bg-indigo-50 disabled:opacity-50 dark:hover:bg-indigo-950/30"
+                        title={busy ? "Indexing…" : "Re-index for RAG"}
+                      >
+                        {busy
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <RefreshCw className="h-4 w-4" />}
+                      </button>
+                    );
+                  })()}
                   <button
                     onClick={() => handleToggleActive(res.id, res.active)}
                     className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"

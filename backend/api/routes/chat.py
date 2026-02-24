@@ -147,11 +147,12 @@ async def send_message(
         distinct_id=user["username"],
         event="chat_message_sent",
         properties={
-            "session_id": session_id,
-            "message_length": len(query),
-            "model": model_id,
-            "response_style": payload.response_style,
-            "uploaded_only": payload.uploaded_only,
+            "session_id":      session_id,
+            "message_length":  len(query),
+            "model_requested": model_id or "auto",
+            "response_style":  payload.response_style,
+            "uploaded_only":   payload.uploaded_only,
+            "has_file_ids":    bool(payload.uploaded_file_ids),
         },
     )
     effective_query = query
@@ -268,15 +269,56 @@ async def send_message(
             raise
         finally:
             sem.release()
+            _latency_ms = (_time.time() - _stream_start) * 1000
+            _model = resolved_model_id or "unknown"
+            _output_tokens = max(1, len(collected) // 4)
+            _input_tokens = max(1, len(query) // 4)
+
+            # Approximate cost in USD based on model pricing (per 1K tokens)
+            _PRICING = {
+                "meta.llama3-70b-instruct-v1:0":          (0.00265, 0.00350),
+                "us.meta.llama3-1-70b-instruct-v1:0":     (0.00265, 0.00350),
+                "us.anthropic.claude-3-5-sonnet-20241022-v2:0": (0.00300, 0.01500),
+                "us.anthropic.claude-3-haiku-20240307-v1:0":    (0.00025, 0.00125),
+                "amazon.titan-embed-text-v2:0":            (0.00020, 0.00000),
+            }
+            _in_price, _out_price = _PRICING.get(_model, (0.00265, 0.00350))
+            _cost_usd = round(
+                (_input_tokens / 1000 * _in_price) + (_output_tokens / 1000 * _out_price), 6
+            )
+
             # LLMOps: record call telemetry (fire-and-forget, never raises)
             record_llm_call(
-                model=resolved_model_id or "unknown",
-                latency_ms=(_time.time() - _stream_start) * 1000,
+                model=_model,
+                latency_ms=_latency_ms,
                 output_chars=len(collected),
                 success=not _stream_failed,
                 user_id=user["username"],
                 session_id=session_id,
             )
+
+            # PostHog $ai_generation — powers the LLM Analytics dashboard
+            try:
+                posthog_tracker.capture(
+                    distinct_id=user["username"],
+                    event="$ai_generation",
+                    properties={
+                        "$ai_model":           _model,
+                        "$ai_provider":        "aws_bedrock",
+                        "$ai_input_tokens":    _input_tokens,
+                        "$ai_output_tokens":   _output_tokens,
+                        "$ai_latency":         round(_latency_ms / 1000, 3),
+                        "$ai_total_cost_usd":  _cost_usd,
+                        "$ai_trace_id":        session_id,
+                        "$ai_http_status":     200 if not _stream_failed else 500,
+                        # extra context
+                        "session_id":          session_id,
+                        "success":             not _stream_failed,
+                        "response_style":      payload.response_style,
+                    },
+                )
+            except Exception:
+                pass
             # Save even when the client disconnects mid-stream (GeneratorExit).
             # No yield allowed inside finally — that would raise RuntimeError.
             if collected:

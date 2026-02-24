@@ -5,11 +5,38 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { GoogleAuthButton } from "@/components/google-auth-button";
-import { User, Mail, Lock, UserPlus, ArrowLeft } from "lucide-react";
+import { CheckCircle, XCircle } from "lucide-react";
 
 type SignupResponse = {
   user?: { username: string };
 };
+
+type PydanticDetail = { loc: string[]; msg: string; type: string };
+
+function parseApiError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "Unexpected error";
+  const p = payload as Record<string, unknown>;
+  if (Array.isArray(p.detail)) {
+    // Pydantic 422 validation error
+    const items = p.detail as PydanticDetail[];
+    const first = items[0];
+    if (first) {
+      const field = first.loc[first.loc.length - 1];
+      const msg = first.msg.replace(/^Value error,\s*/i, "");
+      return field ? `${String(field).replace("_", " ")}: ${msg}` : msg;
+    }
+  }
+  if (typeof p.detail === "string") return p.detail;
+  return "Unexpected error. Please try again.";
+}
+
+const PASSWORD_RULES = [
+  { label: "At least 12 characters", test: (p: string) => p.length >= 12 },
+  { label: "Uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
+  { label: "Lowercase letter", test: (p: string) => /[a-z]/.test(p) },
+  { label: "Number", test: (p: string) => /\d/.test(p) },
+  { label: "Special character (!@#$…)", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+];
 
 export default function SignupPage() {
   const router = useRouter();
@@ -19,13 +46,24 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+
+  const passwordRuleResults = PASSWORD_RULES.map((r) => ({
+    ...r,
+    passed: r.test(password),
+  }));
+  const allRulesPassed = passwordRuleResults.every((r) => r.passed);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Passwords do not match.");
+      return;
+    }
+    if (!allRulesPassed) {
+      setError("Please satisfy all password requirements before continuing.");
       return;
     }
 
@@ -35,25 +73,21 @@ export default function SignupPage() {
       const apiBaseUrl = getApiBaseUrl();
       const response = await fetch(`${apiBaseUrl}/auth/signup`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
           password,
           confirm_password: confirmPassword,
-          email: email || undefined,
+          email,
         }),
       });
 
       const payload = (await response.json().catch(() => ({}))) as
         | SignupResponse
-        | { detail?: string };
+        | { detail?: unknown };
 
       if (!response.ok) {
-        throw new Error(
-          (payload as { detail?: string }).detail || "Unable to sign up"
-        );
+        throw new Error(parseApiError(payload));
       }
 
       const params = new URLSearchParams({
@@ -70,48 +104,30 @@ export default function SignupPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Left: Visual side with atmosphere */}
+      {/* Left: Visual side */}
       <div className="relative hidden lg:flex flex-col justify-center bg-zinc-900 overflow-hidden p-16">
-        {/* Decorative background */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 h-96 w-96 bg-emerald-500 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-64 w-64 bg-teal-500 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
+          <div className="absolute bottom-0 left-0 h-64 w-64 bg-teal-500 rounded-full blur-3xl" style={{ animationDelay: "1.5s" }}></div>
         </div>
-
         <div className="relative z-10 text-white">
           <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
             Start Your<br />Learning Journey
           </h2>
-
           <p className="mt-6 text-xl text-white/80 max-w-xl animate-fade-in-up stagger-1">
             Create your account and unlock AI-powered tutoring, personalized quizzes, and intelligent study tools.
           </p>
-
           <div className="mt-12 space-y-4 animate-fade-in-up stagger-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+            {["Free to get started", "Instant access to all features", "No credit card required"].map((text) => (
+              <div key={text} className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <span className="text-lg">{text}</span>
               </div>
-              <span className="text-lg">Free to get started</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-lg">Instant access to all features</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-lg">No credit card required</span>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -131,15 +147,10 @@ export default function SignupPage() {
             </p>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-5 card animate-fade-in-up stagger-1"
-          >
+          <form onSubmit={handleSubmit} className="space-y-5 card animate-fade-in-up stagger-1">
+            {/* Username */}
             <div className="space-y-2">
-              <label
-                htmlFor="username"
-                className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
-              >
+              <label htmlFor="username" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Username
               </label>
               <input
@@ -149,12 +160,13 @@ export default function SignupPage() {
                 autoComplete="username"
                 required
                 value={username}
-                onChange={(event) => setUsername(event.target.value)}
+                onChange={(e) => setUsername(e.target.value)}
                 className="input"
                 placeholder="johndoe123"
               />
             </div>
 
+            {/* Email */}
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Email
@@ -166,17 +178,15 @@ export default function SignupPage() {
                 autoComplete="email"
                 required
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(e) => setEmail(e.target.value)}
                 className="input"
                 placeholder="student@unt.edu"
               />
             </div>
 
+            {/* Password */}
             <div className="space-y-2">
-              <label
-                htmlFor="password"
-                className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
-              >
+              <label htmlFor="password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Password
               </label>
               <input
@@ -186,17 +196,33 @@ export default function SignupPage() {
                 autoComplete="new-password"
                 required
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setPasswordTouched(true); }}
                 className="input"
-                placeholder="Min 12 characters"
+                placeholder="Create a strong password"
               />
+              {/* Live password rules */}
+              {passwordTouched && (
+                <ul className="mt-2 space-y-1">
+                  {passwordRuleResults.map((r) => (
+                    <li key={r.label} className={`flex items-center gap-2 text-xs ${r.passed ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                      {r.passed
+                        ? <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                        : <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                      {r.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!passwordTouched && (
+                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                  Must be 12+ characters with uppercase, lowercase, number &amp; special character.
+                </p>
+              )}
             </div>
 
+            {/* Confirm password */}
             <div className="space-y-2">
-              <label
-                htmlFor="confirmPassword"
-                className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
-              >
+              <label htmlFor="confirmPassword" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Confirm password
               </label>
               <input
@@ -206,15 +232,28 @@ export default function SignupPage() {
                 autoComplete="new-password"
                 required
                 value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                className="input"
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className={`input ${confirmPassword && confirmPassword !== password ? "border-red-400 focus:border-red-500 focus:ring-red-500/10" : ""}`}
                 placeholder="Repeat password"
               />
+              {confirmPassword && confirmPassword !== password && (
+                <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>
+              )}
             </div>
 
+            {/* Global error */}
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
-                {error}
+                <p className="font-medium">Unable to create account</p>
+                <p className="mt-0.5">{error}</p>
+                {(error.toLowerCase().includes("email already") || error.toLowerCase().includes("already exists")) && (
+                  <p className="mt-2 border-t border-red-200 pt-2 dark:border-red-800">
+                    Already have an account?{" "}
+                    <Link href="/login" className="font-semibold underline hover:opacity-80">
+                      Sign in →
+                    </Link>
+                  </p>
+                )}
               </div>
             )}
 
