@@ -21,15 +21,7 @@ jest.mock('next/navigation', () => ({
   useSearchParams: jest.fn(),
 }))
 
-// Google OAuth button is not relevant to form behavior tests
-jest.mock('../google-auth-button', () => ({
-  GoogleAuthButton: () => <button type="button">Continue with Google</button>,
-}))
-
-// Pin the API base URL so fetch calls are predictable
-jest.mock('../../lib/api', () => ({
-  getApiBaseUrl: () => 'http://localhost:8000/api/v1',
-}))
+// @/lib/api and @/components/google-auth-button are mocked globally in jest.setup.js
 
 const mockPush = jest.fn()
 

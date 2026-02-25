@@ -5,6 +5,18 @@
 
 import '@testing-library/jest-dom'
 
+// Mock @/lib/api globally — avoids jest.mock hoist resolution issues in CI
+// (babel-plugin-jest-hoist bypasses moduleNameMapper; setup-file mocks do not)
+jest.mock('@/lib/api', () => ({
+  getApiBaseUrl: jest.fn(() => 'http://localhost:8000/api/v1'),
+  API_BASE_URL: 'http://localhost:8000/api/v1',
+}))
+
+// Mock Google Auth Button globally — not relevant to form behavior tests
+jest.mock('@/components/google-auth-button', () => ({
+  GoogleAuthButton: () => null,
+}))
+
 // Mock Next.js router
 jest.mock('next/navigation', () => ({
   useRouter() {
