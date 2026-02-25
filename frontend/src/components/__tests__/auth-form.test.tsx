@@ -5,6 +5,7 @@
 
 import React from 'react'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import * as NextNavigation from 'next/navigation'
 import LoginPage from '../../app/login/page'
 
 // next/link renders as a plain anchor in tests
@@ -13,6 +14,12 @@ jest.mock('next/link', () => {
     return <a href={href}>{children}</a>
   }
 })
+
+// Mock next/navigation so useRouter and useSearchParams can be controlled per-test
+jest.mock('next/navigation', () => ({
+  useRouter: jest.fn(),
+  useSearchParams: jest.fn(),
+}))
 
 // Google OAuth button is not relevant to form behavior tests
 jest.mock('@/components/google-auth-button', () => ({
@@ -31,7 +38,7 @@ beforeEach(() => {
   mockPush.mockClear()
 
   // Re-apply router mock with a stable push spy for each test
-  jest.spyOn(require('next/navigation'), 'useRouter').mockReturnValue({
+  ;(NextNavigation.useRouter as jest.Mock).mockReturnValue({
     push: mockPush,
     replace: jest.fn(),
     prefetch: jest.fn(),
@@ -39,7 +46,7 @@ beforeEach(() => {
   })
 
   // Default: useSearchParams returns null for all keys (no ?signup= param)
-  jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue({
+  ;(NextNavigation.useSearchParams as jest.Mock).mockReturnValue({
     get: jest.fn().mockReturnValue(null),
   })
 
@@ -141,7 +148,7 @@ describe('LoginPage', () => {
   })
 
   it('shows signup success banner when ?signup=success is in URL', () => {
-    jest.spyOn(require('next/navigation'), 'useSearchParams').mockReturnValue({
+    ;(NextNavigation.useSearchParams as jest.Mock).mockReturnValue({
       get: jest.fn((key: string) => (key === 'signup' ? 'success' : null)),
     })
 
