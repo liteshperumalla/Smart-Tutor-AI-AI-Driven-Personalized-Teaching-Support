@@ -52,6 +52,8 @@ beautifulsoup4==4.14.3
     #   llama-index-tools-google
 bert-score==0.3.13
     # via -r backend/requirements.in
+bleach==6.3.0
+    # via -r backend/requirements.in
 blis==1.3.3
     # via thinc
 bm25s==0.2.14
@@ -455,7 +457,9 @@ platformdirs==4.5.1
     #   llama-cloud-services
     #   llama-index-core
 posthog==5.4.0
-    # via chromadb
+    # via
+    #   -r backend/requirements.in
+    #   chromadb
 preshed==3.0.12
     # via
     #   spacy
@@ -511,6 +515,8 @@ pydantic-core==2.41.5
     # via pydantic
 pygments==2.19.2
     # via rich
+pyjwt==2.11.0
+    # via -r backend/requirements.in
 pyparsing==3.2.5
     # via
     #   httplib2
@@ -761,6 +767,8 @@ watchfiles==1.1.1
     # via uvicorn
 weasel==0.4.3
     # via spacy
+webencodings==0.5.1
+    # via bleach
 websocket-client==1.9.0
     # via kubernetes
 websockets==15.0.1

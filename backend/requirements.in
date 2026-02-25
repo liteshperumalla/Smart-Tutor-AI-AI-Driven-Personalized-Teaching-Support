@@ -56,3 +56,8 @@ filelock>=3.20.3      # CVE-2026-22701 TOCTOU symlink vuln
 
 # Monitoring & Observability
 prometheus-client>=0.20.0  # Metrics collection and export
+
+# Content Security & Analytics
+bleach>=6.1.0      # HTML sanitization (validators.py)
+posthog>=3.0.0     # Product analytics
+PyJWT>=2.8.0       # JWT encoding/decoding (jwt_blacklist.py uses jwt package)
