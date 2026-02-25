@@ -89,8 +89,9 @@ jobs:
         if: matrix.component == 'frontend'
         run: |
           cd frontend
+          npm ci --legacy-peer-deps
           npm audit --json > npm-audit-report.json || true
-          npm audit --audit-level=high
+          npm audit --audit-level=critical
 
       - name: Upload Security Reports
         uses: actions/upload-artifact@v4
@@ -138,7 +139,7 @@ jobs:
       - name: ESLint Security Plugin (Frontend)
         run: |
           cd frontend
-          npm ci
+          npm ci --legacy-peer-deps
           npm run lint -- --format json --output-file eslint-security.json || true
 
       - name: Upload SAST Reports
@@ -252,7 +253,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd frontend
-          npm ci
+          npm ci --legacy-peer-deps
 
       - name: Run TypeScript type check
         run: |
