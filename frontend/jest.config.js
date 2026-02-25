@@ -20,10 +20,11 @@ const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
-    // Intercept @/lib/api in BOTH alias form ("@/lib/api") and the relative-path
-    // form ("../../lib/api") that next/jest's SWC emits after resolving tsconfig paths.
-    // Must come BEFORE the generic ^@/ catch-all so it takes precedence.
+    // Intercept lib/api and lib/auth in BOTH alias form ("@/lib/api") and the
+    // relative-path form ("../../lib/api") that next/jest's SWC emits after
+    // resolving tsconfig paths. Must come BEFORE the generic ^@/ catch-all.
     '/lib/api$': '<rootDir>/src/lib/__mocks__/api.ts',
+    '/lib/auth$': '<rootDir>/src/lib/__mocks__/auth.ts',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   collectCoverageFrom: [

@@ -95,6 +95,8 @@ click==8.3.1
     #   uvicorn
 cloudpathlib==0.23.0
     # via weasel
+cobble==0.1.4
+    # via mammoth
 colorama==0.4.6
     # via griffe
 coloredlogs==15.0.1
@@ -118,6 +120,7 @@ dataclasses-json==0.6.7
     # via llama-index-core
 defusedxml==0.7.1
     # via
+    #   fpdf2
     #   llama-index-readers-file
     #   youtube-transcript-api
 deprecated==1.2.18
@@ -154,7 +157,11 @@ filetype==1.2.0
 flatbuffers==25.9.23
     # via onnxruntime
 fonttools==4.61.1
-    # via matplotlib
+    # via
+    #   fpdf2
+    #   matplotlib
+fpdf2==2.8.6
+    # via -r backend/requirements.in
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -344,6 +351,8 @@ lxml==6.0.2
     #   python-pptx
 mako==1.3.10
     # via alembic
+mammoth==1.11.0
+    # via -r backend/requirements.in
 markdown-it-py==4.0.0
     # via rich
 markupsafe==3.0.3
@@ -446,6 +455,7 @@ packaging==24.2
     #   marshmallow
     #   matplotlib
     #   onnxruntime
+    #   pytesseract
     #   spacy
     #   thinc
     #   transformers
@@ -459,8 +469,10 @@ passlib==1.7.4
 pillow==12.1.1
     # via
     #   -r backend/requirements.in
+    #   fpdf2
     #   llama-index-core
     #   matplotlib
+    #   pytesseract
     #   python-pptx
     #   sentence-transformers
 platformdirs==4.5.1
@@ -544,6 +556,8 @@ pyproject-hooks==1.2.0
     # via build
 pystemmer==2.2.0.3
     # via llama-index-retrievers-bm25
+pytesseract==0.3.13
+    # via -r backend/requirements.in
 python-dateutil==2.9.0.post0
     # via
     #   botocore
