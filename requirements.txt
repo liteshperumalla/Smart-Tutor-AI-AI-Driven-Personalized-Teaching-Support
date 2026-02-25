@@ -614,3 +614,4 @@ rouge-score>=0.1.2
 pdfplumber>=0.10.0
 python-magic>=0.4.27
 langgraph>=0.1.0
+python-multipart>=0.0.6

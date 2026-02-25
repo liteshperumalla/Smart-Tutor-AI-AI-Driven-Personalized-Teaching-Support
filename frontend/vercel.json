@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "name": "smart-ai-tutor",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "installCommand": "npm ci --legacy-peer-deps",
