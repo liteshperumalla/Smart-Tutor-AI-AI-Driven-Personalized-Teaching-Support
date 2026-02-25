@@ -117,7 +117,9 @@ cymem==2.0.13
 dataclasses-json==0.6.7
     # via llama-index-core
 defusedxml==0.7.1
-    # via llama-index-readers-file
+    # via
+    #   llama-index-readers-file
+    #   youtube-transcript-api
 deprecated==1.2.18
     # via
     #   banks
@@ -588,6 +590,7 @@ requests==2.32.5
     #   tiktoken
     #   transformers
     #   weasel
+    #   youtube-transcript-api
 requests-oauthlib==2.0.0
     # via
     #   google-auth-oauthlib
@@ -787,5 +790,7 @@ wrapt==1.17.3
     #   smart-open
 yarl==1.22.0
     # via aiohttp
+youtube-transcript-api==1.2.4
+    # via -r backend/requirements.in
 zipp==3.23.0
     # via importlib-metadata
