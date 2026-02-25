@@ -201,7 +201,7 @@ export default function CodeSandboxPage() {
             Coding Agent
           </h1>
           <p className="mt-3 text-base sm:mt-4 sm:text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            Write, run, explain, and debug code with AI assistance powered by Qwen2.5 Coder
+            Write, run, explain, and debug code with AI assistance powered by Meta Llama 3.1 70B
           </p>
         </div>
       </header>
@@ -265,7 +265,7 @@ export default function CodeSandboxPage() {
             <button
               type="button"
               onClick={() => setShowGenerateInput(!showGenerateInput)}
-              className="btn-secondary"
+              className="rounded-full border-2 border-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-800 hover:text-white dark:border-zinc-300 dark:text-zinc-200 dark:hover:bg-zinc-300 dark:hover:text-zinc-900"
             >
               Generate Code
             </button>
@@ -273,7 +273,7 @@ export default function CodeSandboxPage() {
               type="button"
               onClick={handleExplainCode}
               disabled={explaining || !code.trim()}
-              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+              className="rounded-full border-2 border-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-800 hover:text-white dark:border-zinc-300 dark:text-zinc-200 dark:hover:bg-zinc-300 dark:hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {explaining ? (
                 <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Explaining...</>
@@ -285,7 +285,7 @@ export default function CodeSandboxPage() {
               type="button"
               onClick={handleDebugCode}
               disabled={debugging || !code.trim()}
-              className="btn-secondary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+              className="rounded-full border-2 border-zinc-800 px-4 py-2.5 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-800 hover:text-white dark:border-zinc-300 dark:text-zinc-200 dark:hover:bg-zinc-300 dark:hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {debugging ? (
                 <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-zinc-900 border-t-transparent dark:border-white"></span> Debugging...</>

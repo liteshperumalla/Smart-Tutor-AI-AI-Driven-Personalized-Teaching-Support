@@ -23,7 +23,7 @@ import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/
 import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
-  Globe, Paperclip, Feather, ChevronRight, Image, FileText, FlaskConical, ShieldAlert
+  Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { ResponseActionBar } from "@/components/chat/response-action-bar";
@@ -1384,7 +1384,6 @@ function ChatWorkspaceContent() {
                   )}
                   {selectedStyle !== 'normal' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
-                      <Feather className="h-3 w-3" />
                       {currentStyle.name}
                     </span>
                   )}
@@ -1474,7 +1473,6 @@ function ChatWorkspaceContent() {
                             className="w-full flex items-center justify-between px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                           >
                             <div className="flex items-center gap-3">
-                              <Feather className="h-5 w-5 text-zinc-500" />
                               <span className="text-sm">Use style</span>
                             </div>
                             <ChevronRight className="h-4 w-4 text-zinc-400" />
@@ -1482,7 +1480,7 @@ function ChatWorkspaceContent() {
 
                           {/* Style submenu */}
                           {styleSubmenuOpen && (
-                            <div className="absolute left-full bottom-0 ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-50 animate-fade-in-up">
+                            <div className="absolute left-0 bottom-full mb-1 sm:left-full sm:bottom-0 sm:mb-0 sm:ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-50 animate-fade-in-up">
                               <div className="py-2">
                                 {RESPONSE_STYLES.map((style) => (
                                   <button
@@ -1498,7 +1496,6 @@ function ChatWorkspaceContent() {
                                     }`}
                                   >
                                     <div className="flex items-center gap-3">
-                                      <Feather className={`h-4 w-4 ${selectedStyle === style.id ? 'text-blue-500' : 'text-zinc-500'}`} />
                                       <span className={`text-sm ${selectedStyle === style.id ? 'text-blue-500 font-medium' : 'text-zinc-700 dark:text-zinc-300'}`}>
                                         {style.name}
                                       </span>
@@ -1865,7 +1862,7 @@ function ChatBubble({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-2 min-w-0 max-w-full">
           {/* Attached files - shown above the message */}
           {message.attachments && message.attachments.length > 0 && (
             <div className="flex flex-wrap justify-end gap-2">
@@ -1889,7 +1886,7 @@ function ChatBubble({
               )}
             </div>
           )}
-          <div className="max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
+          <div className="max-w-[85%] sm:max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
           </div>
           {/* Copy and Edit buttons - visible on hover */}

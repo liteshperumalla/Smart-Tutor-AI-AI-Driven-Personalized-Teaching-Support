@@ -668,7 +668,7 @@ export function SiteChrome({
         {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
         <main className={
           isFullHeightRoute
-            ? "flex-1 flex flex-col overflow-hidden pt-14 pb-12 lg:pt-0"
+            ? "flex-1 flex flex-col overflow-hidden pt-14 pb-16 lg:pt-0"
             : "flex-1 overflow-y-auto px-4 py-5 pt-[4.75rem] pb-20 sm:px-8 lg:pt-5"
         }>
           {children}
@@ -677,7 +677,7 @@ export function SiteChrome({
         {/* Fixed Footer Nav — improved touch targets for mobile */}
         <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
           <nav aria-label="Site navigation" className="mx-auto max-w-6xl px-4 py-2 sm:px-6">
-            <div className="flex flex-wrap justify-center gap-x-1 gap-y-0">
+            <div className="flex flex-nowrap items-center justify-center">
               {navLinks
                 .filter((link) => !link.adminOnly || isAdmin)
                 .map((link) => {
@@ -687,10 +687,10 @@ export function SiteChrome({
                       key={link.href}
                       href={link.href}
                       aria-label={link.label}
-                      className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs uppercase tracking-[0.15em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
+                      className="flex flex-1 min-h-[44px] items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs uppercase tracking-[0.15em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
                     >
                       <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                      <span className="hidden xs:inline sm:inline" aria-hidden="true">{link.label}</span>
+                      <span className="hidden xl:inline" aria-hidden="true">{link.label}</span>
                     </Link>
                   );
                 })}
