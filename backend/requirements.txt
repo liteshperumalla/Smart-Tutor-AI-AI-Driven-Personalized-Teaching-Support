@@ -131,10 +131,14 @@ distro==1.9.0
     # via
     #   openai
     #   posthog
+dnspython==2.8.0
+    # via email-validator
 durationpy==0.10
     # via kubernetes
 ecdsa==0.19.1
     # via python-jose
+email-validator==2.3.0
+    # via pydantic
 fastapi==0.133.1
     # via -r backend/requirements.in
 filelock==3.20.3
@@ -223,6 +227,7 @@ humanfriendly==10.0
 idna==3.11
     # via
     #   anyio
+    #   email-validator
     #   httpx
     #   langfuse
     #   requests
@@ -496,6 +501,7 @@ pycparser==3.0
     # via cffi
 pydantic==2.12.5
     # via
+    #   -r backend/requirements.in
     #   banks
     #   chromadb
     #   confection
