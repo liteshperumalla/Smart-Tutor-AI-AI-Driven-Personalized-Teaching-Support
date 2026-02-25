@@ -68,3 +68,4 @@ python-docx>=0.8.11           # Word document parsing for content ingestion
 mammoth>=1.6.0                # Word document to HTML/markdown conversion
 fpdf2>=2.7.6                  # PDF generation (utils.py)
 pytesseract>=0.3.10           # OCR via Tesseract (utils.py image parsing)
+pymupdf>=1.23.0               # PDF parsing via fitz module (research_service.py)

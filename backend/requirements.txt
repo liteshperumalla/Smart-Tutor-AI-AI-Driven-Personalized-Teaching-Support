@@ -542,6 +542,8 @@ pygments==2.19.2
     # via rich
 pyjwt==2.11.0
     # via -r backend/requirements.in
+pymupdf==1.27.1
+    # via -r backend/requirements.in
 pyparsing==3.2.5
     # via
     #   httplib2
