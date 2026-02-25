@@ -3,7 +3,7 @@
 > AI-driven personalized teaching companion for INFO 5731 at University of North Texas.
 > Grounding LLM responses in course materials using Retrieval-Augmented Generation.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-black?logo=vercel)](https://frontend-iota-cyan-70.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-black?logo=vercel)](https://smart-ai-tutor.vercel.app)
 [![Backend](https://img.shields.io/badge/Backend-AWS_EC2-orange?logo=amazon-aws)](http://52.2.3.101)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-blue?logo=github-actions)](https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support/actions)
 [![Code Review](https://img.shields.io/badge/Code_Review-CodeRabbit_AI-green)](https://coderabbit.ai)
@@ -23,7 +23,7 @@ Smart Tutor AI solves the problem of generic, hallucination-prone LLM responses 
 
 | Environment | URL |
 |---|---|
-| **Frontend (Vercel)** | https://frontend-iota-cyan-70.vercel.app |
+| **Frontend (Vercel)** | https://smart-ai-tutor.vercel.app |
 | **Backend API** | http://52.2.3.101/health |
 | **API Docs** | http://52.2.3.101/docs |
 
