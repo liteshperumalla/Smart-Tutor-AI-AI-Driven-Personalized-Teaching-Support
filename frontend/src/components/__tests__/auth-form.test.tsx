@@ -21,7 +21,10 @@ jest.mock('next/navigation', () => ({
   useSearchParams: jest.fn(),
 }))
 
-// @/lib/api and @/components/google-auth-button are mocked globally in jest.setup.js
+// Mock GoogleAuthButton — not relevant to form behaviour tests
+jest.mock('../google-auth-button', () => ({
+  GoogleAuthButton: () => null,
+}))
 
 const mockPush = jest.fn()
 

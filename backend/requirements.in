@@ -64,3 +64,4 @@ PyJWT>=2.8.0       # JWT encoding/decoding (jwt_blacklist.py uses jwt package)
 pydantic[email]>=2.0.0  # EmailStr support in validators.py
 youtube-transcript-api>=0.6.0  # YouTube transcript ingestion
 python-pptx>=0.6.23           # PowerPoint file parsing for content ingestion
+python-docx>=0.8.11           # Word document parsing for content ingestion

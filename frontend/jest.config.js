@@ -2,6 +2,11 @@
  * Jest Configuration for Smart AI Tutor Frontend
  */
 
+// Set env vars before any module loads so api.ts constants are initialised correctly.
+// This avoids jest.mock('@/lib/api') which fails in CI when the module chain
+// includes a "use client" file (auth.ts) that next/jest can't resolve for mocking.
+process.env.NEXT_PUBLIC_API_BASE_URL = 'http://localhost:8000/api/v1'
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const nextJest = require('next/jest')
 
