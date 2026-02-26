@@ -160,6 +160,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      checks: write      # required by EnricoMi/publish-unit-test-result-action
+      pull-requests: write  # required for PR comments on test results
     needs: [secret-scanning]
 
     services:
