@@ -305,6 +305,11 @@ jobs:
     needs: [backend-tests, frontend-tests]
     if: github.event_name == 'push'
 
+    env:
+      POSTGRES_PASSWORD: ci_test_password
+      NEO4J_PASSWORD: ci_test_password_neo4j
+      GRAFANA_ADMIN_PASSWORD: ci_admin_pass
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
