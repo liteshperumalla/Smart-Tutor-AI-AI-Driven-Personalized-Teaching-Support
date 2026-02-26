@@ -1,4 +1,7 @@
 langfuse==2.60.5
+# Security pins — override vulnerable transitive versions
+nltk>=3.9.3   # Zip Slip CVE fixed in 3.9.3
+pypdf>=6.7.2  # Infinite loop CVE fixed in 6.7.2
      llama-index>=0.13
      llama-index-core>=0.13
      llama-index-callbacks-langfuse>=0.4.1

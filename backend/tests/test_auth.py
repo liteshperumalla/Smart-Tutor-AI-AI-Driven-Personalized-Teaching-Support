@@ -194,9 +194,9 @@ class TestJWTSecurity:
 
     def test_expired_token_rejected(self, test_client):
         """A manually crafted expired token must return 401"""
-        from jose import jwt
+        import jwt as pyjwt
         from datetime import datetime, timedelta, timezone
-        expired_token = jwt.encode(
+        expired_token = pyjwt.encode(
             {
                 "sub": "testuser",
                 "email": "test@example.com",

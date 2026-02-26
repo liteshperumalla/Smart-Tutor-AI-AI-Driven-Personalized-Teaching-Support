@@ -6,7 +6,8 @@ Supports both HS256 (symmetric) and RS256 (asymmetric) algorithms
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from pathlib import Path
 import uuid
 from .config import config
@@ -235,9 +236,9 @@ class JWTService:
             verification_key = self._get_verification_key()
             payload = jwt.decode(
                 token,
-                verification_key,
+                options={"verify_signature": False, "verify_exp": False},
                 algorithms=[self.algorithm],
-                options={"verify_signature": False, "verify_exp": False}  # Just decode, don't verify
+                key=""
             )
             exp = payload.get("exp")
             if exp:

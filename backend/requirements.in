@@ -3,7 +3,7 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 
 # Security & Authentication
-python-jose[cryptography]>=3.3.0
+# python-jose removed — replaced by PyJWT to eliminate ecdsa transitive dep (Minerva CVE, no upstream fix)
 passlib[bcrypt]>=1.7.4
 slowapi>=0.1.9
 python-multipart>=0.0.6
@@ -42,7 +42,7 @@ spacy>=3.7.0  # NER, tokenization, query enhancement
 # Note: Install spaCy model separately: python -m spacy download en_core_web_sm
 
 # LLM Evaluation & Metrics
-nltk>=3.8.1  # BLEU score, tokenization
+nltk>=3.9.3  # BLEU score, tokenization — 3.9.3 fixes Zip Slip CVE
 rouge-score>=0.1.2  # ROUGE metrics for summarization
 bert-score>=0.3.13  # Semantic similarity using BERT embeddings
 scipy>=1.11.0  # Statistical testing (t-tests, effect size)
@@ -50,7 +50,7 @@ scipy>=1.11.0  # Statistical testing (t-tests, effect size)
 # Security: minimum versions for vulnerable transitive dependencies
 pillow>=12.1.1        # CVE-2026-25990 out-of-bounds write (PSD)
 protobuf>=6.33.5      # CVE-2026-0994 JSON recursion depth bypass
-pypdf>=6.6.2          # CVE-2026-24688 infinite loop on bookmarks
+pypdf>=6.7.2          # 6.7.2 fixes infinite loop on circular /Prev cross-reference streams
 pyasn1>=0.6.2         # CVE-2026-23490 DoS in decoder
 filelock>=3.20.3      # CVE-2026-22701 TOCTOU symlink vuln
 
