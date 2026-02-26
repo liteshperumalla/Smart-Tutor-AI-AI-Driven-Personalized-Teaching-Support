@@ -11,7 +11,7 @@ from datasets import load_dataset
 
 # ----------------- SETUP -----------------
 # Set Hugging Face token as environment variable or use login()
-os.environ["HF_TOKEN"] = "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"
+os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")  # Set HF_TOKEN in your environment, never hardcode
 
 # Device setup
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
