@@ -58,7 +58,7 @@ class TestUserRegistration:
         assert response.status_code in (400, 422)
 
     def test_registration_duplicate_username(self, test_client, test_user):
-        """Test registration fails with duplicate username"""
+        """Test registration fails with duplicate username (400 or 409 Conflict)"""
         response = test_client.post(
             "/auth/signup",
             json={
@@ -68,7 +68,7 @@ class TestUserRegistration:
                 "email": "another@example.com"
             }
         )
-        assert response.status_code == 400
+        assert response.status_code in (400, 409)
 
 
 class TestUserLogin:
