@@ -25,8 +25,15 @@ from backend.auth_service import get_auth_service
 
 @pytest.fixture(scope="session")
 def test_client():
-    """Create a test client for the FastAPI app"""
-    with TestClient(app) as client:
+    """Create a test client for the FastAPI app.
+
+    raise_server_exceptions=False: unhandled server exceptions are returned
+    as HTTP 500 responses instead of being re-raised in the test process.
+    This allows tests to assert on status codes for AWS-dependent endpoints
+    that fail in CI (no credentials) without crashing the test runner.
+    Tests that expect 200 still fail correctly via their own assertions.
+    """
+    with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 
 
