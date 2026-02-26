@@ -327,6 +327,22 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium firefox webkit
 
+      - name: Create CI .env file
+        run: |
+          # Docker Compose requires .env to exist (env_file: .env directive).
+          # Provide non-sensitive CI placeholder values so Compose can parse the file.
+          cat > .env << 'ENVEOF'
+          POSTGRES_PASSWORD=ci_test_password
+          NEO4J_PASSWORD=ci_test_password_neo4j
+          GRAFANA_ADMIN_PASSWORD=ci_admin_pass
+          JWT_SECRET_KEY=ci_test_jwt_secret_key_not_for_production
+          ENVIRONMENT=development
+          DEBUG=true
+          STORAGE_BACKEND=filesystem
+          SECRETS_PROVIDER=env
+          RATE_LIMIT_ENABLED=false
+          ENVEOF
+
       - name: Start services with Docker Compose
         run: |
           docker compose up -d
