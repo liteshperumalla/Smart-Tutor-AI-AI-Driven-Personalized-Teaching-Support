@@ -23,8 +23,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies (as root) - use BuildKit cache mount for pip cache
+# Pre-install CPU-only PyTorch BEFORE requirements.txt to prevent pip from pulling
+# the default CUDA build (~3GB) from PyPI. This EC2 instance has no GPU.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
 
 # Download RAG dependencies (as root) - use BuildKit cache mount for nltk data
