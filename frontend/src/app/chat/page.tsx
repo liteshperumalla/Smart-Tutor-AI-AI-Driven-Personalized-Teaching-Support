@@ -26,6 +26,7 @@ import {
   Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { ResponseActionBar } from "@/components/chat/response-action-bar";
 import { SourcesSidebar } from "@/components/chat/sources-sidebar";
 import { ShareModal } from "@/components/chat/share-modal";
@@ -52,6 +53,7 @@ function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
   const { token } = useAuthToken();
   const { user, isAdmin } = useUser();
+  const agentsEnabled = useFeatureFlag("agent-system-enabled");
   const [sessions, setSessions] = useState<ChatSessionDTO[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [composerText, setComposerText] = useState("");
@@ -1185,26 +1187,28 @@ function ChatWorkspaceContent() {
               </h1>
             </div>
           )}
-          {isAdmin && (
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                <ShieldAlert className="h-3 w-3" />
-                Admin
-              </span>
-              <Link
-                href="/admin"
-                className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
-              >
-                Dashboard →
-              </Link>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto flex-shrink-0">
+            {isAdmin && (
+              <>
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                  <ShieldAlert className="h-3 w-3" />
+                  Admin
+                </span>
+                <Link
+                  href="/admin"
+                  className="hidden sm:inline text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
+                >
+                  Dashboard →
+                </Link>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Main content area */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="flex flex-col max-w-5xl mx-auto w-full px-6 animate-fade-in-up">
+      <div className="flex flex-col max-w-5xl mx-auto w-full px-3 sm:px-6 animate-fade-in-up">
         {/* Error banner */}
         {streamError && (
           <div className="mt-4 rounded-xl bg-red-500/10 px-4 py-3">
@@ -1297,7 +1301,7 @@ function ChatWorkspaceContent() {
       </div>
 
       {/* Input area - fixed at bottom */}
-      <div className="flex-shrink-0 max-w-5xl mx-auto w-full px-6 pb-4 pt-2">
+      <div className="flex-shrink-0 max-w-5xl mx-auto w-full px-3 sm:px-6 pb-4 pt-2">
           {isListening ? (
             /* Dictation mode - waveform animation */
             <div className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3">
@@ -1390,7 +1394,7 @@ function ChatWorkspaceContent() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3 rounded-full border border-zinc-200 bg-zinc-100 px-4 py-2 focus-within:border-zinc-300 focus-within:bg-white transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-800">
+              <div className="flex items-center gap-2 sm:gap-3 rounded-full border border-zinc-200 bg-zinc-100 px-3 sm:px-4 py-2 focus-within:border-zinc-300 focus-within:bg-white transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-800">
                 {/* Plus Menu Button (Left side) */}
                 <div className="relative" ref={plusMenuRef}>
                   <button
@@ -1539,10 +1543,10 @@ function ChatWorkspaceContent() {
                     <button
                       type="button"
                       onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium"
+                      className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium"
                       title="Select model"
                     >
-                      <span>{currentModel.shortName}</span>
+                      <span className="hidden sm:inline">{currentModel.shortName}</span>
                       <ChevronDown className={`h-4 w-4 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
