@@ -290,12 +290,16 @@ jobs:
             echo "=== Authenticating with GHCR ==="
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
 
-            echo "=== Pulling image: $BACKEND_IMAGE ==="
-            docker pull "$BACKEND_IMAGE"
-
             echo "=== Stopping existing backend container ==="
             docker stop smart-tutor-backend 2>/dev/null || true
             docker rm   smart-tutor-backend 2>/dev/null || true
+
+            echo "=== Freeing disk space before pull ==="
+            docker images --format '{{.Repository}}:{{.Tag}}' | grep 'smart-tutor.*backend' | xargs -r docker rmi -f || true
+            docker image prune -f || true
+
+            echo "=== Pulling image: $BACKEND_IMAGE ==="
+            docker pull "$BACKEND_IMAGE"
 
             echo "=== Starting new backend container ==="
             docker run -d \

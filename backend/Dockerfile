@@ -9,19 +9,15 @@ RUN groupadd -r appuser && useradd -r -g appuser -u 1001 appuser
 WORKDIR /app
 
 # Install system dependencies (as root)
+# NOTE: default-jdk, golang-go, nodejs, typescript are only needed for code execution
+# (ENABLE_CODE_EXECUTION=true). Excluded here to keep the image under 1GB.
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     libpq-dev \
     curl \
-    nodejs \
-    default-jdk \
-    golang-go \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
-
-# Install TypeScript globally (as root)
-RUN npm install -g typescript 2>/dev/null || true
 
 # Copy requirements
 COPY requirements.txt .
