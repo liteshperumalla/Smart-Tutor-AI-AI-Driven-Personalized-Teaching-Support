@@ -2,12 +2,29 @@
 # Creates a production-ready VPC with public, private, and database subnets across multiple AZs
 
 locals {
+  # Resolve name: explicit > project_name-environment > fallback
+  name = var.name != "" ? var.name : (
+    var.project_name != "" && var.environment != "" ? "${var.project_name}-${var.environment}" : "smart-tutor"
+  )
+
   azs = var.availability_zones
 
-  # Calculate subnet CIDRs
-  public_subnet_cidrs   = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i)]
-  private_subnet_cidrs  = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i + 10)]
-  database_subnet_cidrs = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i + 20)]
+  # Honour passed-in CIDRs when provided; otherwise auto-calculate from vpc_cidr
+  public_subnet_cidrs = (
+    length(var.public_subnet_cidrs) > 0 ? var.public_subnet_cidrs
+    : [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i)]
+  )
+  private_subnet_cidrs = (
+    length(var.private_subnet_cidrs) > 0 ? var.private_subnet_cidrs
+    : [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i + 10)]
+  )
+  database_subnet_cidrs = (
+    length(var.database_subnet_cidrs) > 0 ? var.database_subnet_cidrs
+    : [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i + 20)]
+  )
+
+  # Resolve flow logs toggle: enable_vpc_flow_logs overrides enable_flow_logs when set
+  flow_logs_enabled = var.enable_vpc_flow_logs != null ? var.enable_vpc_flow_logs : local.flow_logs_enabled
 }
 
 # VPC
@@ -19,7 +36,7 @@ resource "aws_vpc" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-vpc"
+      Name = "${local.name}-vpc"
     }
   )
 }
@@ -31,7 +48,7 @@ resource "aws_internet_gateway" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-igw"
+      Name = "${local.name}-igw"
     }
   )
 }
@@ -48,7 +65,7 @@ resource "aws_subnet" "public" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-public-${local.azs[count.index]}"
+      Name = "${local.name}-public-${local.azs[count.index]}"
       Tier = "Public"
       Type = "public"
     }
@@ -66,7 +83,7 @@ resource "aws_subnet" "private" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-private-${local.azs[count.index]}"
+      Name = "${local.name}-private-${local.azs[count.index]}"
       Tier = "Private"
       Type = "private"
     }
@@ -84,7 +101,7 @@ resource "aws_subnet" "database" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-database-${local.azs[count.index]}"
+      Name = "${local.name}-database-${local.azs[count.index]}"
       Tier = "Database"
       Type = "database"
     }
@@ -100,7 +117,7 @@ resource "aws_eip" "nat" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-nat-eip-${count.index + 1}"
+      Name = "${local.name}-nat-eip-${count.index + 1}"
     }
   )
 
@@ -117,7 +134,7 @@ resource "aws_nat_gateway" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-nat-${local.azs[count.index]}"
+      Name = "${local.name}-nat-${local.azs[count.index]}"
     }
   )
 
@@ -131,7 +148,7 @@ resource "aws_route_table" "public" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-public-rt"
+      Name = "${local.name}-public-rt"
       Type = "public"
     }
   )
@@ -161,7 +178,7 @@ resource "aws_route_table" "private" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-private-rt-${var.single_nat_gateway ? "shared" : local.azs[count.index]}"
+      Name = "${local.name}-private-rt-${var.single_nat_gateway ? "shared" : local.azs[count.index]}"
       Type = "private"
     }
   )
@@ -191,7 +208,7 @@ resource "aws_route_table" "database" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-database-rt"
+      Name = "${local.name}-database-rt"
       Type = "database"
     }
   )
@@ -207,7 +224,7 @@ resource "aws_route_table_association" "database" {
 
 # VPC Flow Logs for security monitoring
 resource "aws_flow_log" "main" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = local.flow_logs_enabled ? 1 : 0
 
   iam_role_arn    = aws_iam_role.flow_logs[0].arn
   log_destination = aws_cloudwatch_log_group.flow_logs[0].arn
@@ -217,16 +234,16 @@ resource "aws_flow_log" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-flow-logs"
+      Name = "${local.name}-flow-logs"
     }
   )
 }
 
 # CloudWatch Log Group for VPC Flow Logs
 resource "aws_cloudwatch_log_group" "flow_logs" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = local.flow_logs_enabled ? 1 : 0
 
-  name              = "/aws/vpc/${var.name}-flow-logs"
+  name              = "/aws/vpc/${local.name}-flow-logs"
   retention_in_days = var.flow_logs_retention_days
 
   tags = var.tags
@@ -234,9 +251,9 @@ resource "aws_cloudwatch_log_group" "flow_logs" {
 
 # IAM Role for VPC Flow Logs
 resource "aws_iam_role" "flow_logs" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = local.flow_logs_enabled ? 1 : 0
 
-  name = "${var.name}-vpc-flow-logs-role"
+  name = "${local.name}-vpc-flow-logs-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -256,9 +273,9 @@ resource "aws_iam_role" "flow_logs" {
 
 # IAM Policy for VPC Flow Logs
 resource "aws_iam_role_policy" "flow_logs" {
-  count = var.enable_flow_logs ? 1 : 0
+  count = local.flow_logs_enabled ? 1 : 0
 
-  name = "${var.name}-vpc-flow-logs-policy"
+  name = "${local.name}-vpc-flow-logs-policy"
   role = aws_iam_role.flow_logs[0].id
 
   policy = jsonencode({
@@ -288,33 +305,33 @@ resource "aws_vpn_gateway" "main" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-vpn-gateway"
+      Name = "${local.name}-vpn-gateway"
     }
   )
 }
 
 # DB Subnet Group for RDS
 resource "aws_db_subnet_group" "main" {
-  name       = "${var.name}-db-subnet-group"
+  name       = "${local.name}-db-subnet-group"
   subnet_ids = aws_subnet.database[*].id
 
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-db-subnet-group"
+      Name = "${local.name}-db-subnet-group"
     }
   )
 }
 
 # ElastiCache Subnet Group
 resource "aws_elasticache_subnet_group" "main" {
-  name       = "${var.name}-cache-subnet-group"
+  name       = "${local.name}-cache-subnet-group"
   subnet_ids = aws_subnet.database[*].id
 
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-cache-subnet-group"
+      Name = "${local.name}-cache-subnet-group"
     }
   )
 }

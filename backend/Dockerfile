@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Install Python dependencies (as root) - use BuildKit cache mount for pip cache
 # Pre-install CPU-only PyTorch BEFORE requirements.txt to prevent pip from pulling

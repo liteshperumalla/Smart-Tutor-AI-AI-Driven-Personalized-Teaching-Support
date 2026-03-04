@@ -26,12 +26,16 @@ function GoogleCallbackContent() {
       try {
         const parsed = JSON.parse(atob(state));
         intent = parsed.intent || "login";
-        const stored = window.sessionStorage.getItem("google_oauth_state");
+        // Read nonce from cookie (more reliable than sessionStorage on iOS Safari,
+        // which can clear sessionStorage during cross-origin OAuth navigation)
+        const cookieMatch = document.cookie.match(/(?:^|;\s*)google_oauth_nonce=([^;]*)/);
+        const stored = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
         if (!stored || parsed.nonce !== stored) {
           setError("Invalid or expired OAuth state.");
           return;
         }
-        window.sessionStorage.removeItem("google_oauth_state");
+        // Clear the nonce cookie
+        document.cookie = "google_oauth_nonce=; path=/; max-age=0";
       } catch (err) {
         setError("Invalid OAuth state.");
         return;
@@ -49,6 +53,7 @@ function GoogleCallbackContent() {
         const response = await fetch(`${apiBaseUrl}/auth/google/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include", // Required to store HttpOnly auth cookies from response
           body: JSON.stringify({ code, state: intent, redirect_uri: redirectUri }),
         });
         const payload = await response.json().catch(() => ({})) as {

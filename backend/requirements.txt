@@ -482,6 +482,8 @@ preshed==3.0.12
     # via
     #   spacy
     #   thinc
+braintrust==0.7.0
+    # via -r backend/requirements.in
 prometheus-client==0.24.1
     # via -r backend/requirements.in
 propcache==0.4.1

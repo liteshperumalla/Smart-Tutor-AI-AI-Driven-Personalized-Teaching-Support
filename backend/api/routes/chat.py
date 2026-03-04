@@ -295,6 +295,11 @@ async def send_message(
                 success=not _stream_failed,
                 user_id=user["username"],
                 session_id=session_id,
+                input_text=query,
+                output_text=collected,
+                input_tokens=_input_tokens,
+                output_tokens=_output_tokens,
+                cost_usd=_cost_usd,
             )
 
             # PostHog $ai_generation — powers the LLM Analytics dashboard

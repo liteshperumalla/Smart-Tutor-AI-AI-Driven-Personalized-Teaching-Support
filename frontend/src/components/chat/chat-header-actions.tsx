@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MoreHorizontal, Trash2, Edit2, Pin, Archive, FileDown, Paperclip, X, FileText, Image } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit2, Pin, Archive, FileDown, Paperclip, X, FileText, Image, Share2 } from "lucide-react";
 import { type UploadedFileItem } from "@/components/chat/file-preview-grid";
 
 interface ChatHeaderActionsProps {
@@ -100,7 +100,7 @@ export function ChatHeaderActions({
     <div className="flex items-center justify-between w-full">
       {/* Session Title - Plain text, no dropdown */}
       <div className="flex-1 min-w-0 pl-2">
-        <h1 className="text-base font-medium text-zinc-800 dark:text-zinc-100 truncate max-w-sm">
+        <h1 className="text-base font-medium text-zinc-800 dark:text-zinc-100 truncate max-w-[120px] sm:max-w-xs">
           {sessionTitle || "New chat"}
         </h1>
       </div>
@@ -178,9 +178,10 @@ export function ChatHeaderActions({
         {/* Share Button */}
         <button
           onClick={onShareClick}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
         >
-          <span className="text-sm font-medium">Share</span>
+          <Share2 className="h-4 w-4 flex-shrink-0" />
+          <span className="hidden sm:inline text-sm font-medium">Share</span>
         </button>
 
         {/* Three-dot Menu */}

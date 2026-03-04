@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
@@ -773,7 +773,7 @@ def get_aws_metrics(
                 "llm": {
                     "model_id": config.BEDROCK_MODEL_ID,
                     "pricing": {
-                        "input_per_1k": 0.00099,  # Llama 3.1 70B
+                        "input_per_1k": 0.00099,  # Llama 3/3.1 70B on-demand
                         "output_per_1k": 0.00099,
                     },
                 },
@@ -786,9 +786,8 @@ def get_aws_metrics(
                 },
             },
             "available_models": [
-                {"id": "meta.llama3-1-70b-instruct-v1:0", "name": "Llama 3.1 70B", "type": "llm"},
-                {"id": "anthropic.claude-3-5-sonnet-20241022-v2:0", "name": "Claude 3.5 Sonnet", "type": "llm"},
-                {"id": "amazon.titan-embed-text-v2:0", "name": "Titan Embed v2", "type": "embedding"},
+                {"id": config.BEDROCK_MODEL_ID, "name": "Active LLM Model", "type": "llm"},
+                {"id": config.BEDROCK_EMBEDDING_MODEL_ID, "name": "Active Embedding Model", "type": "embedding"},
             ],
         }
     except Exception as e:
@@ -913,26 +912,41 @@ def get_aws_metrics(
     try:
         cloudwatch = boto3.client("cloudwatch", **client_kwargs)
 
-        # Get Bedrock invocation metrics for today
-        end_time = datetime.now(timezone.utc)
-        start_time = end_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Determine date range: use the requested date or today
+        if date:
+            query_dt = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            start_time = query_dt
+            end_time = query_dt + timedelta(days=1)
+        else:
+            end_time = datetime.now(timezone.utc)
+            start_time = end_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            # If less than 1 hour into the day, look at yesterday + today to avoid empty windows
+            if (end_time - start_time).total_seconds() < 3600:
+                start_time = start_time - timedelta(days=1)
 
         try:
-            response = cloudwatch.get_metric_statistics(
-                Namespace="AWS/Bedrock",
-                MetricName="Invocations",
-                Dimensions=[],
-                StartTime=start_time,
-                EndTime=end_time,
-                Period=86400,  # 1 day
-                Statistics=["Sum"],
-            )
-            datapoints = response.get("Datapoints", [])
-            total_invocations = sum(d.get("Sum", 0) for d in datapoints)
+            cw_metrics = {}
+            for metric_name in ["Invocations", "InputTokenCount", "OutputTokenCount", "InvocationLatency"]:
+                response = cloudwatch.get_metric_statistics(
+                    Namespace="AWS/Bedrock",
+                    MetricName=metric_name,
+                    Dimensions=[],  # aggregate across all models
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=86400,
+                    Statistics=["Sum"],
+                )
+                datapoints = response.get("Datapoints", [])
+                cw_metrics[metric_name] = int(sum(d.get("Sum", 0) for d in datapoints))
 
             metrics["services"]["cloudwatch"] = {
                 "status": "active",
-                "bedrock_invocations_today": int(total_invocations),
+                "period_start": start_time.strftime("%Y-%m-%d"),
+                "period_end": end_time.strftime("%Y-%m-%d"),
+                "bedrock_invocations": cw_metrics["Invocations"],
+                "bedrock_input_tokens": cw_metrics["InputTokenCount"],
+                "bedrock_output_tokens": cw_metrics["OutputTokenCount"],
+                "bedrock_invocation_latency_ms": cw_metrics["InvocationLatency"],
             }
         except ClientError:
             metrics["services"]["cloudwatch"] = {

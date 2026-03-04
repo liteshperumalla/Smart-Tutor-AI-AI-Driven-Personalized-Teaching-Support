@@ -41,3 +41,24 @@ output "security_group_ids" {
     vpc_endpoint = var.enable_vpc_endpoints ? aws_security_group.vpc_endpoint[0].id : null
   }
 }
+
+# Short-name aliases — used by root main.tf module references
+output "alb_sg_id" {
+  description = "ALB security group ID (alias for alb_security_group_id)"
+  value       = aws_security_group.alb.id
+}
+
+output "ecs_sg_id" {
+  description = "ECS security group ID (alias for ecs_security_group_id)"
+  value       = aws_security_group.ecs.id
+}
+
+output "rds_sg_id" {
+  description = "RDS security group ID (alias for rds_security_group_id)"
+  value       = aws_security_group.rds.id
+}
+
+output "redis_sg_id" {
+  description = "Redis security group ID (alias for redis_security_group_id)"
+  value       = aws_security_group.redis.id
+}

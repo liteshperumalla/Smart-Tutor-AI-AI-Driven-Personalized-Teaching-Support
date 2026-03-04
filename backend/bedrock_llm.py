@@ -19,15 +19,15 @@ class BedrockLLM:
     """AWS Bedrock LLM wrapper for Claude 3.5 Sonnet and other models"""
 
     # Pricing per 1K tokens (as of December 2025)
+    # Includes both direct model IDs and cross-region inference profile IDs (us./eu./ap. prefix)
     PRICING = {
-        "anthropic.claude-3-5-sonnet-20241022-v2:0": {
-            "input": 0.003,  # $3 per 1M tokens
-            "output": 0.015,  # $15 per 1M tokens
-        },
-        "meta.llama3-1-70b-instruct-v1:0": {
-            "input": 0.00099,  # $0.99 per 1M tokens
-            "output": 0.00099,  # $0.99 per 1M tokens
-        },
+        "anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 0.003, "output": 0.015},
+        "us.anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 0.003, "output": 0.015},
+        "anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},
+        "us.anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},
+        "meta.llama3-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
+        "meta.llama3-1-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
+        "us.meta.llama3-1-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
     }
 
     def __init__(

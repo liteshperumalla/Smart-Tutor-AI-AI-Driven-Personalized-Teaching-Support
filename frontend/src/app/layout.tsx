@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { ToastProvider } from "@/components/toast-provider";
 import { AnnouncementToaster } from "@/components/announcement-toaster";
 import { PostHogProvider } from "@/components/posthog-provider";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,6 +54,7 @@ export default function RootLayout({
             </ThemeProvider>
           </ErrorBoundary>
         </PostHogProvider>
+        <SpeedInsights />
       </body>
     </html>
   );

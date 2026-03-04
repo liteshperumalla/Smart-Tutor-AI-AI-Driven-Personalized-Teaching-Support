@@ -1,8 +1,51 @@
 # VPC Module Variables
 
 variable "name" {
-  description = "Name prefix for all VPC resources"
+  description = "Name prefix for all VPC resources (auto-derived from project_name + environment when not set)"
   type        = string
+  default     = ""
+}
+
+variable "project_name" {
+  description = "Project name (used when name is not set)"
+  type        = string
+  default     = ""
+}
+
+variable "environment" {
+  description = "Environment (used when name is not set)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_vpc_flow_logs" {
+  description = "Alias for enable_flow_logs — used by root module"
+  type        = bool
+  default     = null
+}
+
+variable "vpc_flow_logs_bucket_arn" {
+  description = "S3 bucket ARN for VPC flow logs (currently CloudWatch is used; reserved for future S3 destination)"
+  type        = string
+  default     = null
+}
+
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (overrides auto-calculated CIDRs when set)"
+  type        = list(string)
+  default     = []
+}
+
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets (overrides auto-calculated CIDRs when set)"
+  type        = list(string)
+  default     = []
+}
+
+variable "database_subnet_cidrs" {
+  description = "CIDR blocks for database subnets (overrides auto-calculated CIDRs when set)"
+  type        = list(string)
+  default     = []
 }
 
 variable "vpc_cidr" {

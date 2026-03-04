@@ -127,3 +127,9 @@ archive_test_scripts/
 logs/
 *.log
 .streamlit/secrets.toml
+
+# RAG Pipeline Artifacts 
+RAG Architecture.draw.io 
+RAG Architecture.html 
+RAG Architecture.png 
+

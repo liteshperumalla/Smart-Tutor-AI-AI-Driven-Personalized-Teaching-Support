@@ -459,3 +459,81 @@ resource "aws_iam_role_policy_attachment" "codedeploy_ecs" {
   role       = aws_iam_role.codedeploy[0].name
   policy_arn = "arn:aws:iam::aws:policy/AWSCodeDeployRoleForECS"
 }
+
+# ========================================
+# Bedrock Model Invocation Logging Role
+# ========================================
+# Allows Bedrock to write model invocation logs to CloudWatch Logs.
+# Required to populate the GenAI Observability dashboard with real
+# latency, token, and cost metrics.
+
+resource "aws_iam_role" "bedrock_logging" {
+  name        = "${var.project_name}-bedrock-logging"
+  description = "Allows AWS Bedrock to publish model invocation logs to CloudWatch"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "sts:AssumeRole"
+        Principal = {
+          Service = "bedrock.amazonaws.com"
+        }
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = var.aws_account_id
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:bedrock:${var.aws_region}:${var.aws_account_id}:*"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-bedrock-logging"
+      Environment = var.environment
+      Purpose     = "GenAI Observability"
+    }
+  )
+}
+
+resource "aws_iam_role_policy" "bedrock_logging" {
+  name = "${var.project_name}-bedrock-cloudwatch-logs"
+  role = aws_iam_role.bedrock_logging.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:log-group:/smart-ai-tutor/bedrock-invocations:*"
+      }
+    ]
+  })
+}
+
+# Enable Bedrock model invocation logging after role is created
+resource "aws_bedrock_model_invocation_logging_configuration" "main" {
+  logging_config {
+    embedding_data_delivery_enabled = true
+    image_data_delivery_enabled     = false
+    text_data_delivery_enabled      = true
+
+    cloudwatch_config {
+      log_group_name = "/smart-ai-tutor/bedrock-invocations"
+      role_arn       = aws_iam_role.bedrock_logging.arn
+    }
+  }
+
+  depends_on = [aws_iam_role_policy.bedrock_logging]
+}

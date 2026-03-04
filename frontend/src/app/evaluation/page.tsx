@@ -188,6 +188,14 @@ export function EvaluationContent() {
         if (!isNaN(numValue)) {
           // Sum up metrics with same name
           metrics[name] = (metrics[name] || 0) + numValue;
+
+          // Track 5xx errors by extracting the status label from http_requests_total lines
+          if (name === "http_requests_total") {
+            const statusMatch = line.match(/status="([^"]+)"/);
+            if (statusMatch && statusMatch[1].startsWith("5")) {
+              metrics["http_5xx_total"] = (metrics["http_5xx_total"] || 0) + numValue;
+            }
+          }
         }
       }
     }
@@ -195,7 +203,7 @@ export function EvaluationContent() {
     return {
       totalRequests: metrics["http_requests_total"] || 0,
       avgResponseTime: metrics["http_request_duration_seconds_sum"] / Math.max(1, metrics["http_request_duration_seconds_count"]) || 0,
-      errorRate: (metrics["http_requests_total_status_500"] || 0) / Math.max(1, metrics["http_requests_total"]) * 100,
+      errorRate: (metrics["http_5xx_total"] || 0) / Math.max(1, metrics["http_requests_total"]) * 100,
       activeConnections: metrics["http_requests_in_progress"] || 0,
       cacheHitRate: (metrics["rag_cache_hits_total"] || 0) / Math.max(1, (metrics["rag_cache_hits_total"] || 0) + (metrics["rag_cache_misses_total"] || 0)) * 100,
       ragQueriesTotal: metrics["rag_query_total"] || 0,

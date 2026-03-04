@@ -1,9 +1,15 @@
 # Security Groups Module
 # Implements least-privilege security groups for all services
 
+locals {
+  name = var.name != "" ? var.name : (
+    var.project_name != "" && var.environment != "" ? "${var.project_name}-${var.environment}" : "smart-tutor"
+  )
+}
+
 # ALB Security Group - Allow HTTP/HTTPS from internet
 resource "aws_security_group" "alb" {
-  name_prefix = "${var.name}-alb-"
+  name_prefix = "${local.name}-alb-"
   description = "Security group for Application Load Balancer"
   vpc_id      = var.vpc_id
 
@@ -37,7 +43,7 @@ resource "aws_security_group" "alb" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-alb-sg"
+      Name = "${local.name}-alb-sg"
       Type = "alb"
     }
   )
@@ -49,7 +55,7 @@ resource "aws_security_group" "alb" {
 
 # ECS Security Group - Allow traffic from ALB only
 resource "aws_security_group" "ecs" {
-  name_prefix = "${var.name}-ecs-"
+  name_prefix = "${local.name}-ecs-"
   description = "Security group for ECS tasks"
   vpc_id      = var.vpc_id
 
@@ -74,7 +80,7 @@ resource "aws_security_group" "ecs" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-ecs-sg"
+      Name = "${local.name}-ecs-sg"
       Type = "ecs"
     }
   )
@@ -86,7 +92,7 @@ resource "aws_security_group" "ecs" {
 
 # RDS Security Group - Allow traffic from ECS only
 resource "aws_security_group" "rds" {
-  name_prefix = "${var.name}-rds-"
+  name_prefix = "${local.name}-rds-"
   description = "Security group for RDS PostgreSQL"
   vpc_id      = var.vpc_id
 
@@ -123,7 +129,7 @@ resource "aws_security_group" "rds" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-rds-sg"
+      Name = "${local.name}-rds-sg"
       Type = "rds"
     }
   )
@@ -135,7 +141,7 @@ resource "aws_security_group" "rds" {
 
 # Redis Security Group - Allow traffic from ECS only
 resource "aws_security_group" "redis" {
-  name_prefix = "${var.name}-redis-"
+  name_prefix = "${local.name}-redis-"
   description = "Security group for ElastiCache Redis"
   vpc_id      = var.vpc_id
 
@@ -172,7 +178,7 @@ resource "aws_security_group" "redis" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-redis-sg"
+      Name = "${local.name}-redis-sg"
       Type = "redis"
     }
   )
@@ -186,7 +192,7 @@ resource "aws_security_group" "redis" {
 resource "aws_security_group" "bastion" {
   count = var.enable_bastion ? 1 : 0
 
-  name_prefix = "${var.name}-bastion-"
+  name_prefix = "${local.name}-bastion-"
   description = "Security group for bastion host"
   vpc_id      = var.vpc_id
 
@@ -211,7 +217,7 @@ resource "aws_security_group" "bastion" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-bastion-sg"
+      Name = "${local.name}-bastion-sg"
       Type = "bastion"
     }
   )
@@ -225,7 +231,7 @@ resource "aws_security_group" "bastion" {
 resource "aws_security_group" "vpc_endpoint" {
   count = var.enable_vpc_endpoints ? 1 : 0
 
-  name_prefix = "${var.name}-vpce-"
+  name_prefix = "${local.name}-vpce-"
   description = "Security group for VPC endpoints"
   vpc_id      = var.vpc_id
 
@@ -250,7 +256,7 @@ resource "aws_security_group" "vpc_endpoint" {
   tags = merge(
     var.tags,
     {
-      Name = "${var.name}-vpce-sg"
+      Name = "${local.name}-vpce-sg"
       Type = "vpc-endpoint"
     }
   )

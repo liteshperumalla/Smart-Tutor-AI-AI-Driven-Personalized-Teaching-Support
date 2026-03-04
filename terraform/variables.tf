@@ -621,6 +621,31 @@ variable "backend_secrets" {
   default = []
 }
 
+# Route53 / DNS Configuration
+variable "create_route53" {
+  description = "Create Route53 DNS records for the domain"
+  type        = bool
+  default     = false
+}
+
+variable "domain_name" {
+  description = "Root domain name to manage DNS for (e.g. smartaitutor.com)"
+  type        = string
+  default     = "smartaitutor.com"
+}
+
+variable "route53_create_zone" {
+  description = "Create a new Route53 hosted zone. Set false to use an existing zone."
+  type        = bool
+  default     = false
+}
+
+variable "route53_enable_health_check" {
+  description = "Create a Route53 health check against api.<domain>/health"
+  type        = bool
+  default     = true
+}
+
 # Monitoring
 variable "alarm_sns_topic_arns" {
   description = "SNS topic ARNs for alarms"

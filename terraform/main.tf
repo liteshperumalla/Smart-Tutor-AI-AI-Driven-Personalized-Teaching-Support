@@ -427,3 +427,32 @@ module "ecs" {
 
   depends_on = [module.alb]
 }
+
+# ======================================
+# Route53 DNS
+# ======================================
+module "route53" {
+  count  = var.create_route53 && var.create_alb ? 1 : 0
+  source = "./modules/route53"
+
+  project_name = local.project_name
+  environment  = local.environment
+
+  # Domain
+  domain_name = var.domain_name
+  create_zone = var.route53_create_zone
+
+  # Point apex, www, and api subdomains at the ALB
+  alb_dns_name = module.alb[0].alb_dns_name
+  alb_zone_id  = module.alb[0].alb_zone_id
+
+  # Optional: point cdn. subdomain at CloudFront
+  cloudfront_domain_name = null
+
+  # Health check
+  enable_health_check = var.route53_enable_health_check
+
+  tags = local.common_tags
+
+  depends_on = [module.alb]
+}

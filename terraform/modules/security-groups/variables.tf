@@ -1,8 +1,21 @@
 # Security Groups Module Variables
 
 variable "name" {
-  description = "Name prefix for all security groups"
+  description = "Name prefix for all security groups (auto-derived from project_name + environment when not set)"
   type        = string
+  default     = ""
+}
+
+variable "project_name" {
+  description = "Project name (used when name is not set)"
+  type        = string
+  default     = ""
+}
+
+variable "environment" {
+  description = "Environment (used when name is not set)"
+  type        = string
+  default     = ""
 }
 
 variable "vpc_id" {

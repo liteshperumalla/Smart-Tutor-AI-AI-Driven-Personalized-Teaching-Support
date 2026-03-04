@@ -135,6 +135,27 @@ output "ecs_frontend_service_name" {
   value       = var.create_ecs ? module.ecs[0].frontend_service_name : null
 }
 
+# Route53 DNS Outputs
+output "route53_zone_id" {
+  description = "Route53 hosted zone ID"
+  value       = var.create_route53 && var.create_alb ? module.route53[0].zone_id : null
+}
+
+output "route53_name_servers" {
+  description = "Route53 name servers — provide these to your domain registrar when create_zone = true"
+  value       = var.create_route53 && var.create_alb ? module.route53[0].zone_name_servers : []
+}
+
+output "app_url" {
+  description = "Application URL (custom domain when DNS enabled, ALB URL otherwise)"
+  value       = var.create_route53 && var.create_alb ? "https://${var.domain_name}" : (var.create_alb ? module.alb[0].alb_url : null)
+}
+
+output "api_url" {
+  description = "API URL (api.<domain> when DNS enabled)"
+  value       = var.create_route53 && var.create_alb ? "https://api.${var.domain_name}" : (var.create_alb ? module.alb[0].alb_url : null)
+}
+
 # IAM Outputs
 output "ecs_task_execution_role_arn" {
   description = "ECS task execution role ARN"

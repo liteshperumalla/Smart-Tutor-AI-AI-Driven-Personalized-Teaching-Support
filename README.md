@@ -27,7 +27,7 @@ Smart Tutor AI solves the problem of generic, hallucination-prone LLM responses 
 | **Backend API** | http://52.2.3.101/health |
 | **API Docs** | http://52.2.3.101/docs |
 
-> Register an account or use a guest session to try the tutor. The knowledge base covers all 11 modules of INFO 5731 Spring 2025.
+> Register an account to try the tutor. The knowledge base covers all 11 modules of INFO 5731 Spring 2025.
 
 ---
 
@@ -35,25 +35,7 @@ Smart Tutor AI solves the problem of generic, hallucination-prone LLM responses 
 
 The system implements a four-stage pipeline to eliminate hallucinations:
 
-```
-  Course Materials               Query
-  (PDF, PPTX, DOCX,         ┌─────────┐
-   IPYNB, HTML, Video)  ───▶│  Parse  │
-                             └────┬────┘
-                                  │  Semantic chunks
-                             ┌────▼────┐
-         Amazon Titan   ───▶│  Embed  │ 1,024-dim vectors
-         Embeddings          └────┬────┘
-                                  │  FAISS / S3 index
-                             ┌────▼────┐
-         Student query  ───▶│Retrieve │ Top-k similarity search
-                             └────┬────┘
-                                  │  Retrieved context
-                             ┌────▼──────────────────┐
-                             │  Generate (Bedrock)    │
-                             │  Claude 3 Haiku/Llama  │
-                             └────────────────────────┘
-```
+![RAG pipeline architecture](docs/architecture/RAG_architecture.png)
 
 **Key design decision:** Rather than fine-tuning (costly, requires labeled data, drifts with syllabus updates), RAG allows zero-cost knowledge updates — just re-index new lecture slides.
 

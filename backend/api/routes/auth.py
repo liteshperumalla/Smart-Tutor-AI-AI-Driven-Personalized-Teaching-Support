@@ -38,17 +38,20 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     - SameSite=Lax: CSRF protection while allowing OAuth redirects
     - Path specific: Cookies only sent to API endpoints
     """
-    # Determine if we should use Secure flag
-    is_production = config.ENVIRONMENT == "production"
+    # staging is treated as production: Vercel is HTTPS and must NOT set
+    # domain=localhost — browsers silently reject cookies whose Domain attribute
+    # doesn't match the page origin (smart-ai-tutor.vercel.app ≠ localhost).
+    is_production = config.ENVIRONMENT in ("production", "staging")
 
-    # Set cookie domain for cross-origin requests (e.g., frontend proxy)
-    # In test mode, use None so TestClient (testserver host) can send cookies
+    # cookie_domain=None means the browser inherits the request host, which
+    # works for localhost, Vercel, EC2, and any custom domain automatically.
+    # Explicitly setting "localhost" is only safe for local Docker dev.
     if config.ENVIRONMENT == "test":
         cookie_domain = None
     elif is_production:
-        cookie_domain = None  # Defaults to request's domain in production
+        cookie_domain = None  # Works on any host (Vercel, EC2, custom domain)
     else:
-        cookie_domain = "localhost"
+        cookie_domain = "localhost"  # Local Docker dev only
 
     # Set access token cookie
     response.set_cookie(
@@ -77,7 +80,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
 
 def clear_auth_cookies(response: Response):
     """Clear authentication cookies on logout."""
-    is_production = config.ENVIRONMENT == "production"
+    is_production = config.ENVIRONMENT in ("production", "staging")
     if config.ENVIRONMENT == "test":
         cookie_domain = None
     elif is_production:

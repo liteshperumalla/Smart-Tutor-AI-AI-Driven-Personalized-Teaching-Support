@@ -56,6 +56,7 @@ filelock>=3.20.3      # CVE-2026-22701 TOCTOU symlink vuln
 
 # Monitoring & Observability
 prometheus-client>=0.20.0  # Metrics collection and export
+braintrust>=0.0.167        # LLM observability, tracing, and evals (Vercel Marketplace)
 
 # Content Security & Analytics
 bleach>=6.1.0      # HTML sanitization (validators.py)

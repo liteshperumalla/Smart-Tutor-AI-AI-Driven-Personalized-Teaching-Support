@@ -32,7 +32,11 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
     }
 
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("google_oauth_state", nonce);
+      // Use a cookie instead of sessionStorage — sessionStorage can be cleared
+      // by iOS Safari (ITP) when the browser navigates to accounts.google.com
+      // and back, causing "Invalid or expired OAuth state" errors on mobile.
+      // A short-lived cookie (10 min) survives cross-origin navigations reliably.
+      document.cookie = `google_oauth_nonce=${nonce}; path=/; SameSite=Lax; max-age=600`;
     }
     const statePayload = btoa(JSON.stringify({ intent, nonce }));
 

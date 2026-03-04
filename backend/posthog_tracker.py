@@ -51,3 +51,52 @@ def capture(
         )
     except Exception as exc:
         logger.warning("PostHog capture(%s) failed: %s", event, exc)
+
+
+def feature_enabled(
+    distinct_id: str,
+    flag_name: str,
+    default: bool = False,
+) -> bool:
+    """
+    Check a PostHog boolean feature flag for a specific user.
+
+    Falls back to `default` when PostHog is disabled, the flag doesn't
+    exist, or any network/SDK error occurs — ensuring the caller always
+    gets a usable boolean without try/except boilerplate.
+
+    Usage:
+        use_agents = feature_enabled(user_id, "agent-system-enabled",
+                                     default=config.AGENT_SYSTEM_ENABLED)
+    """
+    try:
+        if not _init():
+            return default
+        import posthog
+        result = posthog.feature_enabled(flag_name, distinct_id or "anonymous")
+        return bool(result) if result is not None else default
+    except Exception as exc:
+        logger.warning("PostHog feature_enabled(%s) failed: %s", flag_name, exc)
+        return default
+
+
+def get_flag_payload(
+    distinct_id: str,
+    flag_name: str,
+    default: Optional[Any] = None,
+) -> Optional[Any]:
+    """
+    Return the payload/variant of a multivariate PostHog feature flag.
+
+    Useful when a flag carries a value (e.g. model name, threshold) rather
+    than just on/off.  Returns `default` on any failure.
+    """
+    try:
+        if not _init():
+            return default
+        import posthog
+        payload = posthog.get_feature_flag_payload(flag_name, distinct_id or "anonymous")
+        return payload if payload is not None else default
+    except Exception as exc:
+        logger.warning("PostHog get_flag_payload(%s) failed: %s", flag_name, exc)
+        return default

@@ -87,14 +87,23 @@ class ChatService:
 
         routed_model_id = model_id
 
+        # PostHog feature flags override env-var defaults; fall back gracefully
+        from backend import posthog_tracker
+        use_llm_routing = posthog_tracker.feature_enabled(
+            user_id, "llm-routing-enabled", default=app_config.LLM_ROUTING_ENABLED
+        )
+        use_agents = posthog_tracker.feature_enabled(
+            user_id, "agent-system-enabled", default=app_config.AGENT_SYSTEM_ENABLED
+        )
+
         # LLM Complexity Routing: select model based on query complexity
-        if not model_id and app_config.LLM_ROUTING_ENABLED:
+        if not model_id and use_llm_routing:
             from backend.llm_router import classify_query_complexity, select_model_for_complexity
             tier, confidence = classify_query_complexity(query)
             routed_model_id = select_model_for_complexity(tier)
             _logger.info(f"LLM routing: {tier} (conf={confidence:.2f}) -> {routed_model_id}")
 
-        if app_config.AGENT_SYSTEM_ENABLED:
+        if use_agents:
             from backend.agents import run_agent_pipeline
             generator, sources = run_agent_pipeline(
                 query=query, user_id=user_id,
