@@ -374,9 +374,16 @@ def setup_password(
 
         tokens, _ = auth_service.login(payload.username, payload.new_password)
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
+        from backend.csrf_protection import CSRFProtection
+        CSRFProtection.set_csrf_cookie(response)
 
         return {"user": user, "message": "Password set successfully."}
+    except PasswordValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except InvalidCredentialsError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except Exception as exc:
+        logger.warning("Password setup failed for %s: %s", payload.username, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password setup failed")
 
 

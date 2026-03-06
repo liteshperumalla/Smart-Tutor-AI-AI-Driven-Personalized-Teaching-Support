@@ -17,6 +17,8 @@ from backend.services.rag_quality_evaluator import (
     compute_context_precision,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def _percentile(values: List[float], pct: float) -> float:
     if not values:
@@ -136,23 +138,68 @@ def _compute_generation_metrics(
 
 class EvaluationService:
     def __init__(self) -> None:
-        self.dataset_path = Path(config.EVALUATION_DATASET_FILE)
+        self.dataset_path = self._resolve_dataset_path()
         self.dataset = self._load_dataset()
         self.evaluator: RAGEvaluationMetrics = get_evaluator(config.EVALUATION_LOG_FILE)
         self._index = None
 
+    def _resolve_dataset_path(self) -> Path:
+        configured = Path(config.EVALUATION_DATASET_FILE)
+
+        candidates = [configured]
+        if not configured.is_absolute():
+            candidates.append(REPO_ROOT / configured)
+
+        candidates.extend(
+            [
+                REPO_ROOT / "Evaluation_files/evaluation_data.jsonl",
+                REPO_ROOT / "evaluation_dataset.json",
+                REPO_ROOT / "backend/rag/tests/test_dataset.jsonl",
+                REPO_ROOT / "backend/rag/tests/test_dataset.json",
+            ]
+        )
+
+        seen = set()
+        for candidate in candidates:
+            normalized = candidate.resolve(strict=False)
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
     def _load_dataset(self) -> Dict[str, Any]:
         if not self.dataset_path.exists():
             raise FileNotFoundError(f"Evaluation dataset missing: {self.dataset_path}")
+
+        if self.dataset_path.suffix.lower() == ".jsonl":
+            cases: List[Dict[str, Any]] = []
+            with self.dataset_path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict):
+                        cases.append(record)
+            return {"test_cases": cases}
+
         with self.dataset_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
+
         if isinstance(data, list):
             return {"test_cases": data}
         if not isinstance(data, dict):
             raise ValueError("Evaluation dataset must be a dict or list of test cases")
-        if "test_cases" not in data:
-            raise ValueError("Evaluation dataset missing 'test_cases'")
-        return data
+        if isinstance(data.get("test_cases"), list):
+            return data
+        if isinstance(data.get("queries"), list):
+            return {"test_cases": data.get("queries", [])}
+        raise ValueError("Evaluation dataset missing 'test_cases' or 'queries'")
 
     def _load_index(self):
         if self._index is None:

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 DOCSTORE_FILE = Path(config.PERSIST_DIR) / "docstore.json"
 CHROMA_DB_PATH = Path(config.CHROMA_DB_PATH)
-EVAL_DATASET_FILE = Path(config.EVALUATION_DATASET_FILE)
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OLLAMA_BASE_URL = config.OLLAMA_BASE_URL.rstrip("/")
 
 
@@ -183,22 +183,66 @@ def get_knowledge_base_stats() -> Dict[str, Any]:
     return stats
 
 
-@lru_cache(maxsize=2)
-def _load_eval_dataset_summary_cached(eval_mtime: int) -> Dict[str, Any]:
+def _resolve_eval_dataset_file() -> Path:
+    configured = Path(config.EVALUATION_DATASET_FILE)
+
+    candidates = [configured]
+    if not configured.is_absolute():
+        candidates.append(REPO_ROOT / configured)
+
+    candidates.extend(
+        [
+            REPO_ROOT / "Evaluation_files/evaluation_data.jsonl",
+            REPO_ROOT / "evaluation_dataset.json",
+            REPO_ROOT / "backend/rag/tests/test_dataset.jsonl",
+            REPO_ROOT / "backend/rag/tests/test_dataset.json",
+        ]
+    )
+
+    seen = set()
+    for candidate in candidates:
+        normalized = candidate.resolve(strict=False)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+@lru_cache(maxsize=6)
+def _load_eval_dataset_summary_cached(dataset_path_str: str, eval_mtime: int) -> Dict[str, Any]:
     """Read evaluation dataset metadata with caching."""
+    dataset_path = Path(dataset_path_str)
     summary: Dict[str, Any] = {"ready": False, "cases": 0}
-    if not EVAL_DATASET_FILE.exists():
+    if not dataset_path.exists():
         return summary
 
     try:
-        with open(EVAL_DATASET_FILE, "r", encoding="utf-8") as eval_file:
-            data = json.load(eval_file)
+        if dataset_path.suffix.lower() == ".jsonl":
+            cases = 0
+            with open(dataset_path, "r", encoding="utf-8") as eval_file:
+                for line in eval_file:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    cases += 1
+            summary["cases"] = cases
+        else:
+            with open(dataset_path, "r", encoding="utf-8") as eval_file:
+                data = json.load(eval_file)
 
-        if isinstance(data, dict):
-            cases = data.get("test_cases", [])
-            summary["cases"] = len(cases) if isinstance(cases, list) else 0
-        elif isinstance(data, list):
-            summary["cases"] = len(data)
+            if isinstance(data, dict):
+                if isinstance(data.get("test_cases"), list):
+                    summary["cases"] = len(data.get("test_cases", []))
+                elif isinstance(data.get("queries"), list):
+                    summary["cases"] = len(data.get("queries", []))
+            elif isinstance(data, list):
+                summary["cases"] = len(data)
         summary["ready"] = summary["cases"] > 0
     except Exception as exc:  # pragma: no cover - defensive logging
         logger.warning("Unable to read evaluation dataset: %s", exc)
@@ -209,18 +253,19 @@ def _load_eval_dataset_summary_cached(eval_mtime: int) -> Dict[str, Any]:
 
 def _get_eval_dataset_summary() -> Dict[str, Any]:
     """Attach timestamps to the cached evaluation dataset summary."""
-    if not EVAL_DATASET_FILE.exists():
+    eval_dataset_file = _resolve_eval_dataset_file()
+    if not eval_dataset_file.exists():
         return {
             "ready": False,
             "cases": 0,
-            "path": str(EVAL_DATASET_FILE),
+            "path": str(eval_dataset_file),
             "last_updated": None,
             "last_updated_display": None,
         }
 
-    eval_mtime = int(EVAL_DATASET_FILE.stat().st_mtime)
-    summary = _load_eval_dataset_summary_cached(eval_mtime).copy()
-    summary["path"] = str(EVAL_DATASET_FILE)
+    eval_mtime = int(eval_dataset_file.stat().st_mtime)
+    summary = _load_eval_dataset_summary_cached(str(eval_dataset_file), eval_mtime).copy()
+    summary["path"] = str(eval_dataset_file)
 
     last_dt = datetime.datetime.fromtimestamp(eval_mtime)
     summary["last_updated"] = last_dt.isoformat()

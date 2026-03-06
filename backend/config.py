@@ -342,7 +342,7 @@ class Config:
     EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "true").lower() == "true"
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
     EVALUATION_DATASET_FILE = os.getenv(
-        "EVALUATION_DATASET_FILE", "evaluation_dataset.json"
+        "EVALUATION_DATASET_FILE", "Evaluation_files/evaluation_data.jsonl"
     )
 
     # Phase 3: Context & Quality Improvements (2025-11-18) - DISABLED BY DEFAULT
