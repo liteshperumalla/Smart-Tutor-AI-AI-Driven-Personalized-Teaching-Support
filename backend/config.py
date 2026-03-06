@@ -339,7 +339,13 @@ class Config:
     )  # 0.0-1.0 scale
 
     # Evaluation Settings (Enabled by default for monitoring)
-    EVALUATION_ENABLED = os.getenv("EVALUATION_ENABLED", "true").lower() == "true"
+    EVALUATION_ENABLED = (
+        os.getenv(
+            "EVALUATION_ENABLED",
+            "false" if ENVIRONMENT == "production" else "true",
+        ).lower()
+        == "true"
+    )
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
     EVALUATION_DATASET_FILE = os.getenv(
         "EVALUATION_DATASET_FILE", "Evaluation_files/evaluation_data.jsonl"

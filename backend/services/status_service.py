@@ -377,7 +377,7 @@ def get_system_status() -> Dict[str, Any]:
             issues.append("ChromaDB directory is empty.")
     # If using S3 vectors, skip local index checks (they're not needed)
 
-    if not eval_summary.get("ready"):
+    if config.EVALUATION_ENABLED and not eval_summary.get("ready"):
         issues.append("Evaluation dataset is missing or empty.")
     if not llm_status.get("ready"):
         error_detail = llm_status.get("error")

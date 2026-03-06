@@ -15,6 +15,7 @@ from backend.exceptions import (
     UserAlreadyExistsError,
     PasswordValidationError,
     InvalidCredentialsError,
+    TokenInvalidError,
 )
 from backend.api.dependencies import get_current_user, get_current_session
 from backend.config import config
@@ -382,6 +383,10 @@ def setup_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except TokenInvalidError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except EmailNotVerifiedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except Exception as exc:
         logger.warning("Password setup failed for %s: %s", payload.username, exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password setup failed")
