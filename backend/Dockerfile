@@ -19,16 +19,17 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY backend/requirements.txt .
+# Copy only backend dependency manifest
+COPY backend/requirements.txt ./requirements.txt
 
-# Install Python dependencies (as root) - use BuildKit cache mount for pip cache
-# Pre-install CPU-only PyTorch BEFORE requirements.txt to prevent pip from pulling
-# the default CUDA build (~3GB) from PyPI. This EC2 instance has no GPU.
+# Install Python dependencies (as root).
+# Use PyTorch CPU index as primary so torch resolves to CPU wheels instead of CUDA builds.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
+    pip install --no-cache-dir --use-deprecated=legacy-resolver \
+      --index-url https://download.pytorch.org/whl/cpu \
+      --extra-index-url https://pypi.org/simple \
+      -r requirements.txt
 
 # Download RAG dependencies (as root) - use BuildKit cache mount for nltk data
 RUN --mount=type=cache,target=/usr/local/share/nltk_data \
@@ -40,11 +41,8 @@ ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
 ENV HOME=/app
 
-# Pre-download cross-encoder model during build (while still root)
-RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-12-v2')" || true
-
-# Copy application code with proper ownership
-COPY --chown=appuser:appuser . .
+# Copy only backend application code with proper ownership
+COPY --chown=appuser:appuser backend/ ./backend/
 
 # Create necessary directories with proper ownership
 RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \

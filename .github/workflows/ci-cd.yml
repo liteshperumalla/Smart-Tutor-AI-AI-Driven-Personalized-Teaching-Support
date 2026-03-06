@@ -227,6 +227,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write  # Required to push images to GHCR
@@ -261,6 +262,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Smoke test backend image
+        run: |
+          BACKEND_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
+          echo "Validating backend image runtime: $BACKEND_IMAGE"
+          docker pull "$BACKEND_IMAGE"
+          docker run --rm \
+            -e ENVIRONMENT=test \
+            "$BACKEND_IMAGE" \
+            python -c "import fastapi, uvicorn; from backend.api.main import app; print(f'backend image runtime import check passed: {app.title}')"
+
       - name: Build & push frontend image
         uses: docker/build-push-action@v5
         with:
@@ -272,6 +283,19 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Deploy frontend to Vercel
+        if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
+        working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm i -g vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
       - name: Deploy backend to EC2
         uses: appleboy/ssh-action@v1.0.3
@@ -290,18 +314,44 @@ jobs:
             echo "=== Authenticating with GHCR ==="
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
 
-            echo "=== Stopping existing backend container ==="
-            docker stop smart-tutor-backend 2>/dev/null || true
-            docker rm   smart-tutor-backend 2>/dev/null || true
-
-            echo "=== Freeing disk space before pull ==="
-            docker images --format '{{.Repository}}:{{.Tag}}' | grep 'smart-tutor.*backend' | xargs -r docker rmi -f || true
-            docker image prune -f || true
-
             echo "=== Pulling image: $BACKEND_IMAGE ==="
             docker pull "$BACKEND_IMAGE"
 
-            echo "=== Starting new backend container ==="
+            echo "=== Starting candidate backend container on port 18010 ==="
+            docker stop smart-tutor-backend-candidate 2>/dev/null || true
+            docker rm smart-tutor-backend-candidate 2>/dev/null || true
+            docker run -d \
+              --name smart-tutor-backend-candidate \
+              --restart unless-stopped \
+              --network smart-tutor_smart-tutor-network \
+              --env-file ~/smart-tutor.env \
+              -p 18010:8000 \
+              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "$BACKEND_IMAGE" \
+              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+            echo "=== Waiting for candidate backend health check ==="
+            for i in $(seq 1 24); do
+              if curl -sf http://localhost:18010/health > /dev/null; then
+                echo "✅ Candidate backend healthy after $((i * 5))s"
+                break
+              fi
+              if [ "$i" -eq 24 ]; then
+                echo "❌ Candidate backend failed health check after 120s"
+                docker logs smart-tutor-backend-candidate --tail 100 || true
+                docker rm -f smart-tutor-backend-candidate || true
+                exit 1
+              fi
+              echo "  Attempt $i/24 — retrying in 5s..."
+              sleep 5
+            done
+
+            echo "=== Replacing production backend container ==="
+            docker stop smart-tutor-backend 2>/dev/null || true
+            docker rm smart-tutor-backend 2>/dev/null || true
+
             docker run -d \
               --name smart-tutor-backend \
               --restart unless-stopped \
@@ -314,23 +364,26 @@ jobs:
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
 
-            echo "=== Waiting for backend health check ==="
-            for i in $(seq 1 12); do
+            echo "=== Waiting for production backend health check ==="
+            for i in $(seq 1 24); do
               if curl -sf http://localhost:8010/health > /dev/null; then
-                echo "✅ Backend healthy after $((i * 5))s"
+                echo "✅ Production backend healthy after $((i * 5))s"
                 break
               fi
-              if [ "$i" -eq 12 ]; then
-                echo "❌ Backend failed health check after 60s"
-                docker logs smart-tutor-backend --tail 50
+              if [ "$i" -eq 24 ]; then
+                echo "❌ Production backend failed health check after 120s"
+                docker logs smart-tutor-backend --tail 100 || true
                 exit 1
               fi
-              echo "  Attempt $i/12 — retrying in 5s..."
+              echo "  Attempt $i/24 — retrying in 5s..."
               sleep 5
             done
 
-            echo "=== Pruning old images (>24h) ==="
-            docker image prune -f --filter "until=24h" || true
+            echo "=== Cleaning up candidate container ==="
+            docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+
+            echo "=== Pruning all unused images/layers ==="
+            docker image prune -af || true
 
       - name: Deployment summary
         run: |
@@ -339,6 +392,10 @@ jobs:
           echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
           echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| **Backend** | ✅ Deployed | EC2 · version \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Frontend** | ✅ Auto-deployed | Vercel (triggered by push to \`main\`) |" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ secrets.VERCEL_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ORG_ID }}" ] && [ -n "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "| **Frontend** | ✅ Deployed | Vercel CLI production deploy |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| **Frontend** | ⚠️ Skipped (manual config) | Add \`VERCEL_TOKEN\`, \`VERCEL_ORG_ID\`, \`VERCEL_PROJECT_ID\` secrets, or use GitHub integration |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| **Backend Image** | Published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Frontend Image** | Published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
