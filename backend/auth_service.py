@@ -526,13 +526,48 @@ class AuthService:
         self.user_db.update_user(username, {"metadata": metadata})
         return token
 
+    def _find_user_by_password_setup_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Fallback lookup when provided username does not match the active setup token."""
+        provided_hash = self._hash_value(token)
+        now = datetime.utcnow()
+
+        for user in self.user_db.list_users():
+            metadata = self._normalize_metadata(user)
+            token_info = metadata.get("password_setup") if isinstance(metadata, dict) else None
+            if not token_info:
+                continue
+
+            token_hash = token_info.get("token_hash")
+            expires_at = token_info.get("expires_at")
+            if not token_hash or not expires_at:
+                continue
+
+            try:
+                expires_dt = datetime.fromisoformat(expires_at)
+            except Exception:
+                continue
+            if now > expires_dt:
+                continue
+
+            if secrets.compare_digest(provided_hash, token_hash):
+                username = user.get("username")
+                if not username:
+                    continue
+                full_user = self.user_db.get_user_safe(username)
+                if full_user:
+                    return full_user
+        return None
+
     def complete_password_setup(
         self, username: str, token: str, new_password: str, confirm_password: str
     ) -> Dict[str, Any]:
+        token = (token or "").strip()
         if new_password != confirm_password:
             raise InvalidCredentialsError("Passwords do not match")
 
         user = self.user_db.get_user_safe(username)
+        if not user:
+            user = self._find_user_by_password_setup_token(token)
         if not user:
             raise TokenInvalidError("Invalid password setup token")
 
@@ -572,7 +607,7 @@ class AuthService:
         })
 
         safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
-        safe_user['username'] = username
+        safe_user['username'] = user.get("username", username)
         return safe_user
 
     def _create_session(self, username: str) -> str:

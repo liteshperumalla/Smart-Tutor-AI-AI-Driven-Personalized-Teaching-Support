@@ -373,7 +373,8 @@ def setup_password(
             payload.confirm_password,
         )
 
-        tokens, _ = auth_service.login(payload.username, payload.new_password)
+        login_username = user.get("username") or payload.username
+        tokens, _ = auth_service.login(login_username, payload.new_password)
         set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
         from backend.csrf_protection import CSRFProtection
         CSRFProtection.set_csrf_cookie(response)

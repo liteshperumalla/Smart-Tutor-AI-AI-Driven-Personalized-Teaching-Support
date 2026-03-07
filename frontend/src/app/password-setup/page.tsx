@@ -161,7 +161,7 @@ function PasswordSetupContent() {
               type="text"
               required
               value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              readOnly
               className="input"
               placeholder="yourusername"
             />
