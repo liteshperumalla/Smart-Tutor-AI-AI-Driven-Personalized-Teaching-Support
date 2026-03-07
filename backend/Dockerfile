@@ -43,6 +43,8 @@ ENV HOME=/app
 
 # Copy only backend application code with proper ownership
 COPY --chown=appuser:appuser backend/ ./backend/
+# Some modules are imported from repository root (e.g., `from utils import ...`)
+COPY --chown=appuser:appuser utils.py ./utils.py
 
 # Create necessary directories with proper ownership
 RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \
