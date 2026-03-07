@@ -296,6 +296,29 @@ jobs:
           vercel build --prod --token="$VERCEL_TOKEN"
           vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
+      - name: Cleanup old Vercel production deployments
+        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+
+          DEPLOYMENTS_JSON="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
+          DEPLOY_COUNT="$(echo "$DEPLOYMENTS_JSON" | jq 'length')"
+          if [ "$DEPLOY_COUNT" -le 1 ]; then
+            echo "No old production deployments to remove."
+            exit 0
+          fi
+
+          KEEP_URL="$(echo "$DEPLOYMENTS_JSON" | jq -r '.[0].url')"
+          echo "Keeping latest deployment: $KEEP_URL"
+
+          echo "$DEPLOYMENTS_JSON" | jq -r '.[1:] | .[].url' | while read -r url; do
+            if [ -n "$url" ]; then
+              echo "Removing old deployment: $url"
+              vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
+            fi
+          done
+
       - name: Deploy backend to EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
