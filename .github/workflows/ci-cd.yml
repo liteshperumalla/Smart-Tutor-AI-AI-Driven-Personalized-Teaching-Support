@@ -262,8 +262,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=min,scope=backend-image
 
       - name: Smoke test backend image
         run: |
@@ -273,7 +273,7 @@ jobs:
           docker run --rm \
             -e ENVIRONMENT=test \
             "$BACKEND_IMAGE" \
-            python -c "import fastapi, uvicorn; from backend.api.main import app; print(f'backend image runtime import check passed: {app.title}')"
+            python -c "import fastapi, uvicorn; import langgraph; from backend.api.main import app; print(f'backend image runtime import check passed: {app.title}')"
 
       - name: Build & push frontend image
         uses: docker/build-push-action@v5
@@ -284,8 +284,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend-image
+          cache-to: type=gha,mode=min,scope=frontend-image
 
       - name: Deploy frontend to Vercel
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
