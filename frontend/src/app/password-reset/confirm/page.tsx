@@ -5,6 +5,31 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 
+type PasswordErrorDetail = { message?: string; requirements?: string[] };
+
+const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*(),.?":{}|<>]/;
+const PASSWORD_RULES = [
+  { test: (p: string) => p.length >= 12, message: "at least 12 characters" },
+  { test: (p: string) => /[A-Z]/.test(p), message: "an uppercase letter" },
+  { test: (p: string) => /[a-z]/.test(p), message: "a lowercase letter" },
+  { test: (p: string) => /\d/.test(p), message: "a number" },
+  { test: (p: string) => PASSWORD_SPECIAL_REGEX.test(p), message: "a special character like !@#$" },
+];
+
+function parseApiError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "Unable to reset password.";
+  const p = payload as Record<string, unknown>;
+  if (p.detail && typeof p.detail === "object") {
+    const detail = p.detail as PasswordErrorDetail;
+    if (typeof detail.message === "string" && Array.isArray(detail.requirements) && detail.requirements.length > 0) {
+      return `${detail.message}: ${detail.requirements[0]}`;
+    }
+    if (typeof detail.message === "string") return detail.message;
+  }
+  if (typeof p.detail === "string") return p.detail;
+  return "Unable to reset password.";
+}
+
 function PasswordResetConfirmPageContent() {
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
@@ -33,8 +58,9 @@ function PasswordResetConfirmPageContent() {
       setError("Provide both username and reset token.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    const failedRule = PASSWORD_RULES.find((rule) => !rule.test(password));
+    if (failedRule) {
+      setError(`Password must include ${failedRule.message}.`);
       return;
     }
     if (password !== confirmPassword) {
@@ -58,7 +84,7 @@ function PasswordResetConfirmPageContent() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.detail || "Unable to reset password.");
+        throw new Error(parseApiError(payload));
       }
 
       setStatus("success");
@@ -120,7 +146,7 @@ function PasswordResetConfirmPageContent() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none ring-0 transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
-              placeholder="Min 8 characters"
+              placeholder="12+ chars, upper/lower/number/special"
             />
           </div>
 

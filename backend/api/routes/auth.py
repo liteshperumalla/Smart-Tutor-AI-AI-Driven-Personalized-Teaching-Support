@@ -28,6 +28,18 @@ from backend.csrf_protection import csrf_protect
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _password_error_detail(exc: PasswordValidationError):
+    requirements = []
+    if isinstance(getattr(exc, "details", None), dict):
+        reqs = exc.details.get("requirements")
+        if isinstance(reqs, list):
+            requirements = [str(item) for item in reqs if item]
+    return {
+        "message": str(exc) or "Password does not meet requirements",
+        "requirements": requirements,
+    }
+
+
 # SECURITY: Helper function to set secure HttpOnly cookies
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
     """
@@ -194,7 +206,7 @@ def signup(
         logger.warning(f"Registration failed - weak password: {exc}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc) or "Password does not meet the requirements.",
+            detail=_password_error_detail(exc),
         )
     except InvalidCredentialsError as exc:
         logger.warning(f"Registration failed - invalid input: {exc}")
@@ -381,7 +393,10 @@ def setup_password(
 
         return {"user": user, "message": "Password set successfully."}
     except PasswordValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_password_error_detail(exc),
+        )
     except InvalidCredentialsError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except TokenInvalidError as exc:
@@ -490,6 +505,16 @@ def confirm_password_reset(
     try:
         auth_service.reset_password(
             payload.username, payload.new_password, payload.token
+        )
+    except PasswordValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=_password_error_detail(exc),
+        )
+    except TokenInvalidError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
         )
     except Exception as exc:
         # Log the full exception for debugging

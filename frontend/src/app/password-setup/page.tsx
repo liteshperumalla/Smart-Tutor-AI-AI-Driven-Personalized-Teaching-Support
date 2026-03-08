@@ -11,13 +11,16 @@ const SETUP_TOKEN_STORAGE_KEY = "password_setup_token";
 const SETUP_USERNAME_STORAGE_KEY = "password_setup_username";
 
 type PydanticDetail = { loc: string[]; msg: string; type: string };
+type PasswordErrorDetail = { message?: string; requirements?: string[] };
+
+const PASSWORD_SPECIAL_REGEX = /[!@#$%^&*(),.?":{}|<>]/;
 
 const PASSWORD_RULES = [
   { label: "At least 12 characters", test: (p: string) => p.length >= 12 },
   { label: "Uppercase letter", test: (p: string) => /[A-Z]/.test(p) },
   { label: "Lowercase letter", test: (p: string) => /[a-z]/.test(p) },
   { label: "Number", test: (p: string) => /\d/.test(p) },
-  { label: "Special character (!@#$…)", test: (p: string) => /[^A-Za-z0-9]/.test(p) },
+  { label: "Special character (!@#$…)", test: (p: string) => PASSWORD_SPECIAL_REGEX.test(p) },
 ];
 
 function parseApiError(payload: unknown): string {
@@ -30,6 +33,13 @@ function parseApiError(payload: unknown): string {
       const field = first.loc[first.loc.length - 1];
       return field ? `${String(field).replace("_", " ")}: ${first.msg}` : first.msg;
     }
+  }
+  if (p.detail && typeof p.detail === "object") {
+    const detail = p.detail as PasswordErrorDetail;
+    if (typeof detail.message === "string" && Array.isArray(detail.requirements) && detail.requirements.length > 0) {
+      return `${detail.message}: ${detail.requirements[0]}`;
+    }
+    if (typeof detail.message === "string") return detail.message;
   }
   if (typeof p.detail === "string") return p.detail;
   return "Unable to set password";

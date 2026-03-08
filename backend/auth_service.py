@@ -595,11 +595,15 @@ class AuthService:
 
         PasswordValidator.validate_or_raise(new_password)
 
+        # Always persist using the resolved account username from the token lookup.
+        # The submitted identifier may be stale/alternate (e.g. email vs username).
+        resolved_username = user.get("username") or username
+
         hashed_password = self._hash_password(new_password)
         metadata.pop("password_setup", None)
         metadata["password_set"] = True
         metadata.setdefault("email_verified", True)
-        self.user_db.update_user(username, {
+        self.user_db.update_user(resolved_username, {
             "password_hash": hashed_password,
             "login_attempts": 0,
             "locked_until": None,
@@ -607,7 +611,7 @@ class AuthService:
         })
 
         safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
-        safe_user['username'] = user.get("username", username)
+        safe_user['username'] = resolved_username
         return safe_user
 
     def _create_session(self, username: str) -> str:
