@@ -66,14 +66,17 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     }
   }
 
-  // Defense in depth: require an auth cookie to be present before forwarding
+  // Defense in depth: require an auth cookie to be present before forwarding.
+  // Public endpoints that power the landing page should remain accessible.
   const hasAuthCookie =
     request.cookies.has("access_token") || request.cookies.has("refresh_token");
-  // Allow unauthenticated access only to auth-related paths (login, signup, etc.)
   const isAuthPath =
     normalizedWithSlash.startsWith("/auth/") ||
     normalizedWithSlash === "/auth";
-  if (!hasAuthCookie && !isAuthPath) {
+  const isPublicPath =
+    normalizedWithSlash === "/home/overview" ||
+    normalizedWithSlash === "/home/announcements";
+  if (!hasAuthCookie && !isAuthPath && !isPublicPath) {
     return new Response(JSON.stringify({ detail: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
