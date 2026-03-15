@@ -313,6 +313,22 @@ async def startup_event():
     else:
         logger.info("ℹ️  Langfuse tracing not active")
 
+    # Write reproducibility manifest (best-effort)
+    if config.REPRODUCIBILITY_ENABLED:
+        try:
+            from backend.reproducibility import write_manifest
+            write_manifest(config.REPRODUCIBILITY_MANIFEST_PATH)
+            logger.info("✅ Reproducibility manifest written")
+        except Exception as exc:
+            logger.warning("Reproducibility manifest failed: %s", exc)
+
+    # Cold-start warmup (best-effort)
+    try:
+        from backend.warmup import run_warmup
+        await run_warmup()
+    except Exception as exc:
+        logger.warning("Warmup failed: %s", exc)
+
     # Seed admin user if none exists
     try:
         from backend.database import get_user_db

@@ -17,7 +17,8 @@ from backend.exceptions import (
     InvalidCredentialsError,
     TokenInvalidError,
 )
-from backend.api.dependencies import get_current_user, get_current_session
+from backend.api.dependencies import get_current_session
+from backend.auth_dependencies import get_optional_user
 from backend.config import config
 from backend.security_logger import SecurityLogger, get_client_ip, get_user_agent
 from backend.rate_limiter import (
@@ -527,7 +528,7 @@ def confirm_password_reset(
 
 
 @router.get("/me")
-def me(current_user: dict = Depends(get_current_user)):
+def me(current_user: dict | None = Depends(get_optional_user)):
     return {"user": current_user}
 
 

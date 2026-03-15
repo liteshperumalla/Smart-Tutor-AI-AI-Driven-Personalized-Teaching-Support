@@ -8,6 +8,7 @@ import { ToastProvider } from "@/components/toast-provider";
 import { AnnouncementToaster } from "@/components/announcement-toaster";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -54,6 +55,7 @@ export default function RootLayout({
             </ThemeProvider>
           </ErrorBoundary>
         </PostHogProvider>
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>

@@ -140,6 +140,28 @@ rag_embedding_errors_total = Counter(
     registry=REGISTRY,
 )
 
+# ============================================================================
+# Drift Monitoring Metrics
+# ============================================================================
+
+rag_query_drift_score = Gauge(
+    name="rag_query_drift_score",
+    documentation="Drift score (max |z| across monitored features)",
+    registry=REGISTRY,
+)
+
+rag_query_length_z = Gauge(
+    name="rag_query_length_z",
+    documentation="Z-score of query length vs baseline",
+    registry=REGISTRY,
+)
+
+rag_query_wordcount_z = Gauge(
+    name="rag_query_wordcount_z",
+    documentation="Z-score of query word count vs baseline",
+    registry=REGISTRY,
+)
+
 # RAG cost tracking
 rag_total_cost_dollars = Counter(
     name="rag_total_cost_dollars",
@@ -385,6 +407,16 @@ def track_tokens(service: str, input_tokens: int = 0, output_tokens: int = 0):
         rag_tokens_processed_total.labels(service=service, token_type="input").inc(input_tokens)
     if output_tokens > 0:
         rag_tokens_processed_total.labels(service=service, token_type="output").inc(output_tokens)
+
+
+def track_drift(drift_score: float, z_len: float, z_words: float) -> None:
+    """Update drift gauges for the latest query."""
+    try:
+        rag_query_drift_score.set(drift_score)
+        rag_query_length_z.set(z_len)
+        rag_query_wordcount_z.set(z_words)
+    except Exception:
+        pass
 
 
 def track_db_query(database: str, operation: str, duration: float):

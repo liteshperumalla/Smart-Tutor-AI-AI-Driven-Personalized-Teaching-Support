@@ -548,6 +548,53 @@ class Config:
         == "true"
     )
 
+    # LLM logging privacy controls
+    REDACT_LLM_LOGS = (
+        os.getenv(
+            "REDACT_LLM_LOGS", "true" if ENVIRONMENT == "production" else "false"
+        ).lower()
+        == "true"
+    )
+    DISABLE_LLM_LOG_CONTENT = (
+        os.getenv("DISABLE_LLM_LOG_CONTENT", "false").lower() == "true"
+    )
+    LLM_LOG_MAX_CHARS = int(os.getenv("LLM_LOG_MAX_CHARS", "2000"))
+
+    # Drift monitoring
+    DRIFT_MONITOR_ENABLED = (
+        os.getenv(
+            "DRIFT_MONITOR_ENABLED", "true" if ENVIRONMENT == "production" else "false"
+        ).lower()
+        == "true"
+    )
+    DRIFT_BASELINE_PATH = os.getenv("DRIFT_BASELINE_PATH", "./drift_baseline.json")
+
+    # Reproducibility manifest
+    REPRODUCIBILITY_ENABLED = (
+        os.getenv(
+            "REPRODUCIBILITY_ENABLED", "true" if ENVIRONMENT == "production" else "false"
+        ).lower()
+        == "true"
+    )
+    REPRODUCIBILITY_MANIFEST_PATH = os.getenv(
+        "REPRODUCIBILITY_MANIFEST_PATH", "./artifacts/reproducibility_manifest.json"
+    )
+
+    # Cold-start warmup
+    WARMUP_ENABLED = (
+        os.getenv(
+            "WARMUP_ENABLED", "false" if ENVIRONMENT == "development" else "true"
+        ).lower()
+        == "true"
+    )
+    WARMUP_LOAD_S3_INDEX = (
+        os.getenv("WARMUP_LOAD_S3_INDEX", "false").lower() == "true"
+    )
+    WARMUP_LOAD_RERANKER = (
+        os.getenv("WARMUP_LOAD_RERANKER", "false").lower() == "true"
+    )
+    WARMUP_TIMEOUT_SECONDS = int(os.getenv("WARMUP_TIMEOUT_SECONDS", "20"))
+
     # ECS Metadata (auto-populated in ECS environment)
     ECS_CONTAINER_METADATA_URI_V4 = os.getenv("ECS_CONTAINER_METADATA_URI_V4", "")
     AWS_EXECUTION_ENV = os.getenv("AWS_EXECUTION_ENV", "")
@@ -595,6 +642,13 @@ class Config:
                 warnings.append(
                     "SECURITY: CORS_ALLOW_LOCALHOST is enabled in production. "
                     "This should be disabled for security."
+                )
+
+            # Warn if LLM logs can capture raw user content in production
+            if not cls.REDACT_LLM_LOGS and not cls.DISABLE_LLM_LOG_CONTENT:
+                warnings.append(
+                    "SECURITY: LLM log content is not redacted in production. "
+                    "Consider setting REDACT_LLM_LOGS=true or DISABLE_LLM_LOG_CONTENT=true."
                 )
 
             # Validate SECRET_KEY is set

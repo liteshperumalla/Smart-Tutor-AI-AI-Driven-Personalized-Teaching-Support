@@ -1,13 +1,6 @@
 import { NextRequest } from "next/server";
 import { posix } from "path";
 
-// Allow larger body sizes for file uploads
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 // Increase timeout for long-running operations like initial S3 index download (can take up to 3-4 minutes)
 export const maxDuration = 300;
 

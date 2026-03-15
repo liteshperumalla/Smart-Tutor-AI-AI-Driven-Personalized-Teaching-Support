@@ -63,9 +63,9 @@ class HealthChecker:
                     "message": "Redis caching is disabled"
                 }
 
-            from backend.redis_cache import RedisCache
+            from backend.redis_cache import get_redis_cache
 
-            redis = RedisCache()
+            redis = get_redis_cache()
             # Try to ping Redis
             redis.client.ping()
 

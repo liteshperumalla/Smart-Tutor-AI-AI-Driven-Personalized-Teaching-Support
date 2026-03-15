@@ -135,10 +135,23 @@ class LLMOpsLogger:
         except Exception as exc:
             logger.warning("LLMOps PostHog capture failed: %s", exc)
 
-        # Braintrust — LLM trace with full input/output for observability dashboard
+        # Braintrust — LLM trace with optional redaction of input/output
         try:
             from backend.config import Config
+            from backend.utils import RedactionUtils
             if Config.BRAINTRUST_API_KEY:
+                input_safe = input_text
+                output_safe = output_text
+                if Config.DISABLE_LLM_LOG_CONTENT:
+                    input_safe = None
+                    output_safe = None
+                elif Config.REDACT_LLM_LOGS:
+                    input_safe = RedactionUtils.redact_text(
+                        input_text, max_length=Config.LLM_LOG_MAX_CHARS
+                    )
+                    output_safe = RedactionUtils.redact_text(
+                        output_text, max_length=Config.LLM_LOG_MAX_CHARS
+                    )
                 import braintrust
                 bt_logger = braintrust.init_logger(
                     project=Config.BRAINTRUST_PROJECT,
@@ -146,8 +159,8 @@ class LLMOpsLogger:
                     async_flush=True,
                 )
                 bt_logger.log(
-                    input={"query": input_text} if input_text else None,
-                    output=output_text or None,
+                    input={"query": input_safe} if input_safe else None,
+                    output=output_safe or None,
                     metadata={
                         "model": rec.model,
                         "user_id": rec.user_id,

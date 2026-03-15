@@ -4,6 +4,7 @@ Common utility functions for backend operations
 """
 
 import os
+import re
 import hashlib
 import mimetypes
 from datetime import datetime, timedelta
@@ -15,6 +16,35 @@ from .config import config
 from .validators import PathValidator
 
 logger = get_logger(__name__)
+
+
+class RedactionUtils:
+    """Basic PII redaction utilities for logs and telemetry."""
+
+    _EMAIL_RE = re.compile(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}\b")
+    _PHONE_RE = re.compile(
+        r"\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b"
+    )
+    _SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+    _CC_RE = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
+    _JWT_RE = re.compile(r"\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b")
+    _API_KEY_RE = re.compile(r"\b(?:sk|rk|pk|api|key)[-_][A-Za-z0-9]{16,}\b", re.IGNORECASE)
+
+    @staticmethod
+    def redact_text(text: Optional[str], replacement: str = "[REDACTED]", max_length: Optional[int] = None) -> Optional[str]:
+        if text is None:
+            return None
+        redacted = text
+        redacted = RedactionUtils._EMAIL_RE.sub(replacement, redacted)
+        redacted = RedactionUtils._PHONE_RE.sub(replacement, redacted)
+        redacted = RedactionUtils._SSN_RE.sub(replacement, redacted)
+        redacted = RedactionUtils._JWT_RE.sub(replacement, redacted)
+        redacted = RedactionUtils._API_KEY_RE.sub(replacement, redacted)
+        # Credit card pass last to avoid over-matching structured numbers
+        redacted = RedactionUtils._CC_RE.sub(replacement, redacted)
+        if max_length and max_length > 0 and len(redacted) > max_length:
+            redacted = redacted[:max_length] + "..."
+        return redacted
 
 
 class FileUtils:
@@ -55,6 +85,12 @@ class FileUtils:
         except Exception as e:
             logger.error(f"Failed to hash file {filepath}: {e}")
             raise
+
+    @staticmethod
+    def get_file_hash_from_bytes(data: bytes, algorithm: str = "sha256") -> str:
+        hash_func = hashlib.new(algorithm)
+        hash_func.update(data)
+        return hash_func.hexdigest()
 
     @staticmethod
     def get_file_mimetype(filepath: str) -> Optional[str]:

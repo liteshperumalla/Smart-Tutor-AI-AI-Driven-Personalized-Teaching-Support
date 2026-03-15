@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.10-slim AS base
+FROM python:3.11-slim AS base
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
