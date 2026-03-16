@@ -4,7 +4,7 @@ Provides dependency injection for JWT token validation with blacklist checking
 """
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Any
 
 from .jwt_service import get_jwt_service
@@ -19,7 +19,7 @@ security = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> Dict[str, Any]:
     """
     FastAPI dependency to get the current authenticated user.
@@ -109,7 +109,7 @@ async def get_current_active_user(
 
 
 async def get_optional_user(
-    credentials: HTTPAuthCredentials = Depends(HTTPBearer(auto_error=False))
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
 ) -> Dict[str, Any] | None:
     """
     Optional authentication - returns user if token is valid, None otherwise.

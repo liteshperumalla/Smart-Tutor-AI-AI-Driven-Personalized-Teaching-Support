@@ -347,6 +347,10 @@ class Config:
         == "true"
     )
     EVALUATION_LOG_FILE = os.getenv("EVALUATION_LOG_FILE", "logs/rag_evaluation.jsonl")
+    EVALUATION_RUNS_LOG_FILE = os.getenv(
+        "EVALUATION_RUNS_LOG_FILE", "logs/rag_evaluation_runs.jsonl"
+    )
+    EVALUATION_CRON_TOKEN = os.getenv("EVALUATION_CRON_TOKEN", "")
     EVALUATION_DATASET_FILE = os.getenv(
         "EVALUATION_DATASET_FILE", "Evaluation_files/evaluation_data.jsonl"
     )

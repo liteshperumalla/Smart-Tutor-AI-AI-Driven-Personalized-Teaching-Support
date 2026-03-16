@@ -22,6 +22,8 @@ import {
   runBatchQuality,
   BatchQualityResult,
   QualitySummary,
+  fetchEvaluationRuns,
+  EvaluationRunRecord,
   fetchQuizMetrics,
   QuizMetrics,
   fetchAgentMetrics,
@@ -90,6 +92,9 @@ export function EvaluationContent() {
   const [analysis, setAnalysis] = useState<EvaluationAnalysis | null>(null);
   const [results, setResults] = useState<EvaluationResult[]>([]);
   const [logSummary, setLogSummary] = useState<EvaluationLogSummary | null>(null);
+  const [evaluationRuns, setEvaluationRuns] = useState<EvaluationRunRecord[]>([]);
+  const [runsLoading, setRunsLoading] = useState(false);
+  const [runsError, setRunsError] = useState<string | null>(null);
   const [runLimit, setRunLimit] = useState(5);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
@@ -127,23 +132,31 @@ export function EvaluationContent() {
     if (!token) return;
     let cancelled = false;
     setLoading(true);
+    setRunsLoading(true);
+    setRunsError(null);
     Promise.all([
       fetchEvaluationCases({ token }),
-      fetchEvaluationLogSummary(token)
+      fetchEvaluationLogSummary(token),
+      fetchEvaluationRuns(token, 10),
     ])
-      .then(([casesData, summaryData]) => {
+      .then(([casesData, summaryData, runsData]) => {
         if (!cancelled) {
           setCases(casesData);
           setLogSummary(summaryData);
+          setEvaluationRuns(runsData);
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Unable to load evaluation data");
+          setRunsError(err instanceof Error ? err.message : "Unable to load evaluation runs");
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRunsLoading(false);
+        }
       });
 
     return () => {
@@ -431,6 +444,20 @@ export function EvaluationContent() {
       setLogSummary(summary);
     } catch (err) {
       setLogSummary({ error: err instanceof Error ? err.message : "Unable to refresh" });
+    }
+  }
+
+  async function handleRefreshRuns() {
+    if (!token) return;
+    setRunsLoading(true);
+    setRunsError(null);
+    try {
+      const runs = await fetchEvaluationRuns(token, 10);
+      setEvaluationRuns(runs);
+    } catch (err) {
+      setRunsError(err instanceof Error ? err.message : "Unable to refresh runs");
+    } finally {
+      setRunsLoading(false);
     }
   }
 
@@ -2122,6 +2149,140 @@ export function EvaluationContent() {
             ) : (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="h-6 w-6 text-zinc-400 animate-spin" />
+              </div>
+            )}
+          </section>
+
+          {/* Scheduled Evaluation Runs */}
+          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-sky-50 p-2.5 dark:bg-sky-900/20">
+                  <Calendar className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-zinc-900 dark:text-white">Scheduled Evaluation Runs</h3>
+                  <p className="text-xs text-zinc-500">Dataset evaluations triggered by CI</p>
+                </div>
+              </div>
+              <button
+                onClick={handleRefreshRuns}
+                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+              >
+                <RefreshCw className={`h-3 w-3 ${runsLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+
+            {runsError && (
+              <p className="text-sm text-red-600 dark:text-red-400">{runsError}</p>
+            )}
+
+            {runsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 text-zinc-400 animate-spin" />
+              </div>
+            ) : evaluationRuns.length === 0 ? (
+              <p className="text-sm text-zinc-500">No scheduled runs recorded yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {evaluationRuns.map((run) => {
+                  const quality = run.summary?.quality_summary;
+                  const correctness = quality?.avg_correctness ?? 0;
+                  const faithfulness = quality?.avg_faithfulness ?? 0;
+                  const relevance = quality?.avg_answer_relevance ?? 0;
+                  const delta = run.summary?.delta;
+                  return (
+                    <div
+                      key={run.run_id}
+                      className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                            {new Date(run.timestamp).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-zinc-500">
+                            {run.dataset} · {run.source}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                          {run.summary?.total_evaluated ?? 0} evaluated
+                        </span>
+                      </div>
+
+                      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Latency</p>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                            {(run.summary?.avg_latency ?? 0).toFixed(2)}s
+                          </p>
+                          {typeof delta?.avg_latency === "number" && (
+                            <p className="text-[11px] text-zinc-500">
+                              Δ {delta.avg_latency >= 0 ? "+" : ""}
+                              {delta.avg_latency.toFixed(2)}s
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Correctness</p>
+                          <p className={`text-sm font-semibold ${qualityColor(correctness)}`}>
+                            {correctness.toFixed(2)}
+                          </p>
+                          {typeof delta?.avg_correctness === "number" && (
+                            <p className="text-[11px] text-zinc-500">
+                              Δ {delta.avg_correctness >= 0 ? "+" : ""}
+                              {delta.avg_correctness.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Faithfulness</p>
+                          <p className={`text-sm font-semibold ${qualityColor(faithfulness)}`}>
+                            {faithfulness.toFixed(2)}
+                          </p>
+                          {typeof delta?.avg_faithfulness === "number" && (
+                            <p className="text-[11px] text-zinc-500">
+                              Δ {delta.avg_faithfulness >= 0 ? "+" : ""}
+                              {delta.avg_faithfulness.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Answer Relevance</p>
+                          <p className={`text-sm font-semibold ${qualityColor(relevance)}`}>
+                            {relevance.toFixed(2)}
+                          </p>
+                          {typeof delta?.avg_answer_relevance === "number" && (
+                            <p className="text-[11px] text-zinc-500">
+                              Δ {delta.avg_answer_relevance >= 0 ? "+" : ""}
+                              {delta.avg_answer_relevance.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {run.sample_results?.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-2">
+                            Lowest correctness samples
+                          </p>
+                          <ul className="space-y-2">
+                            {run.sample_results.slice(0, 3).map((sample, idx) => (
+                              <li key={`${run.run_id}-${idx}`} className="text-xs text-zinc-600 dark:text-zinc-400">
+                                <span className="font-semibold text-zinc-900 dark:text-white">
+                                  {sample.correctness.toFixed(2)}
+                                </span>
+                                {" · "}
+                                {sample.query}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </section>

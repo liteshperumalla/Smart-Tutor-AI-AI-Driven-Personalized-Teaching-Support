@@ -128,13 +128,17 @@ class TestTokenManagement:
     def test_access_without_token(self, test_client):
         """Test accessing protected endpoint without token"""
         response = test_client.get("/auth/me")
-        assert response.status_code == 401
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("user") is None
 
     def test_access_with_invalid_token(self, test_client):
         """Test accessing protected endpoint with invalid token"""
         headers = {"Authorization": "Bearer invalid_token"}
         response = test_client.get("/auth/me", headers=headers)
-        assert response.status_code == 401
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("user") is None
 
     def test_token_refresh(self, test_client, test_user):
         """Test token refresh functionality — tokens are HttpOnly cookies"""
@@ -164,16 +168,17 @@ class TestLogout:
         assert response.status_code == 200
         assert response.json()["success"] is True
 
-        # Verify token is blacklisted
+        # Verify token is blacklisted (optional auth returns user=None)
         me_response = test_client.get("/auth/me", headers=auth_headers)
-        assert me_response.status_code == 401
+        assert me_response.status_code == 200
+        assert me_response.json().get("user") is None
 
 
 class TestJWTSecurity:
     """Test JWT security edge cases"""
 
     def test_blacklisted_token_rejected_after_logout(self, test_client, test_user):
-        """Token used after logout must return 401"""
+        """Token used after logout should return user=None for /auth/me"""
         import re
         # Login — tokens set as HttpOnly cookies
         login = test_client.post("/auth/login", json={
@@ -190,10 +195,11 @@ class TestJWTSecurity:
 
         # Try using the blacklisted token via Authorization header (no cookie present)
         response = test_client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert response.json().get("user") is None
 
     def test_expired_token_rejected(self, test_client):
-        """A manually crafted expired token must return 401"""
+        """A manually crafted expired token should return user=None for /auth/me"""
         import jwt as pyjwt
         from datetime import datetime, timedelta, timezone
         expired_token = pyjwt.encode(
@@ -212,16 +218,18 @@ class TestJWTSecurity:
         )
         headers = {"Authorization": f"Bearer {expired_token}"}
         response = test_client.get("/auth/me", headers=headers)
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert response.json().get("user") is None
 
     def test_malformed_token_rejected(self, test_client):
-        """Garbage token string must return 401, not 500"""
+        """Garbage token string should return user=None for /auth/me"""
         headers = {"Authorization": "Bearer not.a.valid.jwt.at.all"}
         response = test_client.get("/auth/me", headers=headers)
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert response.json().get("user") is None
 
     def test_token_type_mismatch_rejected(self, test_client, test_user):
-        """Using a refresh token as an access token must be rejected"""
+        """Using a refresh token as an access token should return user=None for /auth/me"""
         import re
         # Login — tokens set as HttpOnly cookies
         login = test_client.post("/auth/login", json={
@@ -240,4 +248,5 @@ class TestJWTSecurity:
         # Using refresh token as access token must return 401
         # (Cookie is cleared so only the Authorization header is checked)
         response = test_client.get("/auth/me", headers={"Authorization": f"Bearer {refresh_token}"})
-        assert response.status_code == 401
+        assert response.status_code == 200
+        assert response.json().get("user") is None

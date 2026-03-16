@@ -2,6 +2,7 @@ from fastapi import Depends, Header, HTTPException, Query, Request, status
 
 from backend.auth_service import get_auth_service, AuthService
 from backend.rate_limiter import get_rate_limiter, PerUserRateLimiter
+from backend.config import config
 
 
 def get_auth_service_dep() -> AuthService:
@@ -89,3 +90,38 @@ async def get_admin_session(session=Depends(get_current_session)):
             detail="Admin access required",
         )
     return token, user
+
+
+async def get_evaluation_cron_token(
+    x_evaluation_token: str | None = Header(None, alias="X-Evaluation-Token"),
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """
+    Validate a static evaluation token for scheduled CI runs.
+    Accepts either X-Evaluation-Token or Authorization: Bearer <token>.
+    """
+    expected = config.EVALUATION_CRON_TOKEN
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Evaluation cron token is not configured",
+        )
+
+    token = None
+    if x_evaluation_token:
+        token = x_evaluation_token.strip()
+    elif authorization:
+        if not authorization.lower().startswith("bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header",
+            )
+        token = authorization.split(" ", 1)[1].strip()
+
+    if not token or token != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid evaluation token",
+        )
+
+    return token

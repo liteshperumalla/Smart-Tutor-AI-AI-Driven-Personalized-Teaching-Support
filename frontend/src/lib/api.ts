@@ -397,6 +397,43 @@ export type EvaluationLogSummary = {
   error?: string;
 };
 
+export type EvaluationRunSummary = {
+  total_evaluated?: number;
+  total_dataset_questions?: number;
+  avg_latency?: number;
+  quality_summary?: QualitySummary | null;
+  delta?: {
+    avg_faithfulness?: number | null;
+    avg_answer_relevance?: number | null;
+    avg_context_recall?: number | null;
+    avg_context_precision?: number | null;
+    avg_correctness?: number | null;
+    avg_latency?: number | null;
+  };
+};
+
+export type EvaluationRunRecord = {
+  run_id: string;
+  timestamp: string;
+  source: string;
+  run_type: string;
+  dataset: string;
+  params: {
+    limit?: number;
+    model_id?: string | null;
+  };
+  summary: EvaluationRunSummary;
+  sample_results: Array<{
+    query: string;
+    faithfulness: number;
+    answer_relevance: number;
+    context_recall: number;
+    context_precision: number;
+    correctness: number;
+    latency?: number;
+  }>;
+};
+
 // Real-time RAG Pipeline Metrics
 export type RealtimeRAGSummary = {
   total_queries_analyzed: number;
@@ -1567,6 +1604,17 @@ export async function fetchEvaluationLogSummary(token: string): Promise<Evaluati
     token,
   });
   return data.summary;
+}
+
+export async function fetchEvaluationRuns(
+  token: string,
+  limit: number = 10
+): Promise<EvaluationRunRecord[]> {
+  const data = await getJSON<{ runs: EvaluationRunRecord[] }>({
+    path: `/evaluation/runs?limit=${limit}`,
+    token,
+  });
+  return data.runs ?? [];
 }
 
 export async function fetchRealtimeRAGMetrics(token: string, lastN?: number): Promise<RealtimeRAGMetrics> {

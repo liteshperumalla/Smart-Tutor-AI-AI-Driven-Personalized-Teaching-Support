@@ -1,0 +1,47 @@
+name: Scheduled RAG Evaluation
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  run-dataset-evaluation:
+    name: Run Dataset Evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Trigger scheduled evaluation
+        env:
+          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL }}
+          EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
+          EVALUATION_DATASET_LIMIT: ${{ vars.EVALUATION_DATASET_LIMIT || 20 }}
+          EVALUATION_MODEL_ID: ${{ vars.EVALUATION_MODEL_ID || '' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${EVALUATION_BACKEND_URL}" ]; then
+            echo "Missing EVALUATION_BACKEND_URL secret"
+            exit 1
+          fi
+
+          if [ -z "${EVALUATION_CRON_TOKEN}" ]; then
+            echo "Missing EVALUATION_CRON_TOKEN secret"
+            exit 1
+          fi
+
+          payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}}"
+          if [ -n "${EVALUATION_MODEL_ID}" ]; then
+            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}, \"model_id\": \"${EVALUATION_MODEL_ID}\"}"
+          fi
+
+          response="$(curl -sS -X POST "${EVALUATION_BACKEND_URL}/evaluation/run-scheduled" \
+            -H "Content-Type: application/json" \
+            -H "X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}" \
+            -d "${payload}")"
+
+          echo "## Scheduled RAG Evaluation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo "${response}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

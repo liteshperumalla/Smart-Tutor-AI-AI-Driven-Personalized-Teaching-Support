@@ -5,11 +5,16 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
-from backend.api.dependencies import get_current_session, get_admin_session
+from backend.api.dependencies import (
+    get_current_session,
+    get_admin_session,
+    get_evaluation_cron_token,
+)
 from backend.services.evaluation_service import (
     EvaluationService,
     get_evaluation_service,
 )
+from backend.services.evaluation_run_store import append_run, list_runs, get_latest_run
 from backend.cost_tracking import get_cost_tracker
 from backend.config import config
 
@@ -487,21 +492,7 @@ class DatasetQualityRequest(BaseModel):
     model_id: Optional[str] = Field(default=None, description="Optional Bedrock model ID for judging")
 
 
-@router.post("/run-dataset-quality")
-def run_dataset_quality_evaluation(
-    payload: DatasetQualityRequest,
-    session=Depends(get_admin_session),
-):
-    """
-    Run the evaluation dataset questions through the current RAG pipeline.
-
-    For each question:
-    1. Retrieve context from S3 vector index
-    2. Generate response with Bedrock LLM
-    3. Score with LLM-as-judge (faithfulness, answer_relevance, context_recall)
-
-    Returns aggregated quality scores + individual results.
-    """
+def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     import json
     import time
     from pathlib import Path
@@ -544,11 +535,11 @@ def run_dataset_quality_evaluation(
         }
 
     # Limit the number of questions
-    questions = questions[: payload.limit]
+    questions = questions[:limit]
 
     # Initialize retriever and LLM
     retriever = create_s3_retriever(similarity_top_k=5)
-    llm = BedrockLLM(model_id=payload.model_id or config.BEDROCK_MODEL_ID)
+    llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
 
     individual_results = []
     faithfulness_sum = 0.0
@@ -582,7 +573,7 @@ def run_dataset_quality_evaluation(
             # 2. Generate response
             t1 = time.time()
             prompt = (
-                f"Based on the following context, provide a concise answer.\n\n"
+                "Based on the following context, provide a concise answer.\n\n"
                 f"Context:\n{context_text}\n\n"
                 f"Question: {question}\n\nAnswer:"
             )
@@ -594,7 +585,7 @@ def run_dataset_quality_evaluation(
                 question=question,
                 context_passages=context_passages,
                 answer=response_text,
-                model_id=payload.model_id,
+                model_id=model_id,
             )
             ctx_precision = compute_context_precision(retrieval_scores)
             scores["context_precision"] = ctx_precision
@@ -663,6 +654,91 @@ def run_dataset_quality_evaluation(
         },
         "individual_results": individual_results,
     }
+
+
+def _store_dataset_run(result: dict, limit: int, model_id: Optional[str], source: str) -> None:
+    individual = result.get("individual_results") or []
+    sample = sorted(
+        individual,
+        key=lambda item: item.get("correctness", 0),
+    )[:5]
+    previous = get_latest_run()
+    previous_summary = (previous or {}).get("summary") or {}
+    previous_quality = (previous_summary.get("quality_summary") or {}) if previous_summary else {}
+    current_quality = result.get("quality_summary") or {}
+
+    def delta_metric(key: str) -> Optional[float]:
+        current = current_quality.get(key)
+        prev = previous_quality.get(key)
+        if current is None or prev is None:
+            return None
+        return round(current - prev, 4)
+
+    delta = {
+        "avg_faithfulness": delta_metric("avg_faithfulness"),
+        "avg_answer_relevance": delta_metric("avg_answer_relevance"),
+        "avg_context_recall": delta_metric("avg_context_recall"),
+        "avg_context_precision": delta_metric("avg_context_precision"),
+        "avg_correctness": delta_metric("avg_correctness"),
+        "avg_latency": None,
+    }
+    if previous_summary and previous_summary.get("avg_latency") is not None and result.get("avg_latency") is not None:
+        delta["avg_latency"] = round(result.get("avg_latency", 0) - previous_summary.get("avg_latency", 0), 4)
+
+    return append_run(
+        {
+            "source": source,
+            "run_type": "dataset_quality",
+            "dataset": "Evaluation_files/evaluation_data.jsonl",
+            "params": {"limit": limit, "model_id": model_id},
+            "summary": {
+                "total_evaluated": result.get("total_evaluated", 0),
+                "total_dataset_questions": result.get("total_dataset_questions", 0),
+                "avg_latency": result.get("avg_latency", 0),
+                "quality_summary": result.get("quality_summary"),
+                "delta": delta,
+            },
+            "sample_results": sample,
+        }
+    )
+
+
+@router.post("/run-dataset-quality")
+def run_dataset_quality_evaluation(
+    payload: DatasetQualityRequest,
+    session=Depends(get_admin_session),
+):
+    """
+    Run the evaluation dataset questions through the current RAG pipeline.
+
+    For each question:
+    1. Retrieve context from S3 vector index
+    2. Generate response with Bedrock LLM
+    3. Score with LLM-as-judge (faithfulness, answer_relevance, context_recall)
+
+    Returns aggregated quality scores + individual results.
+    """
+    result = _run_dataset_quality(payload.limit, payload.model_id)
+    record = _store_dataset_run(result, payload.limit, payload.model_id, source="manual")
+    return {**result, "run_record": record}
+
+
+@router.post("/run-scheduled")
+def run_scheduled_dataset_quality_evaluation(
+    payload: DatasetQualityRequest,
+    token=Depends(get_evaluation_cron_token),
+):
+    result = _run_dataset_quality(payload.limit, payload.model_id)
+    record = _store_dataset_run(result, payload.limit, payload.model_id, source="scheduled")
+    return {**result, "run_record": record}
+
+
+@router.get("/runs")
+def list_evaluation_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    session=Depends(get_admin_session),
+):
+    return {"runs": list_runs(limit=limit)}
 
 
 @router.get("/export")
