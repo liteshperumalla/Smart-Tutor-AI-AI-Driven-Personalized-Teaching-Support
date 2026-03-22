@@ -12,6 +12,21 @@ import time
 import threading
 from typing import Any, Dict, List, Optional
 
+CONNECTIVITY_ERROR_HINTS = (
+    "dns",
+    "resolve",
+    "connect",
+    "refused",
+    "unavailable",
+    "service",
+    "routing",
+    "defunct",
+    "connection reset",
+    "failed to establish",
+)
+
+AURA_RESUMABLE_STATES = {"paused", "resuming", "stopped", "starting"}
+
 from backend.config import config
 
 logger = logging.getLogger(__name__)
@@ -93,11 +108,11 @@ def _resume_aura_instance(max_wait: int = 120) -> bool:
         status = _get_instance_status()
         if status == "running":
             return True
-        if status not in ("paused", "resuming"):
+        if status not in AURA_RESUMABLE_STATES:
             logger.warning("Aura instance in unexpected state: %s", status)
             return False
 
-        if status == "paused":
+        if status in {"paused", "stopped"}:
             token = _get_aura_token()
             if not token:
                 return False
@@ -114,7 +129,7 @@ def _resume_aura_instance(max_wait: int = 120) -> bool:
                     timeout=10,
                 )
                 resp.raise_for_status()
-                logger.info("Aura resume request sent for %s", config.NEO4J_AURA_INSTANCE_ID)
+                logger.info("Aura resume request sent for %s (status=%s)", config.NEO4J_AURA_INSTANCE_ID, status)
             except Exception as exc:
                 logger.warning("Failed to resume Aura instance: %s", exc)
                 return False
@@ -172,7 +187,7 @@ class Neo4jClient:
         except Exception as first_err:
             # Check if this looks like a connectivity failure (paused instance)
             err_str = str(first_err).lower()
-            if any(k in err_str for k in ("dns", "resolve", "connect", "refused", "unavailable", "service")):
+            if any(k in err_str for k in CONNECTIVITY_ERROR_HINTS):
                 logger.info("Neo4j connection failed, attempting Aura auto-resume...")
                 if _resume_aura_instance():
                     # Recreate the driver after resume
@@ -217,6 +232,15 @@ class Neo4jClient:
             return True
         except Exception as exc:
             logger.warning("Neo4j connectivity check failed: %s", exc)
+            if any(k in str(exc).lower() for k in CONNECTIVITY_ERROR_HINTS):
+                logger.info("Neo4j connectivity check triggering Aura auto-resume...")
+                if _resume_aura_instance():
+                    self._reconnect()
+                    try:
+                        self.driver.verify_connectivity()
+                        return True
+                    except Exception as retry_exc:
+                        logger.warning("Neo4j connectivity still failing after Aura resume: %s", retry_exc)
             return False
 
     def close(self) -> None:

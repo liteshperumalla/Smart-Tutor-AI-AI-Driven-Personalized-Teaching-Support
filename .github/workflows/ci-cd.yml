@@ -345,6 +345,7 @@ jobs:
           cache-to: type=gha,mode=min,scope=frontend-image
 
       - name: Deploy frontend to Vercel
+        id: vercel_deploy
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         working-directory: frontend
         run: |
@@ -352,11 +353,20 @@ jobs:
           npm install --global vercel@latest
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           vercel build --prod --token="$VERCEL_TOKEN"
-          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          deployment_url="$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
+          if [ -z "$deployment_url" ]; then
+            echo "::error::Vercel deploy did not return a deployment URL."
+            exit 1
+          fi
+
+          vercel inspect "$deployment_url" --token="$VERCEL_TOKEN" >/tmp/vercel-inspect.txt
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
 
       - name: Cleanup old Vercel production deployments
-        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        if: ${{ steps.vercel_deploy.outputs.deployment_url != '' }}
         working-directory: frontend
+        env:
+          DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
         run: |
           set -euo pipefail
 
@@ -367,11 +377,10 @@ jobs:
             exit 0
           fi
 
-          keep_url="$(echo "$deployments_json" | jq -r '.[0].url')"
-          echo "Keeping latest deployment: $keep_url"
+          echo "Keeping active deployment: $DEPLOYMENT_URL"
 
-          echo "$deployments_json" | jq -r '.[1:] | .[].url' | while read -r url; do
-            if [ -n "$url" ]; then
+          echo "$deployments_json" | jq -r '.[].url' | while read -r url; do
+            if [ -n "$url" ] && [ "$url" != "$DEPLOYMENT_URL" ]; then
               echo "Removing old deployment: $url"
               vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
             fi
@@ -474,7 +483,7 @@ jobs:
             echo "|-----------|--------|---------|"
             echo "| Backend | deployed | EC2 · version \`${{ steps.version.outputs.version }}\` |"
             if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-              echo "| Frontend | deployed | Vercel CLI production deploy |"
+              echo "| Frontend | deployed | Vercel CLI production deploy · `${{ steps.vercel_deploy.outputs.deployment_url }}` |"
             else
               echo "| Frontend | skipped | Vercel secrets not configured |"
             fi
