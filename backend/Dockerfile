@@ -45,9 +45,12 @@ ENV HOME=/app
 COPY --chown=appuser:appuser backend/ ./backend/
 # Some modules are imported from repository root (e.g., `from utils import ...`)
 COPY --chown=appuser:appuser utils.py ./utils.py
+# Bundle the production evaluation dataset used by the scheduled RAG workflow.
+COPY --chown=appuser:appuser Evaluation_files/evaluation_data.jsonl ./Evaluation_files/evaluation_data.jsonl
+COPY --chown=appuser:appuser Evaluation_files/evaluation_1_data.jsonl ./Evaluation_files/evaluation_1_data.jsonl
 
 # Create necessary directories with proper ownership
-RUN mkdir -p logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \
+RUN mkdir -p Evaluation_files logs user_data previous_chats quiz_results persisted_index chroma_db keys data .cache .cache/huggingface && \
     chown -R appuser:appuser /app
 
 # SECURITY: Switch to non-root user

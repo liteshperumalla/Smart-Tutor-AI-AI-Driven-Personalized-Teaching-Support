@@ -324,7 +324,7 @@ jobs:
           docker run --rm \
             -e ENVIRONMENT=test \
             "${backend_image}" \
-            python -c "import fastapi, uvicorn; import langgraph; from backend.api.main import app; print(f'backend image runtime import check passed: {app.title}')"
+            python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/Evaluation_files/evaluation_data.jsonl'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
 
       - name: Build & push frontend image
         uses: docker/build-push-action@v5
