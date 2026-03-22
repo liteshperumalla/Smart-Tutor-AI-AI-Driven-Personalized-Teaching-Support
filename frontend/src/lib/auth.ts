@@ -75,7 +75,15 @@ export async function checkAuthStatus(apiBaseUrl: string): Promise<boolean> {
       },
     });
 
-    return response.ok;
+    if (!response.ok) {
+      return false;
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as {
+      user?: Record<string, unknown> | null;
+    };
+
+    return Boolean(payload.user);
   } catch {
     return false;
   }

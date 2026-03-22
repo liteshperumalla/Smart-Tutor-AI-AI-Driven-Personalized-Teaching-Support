@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
@@ -17,16 +17,43 @@ from backend.exceptions import (
     InvalidCredentialsError,
     TokenInvalidError,
 )
-from backend.api.dependencies import get_current_session
-from backend.auth_dependencies import get_optional_user
+from backend.api.dependencies import (
+    get_current_session,
+    get_auth_service_dep,
+    get_rate_limiter_dep,
+)
 from backend.config import config
 from backend.security_logger import SecurityLogger, get_client_ip, get_user_agent
 from backend.rate_limiter import (
     limiter,
+    PerUserRateLimiter,
 )  # Import from rate_limiter to avoid circular imports
 from backend.csrf_protection import csrf_protect
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+async def get_optional_session_user(
+    request: Request,
+    authorization: str | None = Header(None, alias="Authorization"),
+    auth_service: AuthService = Depends(get_auth_service_dep),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
+):
+    """
+    Resolve the current user from either the HttpOnly cookie or Authorization
+    header, but do not raise when the request is anonymous or the token is
+    invalid. This keeps /auth/me compatible with cookie-based auth.
+    """
+    try:
+        _, user = await get_current_session(
+            request=request,
+            authorization=authorization,
+            auth_service=auth_service,
+            rate_limiter=rate_limiter,
+        )
+        return user
+    except HTTPException:
+        return None
 
 
 def _password_error_detail(exc: PasswordValidationError):
@@ -528,7 +555,7 @@ def confirm_password_reset(
 
 
 @router.get("/me")
-def me(current_user: dict | None = Depends(get_optional_user)):
+def me(current_user: dict | None = Depends(get_optional_session_user)):
     return {"user": current_user}
 
 

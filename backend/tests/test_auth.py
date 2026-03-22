@@ -127,13 +127,35 @@ class TestTokenManagement:
 
     def test_access_without_token(self, test_client):
         """Test accessing protected endpoint without token"""
+        test_client.cookies.clear()
         response = test_client.get("/auth/me")
         assert response.status_code == 200
         data = response.json()
         assert data.get("user") is None
 
+    def test_access_with_cookie_auth_returns_user(self, test_client, test_user):
+        """Test /auth/me returns the logged-in user for cookie-based auth."""
+        test_client.cookies.clear()
+        login_response = test_client.post(
+            "/auth/login",
+            json={
+                "username": test_user["username"],
+                "password": test_user["password"]
+            }
+        )
+        assert login_response.status_code == 200
+
+        response = test_client.get("/auth/me")
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("user") is not None
+        assert data["user"]["username"] == test_user["username"]
+
+        test_client.cookies.clear()
+
     def test_access_with_invalid_token(self, test_client):
         """Test accessing protected endpoint with invalid token"""
+        test_client.cookies.clear()
         headers = {"Authorization": "Bearer invalid_token"}
         response = test_client.get("/auth/me", headers=headers)
         assert response.status_code == 200
