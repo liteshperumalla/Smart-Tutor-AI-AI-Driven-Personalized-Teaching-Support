@@ -12,11 +12,9 @@ env:
   NODE_VERSION: "20.9.0"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-  NEXT_PUBLIC_API_BASE_URL: /api/backend
-  BACKEND_API_BASE_URL: http://backend:8000
-  NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
-  NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
-  NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -181,11 +179,11 @@ jobs:
       contents: read
     needs: [secret-scanning]
     env:
-      NEXT_PUBLIC_API_BASE_URL: ${{ env.NEXT_PUBLIC_API_BASE_URL }}
-      BACKEND_API_BASE_URL: ${{ env.BACKEND_API_BASE_URL }}
-      NEXT_PUBLIC_APP_BASE_URL: ${{ env.NEXT_PUBLIC_APP_BASE_URL }}
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
+      NEXT_PUBLIC_API_BASE_URL: /api/backend
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -235,23 +233,30 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  validate_deploy_config:
-    name: Validate Deploy Configuration
+  build-and-deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    outputs:
-      frontend_deploy_enabled: ${{ steps.validate.outputs.frontend_deploy_enabled }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NEXT_PUBLIC_API_BASE_URL: /api/backend
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Validate required deployment secrets
-        id: validate
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
 
@@ -267,47 +272,21 @@ jobs:
             exit 1
           fi
 
-          vercel_present=0
-          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
-            if [ -n "${!name:-}" ]; then
-              vercel_present=$((vercel_present + 1))
+      - name: Validate optional Vercel configuration
+        run: |
+          set -euo pipefail
+
+          present=0
+          for value in "${VERCEL_TOKEN}" "${VERCEL_ORG_ID}" "${VERCEL_PROJECT_ID}"; do
+            if [ -n "$value" ]; then
+              present=$((present + 1))
             fi
           done
 
-          if [ "$vercel_present" -eq 0 ]; then
-            echo "frontend_deploy_enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Vercel deployment disabled because no Vercel secrets are configured."
-            exit 0
-          fi
-
-          if [ "$vercel_present" -ne 3 ]; then
+          if [ "$present" -ne 0 ] && [ "$present" -ne 3 ]; then
             echo "::error::Vercel deploy secrets are partially configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID together."
             exit 1
           fi
-
-          echo "frontend_deploy_enabled=true" >> "$GITHUB_OUTPUT"
-          echo "All deployment secrets required by this workflow are configured."
-
-  build_images:
-    name: Build Images
-    runs-on: ubuntu-latest
-    needs: [validate_deploy_config]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    env:
-      NEXT_PUBLIC_API_BASE_URL: ${{ env.NEXT_PUBLIC_API_BASE_URL }}
-      BACKEND_API_BASE_URL: ${{ env.BACKEND_API_BASE_URL }}
-      NEXT_PUBLIC_APP_BASE_URL: ${{ env.NEXT_PUBLIC_APP_BASE_URL }}
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Generate version tag
         id: version
@@ -364,29 +343,9 @@ jobs:
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=min,scope=frontend-image
 
-  deploy_frontend:
-    name: Deploy Frontend
-    runs-on: ubuntu-latest
-    needs: [validate_deploy_config, build_images]
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      needs.validate_deploy_config.outputs.frontend_deploy_enabled == 'true'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Deploy frontend to Vercel
+        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         working-directory: frontend
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
           npm install --global vercel@latest
@@ -395,20 +354,13 @@ jobs:
           vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
       - name: Cleanup old Vercel production deployments
+        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         working-directory: frontend
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
 
-          if ! command -v jq >/dev/null 2>&1; then
-            echo "::error::jq is required for deployment cleanup but is not available on this runner."
-            exit 1
-          fi
-
           deployments_json="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
           deploy_count="$(echo "$deployments_json" | jq 'length')"
-
           if [ "$deploy_count" -le 1 ]; then
             echo "No old production deployments to remove."
             exit 0
@@ -420,29 +372,23 @@ jobs:
           echo "$deployments_json" | jq -r '.[1:] | .[].url' | while read -r url; do
             if [ -n "$url" ]; then
               echo "Removing old deployment: $url"
-              vercel remove "$url" --yes --token="$VERCEL_TOKEN"
+              vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
             fi
           done
 
-  deploy_backend:
-    name: Deploy Backend
-    runs-on: ubuntu-latest
-    needs: [validate_deploy_config, build_images]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
       - name: Deploy backend to EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
-          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ needs.build_images.outputs.version }}
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: GHCR_TOKEN,ACTOR,BACKEND_IMAGE
           script: |
-            set -euo pipefail
+            set -e
 
             echo "=== Authenticating with GHCR ==="
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
@@ -518,34 +464,19 @@ jobs:
             echo "=== Pruning all unused images/layers ==="
             docker image prune -af || true
 
-  deployment_summary:
-    name: Deployment Summary
-    runs-on: ubuntu-latest
-    needs: [validate_deploy_config, build_images, deploy_frontend, deploy_backend]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Write deployment summary
+      - name: Deployment summary
         run: |
-          set -euo pipefail
-
           {
             echo "## Deployment Summary"
             echo ""
-            echo "| Stage | Result | Details |"
-            echo "|-------|--------|---------|"
-            echo "| Validate Deploy Configuration | ${{ needs.validate_deploy_config.result }} | Secrets and deploy mode validation |"
-            echo "| Build Images | ${{ needs.build_images.result }} | Version \`${{ needs.build_images.outputs.version || 'n/a' }}\` |"
-            echo "| Deploy Backend | ${{ needs.deploy_backend.result }} | EC2 rollout via SSH |"
-            if [ "${{ needs.validate_deploy_config.outputs.frontend_deploy_enabled }}" = "true" ]; then
-              echo "| Deploy Frontend | ${{ needs.deploy_frontend.result }} | Vercel production deploy |"
+            echo "| Component | Status | Details |"
+            echo "|-----------|--------|---------|"
+            echo "| Backend | deployed | EC2 · version \`${{ steps.version.outputs.version }}\` |"
+            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+              echo "| Frontend | deployed | Vercel CLI production deploy |"
             else
-              echo "| Deploy Frontend | skipped | Vercel secrets not configured |"
+              echo "| Frontend | skipped | Vercel secrets not configured |"
             fi
-            if [ "${{ needs.build_images.result }}" = "success" ]; then
-              echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ needs.build_images.outputs.version || 'n/a' }}\` |"
-              echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ needs.build_images.outputs.version || 'n/a' }}\` |"
-            else
-              echo "| Backend Image | not published | Build stage did not complete successfully |"
-              echo "| Frontend Image | not published | Build stage did not complete successfully |"
-            fi
+            echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
+            echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
