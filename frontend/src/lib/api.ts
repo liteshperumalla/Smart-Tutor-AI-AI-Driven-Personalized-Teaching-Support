@@ -7,6 +7,7 @@ const SERVER_API_BASE_URL =
   process.env.BACKEND_API_BASE_URL || FALLBACK_API_BASE_URL;
 const APP_BASE_URL =
   process.env.NEXT_PUBLIC_APP_BASE_URL || "http://localhost:4000";
+const CLIENT_PROXY_API_BASE_URL = "/api/backend";
 
 function withAbsoluteOrigin(url: string): string {
   if (!url || url.startsWith("http://") || url.startsWith("https://")) {
@@ -33,13 +34,7 @@ function resolveApiBaseUrl(): string {
     return withAbsoluteOrigin(EXPLICIT_API_BASE_URL);
   }
 
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
-    const portSuffix = DEFAULT_API_PORT ? `:${DEFAULT_API_PORT}` : "";
-    return `${protocol}//${hostname}${portSuffix}`;
-  }
-
-  return FALLBACK_API_BASE_URL;
+  return CLIENT_PROXY_API_BASE_URL;
 }
 
 export const API_BASE_URL = resolveApiBaseUrl();

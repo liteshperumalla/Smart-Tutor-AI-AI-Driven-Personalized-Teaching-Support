@@ -14,6 +14,62 @@ const BLOCKED_PATH_PREFIXES: string[] = [];
 type RouteParams = { path?: string[] };
 type RouteContext = { params: RouteParams } | { params: Promise<RouteParams> };
 
+function splitSetCookieHeader(headerValue: string): string[] {
+  const cookies: string[] = [];
+  let current = "";
+  let inExpires = false;
+
+  for (let index = 0; index < headerValue.length; index += 1) {
+    const char = headerValue[index];
+    const next = headerValue.slice(index, index + 8).toLowerCase();
+
+    if (!inExpires && next === "expires=") {
+      inExpires = true;
+    }
+
+    if (char === "," && !inExpires) {
+      if (current.trim()) {
+        cookies.push(current.trim());
+      }
+      current = "";
+      continue;
+    }
+
+    if (char === ";" && inExpires) {
+      inExpires = false;
+    }
+
+    current += char;
+  }
+
+  if (current.trim()) {
+    cookies.push(current.trim());
+  }
+
+  return cookies;
+}
+
+function appendResponseHeaders(target: Headers, source: Headers) {
+  for (const [key, value] of source.entries()) {
+    if (key.toLowerCase() === "set-cookie") {
+      continue;
+    }
+    target.append(key, value);
+  }
+
+  const headersWithSetCookie = source as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const setCookies =
+    typeof headersWithSetCookie.getSetCookie === "function"
+      ? headersWithSetCookie.getSetCookie()
+      : splitSetCookieHeader(source.get("set-cookie") ?? "");
+
+  for (const cookie of setCookies) {
+    target.append("set-cookie", cookie);
+  }
+}
+
 async function resolvePath(paramsOrPromise: RouteParams | Promise<RouteParams>) {
   const resolved =
     typeof (paramsOrPromise as Promise<RouteParams>).then === "function"
@@ -110,7 +166,8 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   }
 
   const response = await fetch(url, init);
-  const proxyHeaders = new Headers(response.headers);
+  const proxyHeaders = new Headers();
+  appendResponseHeaders(proxyHeaders, response.headers);
   // NOTE: Do NOT delete the Content-Security-Policy header — removing it would
   // strip the backend's security directives from every proxied response.
 
