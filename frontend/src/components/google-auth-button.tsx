@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type GoogleAuthButtonProps = {
   intent: "login" | "signup";
@@ -18,6 +18,12 @@ function generateNonce(): string {
 export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
   const [nonce] = useState<string>(generateNonce);
 
+  useEffect(() => {
+    // sessionStorage can be cleared during the Google OAuth round-trip on iOS Safari.
+    // Keep the nonce in a short-lived cookie so the callback can validate state reliably.
+    document.cookie = `google_oauth_nonce=${nonce}; path=/; SameSite=Lax; max-age=600`;
+  }, [nonce]);
+
   const config = useMemo(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     const redirectEnv = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
@@ -31,13 +37,6 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       return { ready: false } as const;
     }
 
-    if (typeof window !== "undefined") {
-      // Use a cookie instead of sessionStorage — sessionStorage can be cleared
-      // by iOS Safari (ITP) when the browser navigates to accounts.google.com
-      // and back, causing "Invalid or expired OAuth state" errors on mobile.
-      // A short-lived cookie (10 min) survives cross-origin navigations reliably.
-      document.cookie = `google_oauth_nonce=${nonce}; path=/; SameSite=Lax; max-age=600`;
-    }
     const statePayload = btoa(JSON.stringify({ intent, nonce }));
 
     const params = new URLSearchParams({

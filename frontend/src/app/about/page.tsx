@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { PageShell } from "@/components/page-shell";
-import { Info, GraduationCap, MessageSquare, ClipboardList, Brain, Library, Calendar, Code, Mail, Github, Linkedin } from "lucide-react";
 
 const keyFeatures = [
   {
