@@ -125,6 +125,8 @@ class S3Retriever(BaseRetriever):
                 self._stats["errors"] += 1
             return []
 
+        raw_results = list(results)
+
         # ── Score filtering: drop low-relevance results ──────────
         min_score = config.MIN_RETRIEVAL_SCORE
         before_count = len(results)
@@ -132,6 +134,19 @@ class S3Retriever(BaseRetriever):
         if before_count > len(results):
             logger.info(
                 f"Score filter: {before_count} → {len(results)} (min={min_score})"
+            )
+        if not results and raw_results:
+            # Returning zero nodes causes the answering layer to hallucinate on
+            # otherwise answerable questions. Fall back to the strongest raw
+            # candidates when thresholding is too aggressive.
+            fallback_count = min(self.similarity_top_k, len(raw_results))
+            results = raw_results[:fallback_count]
+            logger.warning(
+                "Score filter removed all %s retrieval candidates for query '%s...'; "
+                "falling back to top %s raw results",
+                before_count,
+                query_str[:50],
+                fallback_count,
             )
 
         # Fetch chunk texts for all remaining candidates
