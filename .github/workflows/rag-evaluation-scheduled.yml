@@ -136,12 +136,26 @@ jobs:
           fi
 
           total_evaluated=""
+          total_dataset_questions=""
+          avg_latency=""
           quality_summary_type=""
           result_message=""
+          avg_faithfulness=""
+          avg_answer_relevance=""
+          avg_context_recall=""
+          avg_context_precision=""
+          avg_correctness=""
           if [ "${response_is_json}" = "true" ]; then
             total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_response.json)"
+            total_dataset_questions="$(jq -r '.total_dataset_questions // empty' /tmp/eval_response.json)"
+            avg_latency="$(jq -r '.avg_latency // empty' /tmp/eval_response.json)"
             quality_summary_type="$(jq -r 'if .quality_summary == null then "null" else (.quality_summary | type) end' /tmp/eval_response.json)"
             result_message="$(jq -r '.message // empty' /tmp/eval_response.json)"
+            avg_faithfulness="$(jq -r '.quality_summary.avg_faithfulness // empty' /tmp/eval_response.json)"
+            avg_answer_relevance="$(jq -r '.quality_summary.avg_answer_relevance // empty' /tmp/eval_response.json)"
+            avg_context_recall="$(jq -r '.quality_summary.avg_context_recall // empty' /tmp/eval_response.json)"
+            avg_context_precision="$(jq -r '.quality_summary.avg_context_precision // empty' /tmp/eval_response.json)"
+            avg_correctness="$(jq -r '.quality_summary.avg_correctness // empty' /tmp/eval_response.json)"
           fi
 
           # ── Write Job Summary ──────────────────────────────────────────────
@@ -157,7 +171,16 @@ jobs:
             echo "| Run | [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
             if [ "${response_is_json}" = "true" ]; then
               echo "| Total Evaluated | \`${total_evaluated:-unknown}\` |"
+              echo "| Dataset Questions | \`${total_dataset_questions:-unknown}\` |"
+              echo "| Avg Latency | \`${avg_latency:-unknown}\` |"
               echo "| Quality Summary | \`${quality_summary_type}\` |"
+              if [ "${quality_summary_type}" = "object" ]; then
+                echo "| Avg Faithfulness | \`${avg_faithfulness:-unknown}\` |"
+                echo "| Avg Answer Relevance | \`${avg_answer_relevance:-unknown}\` |"
+                echo "| Avg Context Recall | \`${avg_context_recall:-unknown}\` |"
+                echo "| Avg Context Precision | \`${avg_context_precision:-unknown}\` |"
+                echo "| Avg Correctness | \`${avg_correctness:-unknown}\` |"
+              fi
             fi
             echo ""
             echo "### Response Body"
@@ -195,4 +218,16 @@ jobs:
             exit 1
           fi
 
+          echo "Result   : total_evaluated=${total_evaluated}/${total_dataset_questions:-unknown}, avg_latency=${avg_latency:-unknown}s"
+          if [ "${quality_summary_type}" = "object" ]; then
+            echo "Quality  : faithfulness=${avg_faithfulness:-unknown}, answer_relevance=${avg_answer_relevance:-unknown}, context_recall=${avg_context_recall:-unknown}, context_precision=${avg_context_precision:-unknown}, correctness=${avg_correctness:-unknown}"
+          fi
           echo "✓ Evaluation triggered successfully (HTTP ${http_code})."
+
+      - name: Upload evaluation response artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-evaluation-response-${{ github.run_id }}
+          path: /tmp/eval_response.json
+          if-no-files-found: ignore
