@@ -1,36 +1,26 @@
-name: CodeRabbit Code Review
-
-# Note: CodeRabbit reviews are configured via the CodeRabbit GitHub App
-# This workflow is a placeholder that can trigger reviews on demand
-# https://coderabbit.ai -> GitHub App Integration
+name: CodeRabbit Setup Guide
 
 on:
-  pull_request:
-    branches: [main, develop]
-  push:
-    branches: [main, develop]
+  workflow_dispatch:
 
 jobs:
-  # CodeRabbit reviews are handled via the GitHub App
-  # To set up: https://coderabbit.ai -> Settings -> GitHub Integration
-  notify:
-    name: CodeRabbit Review Trigger
+  setup-guide:
+    name: CodeRabbit Setup Guide
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create PR marker file
+      - name: Publish setup instructions
         run: |
-          echo "CodeRabbit review configured for this PR."
-          echo "To enable automated reviews:"
-          echo "1. Go to https://coderabbit.ai"
-          echo "2. Connect your GitHub repository"
-          echo "3. Enable auto-review in settings"
-          echo ""
-          echo "Configuration files:"
-          echo "  - .coderabbit.yaml (main config)"
-          echo "  - .coderabbit/coderabbit_reviews.yaml (rules)"
-
+          {
+            echo "## CodeRabbit"
+            echo ""
+            echo "CodeRabbit reviews are handled by the CodeRabbit GitHub App, not by this workflow."
+            echo ""
+            echo "To enable automated reviews:"
+            echo "1. Open https://coderabbit.ai"
+            echo "2. Connect this repository in the GitHub integration flow"
+            echo "3. Enable auto-review for pull requests"
+            echo ""
+            echo "Repository config files referenced by this setup:"
+            echo "- .coderabbit.yaml"
+            echo "- .coderabbit/coderabbit_reviews.yaml"
+          } >> "$GITHUB_STEP_SUMMARY"

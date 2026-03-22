@@ -2,9 +2,13 @@ name: Scheduled Security Scans
 
 on:
   schedule:
-    # Run daily at 2 AM UTC
-    - cron: '0 2 * * *'
+    - cron: "0 2 * * *"
   workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20.9.0"
+  IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
 
 permissions:
   contents: read
@@ -16,44 +20,41 @@ jobs:
   trivy-scheduled-scan:
     name: Trivy Full Security Scan
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.32.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH,MEDIUM
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: trivy-results.sarif
 
       - name: Run Trivy config scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.32.0
         with:
-          scan-type: 'config'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '0'
+          scan-type: config
+          scan-ref: .
+          format: table
+          exit-code: "0"
 
   dependency-audit:
     name: Dependency Security Audit
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write
       issues: write
     strategy:
       matrix:
         component: [backend, frontend]
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,47 +63,57 @@ jobs:
         if: matrix.component == 'backend'
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Run pip-audit (Backend)
         if: matrix.component == 'backend'
         id: pip-audit
         run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
           pip install pip-audit
-          pip-audit --requirement backend/requirements.txt --format json --output pip-audit.json || true
-
-      - name: Run Safety check (Backend)
-        if: matrix.component == 'backend'
-        id: safety-check
-        run: |
-          pip install safety
-          SAFETY_EXIT=0
-          safety check --file backend/requirements.txt --json --output safety-report.json || SAFETY_EXIT=$?
-          # Exit code 64 = vulnerabilities found; other non-zero = error
-          if [ "$SAFETY_EXIT" -eq 64 ]; then
-            echo "vulns_found=true" >> $GITHUB_OUTPUT
+          : > pip-audit.json
+          pip_audit_exit=0
+          pip-audit --requirement backend/requirements.txt --format json --output pip-audit.json || pip_audit_exit=$?
+          if [ ! -s pip-audit.json ] && [ "$pip_audit_exit" -ne 0 ]; then
+            echo "::error::pip-audit failed before producing a report."
+            exit "$pip_audit_exit"
+          fi
+          if jq -e 'length > 0' pip-audit.json >/dev/null; then
+            echo "vulns_found=true" >> "$GITHUB_OUTPUT"
           else
-            echo "vulns_found=false" >> $GITHUB_OUTPUT
+            echo "vulns_found=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Node.js (Frontend)
         if: matrix.component == 'frontend'
         uses: actions/setup-node@v4
         with:
-          node-version: '20.9.0'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Run npm audit (Frontend)
         if: matrix.component == 'frontend'
         id: npm-audit
         run: |
+          set -euo pipefail
           cd frontend
           npm ci --legacy-peer-deps
           npm audit --json > npm-audit-report.json || true
-          # Check for high-severity vulnerabilities
-          if npm audit --audit-level=high 2>&1; then
-            echo "vulns_found=false" >> $GITHUB_OUTPUT
+
+          if [ ! -s npm-audit-report.json ]; then
+            echo "::error::npm audit did not produce a report."
+            exit 1
+          fi
+
+          high_and_critical_count="$(jq '.metadata.vulnerabilities.high + .metadata.vulnerabilities.critical' npm-audit-report.json)"
+          if [ "${high_and_critical_count}" -gt 0 ]; then
+            echo "vulns_found=true" >> "$GITHUB_OUTPUT"
           else
-            echo "vulns_found=true" >> $GITHUB_OUTPUT
+            echo "vulns_found=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload audit reports
@@ -111,14 +122,14 @@ jobs:
           name: dependency-audit-${{ matrix.component }}
           path: |
             pip-audit.json
-            safety-report.json
             frontend/npm-audit-report.json
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Create issue if vulnerabilities found
         if: >-
           vars.CREATE_SECURITY_ISSUES == 'true' && (
-            (matrix.component == 'backend' && steps.safety-check.outputs.vulns_found == 'true') ||
+            (matrix.component == 'backend' && steps.pip-audit.outputs.vulns_found == 'true') ||
             (matrix.component == 'frontend' && steps.npm-audit.outputs.vulns_found == 'true')
           )
         uses: actions/github-script@v7
@@ -128,7 +139,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: `Security vulnerabilities detected in ${{ matrix.component }}`,
-              body: `Automated security scan detected high/critical vulnerabilities in ${{ matrix.component }}.\n\nPlease review the artifacts from workflow run #${{ github.run_number }}.`,
+              body: `Automated security scan detected vulnerabilities in ${{ matrix.component }}.\n\nPlease review the artifacts from workflow run #${{ github.run_number }}.`,
               labels: ['security', 'dependencies', 'automated']
             })
 
@@ -136,9 +147,6 @@ jobs:
     name: Container Security Scan (Latest)
     runs-on: ubuntu-latest
     if: github.ref_name == github.event.repository.default_branch
-    env:
-      IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -153,57 +161,58 @@ jobs:
       - name: Pull latest backend image
         id: pull-backend
         run: |
+          set -euo pipefail
           if docker pull ghcr.io/${{ env.IMAGE_NAME }}-backend:latest; then
-            echo "pulled=true" >> $GITHUB_OUTPUT
+            echo "pulled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::Backend :latest image not found in GHCR — skipping scan"
-            echo "pulled=false" >> $GITHUB_OUTPUT
+            echo "::warning::Backend latest image not found in GHCR; skipping backend image scan."
+            echo "pulled=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Scan backend image
         if: steps.pull-backend.outputs.pulled == 'true'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.32.0
         with:
           image-ref: ghcr.io/${{ env.IMAGE_NAME }}-backend:latest
-          format: 'sarif'
-          output: 'trivy-backend.sarif'
+          format: sarif
+          output: trivy-backend.sarif
 
       - name: Upload backend scan results
         if: steps.pull-backend.outputs.pulled == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-backend.sarif'
+          sarif_file: trivy-backend.sarif
           category: trivy-backend-latest
 
       - name: Pull latest frontend image
         id: pull-frontend
         run: |
+          set -euo pipefail
           if docker pull ghcr.io/${{ env.IMAGE_NAME }}-frontend:latest; then
-            echo "pulled=true" >> $GITHUB_OUTPUT
+            echo "pulled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::Frontend :latest image not found in GHCR — skipping scan"
-            echo "pulled=false" >> $GITHUB_OUTPUT
+            echo "::warning::Frontend latest image not found in GHCR; skipping frontend image scan."
+            echo "pulled=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Scan frontend image
         if: steps.pull-frontend.outputs.pulled == 'true'
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.32.0
         with:
           image-ref: ghcr.io/${{ env.IMAGE_NAME }}-frontend:latest
-          format: 'sarif'
-          output: 'trivy-frontend.sarif'
+          format: sarif
+          output: trivy-frontend.sarif
 
       - name: Upload frontend scan results
         if: steps.pull-frontend.outputs.pulled == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-frontend.sarif'
+          sarif_file: trivy-frontend.sarif
           category: trivy-frontend-latest
 
   license-compliance:
     name: License Compliance Check
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -211,10 +220,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Check Python licenses
         run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
           pip install pip-licenses
           pip install -r backend/requirements.txt
           pip-licenses --format=json --output-file=python-licenses.json
@@ -223,14 +234,17 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.9.0'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Check npm licenses
         run: |
+          set -euo pipefail
           cd frontend
           npm ci --legacy-peer-deps
           npx license-checker --json --out ../npm-licenses.json
-          npx license-checker --failOn 'GPL;AGPL' || true
+          npx license-checker --failOn 'GPL;AGPL'
 
       - name: Upload license reports
         uses: actions/upload-artifact@v4
@@ -239,12 +253,12 @@ jobs:
           path: |
             python-licenses.json
             npm-licenses.json
+          if-no-files-found: warn
           retention-days: 90
 
   sbom-generation:
     name: Generate Software Bill of Materials
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -259,9 +273,10 @@ jobs:
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
         with:
-          name: sbom
+          name: sbom-spdx
           path: sbom-spdx.json
-          retention-days: 365
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Scan SBOM with Grype
         uses: anchore/scan-action@v3
@@ -276,7 +291,6 @@ jobs:
       contents: read
       security-events: write
       id-token: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -4,6 +4,24 @@ on:
   schedule:
     - cron: "0 6 * * *" # daily at 06:00 UTC
   workflow_dispatch:
+    inputs:
+      dataset_limit:
+        type: string
+        description: "Number of dataset questions to evaluate (overrides EVALUATION_DATASET_LIMIT)"
+        required: false
+        default: ""
+      model_id:
+        type: string
+        description: "Model ID to evaluate (overrides EVALUATION_MODEL_ID; leave blank for default)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-evaluation-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   run-dataset-evaluation:
@@ -11,37 +29,170 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Trigger scheduled evaluation
+      # -----------------------------------------------------------------------
+      # Step 1 — Validate required configuration before doing any network work
+      # -----------------------------------------------------------------------
+      - name: Validate required secrets and variables
         env:
-          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL }}
+          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL || vars.EVALUATION_BACKEND_URL_PROD }}
           EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
-          EVALUATION_DATASET_LIMIT: ${{ vars.EVALUATION_DATASET_LIMIT || 20 }}
-          EVALUATION_MODEL_ID: ${{ vars.EVALUATION_MODEL_ID || '' }}
         run: |
           set -euo pipefail
 
+          missing=()
+
           if [ -z "${EVALUATION_BACKEND_URL}" ]; then
-            echo "Missing EVALUATION_BACKEND_URL secret"
-            exit 1
+            missing+=("EVALUATION_BACKEND_URL (secret) — base URL of your FastAPI backend, e.g. https://api.yourapp.com")
           fi
 
           if [ -z "${EVALUATION_CRON_TOKEN}" ]; then
-            echo "Missing EVALUATION_CRON_TOKEN secret"
+            missing+=("EVALUATION_CRON_TOKEN (secret) — shared token validated by POST /evaluation/run-scheduled")
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::One or more required secrets are not configured in this repository."
+            echo ""
+            echo "Missing configuration:"
+            for item in "${missing[@]}"; do
+              echo "  ✗ $item"
+            done
+            echo ""
+            echo "Fix: Go to  Settings → Secrets and variables → Actions → New repository secret"
+            echo "     and add each missing value listed above."
             exit 1
           fi
 
-          payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}}"
-          if [ -n "${EVALUATION_MODEL_ID}" ]; then
-            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}, \"model_id\": \"${EVALUATION_MODEL_ID}\"}"
+          echo "✓ All required secrets are present."
+
+      # -----------------------------------------------------------------------
+      # Step 2 — Build payload and call the backend
+      # -----------------------------------------------------------------------
+      - name: Trigger scheduled evaluation
+        env:
+          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL || vars.EVALUATION_BACKEND_URL_PROD }}
+          EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
+          # workflow_dispatch inputs override the repo variable when provided
+          EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || vars.EVALUATION_DATASET_LIMIT || '20' }}
+          EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
+        run: |
+          set -euo pipefail
+
+          # Strip any accidental trailing slash from the URL so the path never
+          # becomes double-slashed (e.g. https://api.example.com//evaluation/...)
+          base_url="${EVALUATION_BACKEND_URL%/}"
+
+          if [[ ! "${base_url}" =~ ^https?:// ]]; then
+            echo "::error::EVALUATION_BACKEND_URL must start with http:// or https://"
+            exit 1
           fi
 
-          response="$(curl -sS -X POST "${EVALUATION_BACKEND_URL}/evaluation/run-scheduled" \
-            -H "Content-Type: application/json" \
-            -H "X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}" \
-            -d "${payload}")"
+          if [[ ! "${EVALUATION_DATASET_LIMIT}" =~ ^[0-9]+$ ]]; then
+            echo "::error::EVALUATION_DATASET_LIMIT must be a positive integer. Received: ${EVALUATION_DATASET_LIMIT}"
+            exit 1
+          fi
 
-          echo "## Scheduled RAG Evaluation" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo '```json' >> "$GITHUB_STEP_SUMMARY"
-          echo "${response}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ "${EVALUATION_DATASET_LIMIT}" -lt 1 ] || [ "${EVALUATION_DATASET_LIMIT}" -gt 64 ]; then
+            echo "::error::EVALUATION_DATASET_LIMIT must be between 1 and 64 to match backend validation. Received: ${EVALUATION_DATASET_LIMIT}"
+            exit 1
+          fi
+
+          # Build JSON payload — only include model_id when explicitly set
+          if [ -n "${EVALUATION_MODEL_ID}" ]; then
+            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}, \"model_id\": \"${EVALUATION_MODEL_ID}\"}"
+          else
+            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}}"
+          fi
+
+          echo "Endpoint : ${base_url}/evaluation/run-scheduled"
+          echo "Payload  : ${payload}"
+          echo ""
+
+          # --fail-with-body  → non-zero exit on 4xx/5xx but still capture body
+          # --write-out       → capture HTTP status code separately from body
+          # --max-time 300    → 5-minute hard timeout (evaluation can be slow)
+          # --retry 2         → retry transient network errors twice
+          # --retry-delay 5   → wait 5 s between retries
+          http_code=$(
+            curl -sS \
+              --fail-with-body \
+              --max-time 300 \
+              --retry 2 \
+              --retry-delay 5 \
+              --retry-all-errors \
+              -X POST "${base_url}/evaluation/run-scheduled" \
+              -H "Content-Type: application/json" \
+              -H "X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}" \
+              -d "${payload}" \
+              --output /tmp/eval_response.json \
+              --write-out "%{http_code}" \
+            || true   # prevent -e from killing us before we can print diagnostics
+          )
+
+          response=$(cat /tmp/eval_response.json 2>/dev/null || echo "(no response body)")
+
+          response_is_json=false
+          if [ -f /tmp/eval_response.json ] && jq empty /tmp/eval_response.json >/dev/null 2>&1; then
+            response_is_json=true
+          fi
+
+          total_evaluated=""
+          quality_summary_type=""
+          result_message=""
+          if [ "${response_is_json}" = "true" ]; then
+            total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_response.json)"
+            quality_summary_type="$(jq -r 'if .quality_summary == null then "null" else (.quality_summary | type) end' /tmp/eval_response.json)"
+            result_message="$(jq -r '.message // empty' /tmp/eval_response.json)"
+          fi
+
+          # ── Write Job Summary ──────────────────────────────────────────────
+          {
+            echo "## Scheduled RAG Evaluation"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| HTTP Status | \`${http_code}\` |"
+            echo "| Dataset Limit | \`${EVALUATION_DATASET_LIMIT}\` |"
+            echo "| Model ID | \`${EVALUATION_MODEL_ID:-default}\` |"
+            echo "| Triggered by | \`${{ github.event_name }}\` |"
+            echo "| Run | [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
+            if [ "${response_is_json}" = "true" ]; then
+              echo "| Total Evaluated | \`${total_evaluated:-unknown}\` |"
+              echo "| Quality Summary | \`${quality_summary_type}\` |"
+            fi
+            echo ""
+            echo "### Response Body"
+            echo '```json'
+            echo "${response}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # ── Fail the step if the backend returned an error ─────────────────
+          if [ -z "${http_code}" ] || [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
+            echo "::error::Backend returned HTTP ${http_code:-0}. See response body above for details."
+            echo "Response: ${response}"
+            exit 1
+          fi
+
+          if [ "${response_is_json}" != "true" ]; then
+            echo "::error::Backend returned a successful HTTP status but the response body was not valid JSON."
+            echo "Response: ${response}"
+            exit 1
+          fi
+
+          if [ -z "${total_evaluated}" ] || [ "${total_evaluated}" = "0" ]; then
+            echo "::error::Scheduled evaluation completed without evaluating any dataset questions."
+            if [ -n "${result_message}" ]; then
+              echo "Message: ${result_message}"
+            fi
+            exit 1
+          fi
+
+          if [ "${quality_summary_type}" = "null" ]; then
+            echo "::error::Scheduled evaluation returned no quality summary."
+            if [ -n "${result_message}" ]; then
+              echo "Message: ${result_message}"
+            fi
+            exit 1
+          fi
+
+          echo "✓ Evaluation triggered successfully (HTTP ${http_code})."

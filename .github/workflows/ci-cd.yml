@@ -8,24 +8,21 @@ on:
   workflow_dispatch:
 
 env:
-  PYTHON_VERSION: '3.11'
-  NODE_VERSION: '20.9.0'
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20.9.0"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  NEXT_PUBLIC_API_BASE_URL: /api/backend
+  BACKEND_API_BASE_URL: http://backend:8000
+  NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+  NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+  NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
 
-# Cancel in-flight runs for the same branch/PR on new push
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # ================================================================
-  # 1. SECRET SCANNING
-  #    Blocks all subsequent jobs if credentials are detected in code
-  # ================================================================
   secret-scanning:
     name: Secret Scanning
     runs-on: ubuntu-latest
@@ -35,7 +32,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for accurate diff scanning
+          fetch-depth: 0
 
       - name: TruffleHog secret scan
         uses: trufflesecurity/trufflehog@v3.88.0
@@ -48,10 +45,6 @@ jobs:
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-  # ================================================================
-  # 2. DEPENDENCY SCANNING
-  #    Audits Python and npm packages for known CVEs
-  # ================================================================
   dependency-scanning:
     name: Dependency Scanning
     runs-on: ubuntu-latest
@@ -62,13 +55,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Python safety check
         run: |
-          pip install safety
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install "safety<4"
+          touch safety-report.json
           safety check --file=backend/requirements.txt --json --output safety-report.json || true
 
       - name: npm audit (frontend)
         run: |
+          set -euo pipefail
           cd frontend
           npm ci --legacy-peer-deps
           npm audit --audit-level=critical
@@ -78,21 +89,17 @@ jobs:
         with:
           name: security-reports
           path: safety-report.json
+          if-no-files-found: warn
           retention-days: 30
 
-  # ================================================================
-  # 3. BACKEND TESTS
-  #    Pytest suite with real PostgreSQL + Redis service containers
-  # ================================================================
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      checks: write        # Required by EnricoMi/publish-unit-test-result-action
-      pull-requests: write # Required for PR comments on test results
+      checks: write
+      pull-requests: write
     needs: [secret-scanning]
-
     services:
       postgres:
         image: postgres:15-alpine
@@ -100,22 +107,20 @@ jobs:
           POSTGRES_DB: test_db
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_pass
-        ports: ['5432:5432']
+        ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7-alpine
-        ports: ['6379:6379']
+        ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,10 +129,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pytest pytest-cov pytest-asyncio httpx
 
@@ -143,6 +151,7 @@ jobs:
           REDIS_PORT: 6379
           PYTHONPATH: .
         run: |
+          set -euo pipefail
           pytest backend/tests/ -v \
             --cov=backend \
             --cov-report=xml \
@@ -165,17 +174,18 @@ jobs:
           flags: backend
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # ================================================================
-  # 4. FRONTEND TESTS
-  #    TypeScript check, ESLint, Jest unit tests, and next build
-  # ================================================================
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
     needs: [secret-scanning]
-
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ env.NEXT_PUBLIC_API_BASE_URL }}
+      BACKEND_API_BASE_URL: ${{ env.BACKEND_API_BASE_URL }}
+      NEXT_PUBLIC_APP_BASE_URL: ${{ env.NEXT_PUBLIC_APP_BASE_URL }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -184,64 +194,124 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: cd frontend && npm ci --legacy-peer-deps
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --legacy-peer-deps
 
       - name: TypeScript type check
-        continue-on-error: true
-        run: cd frontend && npm run type-check
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm run type-check
 
       - name: Lint
-        continue-on-error: true
-        run: cd frontend && npm run lint
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm run lint
 
       - name: Unit tests
         run: |
+          set -euo pipefail
           cd frontend
           npm test -- --coverage --watchAll=false --passWithNoTests --maxWorkers=2
 
       - name: Build
-        run: cd frontend && npm run build
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm run build
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: frontend/.next
+          if-no-files-found: error
           retention-days: 7
 
-  # ================================================================
-  # 5. BUILD & DEPLOY
-  #    Runs only on pushes to main, after both test jobs pass.
-  #    - Builds Docker images and pushes to GHCR
-  #    - SSHes into EC2 and hot-swaps the backend container
-  #    - Frontend auto-deploys via Vercel's GitHub integration
-  #
-  #    Required GitHub Secrets:
-  #      EC2_HOST     — public IP or hostname of your EC2 instance
-  #      EC2_USER     — SSH username (e.g. ubuntu)
-  #      EC2_SSH_KEY  — private key content (e.g. ~/.ssh/smart-tutor-ec2.pem)
-  # ================================================================
-  build-and-deploy:
-    name: Build & Deploy
+  validate-deploy-config:
+    name: Validate Deploy Configuration
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      frontend_deploy_enabled: ${{ steps.validate.outputs.frontend_deploy_enabled }}
+    steps:
+      - name: Validate required deployment secrets
+        id: validate
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          missing_backend=()
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing_backend+=("$name")
+            fi
+          done
+
+          if [ "${#missing_backend[@]}" -gt 0 ]; then
+            echo "::error::Missing required backend deploy secrets: ${missing_backend[*]}"
+            exit 1
+          fi
+
+          vercel_present=0
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -n "${!name:-}" ]; then
+              vercel_present=$((vercel_present + 1))
+            fi
+          done
+
+          if [ "$vercel_present" -eq 0 ]; then
+            echo "frontend_deploy_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Vercel deployment disabled because no Vercel secrets are configured."
+            exit 0
+          fi
+
+          if [ "$vercel_present" -ne 3 ]; then
+            echo "::error::Vercel deploy secrets are partially configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID together."
+            exit 1
+          fi
+
+          echo "frontend_deploy_enabled=true" >> "$GITHUB_OUTPUT"
+          echo "All deployment secrets required by this workflow are configured."
+
+  build-images:
+    name: Build Images
+    runs-on: ubuntu-latest
+    needs: [validate-deploy-config]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 60
     permissions:
       contents: read
-      packages: write  # Required to push images to GHCR
-
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ env.NEXT_PUBLIC_API_BASE_URL }}
+      BACKEND_API_BASE_URL: ${{ env.BACKEND_API_BASE_URL }}
+      NEXT_PUBLIC_APP_BASE_URL: ${{ env.NEXT_PUBLIC_APP_BASE_URL }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Generate version tag
         id: version
-        run: echo "version=$(date +%Y%m%d)-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+        run: echo "version=$(date +%Y%m%d)-${GITHUB_SHA:0:7}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -267,12 +337,13 @@ jobs:
 
       - name: Smoke test backend image
         run: |
-          BACKEND_IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
-          echo "Validating backend image runtime: $BACKEND_IMAGE"
-          docker pull "$BACKEND_IMAGE"
+          set -euo pipefail
+          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
+          echo "Validating backend image runtime: ${backend_image}"
+          docker pull "${backend_image}"
           docker run --rm \
             -e ENVIRONMENT=test \
-            "$BACKEND_IMAGE" \
+            "${backend_image}" \
             python -c "import fastapi, uvicorn; import langgraph; from backend.api.main import app; print(f'backend image runtime import check passed: {app.title}')"
 
       - name: Build & push frontend image
@@ -281,57 +352,97 @@ jobs:
           context: ./frontend
           file: frontend/Dockerfile
           push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
+            BACKEND_API_BASE_URL=${{ env.BACKEND_API_BASE_URL }}
+            NEXT_PUBLIC_APP_BASE_URL=${{ env.NEXT_PUBLIC_APP_BASE_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+            NEXT_PUBLIC_GOOGLE_REDIRECT_URI=${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=min,scope=frontend-image
 
+  deploy-frontend:
+    name: Deploy Frontend
+    runs-on: ubuntu-latest
+    needs: [validate-deploy-config, build-images]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.validate-deploy-config.outputs.frontend_deploy_enabled == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Deploy frontend to Vercel
-        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          npm i -g vercel@latest
+          set -euo pipefail
+          npm install --global vercel@latest
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           vercel build --prod --token="$VERCEL_TOKEN"
           vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
 
       - name: Cleanup old Vercel production deployments
-        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         working-directory: frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           set -euo pipefail
 
-          DEPLOYMENTS_JSON="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
-          DEPLOY_COUNT="$(echo "$DEPLOYMENTS_JSON" | jq 'length')"
-          if [ "$DEPLOY_COUNT" -le 1 ]; then
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "::error::jq is required for deployment cleanup but is not available on this runner."
+            exit 1
+          fi
+
+          deployments_json="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
+          deploy_count="$(echo "$deployments_json" | jq 'length')"
+
+          if [ "$deploy_count" -le 1 ]; then
             echo "No old production deployments to remove."
             exit 0
           fi
 
-          KEEP_URL="$(echo "$DEPLOYMENTS_JSON" | jq -r '.[0].url')"
-          echo "Keeping latest deployment: $KEEP_URL"
+          keep_url="$(echo "$deployments_json" | jq -r '.[0].url')"
+          echo "Keeping latest deployment: $keep_url"
 
-          echo "$DEPLOYMENTS_JSON" | jq -r '.[1:] | .[].url' | while read -r url; do
+          echo "$deployments_json" | jq -r '.[1:] | .[].url' | while read -r url; do
             if [ -n "$url" ]; then
               echo "Removing old deployment: $url"
-              vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
+              vercel remove "$url" --yes --token="$VERCEL_TOKEN"
             fi
           done
 
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: [validate-deploy-config, build-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
       - name: Deploy backend to EC2
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
-          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ needs.build-images.outputs.version }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: GHCR_TOKEN,ACTOR,BACKEND_IMAGE
           script: |
-            set -e
+            set -euo pipefail
 
             echo "=== Authenticating with GHCR ==="
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
@@ -357,16 +468,16 @@ jobs:
             echo "=== Waiting for candidate backend health check ==="
             for i in $(seq 1 24); do
               if curl -sf http://localhost:18010/health > /dev/null; then
-                echo "✅ Candidate backend healthy after $((i * 5))s"
+                echo "Candidate backend healthy after $((i * 5))s"
                 break
               fi
               if [ "$i" -eq 24 ]; then
-                echo "❌ Candidate backend failed health check after 120s"
+                echo "Candidate backend failed health check after 120s"
                 docker logs smart-tutor-backend-candidate --tail 100 || true
                 docker rm -f smart-tutor-backend-candidate || true
                 exit 1
               fi
-              echo "  Attempt $i/24 — retrying in 5s..."
+              echo "Attempt $i/24; retrying in 5s..."
               sleep 5
             done
 
@@ -389,15 +500,15 @@ jobs:
             echo "=== Waiting for production backend health check ==="
             for i in $(seq 1 24); do
               if curl -sf http://localhost:8010/health > /dev/null; then
-                echo "✅ Production backend healthy after $((i * 5))s"
+                echo "Production backend healthy after $((i * 5))s"
                 break
               fi
               if [ "$i" -eq 24 ]; then
-                echo "❌ Production backend failed health check after 120s"
+                echo "Production backend failed health check after 120s"
                 docker logs smart-tutor-backend --tail 100 || true
                 exit 1
               fi
-              echo "  Attempt $i/24 — retrying in 5s..."
+              echo "Attempt $i/24; retrying in 5s..."
               sleep 5
             done
 
@@ -407,17 +518,34 @@ jobs:
             echo "=== Pruning all unused images/layers ==="
             docker image prune -af || true
 
-      - name: Deployment summary
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [validate-deploy-config, build-images, deploy-frontend, deploy-backend]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Write deployment summary
         run: |
-          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Backend** | ✅ Deployed | EC2 · version \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-            echo "| **Frontend** | ✅ Deployed | Vercel CLI production deploy |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| **Frontend** | ⚠️ Skipped (manual config) | Add \`VERCEL_TOKEN\`, \`VERCEL_ORG_ID\`, \`VERCEL_PROJECT_ID\` secrets, or use GitHub integration |" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "| **Backend Image** | Published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Frontend Image** | Published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+
+          {
+            echo "## Deployment Summary"
+            echo ""
+            echo "| Stage | Result | Details |"
+            echo "|-------|--------|---------|"
+            echo "| Validate Deploy Configuration | ${{ needs.validate-deploy-config.result }} | Secrets and deploy mode validation |"
+            echo "| Build Images | ${{ needs.build-images.result }} | Version \`${{ needs.build-images.outputs.version || 'n/a' }}\` |"
+            echo "| Deploy Backend | ${{ needs.deploy-backend.result }} | EC2 rollout via SSH |"
+            if [ "${{ needs.validate-deploy-config.outputs.frontend_deploy_enabled }}" = "true" ]; then
+              echo "| Deploy Frontend | ${{ needs.deploy-frontend.result }} | Vercel production deploy |"
+            else
+              echo "| Deploy Frontend | skipped | Vercel secrets not configured |"
+            fi
+            if [ "${{ needs.build-images.result }}" = "success" ]; then
+              echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ needs.build-images.outputs.version || 'n/a' }}\` |"
+              echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ needs.build-images.outputs.version || 'n/a' }}\` |"
+            else
+              echo "| Backend Image | not published | Build stage did not complete successfully |"
+              echo "| Frontend Image | not published | Build stage did not complete successfully |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
