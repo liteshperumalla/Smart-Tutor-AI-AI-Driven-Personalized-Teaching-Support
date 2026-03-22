@@ -235,7 +235,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  validate-deploy-config:
+  validate_deploy_config:
     name: Validate Deploy Configuration
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests]
@@ -288,10 +288,10 @@ jobs:
           echo "frontend_deploy_enabled=true" >> "$GITHUB_OUTPUT"
           echo "All deployment secrets required by this workflow are configured."
 
-  build-images:
+  build_images:
     name: Build Images
     runs-on: ubuntu-latest
-    needs: [validate-deploy-config]
+    needs: [validate_deploy_config]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 60
     permissions:
@@ -364,14 +364,14 @@ jobs:
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=min,scope=frontend-image
 
-  deploy-frontend:
+  deploy_frontend:
     name: Deploy Frontend
     runs-on: ubuntu-latest
-    needs: [validate-deploy-config, build-images]
+    needs: [validate_deploy_config, build_images]
     if: >-
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      needs.validate-deploy-config.outputs.frontend_deploy_enabled == 'true'
+      needs.validate_deploy_config.outputs.frontend_deploy_enabled == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -424,10 +424,10 @@ jobs:
             fi
           done
 
-  deploy-backend:
+  deploy_backend:
     name: Deploy Backend
     runs-on: ubuntu-latest
-    needs: [validate-deploy-config, build-images]
+    needs: [validate_deploy_config, build_images]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Deploy backend to EC2
@@ -435,7 +435,7 @@ jobs:
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTOR: ${{ github.actor }}
-          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ needs.build-images.outputs.version }}
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ needs.build_images.outputs.version }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -518,10 +518,10 @@ jobs:
             echo "=== Pruning all unused images/layers ==="
             docker image prune -af || true
 
-  deployment-summary:
+  deployment_summary:
     name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [validate-deploy-config, build-images, deploy-frontend, deploy-backend]
+    needs: [validate_deploy_config, build_images, deploy_frontend, deploy_backend]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Write deployment summary
@@ -533,17 +533,17 @@ jobs:
             echo ""
             echo "| Stage | Result | Details |"
             echo "|-------|--------|---------|"
-            echo "| Validate Deploy Configuration | ${{ needs.validate-deploy-config.result }} | Secrets and deploy mode validation |"
-            echo "| Build Images | ${{ needs.build-images.result }} | Version \`${{ needs.build-images.outputs.version || 'n/a' }}\` |"
-            echo "| Deploy Backend | ${{ needs.deploy-backend.result }} | EC2 rollout via SSH |"
-            if [ "${{ needs.validate-deploy-config.outputs.frontend_deploy_enabled }}" = "true" ]; then
-              echo "| Deploy Frontend | ${{ needs.deploy-frontend.result }} | Vercel production deploy |"
+            echo "| Validate Deploy Configuration | ${{ needs.validate_deploy_config.result }} | Secrets and deploy mode validation |"
+            echo "| Build Images | ${{ needs.build_images.result }} | Version \`${{ needs.build_images.outputs.version || 'n/a' }}\` |"
+            echo "| Deploy Backend | ${{ needs.deploy_backend.result }} | EC2 rollout via SSH |"
+            if [ "${{ needs.validate_deploy_config.outputs.frontend_deploy_enabled }}" = "true" ]; then
+              echo "| Deploy Frontend | ${{ needs.deploy_frontend.result }} | Vercel production deploy |"
             else
               echo "| Deploy Frontend | skipped | Vercel secrets not configured |"
             fi
-            if [ "${{ needs.build-images.result }}" = "success" ]; then
-              echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ needs.build-images.outputs.version || 'n/a' }}\` |"
-              echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ needs.build-images.outputs.version || 'n/a' }}\` |"
+            if [ "${{ needs.build_images.result }}" = "success" ]; then
+              echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ needs.build_images.outputs.version || 'n/a' }}\` |"
+              echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ needs.build_images.outputs.version || 'n/a' }}\` |"
             else
               echo "| Backend Image | not published | Build stage did not complete successfully |"
               echo "| Frontend Image | not published | Build stage did not complete successfully |"
