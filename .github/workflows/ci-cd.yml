@@ -3,6 +3,8 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [main, develop]
+    paths-ignore:
+      - helm/smart-ai-tutor/values-production.yaml
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -237,6 +239,8 @@ jobs:
   build-and-deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     needs: [backend-tests, frontend-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 60
@@ -324,7 +328,7 @@ jobs:
           docker run --rm \
             -e ENVIRONMENT=test \
             "${backend_image}" \
-            python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/Evaluation_files/evaluation_data.jsonl'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
+            python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/backend/rag/tests/test_dataset.json'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
 
       - name: Build & push frontend image
         uses: docker/build-push-action@v5
@@ -489,4 +493,81 @@ jobs:
             fi
             echo "| Backend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend Image | published | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  gitops-promote:
+    name: GitOps Promote
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor != 'github-actions[bot]' &&
+      vars.ENABLE_GITOPS_PRODUCTION == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update production image tags
+        env:
+          VERSION: ${{ needs.build-and-deploy.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          version = os.environ["VERSION"]
+          path = Path("helm/smart-ai-tutor/values-production.yaml")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  r"(backend:\n(?:.*\n)*?\s+image:\n(?:.*\n)*?\s+tag:\s*)([^\n]+)",
+                  rf"\1{version}",
+              ),
+              (
+                  r"(frontend:\n(?:.*\n)*?\s+image:\n(?:.*\n)*?\s+tag:\s*)([^\n]+)",
+                  rf"\1{version}",
+              ),
+          ]
+
+          updated = text
+          for pattern, replacement in replacements:
+              updated, count = re.subn(pattern, replacement, updated, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise SystemExit(f"failed to update expected image tag block: {pattern}")
+
+          path.write_text(updated)
+          PY
+
+      - name: Commit promoted release
+        env:
+          VERSION: ${{ needs.build-and-deploy.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- helm/smart-ai-tutor/values-production.yaml; then
+            echo "No GitOps changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/smart-ai-tutor/values-production.yaml
+          git commit -m "chore(gitops): promote production images to ${VERSION}"
+          git push
+
+      - name: Promotion summary
+        env:
+          VERSION: ${{ needs.build-and-deploy.outputs.version }}
+        run: |
+          {
+            echo "## GitOps Promotion"
+            echo ""
+            echo "- Updated \`helm/smart-ai-tutor/values-production.yaml\` to image tag \`${VERSION}\`"
+            echo "- ArgoCD will sync the promoted release from \`main\`"
           } >> "$GITHUB_STEP_SUMMARY"

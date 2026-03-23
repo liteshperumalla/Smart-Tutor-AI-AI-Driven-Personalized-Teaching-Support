@@ -4,7 +4,7 @@ global:
   evaluation_interval: 15s  # Evaluate rules every 15 seconds
   external_labels:
     cluster: 'smart-ai-tutor'
-    environment: 'development'
+    environment: 'production'
 
 # Alertmanager configuration (optional, for future expansion)
 # alerting:

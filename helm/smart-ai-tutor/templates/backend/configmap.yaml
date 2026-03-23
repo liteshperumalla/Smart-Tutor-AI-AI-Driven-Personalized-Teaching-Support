@@ -39,7 +39,7 @@ data:
   EMBEDDING_PROVIDER: {{ .Values.backend.embeddingProvider | default "bedrock" | quote }}
 
   # Cache Configuration
-  USE_REDIS_CACHE: {{ .Values.redis.enabled | quote }}
+  USE_REDIS_CACHE: {{ or .Values.redis.enabled .Values.redis.external.enabled | quote }}
   REDIS_SSL: {{ .Values.redis.ssl | default "false" | quote }}
   REDIS_SSL_CERT_REQS: {{ .Values.redis.sslCertReqs | default "required" | quote }}
 
@@ -56,6 +56,15 @@ data:
   LANGFUSE_PUBLIC_KEY: {{ .Values.backend.monitoring.langfuse.publicKey | quote }}
   LANGFUSE_HOST: {{ .Values.backend.monitoring.langfuse.host | default "https://cloud.langfuse.com" | quote }}
   {{- end }}
+  ENABLE_CLOUDWATCH_LOGS: {{ .Values.backend.monitoring.cloudWatchLogs.enabled | default "false" | quote }}
+  DRIFT_MONITOR_ENABLED: {{ .Values.backend.monitoring.driftMonitor.enabled | default "false" | quote }}
+  EVALUATION_ENABLED: {{ .Values.backend.monitoring.evaluation.enabled | default "false" | quote }}
+  POSTHOG_ENABLED: {{ .Values.backend.monitoring.posthog.enabled | default "true" | quote }}
+  OTEL_ENABLED: {{ .Values.backend.monitoring.openTelemetry.enabled | default "false" | quote }}
+  OTEL_SERVICE_NAME: {{ .Values.backend.monitoring.openTelemetry.serviceName | default "smart-ai-tutor-backend" | quote }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.backend.monitoring.openTelemetry.endpoint | default "" | quote }}
+  OTEL_SAMPLING_RATE: {{ .Values.backend.monitoring.openTelemetry.samplingRate | default "1.0" | quote }}
+  ENABLE_METRICS: {{ .Values.monitoring.enabled | quote }}
 
   # Security
   ENFORCE_HTTPS: {{ .Values.backend.security.enforceHttps | default "true" | quote }}
@@ -63,7 +72,7 @@ data:
 
   # Feature Flags
   WEB_SEARCH_ENABLED: {{ .Values.backend.features.webSearch | default "true" | quote }}
-  CODE_EXECUTION_ENABLED: {{ .Values.backend.features.codeExecution | default "true" | quote }}
+  ENABLE_CODE_EXECUTION: {{ .Values.backend.features.codeExecution | default "false" | quote }}
 
   {{- if .Values.backend.extraConfig }}
   {{- toYaml .Values.backend.extraConfig | nindent 2 }}

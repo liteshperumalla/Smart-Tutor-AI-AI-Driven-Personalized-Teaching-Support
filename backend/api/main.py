@@ -306,6 +306,27 @@ async def startup_event():
     set_app_info(version="1.0.0", environment=config.ENVIRONMENT)
     logger.info("✅ Prometheus metrics initialized")
 
+    # Initialize OpenTelemetry tracing for production observability
+    otel_enabled = os.getenv("OTEL_ENABLED", "false").lower() == "true"
+    if otel_enabled:
+        try:
+            from backend.tracing_otel import init_tracing, instrument_fastapi
+
+            init_tracing(
+                service_name=os.getenv("OTEL_SERVICE_NAME", "smart-ai-tutor-backend"),
+                service_version="1.0.0",
+                environment=config.ENVIRONMENT,
+                enabled=True,
+                sampling_rate=float(os.getenv("OTEL_SAMPLING_RATE", "1.0")),
+                otlp_endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", None),
+            )
+            instrument_fastapi(app)
+            logger.info("✅ OpenTelemetry tracing initialized")
+        except Exception as exc:
+            logger.warning("OpenTelemetry tracing setup failed: %s", exc)
+    else:
+        logger.info("ℹ️  OpenTelemetry tracing not active")
+
     # Initialize Langfuse tracing
     from backend.langfuse_setup import init_langfuse
     if init_langfuse():

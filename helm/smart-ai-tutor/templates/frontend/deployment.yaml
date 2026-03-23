@@ -31,10 +31,7 @@ spec:
         app.kubernetes.io/component: frontend
         version: {{ .Values.frontend.image.tag | default .Chart.AppVersion }}
     spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      {{- include "smart-ai-tutor.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "smart-ai-tutor.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.frontend.podSecurityContext | nindent 8 }}
@@ -42,19 +39,19 @@ spec:
         - name: frontend
           securityContext:
             {{- toYaml .Values.frontend.securityContext | nindent 12 }}
-          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          image: {{ include "smart-ai-tutor.frontend.image" . | quote }}
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy | default .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 4000
               protocol: TCP
           env:
             - name: NODE_ENV
-              value: {{ .Values.environment }}
+              value: {{ .Values.environment | default .Values.global.environment | quote }}
             - name: NEXT_PUBLIC_API_URL
               value: {{ .Values.frontend.apiUrl | quote }}
             - name: NEXT_PUBLIC_ENVIRONMENT
-              value: {{ .Values.environment }}
+              value: {{ .Values.environment | default .Values.global.environment | quote }}
             {{- if .Values.frontend.extraEnv }}
             {{- toYaml .Values.frontend.extraEnv | nindent 12 }}
             {{- end }}

@@ -26,7 +26,7 @@ def append_run(record: Dict[str, Any]) -> Dict[str, Any]:
         or datetime.now(timezone.utc).isoformat(),
         "source": record.get("source", "manual"),
         "run_type": record.get("run_type", "dataset_quality"),
-        "dataset": record.get("dataset", "Evaluation_files/evaluation_data.jsonl"),
+        "dataset": record.get("dataset", "backend/rag/tests/test_dataset.json"),
         "params": record.get("params", {}),
         "summary": record.get("summary", {}),
         "sample_results": record.get("sample_results", []),

@@ -517,20 +517,43 @@ export function EvaluationContent() {
       ]
     : [];
 
+  const isFiniteMetric = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
+  const formatMetric = (
+    value: number | null | undefined,
+    digits: number,
+    suffix: string = "",
+    fallback: string = "N/A"
+  ) => (isFiniteMetric(value) ? `${value.toFixed(digits)}${suffix}` : fallback);
+
   // Color helper for quality scores
-  const qualityColor = (score: number) =>
-    score >= 0.7
+  const qualityColor = (score: number | null | undefined) =>
+    !isFiniteMetric(score)
+      ? "text-zinc-400 dark:text-zinc-500"
+      : score >= 0.7
       ? "text-emerald-600 dark:text-emerald-400"
       : score >= 0.4
       ? "text-amber-600 dark:text-amber-400"
       : "text-red-600 dark:text-red-400";
 
-  const qualityBg = (score: number) =>
-    score >= 0.7
+  const qualityBg = (score: number | null | undefined) =>
+    !isFiniteMetric(score)
+      ? "bg-zinc-50 dark:bg-zinc-800"
+      : score >= 0.7
       ? "bg-emerald-50 dark:bg-emerald-900/20"
       : score >= 0.4
       ? "bg-amber-50 dark:bg-amber-900/20"
       : "bg-red-50 dark:bg-red-900/20";
+
+  const driftColor = (score: number | null | undefined) =>
+    !isFiniteMetric(score)
+      ? "text-zinc-400 dark:text-zinc-500"
+      : score < 1.5
+      ? "text-emerald-600 dark:text-emerald-400"
+      : score < 2.5
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-red-600 dark:text-red-400";
 
   // Metric Card Component
   const MetricCard = ({
@@ -1176,19 +1199,24 @@ export function EvaluationContent() {
                             </td>
                             <td className="py-3 text-center">
                               <span className={`font-bold ${
-                                query.relevance_score > 0.7 ? "text-emerald-600" :
-                                query.relevance_score > 0.4 ? "text-amber-600" : "text-red-600"
+                                isFiniteMetric(query.relevance_score)
+                                  ? query.relevance_score > 0.7
+                                    ? "text-emerald-600"
+                                    : query.relevance_score > 0.4
+                                    ? "text-amber-600"
+                                    : "text-red-600"
+                                  : "text-zinc-400"
                               }`}>
-                                {query.relevance_score.toFixed(2)}
+                                {formatMetric(query.relevance_score, 2)}
                               </span>
                             </td>
                             <td className="py-3 text-center font-bold text-zinc-900 dark:text-white">
                               {query.docs_retrieved}
                             </td>
                             <td className="py-3 text-center">
-                              {query.quality_scores ? (
+                              {query.quality_scores && isFiniteMetric(query.quality_scores.correctness) ? (
                                 <span className={`font-bold ${qualityColor(query.quality_scores.correctness)}`}>
-                                  {query.quality_scores.correctness.toFixed(2)}
+                                  {formatMetric(query.quality_scores.correctness, 2)}
                                 </span>
                               ) : (
                                 <span className="text-zinc-400 text-xs">—</span>
@@ -1388,26 +1416,26 @@ export function EvaluationContent() {
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <span className={`font-bold ${qualityColor(item.faithfulness)}`}>
-                                      {item.faithfulness.toFixed(2)}
+                                      {formatMetric(item.faithfulness, 2)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <span className={`font-bold ${qualityColor(item.answer_relevance)}`}>
-                                      {item.answer_relevance.toFixed(2)}
+                                      {formatMetric(item.answer_relevance, 2)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <span className={`font-bold ${qualityColor(item.context_recall)}`}>
-                                      {item.context_recall.toFixed(2)}
+                                      {formatMetric(item.context_recall, 2)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-2 text-center">
                                     <span className={`font-bold ${qualityColor(item.correctness)}`}>
-                                      {item.correctness.toFixed(2)}
+                                      {formatMetric(item.correctness, 2)}
                                     </span>
                                   </td>
                                   <td className="px-3 py-2 text-center text-zinc-600 dark:text-zinc-400">
-                                    {item.latency?.toFixed(1) || "—"}s
+                                    {formatMetric(item.latency, 1, "s")}
                                   </td>
                                 </tr>
                               ))}
@@ -2219,9 +2247,11 @@ export function EvaluationContent() {
               <div className="space-y-4">
                 {evaluationRuns.map((run) => {
                   const quality = run.summary?.quality_summary;
-                  const correctness = quality?.avg_correctness ?? 0;
-                  const faithfulness = quality?.avg_faithfulness ?? 0;
-                  const relevance = quality?.avg_answer_relevance ?? 0;
+                  const drift = run.summary?.drift_summary;
+                  const correctness = quality?.avg_correctness;
+                  const faithfulness = quality?.avg_faithfulness;
+                  const relevance = quality?.avg_answer_relevance;
+                  const avgDrift = drift?.avg_drift_score;
                   const delta = run.summary?.delta;
                   return (
                     <div
@@ -2242,11 +2272,11 @@ export function EvaluationContent() {
                         </span>
                       </div>
 
-                      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                      <div className="mt-3 grid gap-3 sm:grid-cols-5">
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Latency</p>
                           <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                            {(run.summary?.avg_latency ?? 0).toFixed(2)}s
+                            {formatMetric(run.summary?.avg_latency, 2, "s")}
                           </p>
                           {typeof delta?.avg_latency === "number" && (
                             <p className="text-[11px] text-zinc-500">
@@ -2258,7 +2288,7 @@ export function EvaluationContent() {
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Correctness</p>
                           <p className={`text-sm font-semibold ${qualityColor(correctness)}`}>
-                            {correctness.toFixed(2)}
+                            {formatMetric(correctness, 2)}
                           </p>
                           {typeof delta?.avg_correctness === "number" && (
                             <p className="text-[11px] text-zinc-500">
@@ -2270,7 +2300,7 @@ export function EvaluationContent() {
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Faithfulness</p>
                           <p className={`text-sm font-semibold ${qualityColor(faithfulness)}`}>
-                            {faithfulness.toFixed(2)}
+                            {formatMetric(faithfulness, 2)}
                           </p>
                           {typeof delta?.avg_faithfulness === "number" && (
                             <p className="text-[11px] text-zinc-500">
@@ -2282,7 +2312,7 @@ export function EvaluationContent() {
                         <div>
                           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Answer Relevance</p>
                           <p className={`text-sm font-semibold ${qualityColor(relevance)}`}>
-                            {relevance.toFixed(2)}
+                            {formatMetric(relevance, 2)}
                           </p>
                           {typeof delta?.avg_answer_relevance === "number" && (
                             <p className="text-[11px] text-zinc-500">
@@ -2291,18 +2321,37 @@ export function EvaluationContent() {
                             </p>
                           )}
                         </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Drift</p>
+                          <p className={`text-sm font-semibold ${driftColor(avgDrift)}`}>
+                            {formatMetric(avgDrift, 2)}
+                          </p>
+                          {typeof delta?.avg_drift_score === "number" && (
+                            <p className="text-[11px] text-zinc-500">
+                              Δ {delta.avg_drift_score >= 0 ? "+" : ""}
+                              {delta.avg_drift_score.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
                       </div>
 
-                      {run.sample_results?.length > 0 && (
+                      {(run.sample_results?.length > 0 || drift) && (
                         <div className="mt-3">
-                          <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-2">
-                            Lowest correctness samples
-                          </p>
+                          {drift && (
+                            <p className="mb-2 text-xs text-zinc-500">
+                              Drift baseline: {drift.baseline_path} • {drift.scored_count} scored • {drift.high_drift_count} high-drift prompts
+                            </p>
+                          )}
+                          {run.sample_results?.length > 0 && (
+                            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-2">
+                              Lowest correctness samples
+                            </p>
+                          )}
                           <ul className="space-y-2">
                             {run.sample_results.slice(0, 3).map((sample, idx) => (
                               <li key={`${run.run_id}-${idx}`} className="text-xs text-zinc-600 dark:text-zinc-400">
                                 <span className="font-semibold text-zinc-900 dark:text-white">
-                                  {sample.correctness.toFixed(2)}
+                                  {formatMetric(sample.correctness, 2)}
                                 </span>
                                 {" · "}
                                 {sample.query}

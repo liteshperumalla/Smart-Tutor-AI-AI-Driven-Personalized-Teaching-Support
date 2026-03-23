@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backend-production
+  name: smart-ai-tutor-production
   namespace: argocd
   # Add finalizer to ensure proper cleanup
   finalizers:
@@ -29,8 +29,6 @@ spec:
 
       # Override specific values
       parameters:
-        - name: backend.image.tag
-          value: "latest"  # This will be updated by CI/CD
         - name: environment
           value: "production"
 
@@ -92,6 +90,8 @@ spec:
   info:
     - name: Environment
       value: Production
+    - name: GitOps Source
+      value: helm/smart-ai-tutor/values-production.yaml
     - name: Maintainer
       value: devops@your-domain.com
     - name: Documentation

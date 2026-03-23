@@ -20,6 +20,11 @@ on:
         description: "Minimum average context recall score before the workflow fails"
         required: false
         default: ""
+      max_avg_drift_score:
+        type: string
+        description: "Maximum average model drift score before the workflow fails"
+        required: false
+        default: ""
       model_id:
         type: string
         description: "Model ID to evaluate (overrides EVALUATION_MODEL_ID; leave blank for default)"
@@ -85,6 +90,7 @@ jobs:
           EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || vars.EVALUATION_DATASET_LIMIT || '20' }}
           MIN_AVG_CORRECTNESS: ${{ inputs.min_avg_correctness || vars.MIN_AVG_CORRECTNESS || '0.55' }}
           MIN_AVG_CONTEXT_RECALL: ${{ inputs.min_avg_context_recall || vars.MIN_AVG_CONTEXT_RECALL || '0.55' }}
+          MAX_AVG_DRIFT_SCORE: ${{ inputs.max_avg_drift_score || vars.MAX_AVG_DRIFT_SCORE || '2.50' }}
           EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
         run: |
           set -euo pipefail
@@ -157,23 +163,35 @@ jobs:
           avg_context_recall=""
           avg_context_precision=""
           avg_correctness=""
+          dataset_path=""
+          drift_summary_type=""
+          avg_drift_score=""
+          max_drift_score=""
+          high_drift_count=""
           recommendations_json="[]"
           delta_correctness=""
           delta_context_recall=""
+          delta_avg_drift=""
           if [ "${response_is_json}" = "true" ]; then
             total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_response.json)"
             total_dataset_questions="$(jq -r '.total_dataset_questions // empty' /tmp/eval_response.json)"
             avg_latency="$(jq -r '.avg_latency // empty' /tmp/eval_response.json)"
+            dataset_path="$(jq -r '.dataset_path // .run_record.dataset // empty' /tmp/eval_response.json)"
             quality_summary_type="$(jq -r 'if .quality_summary == null then "null" else (.quality_summary | type) end' /tmp/eval_response.json)"
+            drift_summary_type="$(jq -r 'if .drift_summary == null then "null" else (.drift_summary | type) end' /tmp/eval_response.json)"
             result_message="$(jq -r '.message // empty' /tmp/eval_response.json)"
             avg_faithfulness="$(jq -r '.quality_summary.avg_faithfulness // empty' /tmp/eval_response.json)"
             avg_answer_relevance="$(jq -r '.quality_summary.avg_answer_relevance // empty' /tmp/eval_response.json)"
             avg_context_recall="$(jq -r '.quality_summary.avg_context_recall // empty' /tmp/eval_response.json)"
             avg_context_precision="$(jq -r '.quality_summary.avg_context_precision // empty' /tmp/eval_response.json)"
             avg_correctness="$(jq -r '.quality_summary.avg_correctness // empty' /tmp/eval_response.json)"
+            avg_drift_score="$(jq -r '.drift_summary.avg_drift_score // empty' /tmp/eval_response.json)"
+            max_drift_score="$(jq -r '.drift_summary.max_drift_score // empty' /tmp/eval_response.json)"
+            high_drift_count="$(jq -r '.drift_summary.high_drift_count // empty' /tmp/eval_response.json)"
             recommendations_json="$(jq -c '.recommendations // []' /tmp/eval_response.json)"
             delta_correctness="$(jq -r '.run_record.summary.delta.avg_correctness // empty' /tmp/eval_response.json)"
             delta_context_recall="$(jq -r '.run_record.summary.delta.avg_context_recall // empty' /tmp/eval_response.json)"
+            delta_avg_drift="$(jq -r '.run_record.summary.delta.avg_drift_score // empty' /tmp/eval_response.json)"
           fi
 
           if [ "${response_is_json}" = "true" ]; then
@@ -182,12 +200,14 @@ jobs:
               --arg dataset_limit "${EVALUATION_DATASET_LIMIT}" \
               --arg min_avg_correctness "${MIN_AVG_CORRECTNESS}" \
               --arg min_avg_context_recall "${MIN_AVG_CONTEXT_RECALL}" \
+              --arg max_avg_drift_score "${MAX_AVG_DRIFT_SCORE}" \
               '{
                 http_code: $http_code,
                 dataset_limit: ($dataset_limit | tonumber),
                 thresholds: {
                   min_avg_correctness: ($min_avg_correctness | tonumber),
-                  min_avg_context_recall: ($min_avg_context_recall | tonumber)
+                  min_avg_context_recall: ($min_avg_context_recall | tonumber),
+                  max_avg_drift_score: ($max_avg_drift_score | tonumber)
                 },
                 response: .
               }' /tmp/eval_response.json > /tmp/eval_summary.json
@@ -209,8 +229,10 @@ jobs:
             if [ "${response_is_json}" = "true" ]; then
               echo "| Total Evaluated | \`${total_evaluated:-unknown}\` |"
               echo "| Dataset Questions | \`${total_dataset_questions:-unknown}\` |"
+              echo "| Dataset Path | \`${dataset_path:-unknown}\` |"
               echo "| Avg Latency | \`${avg_latency:-unknown}\` |"
               echo "| Quality Summary | \`${quality_summary_type}\` |"
+              echo "| Drift Summary | \`${drift_summary_type}\` |"
               if [ "${quality_summary_type}" = "object" ]; then
                 echo "| Avg Faithfulness | \`${avg_faithfulness:-unknown}\` |"
                 echo "| Avg Answer Relevance | \`${avg_answer_relevance:-unknown}\` |"
@@ -219,6 +241,12 @@ jobs:
                 echo "| Avg Correctness | \`${avg_correctness:-unknown}\` |"
                 echo "| Delta Correctness | \`${delta_correctness:-n/a}\` |"
                 echo "| Delta Context Recall | \`${delta_context_recall:-n/a}\` |"
+              fi
+              if [ "${drift_summary_type}" = "object" ]; then
+                echo "| Avg Drift Score | \`${avg_drift_score:-unknown}\` |"
+                echo "| Max Drift Score | \`${max_drift_score:-unknown}\` |"
+                echo "| High Drift Count | \`${high_drift_count:-unknown}\` |"
+                echo "| Delta Avg Drift | \`${delta_avg_drift:-n/a}\` |"
               fi
             fi
             echo ""
@@ -270,9 +298,17 @@ jobs:
             exit 1
           fi
 
-          echo "Result   : total_evaluated=${total_evaluated}/${total_dataset_questions:-unknown}, avg_latency=${avg_latency:-unknown}s"
+          if [ "${drift_summary_type}" = "object" ] && [ -n "${avg_drift_score}" ] && awk "BEGIN {exit !(${avg_drift_score:-0} > ${MAX_AVG_DRIFT_SCORE})}"; then
+            echo "::error::Average drift score ${avg_drift_score:-0} exceeds maximum allowed threshold ${MAX_AVG_DRIFT_SCORE}."
+            exit 1
+          fi
+
+          echo "Result   : dataset=${dataset_path:-unknown}, total_evaluated=${total_evaluated}/${total_dataset_questions:-unknown}, avg_latency=${avg_latency:-unknown}s"
           if [ "${quality_summary_type}" = "object" ]; then
             echo "Quality  : faithfulness=${avg_faithfulness:-unknown}, answer_relevance=${avg_answer_relevance:-unknown}, context_recall=${avg_context_recall:-unknown}, context_precision=${avg_context_precision:-unknown}, correctness=${avg_correctness:-unknown}"
+          fi
+          if [ "${drift_summary_type}" = "object" ]; then
+            echo "Drift    : avg=${avg_drift_score:-unknown}, max=${max_drift_score:-unknown}, high_drift_count=${high_drift_count:-unknown}"
           fi
           echo "✓ Evaluation triggered successfully (HTTP ${http_code})."
 

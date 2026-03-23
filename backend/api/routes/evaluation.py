@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 
@@ -498,45 +499,125 @@ class DatasetQualityRequest(BaseModel):
     model_id: Optional[str] = Field(default=None, description="Optional Bedrock model ID for judging")
 
 
+def _resolve_dataset_quality_file() -> Path:
+    configured = Path(config.EVALUATION_DATASET_FILE)
+
+    candidates = [configured]
+    if not configured.is_absolute():
+        candidates.append(Path(__file__).resolve().parents[3] / configured)
+
+    candidates.extend(
+        [
+            Path(__file__).resolve().parents[3] / "Evaluation_files/evaluation_data.jsonl",
+            Path(__file__).resolve().parents[3] / "evaluation_dataset.json",
+            Path(__file__).resolve().parents[3] / "backend/rag/tests/test_dataset.jsonl",
+            Path(__file__).resolve().parents[3] / "backend/rag/tests/test_dataset.json",
+        ]
+    )
+
+    seen = set()
+    for candidate in candidates:
+        normalized = candidate.resolve(strict=False)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _load_dataset_questions(dataset_file: Path) -> List[str]:
+    questions: List[str] = []
+
+    if dataset_file.suffix.lower() == ".jsonl":
+        with open(dataset_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(entry, dict):
+                    continue
+                question = (entry.get("instruction") or entry.get("query") or "").strip()
+                if question:
+                    questions.append(question)
+        return questions
+
+    with open(dataset_file, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    if isinstance(payload, list):
+        entries = payload
+    elif isinstance(payload, dict):
+        if isinstance(payload.get("test_cases"), list):
+            entries = payload.get("test_cases", [])
+        elif isinstance(payload.get("queries"), list):
+            entries = payload.get("queries", [])
+        else:
+            entries = []
+    else:
+        entries = []
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        question = (entry.get("instruction") or entry.get("query") or "").strip()
+        if question:
+            questions.append(question)
+
+    return questions
+
+
+def _build_drift_summary(drift_records: List[dict], enabled: bool) -> dict:
+    drift_scores = [
+        record.get("drift_score")
+        for record in drift_records
+        if isinstance(record.get("drift_score"), (int, float))
+    ]
+    high_drift_threshold = 2.0
+    high_drift_count = sum(1 for score in drift_scores if score >= high_drift_threshold)
+
+    return {
+        "enabled": enabled,
+        "baseline_path": str(Path(config.DRIFT_BASELINE_PATH)),
+        "scored_count": len(drift_scores),
+        "avg_drift_score": round(sum(drift_scores) / len(drift_scores), 4) if drift_scores else None,
+        "max_drift_score": round(max(drift_scores), 4) if drift_scores else None,
+        "high_drift_threshold": high_drift_threshold,
+        "high_drift_count": high_drift_count,
+        "high_drift_percentage": round(high_drift_count / len(drift_scores) * 100, 1) if drift_scores else 0.0,
+    }
+
+
 def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
-    import json
     import time
-    from pathlib import Path
     from backend.s3_retriever import create_s3_retriever
     from backend.bedrock_llm import BedrockLLM
+    from backend.drift_monitor import get_drift_monitor
     from backend.services.rag_quality_evaluator import (
         evaluate_quality,
         compute_context_precision,
     )
 
-    eval_dir = Path(__file__).resolve().parents[3] / "Evaluation_files"
-    dataset_file = eval_dir / "evaluation_data.jsonl"
+    dataset_file = _resolve_dataset_quality_file()
 
     if not dataset_file.exists():
         return {
             "total_evaluated": 0,
             "quality_summary": None,
             "individual_results": [],
-            "message": "Evaluation dataset not found at Evaluation_files/evaluation_data.jsonl",
+            "dataset_path": str(dataset_file),
+            "message": f"Evaluation dataset not found at {dataset_file}",
         }
 
-    # Read questions from JSONL
-    questions = []
-    with open(dataset_file, "r", encoding="utf-8") as f:
-        for line in f:
-            try:
-                entry = json.loads(line.strip())
-                q = entry.get("instruction", "").strip()
-                if q:
-                    questions.append(q)
-            except json.JSONDecodeError:
-                continue
+    questions = _load_dataset_questions(dataset_file)
 
     if not questions:
         return {
             "total_evaluated": 0,
             "quality_summary": None,
             "individual_results": [],
+            "dataset_path": str(dataset_file),
             "message": "No questions found in evaluation dataset.",
         }
 
@@ -555,9 +636,16 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     correctness_sum = 0.0
     total_latency = 0.0
     evaluated_count = 0
+    drift_monitor = get_drift_monitor()
+    drift_records = []
 
     for question in questions:
+        drift = None
         try:
+            drift = drift_monitor.score(question) if drift_monitor else None
+            if drift:
+                drift_records.append(drift)
+
             # 1. Retrieve context
             t0 = time.time()
             retrieval_limit = determine_retrieval_limit(
@@ -614,6 +702,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 "latency": latency,
                 "docs_retrieved": len(retrieved_nodes),
                 "retrieval_limit": retrieval_limit,
+                "drift_score": drift.get("drift_score") if drift else None,
                 "avg_retrieval_score": round(
                     sum(retrieval_scores) / len(retrieval_scores), 4
                 ) if retrieval_scores else 0,
@@ -640,6 +729,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 "reasoning": "Evaluation failed for this question",
                 "latency": 0,
                 "docs_retrieved": 0,
+                "drift_score": drift.get("drift_score") if drift else None,
                 "avg_retrieval_score": 0,
             })
 
@@ -648,6 +738,8 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
             "total_evaluated": 0,
             "quality_summary": None,
             "individual_results": individual_results,
+            "dataset_path": str(dataset_file),
+            "drift_summary": _build_drift_summary(drift_records, drift_monitor is not None),
             "message": "All evaluations failed.",
         }
 
@@ -665,6 +757,8 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
         "total_evaluated": evaluated_count,
         "total_dataset_questions": len(questions),
         "avg_latency": avg_latency,
+        "dataset_path": str(dataset_file),
+        "drift_summary": _build_drift_summary(drift_records, drift_monitor is not None),
         "quality_summary": quality_summary,
         "recommendations": build_rag_recommendations(
             avg_context_recall=quality_summary.get("avg_context_recall"),
@@ -686,10 +780,19 @@ def _store_dataset_run(result: dict, limit: int, model_id: Optional[str], source
     previous_summary = (previous or {}).get("summary") or {}
     previous_quality = (previous_summary.get("quality_summary") or {}) if previous_summary else {}
     current_quality = result.get("quality_summary") or {}
+    previous_drift = (previous_summary.get("drift_summary") or {}) if previous_summary else {}
+    current_drift = result.get("drift_summary") or {}
 
     def delta_metric(key: str) -> Optional[float]:
         current = current_quality.get(key)
         prev = previous_quality.get(key)
+        if current is None or prev is None:
+            return None
+        return round(current - prev, 4)
+
+    def delta_drift_metric(key: str) -> Optional[float]:
+        current = current_drift.get(key)
+        prev = previous_drift.get(key)
         if current is None or prev is None:
             return None
         return round(current - prev, 4)
@@ -700,6 +803,7 @@ def _store_dataset_run(result: dict, limit: int, model_id: Optional[str], source
         "avg_context_recall": delta_metric("avg_context_recall"),
         "avg_context_precision": delta_metric("avg_context_precision"),
         "avg_correctness": delta_metric("avg_correctness"),
+        "avg_drift_score": delta_drift_metric("avg_drift_score"),
         "avg_latency": None,
     }
     if previous_summary and previous_summary.get("avg_latency") is not None and result.get("avg_latency") is not None:
@@ -709,12 +813,13 @@ def _store_dataset_run(result: dict, limit: int, model_id: Optional[str], source
         {
             "source": source,
             "run_type": "dataset_quality",
-            "dataset": "Evaluation_files/evaluation_data.jsonl",
+            "dataset": result.get("dataset_path") or str(_resolve_dataset_quality_file()),
             "params": {"limit": limit, "model_id": model_id},
             "summary": {
                 "total_evaluated": result.get("total_evaluated", 0),
                 "total_dataset_questions": result.get("total_dataset_questions", 0),
                 "avg_latency": result.get("avg_latency", 0),
+                "drift_summary": result.get("drift_summary"),
                 "quality_summary": result.get("quality_summary"),
                 "delta": delta,
             },

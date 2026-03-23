@@ -314,16 +314,27 @@ export type QualitySummary = {
   evaluated_count: number;
 };
 
+export type DriftSummary = {
+  enabled: boolean;
+  baseline_path: string;
+  scored_count: number;
+  avg_drift_score: number | null;
+  max_drift_score: number | null;
+  high_drift_threshold: number;
+  high_drift_count: number;
+  high_drift_percentage: number;
+};
+
 export type BatchQualityResult = {
   total_evaluated: number;
   quality_summary: QualitySummary | null;
   individual_results: Array<{
     query: string;
-    faithfulness: number;
-    answer_relevance: number;
-    context_recall: number;
-    context_precision: number;
-    correctness: number;
+    faithfulness: number | null;
+    answer_relevance: number | null;
+    context_recall: number | null;
+    context_precision: number | null;
+    correctness: number | null;
     reasoning?: string;
   }>;
   message?: string;
@@ -333,17 +344,20 @@ export type DatasetQualityResult = {
   total_evaluated: number;
   total_dataset_questions?: number;
   avg_latency?: number;
+  dataset_path?: string;
+  drift_summary?: DriftSummary | null;
   quality_summary: QualitySummary | null;
   individual_results: Array<{
     query: string;
-    faithfulness: number;
-    answer_relevance: number;
-    context_recall: number;
-    context_precision: number;
-    correctness: number;
+    faithfulness: number | null;
+    answer_relevance: number | null;
+    context_recall: number | null;
+    context_precision: number | null;
+    correctness: number | null;
     reasoning?: string;
     latency?: number;
     docs_retrieved?: number;
+    drift_score?: number | null;
     avg_retrieval_score?: number;
   }>;
   message?: string;
@@ -391,6 +405,7 @@ export type EvaluationRunSummary = {
   total_evaluated?: number;
   total_dataset_questions?: number;
   avg_latency?: number;
+  drift_summary?: DriftSummary | null;
   quality_summary?: QualitySummary | null;
   delta?: {
     avg_faithfulness?: number | null;
@@ -398,6 +413,7 @@ export type EvaluationRunSummary = {
     avg_context_recall?: number | null;
     avg_context_precision?: number | null;
     avg_correctness?: number | null;
+    avg_drift_score?: number | null;
     avg_latency?: number | null;
   };
 };
@@ -415,12 +431,13 @@ export type EvaluationRunRecord = {
   summary: EvaluationRunSummary;
   sample_results: Array<{
     query: string;
-    faithfulness: number;
-    answer_relevance: number;
-    context_recall: number;
-    context_precision: number;
-    correctness: number;
+    faithfulness: number | null;
+    answer_relevance: number | null;
+    context_recall: number | null;
+    context_precision: number | null;
+    correctness: number | null;
     latency?: number;
+    drift_score?: number | null;
   }>;
 };
 
@@ -461,15 +478,15 @@ export type RealtimeRAGQuery = {
   retrieval_time: number;
   generation_time: number;
   total_time: number;
-  relevance_score: number;
+  relevance_score: number | null;
   docs_retrieved: number;
   response_words: number;
   mode: string;
   quality_scores?: {
-    faithfulness: number;
-    answer_relevance: number;
-    context_recall: number;
-    correctness: number;
+    faithfulness: number | null;
+    answer_relevance: number | null;
+    context_recall: number | null;
+    correctness: number | null;
   };
 };
 
@@ -1564,12 +1581,13 @@ export async function runBatchQuality(
   const body: Record<string, unknown> = { last_n: lastN };
   if (modelId) body.model_id = modelId;
 
-  return postJSON<BatchQualityResult>({
+  const result = await postJSON<BatchQualityResult>({
     path: "/evaluation/batch-quality",
     body,
     token,
     timeoutMs: 300000, // 5 min — LLM calls can be slow for large batches
   });
+  return normalizeBatchQualityResult(result);
 }
 
 export async function runDatasetQuality(
@@ -1580,12 +1598,13 @@ export async function runDatasetQuality(
   const body: Record<string, unknown> = { limit };
   if (modelId) body.model_id = modelId;
 
-  return postJSON<DatasetQualityResult>({
+  const result = await postJSON<DatasetQualityResult>({
     path: "/evaluation/run-dataset-quality",
     body,
     token,
     timeoutMs: 600000, // 10 min — runs each question through full pipeline
   });
+  return normalizeDatasetQualityResult(result);
 }
 
 export async function fetchEvaluationLogSummary(token: string): Promise<EvaluationLogSummary> {
@@ -1604,7 +1623,7 @@ export async function fetchEvaluationRuns(
     path: `/evaluation/runs?limit=${limit}`,
     token,
   });
-  return data.runs ?? [];
+  return (data.runs ?? []).map(normalizeEvaluationRunRecord);
 }
 
 export async function fetchRealtimeRAGMetrics(token: string, lastN?: number): Promise<RealtimeRAGMetrics> {
@@ -1613,7 +1632,170 @@ export async function fetchRealtimeRAGMetrics(token: string, lastN?: number): Pr
     path: `/evaluation/realtime-metrics${query}`,
     token,
   });
-  return data.realtime_metrics;
+  return normalizeRealtimeRAGMetrics(data.realtime_metrics);
+}
+
+function toFiniteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function toFiniteNumber(value: unknown, fallback: number = 0): number {
+  return toFiniteNumberOrNull(value) ?? fallback;
+}
+
+function normalizeQualitySummary(summary: QualitySummary | null | undefined): QualitySummary | null {
+  if (!summary) return null;
+  return {
+    avg_faithfulness: toFiniteNumber(summary.avg_faithfulness),
+    avg_answer_relevance: toFiniteNumber(summary.avg_answer_relevance),
+    avg_context_recall: toFiniteNumber(summary.avg_context_recall),
+    avg_context_precision: toFiniteNumber(summary.avg_context_precision),
+    avg_correctness: toFiniteNumber(summary.avg_correctness),
+    evaluated_count: toFiniteNumber(summary.evaluated_count),
+  };
+}
+
+function normalizeDriftSummary(summary: DriftSummary | null | undefined): DriftSummary | null {
+  if (!summary) return null;
+  return {
+    enabled: Boolean(summary.enabled),
+    baseline_path: summary.baseline_path ?? "",
+    scored_count: toFiniteNumber(summary.scored_count),
+    avg_drift_score: toFiniteNumberOrNull(summary.avg_drift_score),
+    max_drift_score: toFiniteNumberOrNull(summary.max_drift_score),
+    high_drift_threshold: toFiniteNumber(summary.high_drift_threshold, 2),
+    high_drift_count: toFiniteNumber(summary.high_drift_count),
+    high_drift_percentage: toFiniteNumber(summary.high_drift_percentage),
+  };
+}
+
+function normalizeBatchQualityResult(result: BatchQualityResult): BatchQualityResult {
+  return {
+    ...result,
+    total_evaluated: toFiniteNumber(result.total_evaluated),
+    quality_summary: normalizeQualitySummary(result.quality_summary),
+    individual_results: (result.individual_results ?? []).map((item) => ({
+      ...item,
+      faithfulness: toFiniteNumberOrNull(item.faithfulness),
+      answer_relevance: toFiniteNumberOrNull(item.answer_relevance),
+      context_recall: toFiniteNumberOrNull(item.context_recall),
+      context_precision: toFiniteNumberOrNull(item.context_precision),
+      correctness: toFiniteNumberOrNull(item.correctness),
+    })),
+  };
+}
+
+function normalizeDatasetQualityResult(result: DatasetQualityResult): DatasetQualityResult {
+  return {
+    ...normalizeBatchQualityResult(result),
+    total_dataset_questions: toFiniteNumberOrNull(result.total_dataset_questions) ?? undefined,
+    avg_latency: toFiniteNumberOrNull(result.avg_latency) ?? undefined,
+    dataset_path: result.dataset_path ?? undefined,
+    drift_summary: normalizeDriftSummary(result.drift_summary),
+    individual_results: (result.individual_results ?? []).map((item) => ({
+      ...item,
+      faithfulness: toFiniteNumberOrNull(item.faithfulness),
+      answer_relevance: toFiniteNumberOrNull(item.answer_relevance),
+      context_recall: toFiniteNumberOrNull(item.context_recall),
+      context_precision: toFiniteNumberOrNull(item.context_precision),
+      correctness: toFiniteNumberOrNull(item.correctness),
+      latency: toFiniteNumberOrNull(item.latency) ?? undefined,
+      docs_retrieved: toFiniteNumberOrNull(item.docs_retrieved) ?? undefined,
+      drift_score: toFiniteNumberOrNull(item.drift_score) ?? undefined,
+      avg_retrieval_score: toFiniteNumberOrNull(item.avg_retrieval_score) ?? undefined,
+    })),
+  };
+}
+
+function normalizeEvaluationRunRecord(run: EvaluationRunRecord): EvaluationRunRecord {
+  return {
+    ...run,
+    summary: {
+      ...run.summary,
+      total_evaluated: toFiniteNumberOrNull(run.summary?.total_evaluated) ?? undefined,
+      total_dataset_questions: toFiniteNumberOrNull(run.summary?.total_dataset_questions) ?? undefined,
+      avg_latency: toFiniteNumberOrNull(run.summary?.avg_latency) ?? undefined,
+      drift_summary: normalizeDriftSummary(run.summary?.drift_summary ?? null),
+      quality_summary: normalizeQualitySummary(run.summary?.quality_summary ?? null),
+      delta: run.summary?.delta
+        ? {
+            avg_faithfulness: toFiniteNumberOrNull(run.summary.delta.avg_faithfulness),
+            avg_answer_relevance: toFiniteNumberOrNull(run.summary.delta.avg_answer_relevance),
+            avg_context_recall: toFiniteNumberOrNull(run.summary.delta.avg_context_recall),
+            avg_context_precision: toFiniteNumberOrNull(run.summary.delta.avg_context_precision),
+            avg_correctness: toFiniteNumberOrNull(run.summary.delta.avg_correctness),
+            avg_drift_score: toFiniteNumberOrNull(run.summary.delta.avg_drift_score),
+            avg_latency: toFiniteNumberOrNull(run.summary.delta.avg_latency),
+          }
+        : undefined,
+    },
+    sample_results: (run.sample_results ?? []).map((item) => ({
+      ...item,
+      faithfulness: toFiniteNumberOrNull(item.faithfulness),
+      answer_relevance: toFiniteNumberOrNull(item.answer_relevance),
+      context_recall: toFiniteNumberOrNull(item.context_recall),
+      context_precision: toFiniteNumberOrNull(item.context_precision),
+      correctness: toFiniteNumberOrNull(item.correctness),
+      latency: toFiniteNumberOrNull(item.latency) ?? undefined,
+      drift_score: toFiniteNumberOrNull(item.drift_score) ?? undefined,
+    })),
+  };
+}
+
+function normalizeRealtimeRAGMetrics(metrics: RealtimeRAGMetrics): RealtimeRAGMetrics {
+  return {
+    ...metrics,
+    summary: metrics.summary
+      ? {
+          total_queries_analyzed: toFiniteNumber(metrics.summary.total_queries_analyzed),
+          avg_retrieval_time_seconds: toFiniteNumber(metrics.summary.avg_retrieval_time_seconds),
+          avg_generation_time_seconds: toFiniteNumber(metrics.summary.avg_generation_time_seconds),
+          avg_total_time_seconds: toFiniteNumber(metrics.summary.avg_total_time_seconds),
+          p50_total_time_seconds: toFiniteNumber(metrics.summary.p50_total_time_seconds),
+          p95_total_time_seconds: toFiniteNumber(metrics.summary.p95_total_time_seconds),
+          p99_total_time_seconds: toFiniteNumber(metrics.summary.p99_total_time_seconds),
+          avg_relevance_score: toFiniteNumber(metrics.summary.avg_relevance_score),
+          min_relevance_score: toFiniteNumber(metrics.summary.min_relevance_score),
+          max_relevance_score: toFiniteNumber(metrics.summary.max_relevance_score),
+          avg_docs_retrieved: toFiniteNumber(metrics.summary.avg_docs_retrieved),
+          avg_response_length_words: toFiniteNumber(metrics.summary.avg_response_length_words),
+        }
+      : null,
+    performance: metrics.performance
+      ? {
+          latency_distribution: {
+            fast_under_2s: toFiniteNumber(metrics.performance.latency_distribution.fast_under_2s),
+            medium_2_to_5s: toFiniteNumber(metrics.performance.latency_distribution.medium_2_to_5s),
+            slow_over_5s: toFiniteNumber(metrics.performance.latency_distribution.slow_over_5s),
+            fast_percentage: toFiniteNumber(metrics.performance.latency_distribution.fast_percentage),
+          },
+          relevance_distribution: {
+            high_above_0_7: toFiniteNumber(metrics.performance.relevance_distribution.high_above_0_7),
+            medium_0_4_to_0_7: toFiniteNumber(metrics.performance.relevance_distribution.medium_0_4_to_0_7),
+            low_below_0_4: toFiniteNumber(metrics.performance.relevance_distribution.low_below_0_4),
+            high_relevance_percentage: toFiniteNumber(metrics.performance.relevance_distribution.high_relevance_percentage),
+          },
+        }
+      : null,
+    quality_summary: normalizeQualitySummary(metrics.quality_summary),
+    recent_queries: (metrics.recent_queries ?? []).map((query) => ({
+      ...query,
+      retrieval_time: toFiniteNumber(query.retrieval_time),
+      generation_time: toFiniteNumber(query.generation_time),
+      total_time: toFiniteNumber(query.total_time),
+      relevance_score: toFiniteNumberOrNull(query.relevance_score),
+      docs_retrieved: toFiniteNumber(query.docs_retrieved),
+      response_words: toFiniteNumber(query.response_words),
+      quality_scores: query.quality_scores
+        ? {
+            faithfulness: toFiniteNumberOrNull(query.quality_scores.faithfulness),
+            answer_relevance: toFiniteNumberOrNull(query.quality_scores.answer_relevance),
+            context_recall: toFiniteNumberOrNull(query.quality_scores.context_recall),
+            correctness: toFiniteNumberOrNull(query.quality_scores.correctness),
+          }
+        : undefined,
+    })),
+  };
 }
 
 export async function fetchMetricsHistory(

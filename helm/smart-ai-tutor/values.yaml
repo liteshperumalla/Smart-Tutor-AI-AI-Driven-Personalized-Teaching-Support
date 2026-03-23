@@ -74,6 +74,26 @@ backend:
     STORAGE_BACKEND: hybrid
     ENABLE_METRICS: "true"
 
+  monitoring:
+    cloudWatchLogs:
+      enabled: false
+    driftMonitor:
+      enabled: false
+    evaluation:
+      enabled: false
+    posthog:
+      enabled: true
+    langfuse:
+      enabled: false
+      publicKey: ""
+      secretKey: ""
+      host: https://cloud.langfuse.com
+    openTelemetry:
+      enabled: false
+      serviceName: smart-ai-tutor-backend
+      endpoint: ""
+      samplingRate: "1.0"
+
   podDisruptionBudget:
     enabled: true
     minAvailable: 2
@@ -346,3 +366,8 @@ secrets:
     enabled: false
     backend: secretsManager
     region: us-east-1
+    refreshInterval: 1h
+    secretStoreRef:
+      name: aws-secrets-manager
+      kind: ClusterSecretStore
+    data: []

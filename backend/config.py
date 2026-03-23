@@ -352,7 +352,7 @@ class Config:
     )
     EVALUATION_CRON_TOKEN = os.getenv("EVALUATION_CRON_TOKEN", "")
     EVALUATION_DATASET_FILE = os.getenv(
-        "EVALUATION_DATASET_FILE", "Evaluation_files/evaluation_data.jsonl"
+        "EVALUATION_DATASET_FILE", "backend/rag/tests/test_dataset.json"
     )
 
     # Phase 3: Context & Quality Improvements (2025-11-18) - DISABLED BY DEFAULT

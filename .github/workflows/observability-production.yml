@@ -1,0 +1,133 @@
+name: Production Observability Bootstrap
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-observability
+  cancel-in-progress: false
+
+jobs:
+  observability:
+    name: Deploy Monitoring Stack
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_PRODUCTION_MONITORING == 'true'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.32.2
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Configure kubeconfig
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
+
+      - name: Create monitoring namespace
+        run: |
+          set -euo pipefail
+          kubectl get namespace monitoring >/dev/null 2>&1 || kubectl create namespace monitoring
+
+      - name: Add Helm repositories
+        run: |
+          set -euo pipefail
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add kubecost https://kubecost.github.io/cost-analyzer/
+          helm repo update
+
+      - name: Install Prometheus and Grafana
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+            echo "::error::Missing required secret GRAFANA_ADMIN_PASSWORD"
+            exit 1
+          fi
+
+          helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
+            --set grafana.sidecar.dashboards.enabled=true \
+            --set grafana.sidecar.dashboards.searchNamespace=ALL \
+            --set grafana.sidecar.dashboards.label=grafana_dashboard \
+            --set grafana.sidecar.datasources.enabled=true \
+            --set grafana.sidecar.datasources.searchNamespace=ALL \
+            --set grafana.sidecar.datasources.label=grafana_datasource \
+            --set prometheus.prometheusSpec.retention=30d
+
+      - name: Install Kubecost
+        run: |
+          set -euo pipefail
+          helm upgrade --install kubecost kubecost/cost-analyzer \
+            --namespace monitoring \
+            -f monitoring/finops/kubecost/kubecost-values.yaml
+
+      - name: Publish Grafana datasources
+        run: |
+          set -euo pipefail
+          kubectl create configmap grafana-datasources \
+            --namespace monitoring \
+            --from-file=prometheus.yml=monitoring/grafana/datasources/prometheus.yml \
+            --from-file=loki-datasource.yaml=monitoring/logging/dashboards/loki-datasource.yaml \
+            --dry-run=client -o yaml | \
+            kubectl label --local -f - grafana_datasource=1 -o yaml | \
+            kubectl apply -f -
+
+      - name: Publish Grafana dashboards
+        run: |
+          set -euo pipefail
+          for dashboard in monitoring/grafana/dashboards/*.json monitoring/slo/*.json monitoring/finops/dashboards/*.json; do
+            name="$(basename "$dashboard" .json)"
+            kubectl create configmap "grafana-dashboard-${name}" \
+              --namespace monitoring \
+              --from-file="$(basename "$dashboard")=$dashboard" \
+              --dry-run=client -o yaml | \
+              kubectl label --local -f - grafana_dashboard=1 -o yaml | \
+              kubectl apply -f -
+          done
+
+      - name: Publish Loki and Promtail configs
+        run: |
+          set -euo pipefail
+          kubectl create configmap loki-config \
+            --namespace monitoring \
+            --from-file=loki.yaml=monitoring/logging/loki/loki-config.yaml \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          kubectl create configmap promtail-config \
+            --namespace monitoring \
+            --from-file=promtail.yaml=monitoring/logging/promtail/promtail-config.yaml \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy tracing and logging stack
+        run: |
+          set -euo pipefail
+          kubectl apply -f monitoring/tracing/opentelemetry/otel-collector-config.yaml
+          kubectl apply -f monitoring/tracing/opentelemetry/otel-collector-deployment.yaml
+          kubectl apply -f monitoring/tracing/jaeger/jaeger-all-in-one.yaml
+          kubectl apply -f monitoring/logging/loki/loki-deployment.yaml
+          kubectl apply -f monitoring/logging/promtail/promtail-daemonset.yaml
+
+      - name: Summary
+        run: |
+          {
+            echo "## Production Observability"
+            echo ""
+            echo "- Prometheus/Grafana deployed via kube-prometheus-stack"
+            echo "- Kubecost installed from \`monitoring/finops/kubecost/kubecost-values.yaml\`"
+            echo "- Loki, Promtail, Jaeger, and the OTEL collector applied from repo manifests"
+            echo "- Grafana datasources and dashboards published from repo configs"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -40,6 +40,11 @@ check_prerequisites() {
         missing=1
     fi
 
+    if ! command -v helm &> /dev/null; then
+        log_error "helm not found. Install Helm 3.x to scan Helm charts."
+        missing=1
+    fi
+
     if ! command -v kubectl &> /dev/null; then
         log_warn "kubectl not found. Some checks will be skipped."
     fi
@@ -90,7 +95,7 @@ scan_kubernetes() {
     fi
 
     # Scan running cluster (if kubectl available)
-    if command -v kubectl &> /dev/null; then
+    if command -v kubectl &> /dev/null && kubectl version --client &> /dev/null; then
         log_info "Scanning running cluster resources..."
         kubectl get deployments,services,ingresses,networkpolicies --all-namespaces -o yaml | \
             conftest test - \
@@ -159,13 +164,13 @@ scan_docker_images() {
     # Check if Trivy is available
     if command -v trivy &> /dev/null; then
         # Scan backend image
-        if docker images | grep smart-ai-tutor-backend &> /dev/null; then
+        if command -v docker &> /dev/null && docker images | grep smart-ai-tutor-backend &> /dev/null; then
             trivy image --format json --output "$REPORT_DIR/docker/${framework}-backend-image.json" \
                 smart-ai-tutor-backend:latest 2>&1 || true
         fi
 
         # Scan frontend image
-        if docker images | grep smart-ai-tutor-frontend &> /dev/null; then
+        if command -v docker &> /dev/null && docker images | grep smart-ai-tutor-frontend &> /dev/null; then
             trivy image --format json --output "$REPORT_DIR/docker/${framework}-frontend-image.json" \
                 smart-ai-tutor-frontend:latest 2>&1 || true
         fi

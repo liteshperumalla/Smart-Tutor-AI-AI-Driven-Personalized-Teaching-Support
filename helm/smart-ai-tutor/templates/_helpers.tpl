@@ -119,7 +119,11 @@ Full image name for backend
 {{- $registry := .Values.image.registry }}
 {{- $repository := .Values.backend.image.repository }}
 {{- $tag := .Values.backend.image.tag | default .Chart.AppVersion }}
+{{- if $registry }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- else }}
+{{- printf "%s:%s" $repository $tag }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -129,7 +133,11 @@ Full image name for frontend
 {{- $registry := .Values.image.registry }}
 {{- $repository := .Values.frontend.image.repository }}
 {{- $tag := .Values.frontend.image.tag | default .Chart.AppVersion }}
+{{- if $registry }}
 {{- printf "%s/%s:%s" $registry $repository $tag }}
+{{- else }}
+{{- printf "%s:%s" $repository $tag }}
+{{- end }}
 {{- end }}
 
 {{/*
@@ -139,7 +147,40 @@ PostgreSQL host
 {{- if .Values.postgres.external.enabled }}
 {{- .Values.postgres.external.host }}
 {{- else }}
-{{- printf "%s-postgres" (include "smart-ai-tutor.fullname" .) }}
+{{- default (printf "%s-postgres" (include "smart-ai-tutor.fullname" .)) .Values.postgresql.host }}
+{{- end }}
+{{- end }}
+
+{{/*
+PostgreSQL port
+*/}}
+{{- define "smart-ai-tutor.postgres.port" -}}
+{{- if .Values.postgres.external.enabled }}
+{{- .Values.postgres.external.port | toString }}
+{{- else }}
+{{- default "5432" .Values.postgresql.port | toString }}
+{{- end }}
+{{- end }}
+
+{{/*
+PostgreSQL database
+*/}}
+{{- define "smart-ai-tutor.postgres.database" -}}
+{{- if .Values.postgres.external.enabled }}
+{{- .Values.postgres.external.database }}
+{{- else }}
+{{- default "smart_tutor" .Values.postgresql.database }}
+{{- end }}
+{{- end }}
+
+{{/*
+PostgreSQL username
+*/}}
+{{- define "smart-ai-tutor.postgres.username" -}}
+{{- if .Values.postgres.external.enabled }}
+{{- .Values.postgres.external.username }}
+{{- else }}
+{{- default "smart_tutor_user" .Values.postgresql.username }}
 {{- end }}
 {{- end }}
 
@@ -150,6 +191,24 @@ Redis host
 {{- if .Values.redis.external.enabled }}
 {{- .Values.redis.external.host }}
 {{- else }}
-{{- printf "%s-redis" (include "smart-ai-tutor.fullname" .) }}
+{{- default (printf "%s-redis" (include "smart-ai-tutor.fullname" .)) .Values.redis.host }}
 {{- end }}
+{{- end }}
+
+{{/*
+Redis port
+*/}}
+{{- define "smart-ai-tutor.redis.port" -}}
+{{- if .Values.redis.external.enabled }}
+{{- .Values.redis.external.port | toString }}
+{{- else }}
+{{- default "6379" .Values.redis.port | toString }}
+{{- end }}
+{{- end }}
+
+{{/*
+External Secret target secret name
+*/}}
+{{- define "smart-ai-tutor.backendSecretName" -}}
+{{- default (printf "%s-backend" (include "smart-ai-tutor.fullname" .)) .Values.secrets.backend }}
 {{- end }}

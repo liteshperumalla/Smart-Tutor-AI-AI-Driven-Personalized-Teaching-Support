@@ -5,9 +5,11 @@ global:
   environment: production
   domain: smart-ai-tutor.com
 
+environment: production
+
 # Use production container registry
 image:
-  registry: <PRODUCTION_REGISTRY>  # e.g., AWS ECR, GCR, ACR
+  registry: ghcr.io
   pullPolicy: IfNotPresent
   pullSecrets:
     - regcred
@@ -16,9 +18,11 @@ image:
 backend:
   enabled: true
   replicaCount: 3
+  logLevel: INFO
 
   image:
-    tag: "1.0.0"  # Use specific version in production
+    repository: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support-backend
+    tag: latest
 
   autoscaling:
     enabled: true
@@ -35,25 +39,35 @@ backend:
       cpu: 2000m
       memory: 2Gi
 
-  env:
-    ENVIRONMENT: production
-    LOG_LEVEL: INFO
+  extraConfig:
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "15"
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
     SESSION_TIMEOUT: "900"
     PASSWORD_MIN_LENGTH: "12"
-    RATE_LIMIT_ENABLED: "true"
     POSTGRES_SSL_MODE: require
-    ENABLE_METRICS: "true"
-    ENFORCE_HTTPS: "true"
-    # Code execution is disabled in production — enable only in controlled environments
-    ENABLE_CODE_EXECUTION: "false"
     # Restrict password-reset redirect to the production frontend domain.
     # Override via AWS Secrets Manager if the domain changes.
     ALLOWED_REDIRECT_DOMAINS: "smart-ai-tutor.com,www.smart-ai-tutor.com"
-    # Explicitly pin to Bedrock — never fall back to Ollama in production
-    LLM_PROVIDER: bedrock
-    EMBEDDING_PROVIDER: bedrock
+
+  monitoring:
+    cloudWatchLogs:
+      enabled: true
+    driftMonitor:
+      enabled: true
+    evaluation:
+      enabled: true
+    posthog:
+      enabled: true
+    langfuse:
+      enabled: true
+      publicKey: ""
+      secretKey: ""
+      host: https://cloud.langfuse.com
+    openTelemetry:
+      enabled: true
+      serviceName: smart-ai-tutor-backend
+      endpoint: otel-collector.monitoring.svc.cluster.local:4317
+      samplingRate: "1.0"
 
   podDisruptionBudget:
     enabled: true
@@ -65,7 +79,8 @@ frontend:
   replicaCount: 3
 
   image:
-    tag: "1.0.0"
+    repository: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support-frontend
+    tag: latest
 
   autoscaling:
     enabled: true
@@ -82,10 +97,10 @@ frontend:
       cpu: 1000m
       memory: 1Gi
 
-  env:
-    NODE_ENV: production
+  apiBaseUrl: https://api.smart-ai-tutor.com
+  extraConfig:
     NEXT_TELEMETRY_DISABLED: "1"
-    NEXT_PUBLIC_ENVIRONMENT: production
+    NEXT_PUBLIC_APP_BASE_URL: https://smart-ai-tutor.com
 
 # PostgreSQL - use AWS RDS Multi-AZ
 postgres:
@@ -196,9 +211,39 @@ secrets:
     enabled: true
     backend: secretsManager
     region: us-east-1
+    refreshInterval: 1h
+    secretStoreRef:
+      name: aws-secrets-manager
+      kind: ClusterSecretStore
+    data:
+      - secretKey: postgres-password
+        remoteKey: smart-ai-tutor/production/backend
+        property: POSTGRES_PASSWORD
+      - secretKey: jwt-secret-key
+        remoteKey: smart-ai-tutor/production/backend
+        property: JWT_SECRET_KEY
+      - secretKey: google-client-id
+        remoteKey: smart-ai-tutor/production/backend
+        property: GOOGLE_OAUTH_CLIENT_ID
+      - secretKey: google-client-secret
+        remoteKey: smart-ai-tutor/production/backend
+        property: GOOGLE_OAUTH_CLIENT_SECRET
+      - secretKey: serpapi-key
+        remoteKey: smart-ai-tutor/production/backend
+        property: SERPAPI_API_KEY
+      - secretKey: langfuse-secret-key
+        remoteKey: smart-ai-tutor/production/backend
+        property: LANGFUSE_SECRET_KEY
+      - secretKey: aws-access-key-id
+        remoteKey: smart-ai-tutor/production/backend
+        property: AWS_ACCESS_KEY_ID
+      - secretKey: aws-secret-access-key
+        remoteKey: smart-ai-tutor/production/backend
+        property: AWS_SECRET_ACCESS_KEY
 
 # Service account with IRSA (IAM Roles for Service Accounts)
 serviceAccount:
   create: true
+  name: smart-ai-tutor-prod
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/smart-ai-tutor-prod-role"
