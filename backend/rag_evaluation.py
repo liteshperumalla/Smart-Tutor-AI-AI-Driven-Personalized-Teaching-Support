@@ -22,6 +22,63 @@ class RAGEvaluationMetrics:
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
+    def _append_record(self, metrics_record: Dict[str, Any]) -> None:
+        """Persist one metrics record to the JSONL log."""
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(metrics_record, ensure_ascii=False) + "\n")
+
+    def log_runtime_metrics(
+        self,
+        *,
+        query: str,
+        response: str,
+        retrieval_time: float,
+        generation_time: float,
+        metadata: Optional[Dict[str, Any]] = None,
+        quality_metrics: Optional[Dict[str, Any]] = None,
+        num_retrieved: int = 0,
+        avg_relevance_score: Optional[float] = None,
+        min_score: Optional[float] = None,
+        max_score: Optional[float] = None,
+        context_passages: Optional[List[str]] = None,
+    ) -> None:
+        """Log a query when the caller already has raw runtime metrics."""
+        try:
+            metrics_record = {
+                "timestamp": datetime.now().isoformat(),
+                "query": query,
+                "response": response[:2000],
+                "context_passages": (context_passages or [])[:5],
+                "retrieval_metrics": {
+                    "num_retrieved": num_retrieved,
+                    "avg_relevance_score": round(avg_relevance_score, 4)
+                    if avg_relevance_score is not None
+                    else None,
+                    "retrieval_time_seconds": round(retrieval_time, 3),
+                    "min_score": round(min_score, 4) if min_score is not None else None,
+                    "max_score": round(max_score, 4) if max_score is not None else None,
+                },
+                "generation_metrics": {
+                    "generation_time_seconds": round(generation_time, 3),
+                    "response_length_chars": len(response),
+                    "response_length_words": len(response.split()),
+                },
+                "end_to_end_metrics": {
+                    "total_time_seconds": round(retrieval_time + generation_time, 3),
+                },
+                "quality_metrics": quality_metrics,
+                "metadata": metadata or {},
+            }
+
+            self._append_record(metrics_record)
+            logger.info(
+                "Logged runtime metrics: %s docs, %.2fs total",
+                num_retrieved,
+                retrieval_time + generation_time,
+            )
+        except Exception as e:
+            logger.error(f"Failed to log runtime metrics: {e}")
+
     def log_query(
         self,
         query: str,
@@ -65,36 +122,23 @@ class RAGEvaluationMetrics:
                     if text:
                         context_passages.append(text[:500])
 
-            # Build metrics record
-            metrics_record = {
-                "timestamp": datetime.now().isoformat(),
-                "query": query,
-                "response": response[:2000],  # Store truncated response for batch eval
-                "context_passages": context_passages[:5],  # Store top 5 passages
-                "retrieval_metrics": {
-                    "num_retrieved": num_retrieved,
-                    "avg_relevance_score": round(avg_score, 4),
-                    "retrieval_time_seconds": round(retrieval_time, 3),
-                    "min_score": round(min((getattr(doc, 'score', 0) for doc in retrieved_docs), default=0), 4),
-                    "max_score": round(max((getattr(doc, 'score', 0) for doc in retrieved_docs), default=0), 4),
-                },
-                "generation_metrics": {
-                    "generation_time_seconds": round(generation_time, 3),
-                    "response_length_chars": len(response),
-                    "response_length_words": len(response.split()),
-                },
-                "end_to_end_metrics": {
-                    "total_time_seconds": round(retrieval_time + generation_time, 3),
-                },
-                "quality_metrics": quality_metrics,
-                "metadata": metadata or {}
-            }
-
-            # Append to JSONL file
-            with open(self.log_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(metrics_record, ensure_ascii=False) + '\n')
-
-            logger.info(f"Logged query metrics: {num_retrieved} docs, {avg_score:.3f} avg score, {retrieval_time + generation_time:.2f}s total")
+            self.log_runtime_metrics(
+                query=query,
+                response=response,
+                retrieval_time=retrieval_time,
+                generation_time=generation_time,
+                metadata=metadata,
+                quality_metrics=quality_metrics,
+                num_retrieved=num_retrieved,
+                avg_relevance_score=avg_score,
+                min_score=min(
+                    (getattr(doc, "score", 0) for doc in retrieved_docs), default=0
+                ),
+                max_score=max(
+                    (getattr(doc, "score", 0) for doc in retrieved_docs), default=0
+                ),
+                context_passages=context_passages,
+            )
 
         except Exception as e:
             logger.error(f"Failed to log metrics: {e}")

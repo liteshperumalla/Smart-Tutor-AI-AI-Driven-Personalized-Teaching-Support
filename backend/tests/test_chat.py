@@ -4,6 +4,11 @@ Tests for chat session management and message handling
 """
 
 import pytest
+import utils
+
+from backend.agents.profile import resolve_student_display_name
+from backend.services.chat_service import ChatService
+from backend.services.models import ChatMessage, ChatSession
 
 
 class TestChatSessions:
@@ -115,6 +120,108 @@ class TestChatMessages:
             json={"query": "Hello"}
         )
         assert response.status_code == 404
+
+
+class TestChatSessionTitleLogic:
+    def test_manual_title_is_not_overwritten_by_auto_title(self, monkeypatch):
+        session = ChatSession(
+            id="session-1",
+            title="Linear Algebra Review",
+            messages=[ChatMessage(role="user", content="Explain eigenvalues")],
+        )
+
+        monkeypatch.setattr(
+            "backend.services.chat_service.make_session_title",
+            lambda history: "Empty Response",
+        )
+
+        ChatService().append_message(
+            session,
+            ChatMessage(role="assistant", content="Eigenvalues measure scaling factors."),
+        )
+
+        assert session.title == "Linear Algebra Review"
+
+    def test_placeholder_title_accepts_first_valid_auto_title(self, monkeypatch):
+        session = ChatSession(
+            id="session-2",
+            title="New chat",
+            messages=[ChatMessage(role="user", content="Explain Bayes theorem")],
+        )
+
+        monkeypatch.setattr(
+            "backend.services.chat_service.make_session_title",
+            lambda history: "Bayes Theorem Basics",
+        )
+
+        ChatService().append_message(
+            session,
+            ChatMessage(role="assistant", content="Bayes theorem updates probabilities."),
+        )
+
+        assert session.title == "Bayes Theorem Basics"
+
+    def test_make_session_title_rejects_empty_response_placeholder(self, monkeypatch):
+        monkeypatch.setattr(
+            utils,
+            "generate_response_with_sources",
+            lambda prompt: ("Empty Response", []),
+        )
+
+        title = utils.make_session_title(
+            [
+                ["user", "What is the main topic of this course?"],
+                ["assistant", "I need more course context to answer precisely."],
+            ]
+        )
+
+        assert title == "What Is The Main Topic"
+
+
+class TestChatDisplayNameResolution:
+    def test_email_username_prefers_full_name(self, auth_service):
+        username = "student.fullname@example.com"
+        password = "TestPass123!"
+
+        user_db = auth_service.user_db
+        if user_db.user_exists(username):
+            user_db.delete_user(username)
+
+        auth_service.register_user(
+            username=username,
+            password=password,
+            confirm_password=password,
+            email=username,
+            full_name="Student Fullname",
+        )
+
+        try:
+            assert resolve_student_display_name(username) == "Student Fullname"
+        finally:
+            if user_db.user_exists(username):
+                user_db.delete_user(username)
+
+    def test_email_username_falls_back_to_humanized_local_part(self, auth_service):
+        username = "litesh.perumalla@example.com"
+        password = "TestPass123!"
+
+        user_db = auth_service.user_db
+        if user_db.user_exists(username):
+            user_db.delete_user(username)
+
+        auth_service.register_user(
+            username=username,
+            password=password,
+            confirm_password=password,
+            email=username,
+            full_name=username,
+        )
+
+        try:
+            assert resolve_student_display_name(username) == "Litesh Perumalla"
+        finally:
+            if user_db.user_exists(username):
+                user_db.delete_user(username)
 
 
 class TestSessionIsolation:

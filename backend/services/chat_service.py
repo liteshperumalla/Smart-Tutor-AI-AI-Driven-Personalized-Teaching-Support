@@ -13,6 +13,31 @@ from utils import (
 )
 
 
+_AUTO_TITLE_PLACEHOLDERS = {
+    "new chat",
+    "new conversation",
+    "untitled",
+    "untitled chat",
+    "untitled session",
+    "chat",
+    "conversation",
+    "empty response",
+    "empty reply",
+}
+
+
+def _normalize_session_title(title: Optional[str], default: str = "New chat") -> str:
+    if not isinstance(title, str):
+        return default
+    normalized = " ".join(title.split()).strip()
+    return normalized or default
+
+
+def _is_auto_title_placeholder(title: str) -> bool:
+    normalized = " ".join((title or "").split()).strip().lower()
+    return not normalized or normalized in _AUTO_TITLE_PLACEHOLDERS
+
+
 class ChatService:
     def __init__(self):
         self.storage = get_storage_backend()
@@ -29,7 +54,7 @@ class ChatService:
 
     def create_session(self, username: str, title: Optional[str] = None) -> ChatSession:
         session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
-        default_title = title.strip() if isinstance(title, str) and title.strip() else "New chat"
+        default_title = _normalize_session_title(title)
         session = ChatSession(
             id=session_id,
             title=default_title,
@@ -41,10 +66,11 @@ class ChatService:
     def append_message(self, session: ChatSession, message: ChatMessage) -> None:
         session.messages.append(message)
         session.updated_at = datetime.now(timezone.utc)
-        if message.role == "assistant":
+        if message.role == "assistant" and _is_auto_title_placeholder(session.title):
             title = make_session_title([[msg.role, msg.content] for msg in session.messages])
-            if title and title != session.title:
-                session.title = title
+            normalized_title = _normalize_session_title(title, default=session.title)
+            if normalized_title and normalized_title != session.title:
+                session.title = normalized_title
 
     def delete_session(self, username: str, session_id: str) -> bool:
         return self.storage.delete_chat_session(username, session_id)
@@ -53,7 +79,7 @@ class ChatService:
         session = self.load_session(username, session_id)
         if not session:
             return None
-        session.title = title
+        session.title = _normalize_session_title(title, default=session.title)
         self.save_session(username, session)
         return session
 
@@ -64,7 +90,7 @@ class ChatService:
             return None
 
         if "title" in updates:
-            session.title = updates["title"]
+            session.title = _normalize_session_title(updates["title"], default=session.title)
         if "is_pinned" in updates:
             session.is_pinned = updates["is_pinned"]
         if "is_archived" in updates:

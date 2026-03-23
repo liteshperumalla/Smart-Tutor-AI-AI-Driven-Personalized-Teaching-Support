@@ -724,6 +724,62 @@ def _caching_generator(original_gen, query, sources):
             logging.warning(f"Answer cache write failed: {exc}")
 
 
+def _log_metrics_generator(
+    original_gen,
+    *,
+    query: str,
+    user_id: str,
+    session_id: Optional[str],
+    model_id: Optional[str],
+    retrieval_time_seconds: float,
+    nodes: List[Any],
+    context_passages: List[str],
+    metadata: Dict[str, Any],
+):
+    """Yield chunks and persist real runtime telemetry once streaming completes."""
+    chunks: List[str] = []
+    generation_started_at = time.time()
+
+    for chunk in original_gen:
+        chunks.append(chunk)
+        yield chunk
+
+    full_response = "".join(chunks).strip()
+    if not full_response:
+        return
+
+    scored_nodes = [
+        float(getattr(node, "score"))
+        for node in nodes
+        if getattr(node, "score", None) is not None
+    ]
+
+    try:
+        from backend.rag_evaluation import get_evaluator
+
+        get_evaluator().log_runtime_metrics(
+            query=query,
+            response=full_response,
+            retrieval_time=retrieval_time_seconds,
+            generation_time=max(0.0, time.time() - generation_started_at),
+            metadata={
+                **metadata,
+                "user_id": user_id,
+                "session_id": session_id,
+                "model_id": model_id,
+            },
+            num_retrieved=len(nodes),
+            avg_relevance_score=(
+                sum(scored_nodes) / len(scored_nodes) if scored_nodes else None
+            ),
+            min_score=min(scored_nodes) if scored_nodes else None,
+            max_score=max(scored_nodes) if scored_nodes else None,
+            context_passages=context_passages,
+        )
+    except Exception as exc:
+        logging.warning(f"Chat metrics logging failed: {exc}")
+
+
 def generate_response_stream_and_sources(
     query: str,
     user_id: str = "default-user",
@@ -751,6 +807,8 @@ def generate_response_stream_and_sources(
     response_sources = []
 
     try:
+        retrieval_started_at = time.time()
+
         if is_greeting(query):
 
             def greeting_stream():
@@ -764,9 +822,30 @@ def generate_response_stream_and_sources(
             cached = _check_answer_cache(query)
             if cached:
                 logging.info(f"Answer cache HIT for: {query[:60]}...")
+
                 def cached_stream():
                     yield cached["response"]
-                return cached_stream(), cached.get("sources", [])
+
+                return (
+                    _log_metrics_generator(
+                        cached_stream(),
+                        query=query,
+                        user_id=user_id,
+                        session_id=session_id,
+                        model_id=model_id,
+                        retrieval_time_seconds=0.0,
+                        nodes=[],
+                        context_passages=[],
+                        metadata={
+                            "mode": "chat",
+                            "agent": "standard_rag",
+                            "query_type": "cached",
+                            "cache_hit": True,
+                            "web_search_used": False,
+                        },
+                    ),
+                    cached.get("sources", []),
+                )
 
         # ── Query Enhancement (pre-retrieval) ─────────────────────────
         retrieval_query = query  # keep original for LLM prompt
@@ -977,6 +1056,36 @@ def generate_response_stream_and_sources(
                 response_text_generator, query, response_sources
             )
 
+        context_passages = []
+        for node_with_score in nodes_for_prompt[:5]:
+            node = getattr(node_with_score, "node", None)
+            if node is None:
+                continue
+            if hasattr(node, "get_text"):
+                text = node.get_text()
+            else:
+                text = getattr(node, "text", "")
+            if text:
+                context_passages.append(text[:500])
+
+        response_text_generator = _log_metrics_generator(
+            response_text_generator,
+            query=query,
+            user_id=user_id,
+            session_id=session_id,
+            model_id=model_id,
+            retrieval_time_seconds=max(0.0, time.time() - retrieval_started_at),
+            nodes=nodes_for_prompt,
+            context_passages=context_passages,
+            metadata={
+                "mode": "chat",
+                "agent": "standard_rag",
+                "query_type": "web_search" if used_web_search else "rag",
+                "cache_hit": False,
+                "web_search_used": used_web_search,
+            },
+        )
+
         return response_text_generator, response_sources
 
     except Exception as e:
@@ -992,8 +1101,61 @@ def generate_response_stream_and_sources(
         return error_stream_exception(), response_sources
 
 
+_INVALID_SESSION_TITLES = {
+    "empty response",
+    "empty reply",
+    "empty message",
+    "no response",
+    "no reply",
+    "response",
+    "reply",
+    "assistant response",
+    "new chat",
+    "new conversation",
+    "untitled",
+    "untitled session",
+    "untitled chat",
+    "chat",
+    "conversation",
+    "error",
+    "request failed",
+}
+
+
+def _fallback_session_title(first_user_message: str | None) -> str:
+    if not first_user_message:
+        return "New Chat"
+
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9&+/#'_-]*", first_user_message)
+    cleaned_words = [word for word in words if word.strip("_-")]
+    if not cleaned_words:
+        return "New Chat"
+    return " ".join(cleaned_words[:5]).title()
+
+
+def _clean_generated_session_title(raw_title: str) -> str:
+    title = (raw_title or "").strip()
+    title = re.sub(r'^["\'\-\*\s]+|["\'\-\*\s]+$', "", title)
+    title = re.sub(r"^(title|session title)\s*:\s*", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+
+def _is_invalid_generated_session_title(title: str) -> bool:
+    normalized = re.sub(r"\s+", " ", (title or "").strip()).lower()
+    if not normalized:
+        return True
+    if normalized in _INVALID_SESSION_TITLES:
+        return True
+    if normalized.startswith(("error", "sorry", "i'm sorry", "unable to", "failed to")):
+        return True
+    if len(re.findall(r"[A-Za-z0-9]", normalized)) < 2:
+        return True
+    return False
+
+
 def make_session_title(history: List) -> str:
-    """Generate a title for chat session based on history"""
+    """Generate a title for chat session based on history."""
     if not history:
         return "New Chat"
 
@@ -1024,9 +1186,7 @@ def make_session_title(history: List) -> str:
             snippet_lines.append(f"{role}: {text_preview}")
 
     if not snippet_lines:
-        return (
-            first_user_message.split()[:4].title() if first_user_message else "New Chat"
-        )
+        return _fallback_session_title(first_user_message)
 
     snippet = "\n".join(snippet_lines)
 
@@ -1039,40 +1199,20 @@ def make_session_title(history: List) -> str:
         title_response, _ = generate_response_with_sources(prompt)
 
         # Clean up the title
-        title = title_response.strip()
-        # Remove quotes, bullets, and extra whitespace
-        title = re.sub(r'^["\'\-\*\s]+|["\'\-\*\s]+$', "", title)
-        title = re.sub(r"\s+", " ", title).strip()
+        title = _clean_generated_session_title(title_response)
 
-        # If title is too short or empty, use fallback
-        if len(title) < 2:
-            if first_user_message:
-                return first_user_message.split()[:5].title()
-            return "New Chat"
+        if _is_invalid_generated_session_title(title) or len(title) < 2:
+            return _fallback_session_title(first_user_message)
 
         # Limit to 5 words max
         words = title.split()[:5]
         title = " ".join(words).title()
 
-        return (
-            title
-            if title
-            else (
-                first_user_message.split()[:5].title()
-                if first_user_message
-                else "New Chat"
-            )
-        )
+        return title if not _is_invalid_generated_session_title(title) else _fallback_session_title(first_user_message)
 
     except Exception as e:
         logging.error(f"Error generating session title: {e}")
-        # Fallback: use first few words of user's first message
-        if first_user_message:
-            words = first_user_message.split()
-            # Take first 4 words, capitalizing each
-            title_words = [w.capitalize() for w in words[:4]]
-            return " ".join(title_words) if title_words else "New Chat"
-        return "New Chat"
+        return _fallback_session_title(first_user_message)
 
 
 # --- File Conversion and Content Extraction ---

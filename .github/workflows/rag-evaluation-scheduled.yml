@@ -10,6 +10,16 @@ on:
         description: "Number of dataset questions to evaluate (overrides EVALUATION_DATASET_LIMIT)"
         required: false
         default: ""
+      min_avg_correctness:
+        type: string
+        description: "Minimum average correctness score before the workflow fails"
+        required: false
+        default: ""
+      min_avg_context_recall:
+        type: string
+        description: "Minimum average context recall score before the workflow fails"
+        required: false
+        default: ""
       model_id:
         type: string
         description: "Model ID to evaluate (overrides EVALUATION_MODEL_ID; leave blank for default)"
@@ -73,6 +83,8 @@ jobs:
           EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
           # workflow_dispatch inputs override the repo variable when provided
           EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || vars.EVALUATION_DATASET_LIMIT || '20' }}
+          MIN_AVG_CORRECTNESS: ${{ inputs.min_avg_correctness || vars.MIN_AVG_CORRECTNESS || '0.55' }}
+          MIN_AVG_CONTEXT_RECALL: ${{ inputs.min_avg_context_recall || vars.MIN_AVG_CONTEXT_RECALL || '0.55' }}
           EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
         run: |
           set -euo pipefail
@@ -145,6 +157,9 @@ jobs:
           avg_context_recall=""
           avg_context_precision=""
           avg_correctness=""
+          recommendations_json="[]"
+          delta_correctness=""
+          delta_context_recall=""
           if [ "${response_is_json}" = "true" ]; then
             total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_response.json)"
             total_dataset_questions="$(jq -r '.total_dataset_questions // empty' /tmp/eval_response.json)"
@@ -156,6 +171,28 @@ jobs:
             avg_context_recall="$(jq -r '.quality_summary.avg_context_recall // empty' /tmp/eval_response.json)"
             avg_context_precision="$(jq -r '.quality_summary.avg_context_precision // empty' /tmp/eval_response.json)"
             avg_correctness="$(jq -r '.quality_summary.avg_correctness // empty' /tmp/eval_response.json)"
+            recommendations_json="$(jq -c '.recommendations // []' /tmp/eval_response.json)"
+            delta_correctness="$(jq -r '.run_record.summary.delta.avg_correctness // empty' /tmp/eval_response.json)"
+            delta_context_recall="$(jq -r '.run_record.summary.delta.avg_context_recall // empty' /tmp/eval_response.json)"
+          fi
+
+          if [ "${response_is_json}" = "true" ]; then
+            jq \
+              --arg http_code "${http_code}" \
+              --arg dataset_limit "${EVALUATION_DATASET_LIMIT}" \
+              --arg min_avg_correctness "${MIN_AVG_CORRECTNESS}" \
+              --arg min_avg_context_recall "${MIN_AVG_CONTEXT_RECALL}" \
+              '{
+                http_code: $http_code,
+                dataset_limit: ($dataset_limit | tonumber),
+                thresholds: {
+                  min_avg_correctness: ($min_avg_correctness | tonumber),
+                  min_avg_context_recall: ($min_avg_context_recall | tonumber)
+                },
+                response: .
+              }' /tmp/eval_response.json > /tmp/eval_summary.json
+          else
+            printf '%s\n' "{\"http_code\":\"${http_code}\",\"dataset_limit\":\"${EVALUATION_DATASET_LIMIT}\",\"response_is_json\":false}" > /tmp/eval_summary.json
           fi
 
           # ── Write Job Summary ──────────────────────────────────────────────
@@ -180,8 +217,13 @@ jobs:
                 echo "| Avg Context Recall | \`${avg_context_recall:-unknown}\` |"
                 echo "| Avg Context Precision | \`${avg_context_precision:-unknown}\` |"
                 echo "| Avg Correctness | \`${avg_correctness:-unknown}\` |"
+                echo "| Delta Correctness | \`${delta_correctness:-n/a}\` |"
+                echo "| Delta Context Recall | \`${delta_context_recall:-n/a}\` |"
               fi
             fi
+            echo ""
+            echo "### Recommendations"
+            jq -r '.[]? | "- " + .' <<< "${recommendations_json}"
             echo ""
             echo "### Response Body"
             echo '```json'
@@ -218,6 +260,16 @@ jobs:
             exit 1
           fi
 
+          if awk "BEGIN {exit !(${avg_correctness:-0} < ${MIN_AVG_CORRECTNESS})}"; then
+            echo "::error::Average correctness ${avg_correctness:-0} is below required threshold ${MIN_AVG_CORRECTNESS}."
+            exit 1
+          fi
+
+          if awk "BEGIN {exit !(${avg_context_recall:-0} < ${MIN_AVG_CONTEXT_RECALL})}"; then
+            echo "::error::Average context recall ${avg_context_recall:-0} is below required threshold ${MIN_AVG_CONTEXT_RECALL}."
+            exit 1
+          fi
+
           echo "Result   : total_evaluated=${total_evaluated}/${total_dataset_questions:-unknown}, avg_latency=${avg_latency:-unknown}s"
           if [ "${quality_summary_type}" = "object" ]; then
             echo "Quality  : faithfulness=${avg_faithfulness:-unknown}, answer_relevance=${avg_answer_relevance:-unknown}, context_recall=${avg_context_recall:-unknown}, context_precision=${avg_context_precision:-unknown}, correctness=${avg_correctness:-unknown}"
@@ -229,5 +281,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rag-evaluation-response-${{ github.run_id }}
-          path: /tmp/eval_response.json
+          path: |
+            /tmp/eval_response.json
+            /tmp/eval_summary.json
           if-no-files-found: ignore

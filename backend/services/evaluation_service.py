@@ -16,6 +16,12 @@ from backend.services.rag_quality_evaluator import (
     evaluate_quality,
     compute_context_precision,
 )
+from backend.retrieval_tuning import (
+    build_grounded_answer_prompt,
+    build_rag_recommendations,
+    determine_retrieval_limit,
+    select_diverse_items,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -141,7 +147,7 @@ class EvaluationService:
         self.dataset_path = self._resolve_dataset_path()
         self.dataset = self._load_dataset()
         self.evaluator: RAGEvaluationMetrics = get_evaluator(config.EVALUATION_LOG_FILE)
-        self._index = None
+        self._retrievers: Dict[int, Any] = {}
 
     def _resolve_dataset_path(self) -> Path:
         configured = Path(config.EVALUATION_DATASET_FILE)
@@ -201,11 +207,13 @@ class EvaluationService:
             return {"test_cases": data.get("queries", [])}
         raise ValueError("Evaluation dataset missing 'test_cases' or 'queries'")
 
-    def _load_index(self):
-        if self._index is None:
-            # Use S3 retriever instead of local index
-            self._index = create_s3_retriever(similarity_top_k=10)
-        return self._index
+    def _load_index(self, similarity_top_k: int):
+        similarity_top_k = max(1, similarity_top_k)
+        if similarity_top_k not in self._retrievers:
+            self._retrievers[similarity_top_k] = create_s3_retriever(
+                similarity_top_k=similarity_top_k
+            )
+        return self._retrievers[similarity_top_k]
 
     def list_cases(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         cases = self.dataset.get("test_cases", [])
@@ -259,10 +267,19 @@ class EvaluationService:
         if not isinstance(expected_topics, list):
             expected_topics = []
         start = time.time()
-        top_k = case.get("expected_retrieval_count") or config.SIMILARITY_TOP_K
-        # Use cached S3 retriever for performance (avoids re-downloading index)
-        retriever = self._load_index()
-        retrieved_nodes = retriever.retrieve(query)[:top_k]
+        top_k = determine_retrieval_limit(
+            query,
+            base_top_k=max(3, config.SIMILARITY_TOP_K),
+            max_top_k=max(6, config.SIMILARITY_TOP_K + 2),
+        )
+        retriever = self._load_index(max(top_k, config.SIMILARITY_TOP_K))
+        retrieved_nodes = retriever.retrieve(query)
+        selected_nodes = select_diverse_items(
+            retrieved_nodes,
+            query=query,
+            limit=top_k,
+            max_per_source=2,
+        )
         retrieval_time = time.time() - start
 
         diagnostics = {
@@ -274,7 +291,7 @@ class EvaluationService:
                     "metadata": node.node.metadata,
                     "score": getattr(node, "score", 0),
                 }
-                for node in retrieved_nodes
+                for node in selected_nodes
             ]
         }
 
@@ -283,19 +300,9 @@ class EvaluationService:
 
         context_passages = [
             node.node.get_text() if hasattr(node.node, "get_text") else ""
-            for node in retrieved_nodes[:5]
+            for node in selected_nodes[:5]
         ]
-        context = "\n\n".join(context_passages)
-
-        prompt = f"""Based on the following context, provide a concise answer to the question.
-
-Context:
-{context}
-
-Question: {query}
-
-Answer:"""
-
+        prompt = build_grounded_answer_prompt(query, context_passages)
         response_text = llm.generate(prompt=prompt, max_tokens=512)
         generation_time = time.time() - gen_start
 
@@ -310,7 +317,8 @@ Answer:"""
         if enable_quality_eval:
             try:
                 retrieval_scores = [
-                    getattr(n, "score", 0) for n in retrieved_nodes
+                    n.node.metadata.get("similarity_score", getattr(n, "score", 0))
+                    for n in selected_nodes
                 ]
                 quality_metrics = evaluate_quality(
                     question=query,
@@ -328,7 +336,7 @@ Answer:"""
 
         self.evaluator.log_query(
             query=query,
-            retrieved_docs=retrieved_nodes,
+            retrieved_docs=selected_nodes,
             response=response_text,
             retrieval_time=retrieval_time,
             generation_time=generation_time,
@@ -336,6 +344,7 @@ Answer:"""
                 "mode": "evaluation",
                 "case_id": case["id"],
                 "category": case.get("category"),
+                "retrieval_limit": top_k,
             },
             quality_metrics=quality_metrics,
         )
@@ -349,6 +358,11 @@ Answer:"""
             "response_length": len(response_text),
             "total_time": round(total_time, 3),
             "expected_topics": expected_topics,
+            "retrieval_limit": top_k,
+            "selected_sources": [
+                doc["metadata"].get("source_file", "unknown")
+                for doc in diagnostics["documents"]
+            ],
             "retrieval_metrics": retrieval_metrics,
             "generation_metrics": generation_metrics,
         }
@@ -382,6 +396,12 @@ Answer:"""
             "total_tests": len(results),
             "avg_response_time": round(statistics.mean(times), 3) if times else 0.0,
             "p95_response_time": round(_percentile(times, 0.95), 3) if times else 0.0,
+            "avg_retrieval_limit": round(
+                statistics.mean(
+                    [r.get("retrieval_limit", config.SIMILARITY_TOP_K) for r in results]
+                ),
+                3,
+            ),
             "avg_topic_coverage": round(statistics.mean(coverages), 3)
             if coverages
             else 0.0,
@@ -411,6 +431,24 @@ Answer:"""
                 if generation_metrics
                 else 0.0,
             },
+            "weakest_cases": [
+                {
+                    "test_id": r.get("test_id"),
+                    "query": r.get("query"),
+                    "topic_coverage": r.get("generation_metrics", {}).get("topic_coverage", 0),
+                    "context_recall": r.get("quality_metrics", {}).get("context_recall")
+                    if r.get("quality_metrics")
+                    else None,
+                }
+                for r in sorted(
+                    results,
+                    key=lambda item: (
+                        item.get("quality_metrics", {}).get("correctness", 0)
+                        if item.get("quality_metrics")
+                        else item.get("generation_metrics", {}).get("topic_coverage", 0)
+                    ),
+                )[:5]
+            ],
         }
 
         # Aggregate quality metrics if present
@@ -428,6 +466,15 @@ Answer:"""
                 "avg_correctness": avg_metric(quality_results, "correctness"),
                 "evaluated_count": len(quality_results),
             }
+
+        quality_summary = analysis.get("quality_summary") or {}
+        analysis["recommendations"] = build_rag_recommendations(
+            avg_context_recall=quality_summary.get("avg_context_recall"),
+            avg_context_precision=quality_summary.get("avg_context_precision"),
+            avg_correctness=quality_summary.get("avg_correctness"),
+            avg_topic_coverage=analysis.get("avg_topic_coverage"),
+            p95_response_time=analysis.get("p95_response_time"),
+        )
 
         return analysis
 

@@ -384,6 +384,163 @@ class AdminService:
             "admin_users": sum(1 for u in users if u.get("role") == "Admin"),
         }
 
+    def _empty_agent_metrics(self, error: Optional[str] = None) -> Dict[str, Any]:
+        data = {
+            "total_agent_interactions": 0,
+            "unique_users": 0,
+            "agent_distribution": {},
+            "avg_response_time_ms": 0,
+            "response_time_by_agent": {},
+            "daily_usage": [],
+            "top_query_types": [],
+            "routing_accuracy": {
+                "positive_after_route": 0,
+                "negative_after_route": 0,
+            },
+        }
+        if error:
+            data["error"] = error
+        return data
+
+    def _empty_knowledge_graph_metrics(
+        self, error: Optional[str] = None
+    ) -> Dict[str, Any]:
+        data = {
+            "total_nodes": 0,
+            "total_relationships": 0,
+            "nodes_by_type": {},
+            "relationships_by_type": {},
+            "most_struggled_concepts": [],
+            "most_studied_topics": [],
+            "student_engagement": [],
+            "feedback_sentiment_overview": {},
+        }
+        if error:
+            data["error"] = error
+        return data
+
+    def _load_runtime_metric_records(self) -> List[Dict[str, Any]]:
+        log_file = Path(config.EVALUATION_LOG_FILE)
+        if not log_file.exists():
+            return []
+
+        records: List[Dict[str, Any]] = []
+        try:
+            with log_file.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict):
+                        records.append(record)
+        except OSError as exc:
+            logger.warning("Failed to read runtime metrics log: %s", exc)
+        return records
+
+    def _get_agent_metrics_from_runtime_logs(self) -> Dict[str, Any]:
+        records = []
+        for record in self._load_runtime_metric_records():
+            metadata = record.get("metadata") or {}
+            if metadata.get("mode") == "evaluation":
+                continue
+            if not metadata.get("agent"):
+                continue
+            records.append(record)
+
+        if not records:
+            return self._empty_agent_metrics()
+
+        total = len(records)
+        users = set()
+        agent_counts: Dict[str, int] = {}
+        agent_latencies: Dict[str, List[float]] = {}
+        daily: Dict[str, Dict[str, Any]] = {}
+        query_type_counts: Dict[str, int] = {}
+        pos = 0
+        neg = 0
+        latency_values: List[float] = []
+
+        for record in records:
+            metadata = record.get("metadata") or {}
+            agent = metadata.get("agent") or "unknown"
+            user_id = metadata.get("user_id")
+            query_type = metadata.get("query_type") or "unknown"
+            sentiment = metadata.get("sentiment")
+            ts = (record.get("timestamp") or "")[:10]
+
+            total_seconds = (
+                (record.get("end_to_end_metrics") or {}).get("total_time_seconds")
+                or 0
+            )
+            latency_ms = float(total_seconds) * 1000 if total_seconds else 0.0
+
+            if user_id:
+                users.add(user_id)
+
+            agent_counts[agent] = agent_counts.get(agent, 0) + 1
+            query_type_counts[query_type] = query_type_counts.get(query_type, 0) + 1
+
+            if latency_ms > 0:
+                latency_values.append(latency_ms)
+                agent_latencies.setdefault(agent, []).append(latency_ms)
+
+            if sentiment == "positive":
+                pos += 1
+            elif sentiment == "negative":
+                neg += 1
+
+            if ts:
+                bucket = daily.setdefault(ts, {"users": set(), "count": 0})
+                bucket["count"] += 1
+                if user_id:
+                    bucket["users"].add(user_id)
+
+        feedback_total = pos + neg
+        return {
+            "total_agent_interactions": total,
+            "unique_users": len(users),
+            "agent_distribution": dict(
+                sorted(agent_counts.items(), key=lambda item: item[1], reverse=True)
+            ),
+            "avg_response_time_ms": round(sum(latency_values) / len(latency_values), 0)
+            if latency_values
+            else 0,
+            "response_time_by_agent": {
+                agent: round(sum(values) / len(values), 0)
+                for agent, values in agent_latencies.items()
+                if values
+            },
+            "daily_usage": [
+                {
+                    "date": date,
+                    "count": bucket["count"],
+                    "unique_users": len(bucket["users"]),
+                }
+                for date, bucket in sorted(daily.items())
+            ],
+            "top_query_types": [
+                {"type": query_type, "count": count}
+                for query_type, count in sorted(
+                    query_type_counts.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:10]
+            ],
+            "routing_accuracy": {
+                "positive_after_route": round(pos / feedback_total * 100, 1)
+                if feedback_total
+                else 0,
+                "negative_after_route": round(neg / feedback_total * 100, 1)
+                if feedback_total
+                else 0,
+            },
+            "source": "runtime_logs",
+        }
+
 
     # ── Agent Metrics ──────────────────────────────────────────────
 
@@ -465,7 +622,7 @@ class AdminService:
                 "negative_after_route": round(neg / fb_total * 100, 1) if fb_total else 0,
             }
 
-            return {
+            neo4j_metrics = {
                 "total_agent_interactions": total,
                 "unique_users": unique_users,
                 "agent_distribution": agent_dist,
@@ -475,10 +632,18 @@ class AdminService:
                 "top_query_types": top_qt,
                 "routing_accuracy": routing_acc,
             }
+            if total == 0:
+                fallback = self._get_agent_metrics_from_runtime_logs()
+                if fallback.get("total_agent_interactions", 0) > 0:
+                    return fallback
+            return neo4j_metrics
         except Exception as e:
             logger.error("Error getting agent metrics: %s", e)
             logger.warning(f"Admin service error: {e}")
-            return {"error": "Failed to fetch agent metrics", "total_agent_interactions": 0}
+            fallback = self._get_agent_metrics_from_runtime_logs()
+            if fallback.get("total_agent_interactions", 0) > 0:
+                return fallback
+            return self._empty_agent_metrics("Failed to fetch agent metrics")
 
     # ── Knowledge Graph Metrics ───────────────────────────────────
 
@@ -564,7 +729,9 @@ class AdminService:
         except Exception as e:
             logger.error("Error getting knowledge graph metrics: %s", e)
             logger.warning(f"Admin service error: {e}")
-            return {"error": "Failed to fetch knowledge graph metrics", "total_nodes": 0, "total_relationships": 0}
+            return self._empty_knowledge_graph_metrics(
+                "Failed to fetch knowledge graph metrics"
+            )
 
 
 _admin_service: Optional[AdminService] = None

@@ -82,9 +82,11 @@ async def get_current_user(session=Depends(get_current_session)):
 
 
 async def get_admin_session(session=Depends(get_current_session)):
-    """Require the authenticated user to have Admin role."""
+    """Require the authenticated user to have Admin role or is_admin flag."""
     token, user = session
-    if user.get("role") != "Admin":
+    # Check role or is_admin flag in metadata
+    is_admin = user.get("role") == "Admin" or user.get("metadata", {}).get("is_admin", False)
+    if not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

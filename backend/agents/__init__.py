@@ -50,8 +50,10 @@ def run_agent_pipeline(
         profile = load_student_profile(user_id)
 
     # ── 2. RAG retrieval (reuse existing S3/Chroma logic) ─────────
+    retrieval_started_at = time.time()
     with traced_span(main_trace, "agent-rag-retrieval", input={"query": query}) as rag_span:
         context_str, sources = _retrieve_rag_context(query)
+    retrieval_elapsed = time.time() - retrieval_started_at
 
     # ── 3. Build state + invoke graph ─────────────────────────────
     from backend.agents.graph import get_compiled_graph
@@ -78,12 +80,14 @@ def run_agent_pipeline(
         "agent": "",
     }
 
+    generation_started_at = time.time()
     with traced_span(main_trace, "langgraph-invoke", input={"query": query}) as graph_span:
         compiled_graph = get_compiled_graph()
         result = compiled_graph.invoke(
             initial_state,
             {"recursion_limit": config.AGENT_GRAPH_RECURSION_LIMIT},
         )
+    generation_elapsed = time.time() - generation_started_at
 
     response_text = result.get("response", "I couldn't generate a response.")
     agent_name = result.get("agent", "tutor_agent")
@@ -108,6 +112,35 @@ def run_agent_pipeline(
             response_time_ms=elapsed_ms,
             model_id=model_id,
         )
+
+    try:
+        from backend.rag_evaluation import get_evaluator
+
+        get_evaluator().log_runtime_metrics(
+            query=query,
+            response=response_text,
+            retrieval_time=retrieval_elapsed,
+            generation_time=generation_elapsed,
+            metadata={
+                "mode": "agent_chat",
+                "user_id": user_id,
+                "session_id": session_id,
+                "agent": agent_name,
+                "route_reason": route_reason,
+                "query_type": result.get("next", "general_tutoring"),
+                "sentiment": sentiment,
+                "model_id": model_id,
+                "web_search_used": False,
+            },
+            num_retrieved=len(sources),
+            context_passages=[
+                s.get("chunk_text", "")[:500]
+                for s in sources[:5]
+                if isinstance(s, dict) and s.get("chunk_text")
+            ],
+        )
+    except Exception as exc:
+        logger.warning("Failed to log agent runtime metrics: %s", exc)
 
     # Update root trace with final output
     update_trace(
@@ -140,11 +173,17 @@ def _retrieve_rag_context(query: str) -> Tuple[str, List[Dict[str, Any]]]:
     """Run the existing S3/Chroma retrieval pipeline and return (context_str, sources)."""
     import os
     from urllib.parse import quote
+    from backend.retrieval_tuning import determine_retrieval_limit, select_diverse_items
 
     try:
+        retrieval_limit = determine_retrieval_limit(
+            query,
+            base_top_k=3,
+            max_top_k=max(5, config.SIMILARITY_TOP_K + 1),
+        )
         if config.USE_S3_VECTORS:
             from backend.s3_retriever import create_s3_retriever
-            retriever = create_s3_retriever(similarity_top_k=3)
+            retriever = create_s3_retriever(similarity_top_k=retrieval_limit)
         else:
             from llama_index.core import StorageContext, load_index_from_storage
             from utils import get_storage_context
@@ -152,9 +191,14 @@ def _retrieve_rag_context(query: str) -> Tuple[str, List[Dict[str, Any]]]:
             if sc is None:
                 return "No context available.", []
             idx = load_index_from_storage(sc)
-            retriever = idx.as_retriever(similarity_top_k=3)
+            retriever = idx.as_retriever(similarity_top_k=retrieval_limit)
 
-        nodes = retriever.retrieve(query)
+        nodes = select_diverse_items(
+            retriever.retrieve(query),
+            query=query,
+            limit=retrieval_limit,
+            max_per_source=2,
+        )
         sources: List[Dict[str, Any]] = []
         context_parts: List[str] = []
 

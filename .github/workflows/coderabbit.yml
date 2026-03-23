@@ -1,14 +1,23 @@
-name: CodeRabbit Setup Guide
+name: CodeRabbit Code Review
 
 on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
   workflow_dispatch:
 
 jobs:
-  setup-guide:
-    name: CodeRabbit Setup Guide
+  review-trigger:
+    name: CodeRabbit Review Trigger
     runs-on: ubuntu-latest
     steps:
-      - name: Publish setup instructions
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish CodeRabbit status
         run: |
           {
             echo "## CodeRabbit"
@@ -19,6 +28,8 @@ jobs:
             echo "1. Open https://coderabbit.ai"
             echo "2. Connect this repository in the GitHub integration flow"
             echo "3. Enable auto-review for pull requests"
+            echo ""
+            echo "This workflow only keeps the repository's GitHub Actions history aligned with the CodeRabbit app setup."
             echo ""
             echo "Repository config files referenced by this setup:"
             echo "- .coderabbit.yaml"

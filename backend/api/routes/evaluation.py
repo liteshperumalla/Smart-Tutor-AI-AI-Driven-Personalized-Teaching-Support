@@ -17,6 +17,12 @@ from backend.services.evaluation_service import (
 from backend.services.evaluation_run_store import append_run, list_runs, get_latest_run
 from backend.cost_tracking import get_cost_tracker
 from backend.config import config
+from backend.retrieval_tuning import (
+    build_grounded_answer_prompt,
+    build_rag_recommendations,
+    determine_retrieval_limit,
+    select_diverse_items,
+)
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
@@ -538,7 +544,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     questions = questions[:limit]
 
     # Initialize retriever and LLM
-    retriever = create_s3_retriever(similarity_top_k=5)
+    retriever = create_s3_retriever(similarity_top_k=max(6, config.SIMILARITY_TOP_K + 2))
     llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
 
     individual_results = []
@@ -554,7 +560,17 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
         try:
             # 1. Retrieve context
             t0 = time.time()
-            retrieved_nodes = retriever.retrieve(question)[:5]
+            retrieval_limit = determine_retrieval_limit(
+                question,
+                base_top_k=max(3, config.SIMILARITY_TOP_K),
+                max_top_k=max(6, config.SIMILARITY_TOP_K + 2),
+            )
+            retrieved_nodes = select_diverse_items(
+                retriever.retrieve(question),
+                query=question,
+                limit=retrieval_limit,
+                max_per_source=2,
+            )
             retrieval_time = time.time() - t0
 
             context_passages = [
@@ -568,15 +584,9 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 node.node.metadata.get("similarity_score", getattr(node, "score", 0.0))
                 for node in retrieved_nodes
             ]
-            context_text = "\n\n".join(context_passages)
-
             # 2. Generate response
             t1 = time.time()
-            prompt = (
-                "Based on the following context, provide a concise answer.\n\n"
-                f"Context:\n{context_text}\n\n"
-                f"Question: {question}\n\nAnswer:"
-            )
+            prompt = build_grounded_answer_prompt(question, context_passages)
             response_text = llm.generate(prompt=prompt, max_tokens=512)
             generation_time = time.time() - t1
 
@@ -603,6 +613,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 "reasoning": scores.get("reasoning", ""),
                 "latency": latency,
                 "docs_retrieved": len(retrieved_nodes),
+                "retrieval_limit": retrieval_limit,
                 "avg_retrieval_score": round(
                     sum(retrieval_scores) / len(retrieval_scores), 4
                 ) if retrieval_scores else 0,
@@ -640,18 +651,27 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
             "message": "All evaluations failed.",
         }
 
+    avg_latency = round(total_latency / evaluated_count, 3)
+    quality_summary = {
+        "avg_faithfulness": round(faithfulness_sum / evaluated_count, 4),
+        "avg_answer_relevance": round(answer_relevance_sum / evaluated_count, 4),
+        "avg_context_recall": round(context_recall_sum / evaluated_count, 4),
+        "avg_context_precision": round(context_precision_sum / evaluated_count, 4),
+        "avg_correctness": round(correctness_sum / evaluated_count, 4),
+        "evaluated_count": evaluated_count,
+    }
+
     return {
         "total_evaluated": evaluated_count,
         "total_dataset_questions": len(questions),
-        "avg_latency": round(total_latency / evaluated_count, 3),
-        "quality_summary": {
-            "avg_faithfulness": round(faithfulness_sum / evaluated_count, 4),
-            "avg_answer_relevance": round(answer_relevance_sum / evaluated_count, 4),
-            "avg_context_recall": round(context_recall_sum / evaluated_count, 4),
-            "avg_context_precision": round(context_precision_sum / evaluated_count, 4),
-            "avg_correctness": round(correctness_sum / evaluated_count, 4),
-            "evaluated_count": evaluated_count,
-        },
+        "avg_latency": avg_latency,
+        "quality_summary": quality_summary,
+        "recommendations": build_rag_recommendations(
+            avg_context_recall=quality_summary.get("avg_context_recall"),
+            avg_context_precision=quality_summary.get("avg_context_precision"),
+            avg_correctness=quality_summary.get("avg_correctness"),
+            p95_response_time=max((item.get("latency", 0) for item in individual_results), default=0),
+        ),
         "individual_results": individual_results,
     }
 

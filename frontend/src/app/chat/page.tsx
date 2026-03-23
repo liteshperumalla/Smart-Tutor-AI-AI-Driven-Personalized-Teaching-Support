@@ -49,6 +49,25 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "us.anthropic.claude-opus-4-20250514-v1:0": "Opus 4",
 };
 
+function getFriendlyUserName(
+  user: { display_name?: string; full_name?: string; username?: string; email?: string } | null
+) {
+  const directName = [user?.display_name, user?.full_name]
+    .map((value) => value?.trim())
+    .find((value) => value && !value.includes("@"));
+  if (directName) return directName;
+
+  const identifier = user?.username?.trim() || user?.email?.trim() || "";
+  const localPart = identifier.includes("@") ? identifier.split("@", 1)[0] : identifier;
+  const humanized = localPart
+    .replace(/[_\-.]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+  return humanized || "there";
+}
+
 function ChatWorkspaceContent() {
   const searchParams = useSearchParams();
   const { token } = useAuthToken();
@@ -1250,7 +1269,7 @@ function ChatWorkspaceContent() {
         {isLoggedIn && (!activeSession || !hasMessages) && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
             <h1 className="text-2xl sm:text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
-              {`Hi, ${user?.display_name || user?.full_name || user?.username || "there"}`}
+              {`Hi, ${getFriendlyUserName(user)}`}
             </h1>
             <p className="text-base sm:text-xl text-zinc-500 dark:text-zinc-400">
               {isAdmin ? "What would you like to test or explore?" : "What would you like to learn today?"}

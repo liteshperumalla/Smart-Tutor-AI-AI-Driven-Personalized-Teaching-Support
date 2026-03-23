@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
@@ -19,6 +20,20 @@ logger = logging.getLogger(__name__)
 # ── Performance level thresholds ─────────────────────────────────
 _LEVEL_THRESHOLDS = {"advanced": 80, "intermediate": 50}
 
+_GENERIC_NAME_TOKENS = {
+    "admin",
+    "administrator",
+    "student",
+    "user",
+    "google",
+    "mail",
+    "gmail",
+    "yahoo",
+    "outlook",
+    "hotmail",
+    "icloud",
+}
+
 
 def _compute_level(avg_pct: float) -> str:
     if avg_pct >= _LEVEL_THRESHOLDS["advanced"]:
@@ -26,6 +41,70 @@ def _compute_level(avg_pct: float) -> str:
     if avg_pct >= _LEVEL_THRESHOLDS["intermediate"]:
         return "intermediate"
     return "beginner"
+
+
+def _clean_name_candidate(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _looks_like_email(value: str) -> bool:
+    return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", (value or "").strip()))
+
+
+def _humanize_identifier(value: str) -> str:
+    text = _clean_name_candidate(value)
+    if not text:
+        return ""
+    text = text.split("@", 1)[0]
+    text = re.sub(r"[_\-.]+", " ", text)
+    parts = []
+    for token in text.split():
+        if not token:
+            continue
+        if token.lower() in _GENERIC_NAME_TOKENS and len(text.split()) == 1:
+            continue
+        if token.isdigit():
+            continue
+        parts.append(token)
+    if not parts:
+        return ""
+    return " ".join(parts[:3]).title()
+
+
+def resolve_student_display_name(username: str, display_name: Optional[str] = None) -> str:
+    explicit_display_name = _clean_name_candidate(display_name)
+    if explicit_display_name and not _looks_like_email(explicit_display_name):
+        return explicit_display_name
+
+    user_record: Dict[str, Any] = {}
+    try:
+        from backend.database import get_user_db
+
+        user_record = get_user_db().get_user_safe(username) or {}
+    except Exception:
+        user_record = {}
+
+    for candidate in (
+        user_record.get("display_name"),
+        user_record.get("full_name"),
+        explicit_display_name,
+    ):
+        cleaned = _clean_name_candidate(candidate)
+        if cleaned and not _looks_like_email(cleaned):
+            return cleaned
+
+    for candidate in (
+        user_record.get("username"),
+        username,
+        user_record.get("email"),
+    ):
+        fallback = _humanize_identifier(candidate or "")
+        if fallback:
+            return fallback
+
+    return "Student"
 
 
 # ── PostgreSQL queries ───────────────────────────────────────────
@@ -158,18 +237,20 @@ def _graph_profile(username: str) -> Dict[str, Any]:
 
 def load_student_profile(username: str, display_name: Optional[str] = None) -> Dict[str, Any]:
     """Build a combined student profile, cached in Redis for 600s."""
+    resolved_display_name = resolve_student_display_name(username, display_name)
 
     # Try Redis cache first
     cache_key = f"student_profile:{username}"
     cached = _redis_get(cache_key)
     if cached is not None:
+        cached["display_name"] = resolved_display_name
         return cached
 
     quiz = _quiz_profile(username)
     graph = _graph_profile(username)
 
     profile: Dict[str, Any] = {
-        "display_name": display_name or username,
+        "display_name": resolved_display_name,
         "performance_level": quiz.get("performance_level", config.AGENT_DEFAULT_LEVEL),
         "top_topics": quiz.get("top_topics", []),
         "weak_topics": quiz.get("weak_topics", []),

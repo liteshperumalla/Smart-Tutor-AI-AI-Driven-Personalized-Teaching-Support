@@ -110,6 +110,7 @@ export function EvaluationContent() {
   const [graphMetrics, setGraphMetrics] = useState<KnowledgeGraphMetrics | null>(null);
   const [graphMetricsLoading, setGraphMetricsLoading] = useState(false);
   const [websiteMetrics, setWebsiteMetrics] = useState<WebsiteMetrics | null>(null);
+  const [websiteMetricsError, setWebsiteMetricsError] = useState<string | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [awsMetrics, setAwsMetrics] = useState<AWSMetrics | null>(null);
   const [awsLoading, setAwsLoading] = useState(false);
@@ -126,6 +127,8 @@ export function EvaluationContent() {
   const [datasetLoading, setDatasetLoading] = useState(false);
   const [datasetError, setDatasetError] = useState<string | null>(null);
   const [datasetLimit, setDatasetLimit] = useState(10);
+  const [agentMetricsError, setAgentMetricsError] = useState<string | null>(null);
+  const [graphMetricsError, setGraphMetricsError] = useState<string | null>(null);
 
   // Fetch evaluation data
   useEffect(() => {
@@ -167,6 +170,7 @@ export function EvaluationContent() {
   // Fetch Prometheus metrics
   const fetchPrometheusMetrics = async () => {
     setMetricsLoading(true);
+    setWebsiteMetricsError(null);
     try {
       const apiBaseUrl = getApiBaseUrl();
       const response = await fetch(`${apiBaseUrl}/metrics`, {
@@ -180,6 +184,8 @@ export function EvaluationContent() {
       setWebsiteMetrics(metrics);
     } catch (err) {
       console.error("Failed to fetch Prometheus metrics:", err);
+      setWebsiteMetrics(null);
+      setWebsiteMetricsError(err instanceof Error ? err.message : "Failed to fetch website metrics");
     } finally {
       setMetricsLoading(false);
     }
@@ -279,11 +285,15 @@ export function EvaluationContent() {
   const fetchAgentMetricsData = async () => {
     if (!token) return;
     setAgentMetricsLoading(true);
+    setAgentMetricsError(null);
     try {
       const data = await fetchAgentMetrics(token);
       setAgentMetrics(data);
+      setAgentMetricsError(data.error ?? null);
     } catch (err) {
       console.error("Failed to fetch agent metrics:", err);
+      setAgentMetrics(null);
+      setAgentMetricsError(err instanceof Error ? err.message : "Failed to load agent metrics");
     } finally {
       setAgentMetricsLoading(false);
     }
@@ -299,11 +309,15 @@ export function EvaluationContent() {
   const fetchGraphMetricsData = async () => {
     if (!token) return;
     setGraphMetricsLoading(true);
+    setGraphMetricsError(null);
     try {
       const data = await fetchKnowledgeGraphMetrics(token);
       setGraphMetrics(data);
+      setGraphMetricsError(data.error ?? null);
     } catch (err) {
       console.error("Failed to fetch knowledge graph metrics:", err);
+      setGraphMetrics(null);
+      setGraphMetricsError(err instanceof Error ? err.message : "Failed to load knowledge graph metrics");
     } finally {
       setGraphMetricsLoading(false);
     }
@@ -1463,132 +1477,149 @@ export function EvaluationContent() {
             </div>
           </div>
 
-          {/* Website Overview Cards */}
-          <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              title="Total Requests"
-              value={websiteMetrics?.totalRequests.toLocaleString() ?? 0}
-              subtitle="HTTP requests processed"
-              icon={Server}
-              color="indigo"
-            />
-            <MetricCard
-              title="Avg Response Time"
-              value={`${((websiteMetrics?.avgResponseTime ?? 0) * 1000).toFixed(0)}ms`}
-              subtitle="API endpoint latency"
-              icon={Clock}
-              trend={(websiteMetrics?.avgResponseTime ?? 0) < 0.5 ? "up" : "down"}
-              color="blue"
-            />
-            <MetricCard
-              title="Error Rate"
-              value={`${(websiteMetrics?.errorRate ?? 0).toFixed(2)}%`}
-              subtitle="HTTP 5xx errors"
-              icon={AlertTriangle}
-              trend={(websiteMetrics?.errorRate ?? 0) < 1 ? "up" : "down"}
-              color={(websiteMetrics?.errorRate ?? 0) < 1 ? "emerald" : "red"}
-            />
-            <MetricCard
-              title="Active Connections"
-              value={websiteMetrics?.activeConnections ?? 0}
-              subtitle="Currently processing"
-              icon={Activity}
-              color="amber"
-            />
-          </section>
-
-          {/* Resource Usage */}
-          <section className="grid gap-6 lg:grid-cols-2">
-            {/* API Performance */}
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="rounded-xl bg-emerald-50 p-2.5 dark:bg-emerald-900/20">
-                  <Gauge className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">API Performance</h3>
-                  <p className="text-xs text-zinc-500">Request processing metrics</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-emerald-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Successful Requests</span>
-                  </div>
-                  <span className="text-lg font-bold text-zinc-900 dark:text-white">
-                    {((1 - (websiteMetrics?.errorRate ?? 0) / 100) * 100).toFixed(1)}%
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <Zap className="h-5 w-5 text-amber-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Cache Hit Rate</span>
-                  </div>
-                  <span className="text-lg font-bold text-zinc-900 dark:text-white">
-                    {(websiteMetrics?.cacheHitRate ?? 0).toFixed(1)}%
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <Database className="h-5 w-5 text-blue-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">RAG Queries</span>
-                  </div>
-                  <span className="text-lg font-bold text-zinc-900 dark:text-white">
-                    {websiteMetrics?.ragQueriesTotal ?? 0}
-                  </span>
-                </div>
-              </div>
+          {metricsLoading && !websiteMetrics ? (
+            <div className="flex items-center justify-center py-16">
+              <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" />
             </div>
+          ) : websiteMetrics ? (
+            <>
+              <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <MetricCard
+                  title="Total Requests"
+                  value={websiteMetrics.totalRequests.toLocaleString()}
+                  subtitle="HTTP requests processed"
+                  icon={Server}
+                  color="indigo"
+                />
+                <MetricCard
+                  title="Avg Response Time"
+                  value={`${(websiteMetrics.avgResponseTime * 1000).toFixed(0)}ms`}
+                  subtitle="API endpoint latency"
+                  icon={Clock}
+                  trend={websiteMetrics.avgResponseTime < 0.5 ? "up" : "down"}
+                  color="blue"
+                />
+                <MetricCard
+                  title="Error Rate"
+                  value={`${websiteMetrics.errorRate.toFixed(2)}%`}
+                  subtitle="HTTP 5xx errors"
+                  icon={AlertTriangle}
+                  trend={websiteMetrics.errorRate < 1 ? "up" : "down"}
+                  color={websiteMetrics.errorRate < 1 ? "emerald" : "red"}
+                />
+                <MetricCard
+                  title="Active Connections"
+                  value={websiteMetrics.activeConnections}
+                  subtitle="Currently processing"
+                  icon={Activity}
+                  color="amber"
+                />
+              </section>
 
-            {/* Cost & Token Tracking */}
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="rounded-xl bg-amber-50 p-2.5 dark:bg-amber-900/20">
-                  <Cpu className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Resource Usage</h3>
-                  <p className="text-xs text-zinc-500">Tokens and cost tracking</p>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <HardDrive className="h-5 w-5 text-purple-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Tokens Processed</span>
+              <section className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="rounded-xl bg-emerald-50 p-2.5 dark:bg-emerald-900/20">
+                      <Gauge className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-zinc-900 dark:text-white">API Performance</h3>
+                      <p className="text-xs text-zinc-500">Request processing metrics</p>
+                    </div>
                   </div>
-                  <span className="text-lg font-bold text-zinc-900 dark:text-white">
-                    {(websiteMetrics?.tokensProcessed ?? 0).toLocaleString()}
-                  </span>
+
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle className="h-5 w-5 text-emerald-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Successful Requests</span>
+                      </div>
+                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {((1 - websiteMetrics.errorRate / 100) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <Zap className="h-5 w-5 text-amber-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Cache Hit Rate</span>
+                      </div>
+                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {websiteMetrics.cacheHitRate.toFixed(1)}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <Database className="h-5 w-5 text-blue-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">RAG Queries</span>
+                      </div>
+                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {websiteMetrics.ragQueriesTotal}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <Brain className="h-5 w-5 text-indigo-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Embedding Requests</span>
+                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="rounded-xl bg-amber-50 p-2.5 dark:bg-amber-900/20">
+                      <Cpu className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-zinc-900 dark:text-white">Resource Usage</h3>
+                      <p className="text-xs text-zinc-500">Tokens and cost tracking</p>
+                    </div>
                   </div>
-                  <span className="text-lg font-bold text-zinc-900 dark:text-white">
-                    {websiteMetrics?.embeddingRequests ?? 0}
-                  </span>
-                </div>
 
-                <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
-                  <div className="flex items-center gap-3">
-                    <TrendingUp className="h-5 w-5 text-emerald-500" />
-                    <span className="text-sm text-zinc-600 dark:text-zinc-400">Estimated Cost</span>
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <HardDrive className="h-5 w-5 text-purple-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Tokens Processed</span>
+                      </div>
+                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {websiteMetrics.tokensProcessed.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                      <div className="flex items-center gap-3">
+                        <Brain className="h-5 w-5 text-indigo-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Embedding Requests</span>
+                      </div>
+                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                        {websiteMetrics.embeddingRequests}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                      <div className="flex items-center gap-3">
+                        <TrendingUp className="h-5 w-5 text-emerald-500" />
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Estimated Cost</span>
+                      </div>
+                      <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                        ${websiteMetrics.totalCost.toFixed(4)}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-                    ${(websiteMetrics?.totalCost ?? 0).toFixed(4)}
-                  </span>
                 </div>
-              </div>
+              </section>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Server className="h-16 w-16 text-zinc-300 dark:text-zinc-600 mb-4" />
+              <p className="text-zinc-500 dark:text-zinc-400">
+                {websiteMetricsError || "Website metrics are unavailable right now."}
+              </p>
+              <button
+                onClick={fetchPrometheusMetrics}
+                className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+              >
+                Try again
+              </button>
             </div>
-          </section>
+          )}
         </div>
       )}
 
@@ -2309,7 +2340,14 @@ export function EvaluationContent() {
             </button>
           </div>
 
-          {agentMetrics ? (
+          {agentMetricsError &&
+          (!agentMetrics ||
+            (agentMetrics.total_agent_interactions === 0 &&
+              Object.keys(agentMetrics.agent_distribution || {}).length === 0)) ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              {agentMetricsError}
+            </div>
+          ) : agentMetrics ? (
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -2431,7 +2469,16 @@ export function EvaluationContent() {
             </button>
           </div>
 
-          {graphMetrics ? (
+          {graphMetricsError &&
+          (!graphMetrics ||
+            (graphMetrics.total_nodes === 0 &&
+              graphMetrics.total_relationships === 0 &&
+              Object.keys(graphMetrics.nodes_by_type || {}).length === 0 &&
+              Object.keys(graphMetrics.relationships_by_type || {}).length === 0)) ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              {graphMetricsError}
+            </div>
+          ) : graphMetrics ? (
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-2 gap-4 md:grid-cols-2">

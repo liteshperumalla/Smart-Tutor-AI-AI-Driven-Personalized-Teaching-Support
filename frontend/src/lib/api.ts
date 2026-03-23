@@ -43,7 +43,7 @@ export function getApiBaseUrl(): string {
   return resolveApiBaseUrl();
 }
 
-// Get direct backend URL for file uploads (bypasses proxy)
+// Get direct backend URL for admin/file operations that should bypass the proxy
 function getDirectBackendUrl(): string {
   // On server side, use the backend URL directly
   if (typeof window === "undefined") {
@@ -60,10 +60,9 @@ function getDirectBackendUrl(): string {
 }
 
 /**
- * Admin request — routes through the Next.js proxy (/api/backend) on the client
- * so it works from Vercel without CORS/CSP/port issues. On the server side it
- * calls the backend directly. Admin auth is enforced by the backend's
- * get_admin_session dependency (role == "Admin").
+ * Admin request — always targets the backend directly so auth-gated `/admin/*`
+ * endpoints behave consistently across environments. Admin auth is enforced by
+ * the backend's get_admin_session dependency (role == "Admin").
  */
 async function adminRequest<T>(
   path: string,
@@ -78,12 +77,8 @@ async function adminRequest<T>(
     headers.set("Authorization", `Bearer ${authToken}`);
   }
 
-  // Use the standard proxy base URL (same as regular request()) so all
-  // environments (Docker, Vercel) work without direct port access.
-  const baseUrl = resolveApiBaseUrl();
-  const url = typeof window === "undefined"
-    ? `${baseUrl}${path}`
-    : `${withAbsoluteOrigin(String(baseUrl))}${path}`;
+  const baseUrl = getDirectBackendUrl().replace(/\/$/, "");
+  const url = `${baseUrl}${path}`;
 
   const res = await fetch(url, {
     ...rest,
@@ -882,7 +877,7 @@ export async function uploadResourceFile({
   if (description) formData.append("description", description);
   if (order !== undefined) formData.append("order", String(order));
 
-  // Use direct backend URL — proxy blocks /admin/* paths
+  // Use direct backend URL so admin uploads and other admin APIs share the same routing path.
   const directUrl = getDirectBackendUrl();
   const response = await fetch(`${directUrl}/admin/resources/upload`, {
     method: "POST",
@@ -2073,6 +2068,29 @@ export type QuizMetrics = {
   error?: string;
 };
 
+function normalizeQuizMetrics(metrics?: Partial<QuizMetrics> | null): QuizMetrics {
+  const scoreDistribution = metrics?.score_distribution ?? {};
+  return {
+    total_quizzes: Number(metrics?.total_quizzes ?? 0),
+    unique_users: Number(metrics?.unique_users ?? 0),
+    avg_percentage: Number(metrics?.avg_percentage ?? 0),
+    highest_percentage: Number(metrics?.highest_percentage ?? 0),
+    lowest_percentage: Number(metrics?.lowest_percentage ?? 0),
+    total_questions_answered: Number(metrics?.total_questions_answered ?? 0),
+    score_distribution: {
+      "0-20": Number(scoreDistribution["0-20"] ?? 0),
+      "20-40": Number(scoreDistribution["20-40"] ?? 0),
+      "40-60": Number(scoreDistribution["40-60"] ?? 0),
+      "60-80": Number(scoreDistribution["60-80"] ?? 0),
+      "80-100": Number(scoreDistribution["80-100"] ?? 0),
+    },
+    popular_topics: Array.isArray(metrics?.popular_topics) ? metrics.popular_topics : [],
+    recent_activity: Array.isArray(metrics?.recent_activity) ? metrics.recent_activity : [],
+    top_performers: Array.isArray(metrics?.top_performers) ? metrics.top_performers : [],
+    error: metrics?.error,
+  };
+}
+
 // ==================== ADMIN API FUNCTIONS ====================
 
 export async function fetchAdminStats(token: string): Promise<AdminStats> {
@@ -2082,7 +2100,7 @@ export async function fetchAdminStats(token: string): Promise<AdminStats> {
 
 export async function fetchQuizMetrics(token: string): Promise<QuizMetrics> {
   const data = await adminRequest<{ quiz_metrics: QuizMetrics }>("/admin/quiz-metrics", { authToken: token });
-  return data.quiz_metrics;
+  return normalizeQuizMetrics(data.quiz_metrics);
 }
 
 export async function fetchAdminUsers(token: string): Promise<AdminUser[]> {
@@ -2195,6 +2213,23 @@ export type AgentMetrics = {
   error?: string;
 };
 
+function normalizeAgentMetrics(metrics?: Partial<AgentMetrics> | null): AgentMetrics {
+  return {
+    total_agent_interactions: Number(metrics?.total_agent_interactions ?? 0),
+    unique_users: Number(metrics?.unique_users ?? 0),
+    agent_distribution: metrics?.agent_distribution ?? {},
+    avg_response_time_ms: Number(metrics?.avg_response_time_ms ?? 0),
+    response_time_by_agent: metrics?.response_time_by_agent ?? {},
+    daily_usage: Array.isArray(metrics?.daily_usage) ? metrics.daily_usage : [],
+    top_query_types: Array.isArray(metrics?.top_query_types) ? metrics.top_query_types : [],
+    routing_accuracy: {
+      positive_after_route: Number(metrics?.routing_accuracy?.positive_after_route ?? 0),
+      negative_after_route: Number(metrics?.routing_accuracy?.negative_after_route ?? 0),
+    },
+    error: metrics?.error,
+  };
+}
+
 export type KnowledgeGraphMetrics = {
   total_nodes: number;
   total_relationships: number;
@@ -2207,12 +2242,34 @@ export type KnowledgeGraphMetrics = {
   error?: string;
 };
 
+function normalizeKnowledgeGraphMetrics(
+  metrics?: Partial<KnowledgeGraphMetrics> | null
+): KnowledgeGraphMetrics {
+  return {
+    total_nodes: Number(metrics?.total_nodes ?? 0),
+    total_relationships: Number(metrics?.total_relationships ?? 0),
+    nodes_by_type: metrics?.nodes_by_type ?? {},
+    relationships_by_type: metrics?.relationships_by_type ?? {},
+    most_struggled_concepts: Array.isArray(metrics?.most_struggled_concepts)
+      ? metrics.most_struggled_concepts
+      : [],
+    most_studied_topics: Array.isArray(metrics?.most_studied_topics)
+      ? metrics.most_studied_topics
+      : [],
+    student_engagement: Array.isArray(metrics?.student_engagement)
+      ? metrics.student_engagement
+      : [],
+    feedback_sentiment_overview: metrics?.feedback_sentiment_overview ?? {},
+    error: metrics?.error,
+  };
+}
+
 export async function fetchAgentMetrics(token: string): Promise<AgentMetrics> {
   const data = await adminRequest<{ agent_metrics: AgentMetrics }>("/admin/agent-metrics", { authToken: token });
-  return data.agent_metrics;
+  return normalizeAgentMetrics(data.agent_metrics);
 }
 
 export async function fetchKnowledgeGraphMetrics(token: string): Promise<KnowledgeGraphMetrics> {
   const data = await adminRequest<{ knowledge_graph_metrics: KnowledgeGraphMetrics }>("/admin/knowledge-graph-metrics", { authToken: token });
-  return data.knowledge_graph_metrics;
+  return normalizeKnowledgeGraphMetrics(data.knowledge_graph_metrics);
 }
