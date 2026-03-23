@@ -115,6 +115,11 @@ scan_aws() {
         return
     fi
 
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+        log_warn "AWS credentials not configured, skipping cloud scans"
+        return
+    fi
+
     log_info "Scanning AWS resources for $framework compliance..."
 
     # S3 Bucket encryption
