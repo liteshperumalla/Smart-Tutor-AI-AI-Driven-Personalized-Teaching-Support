@@ -130,3 +130,31 @@ class TestQuizServiceParsing:
         )
 
         assert context == "Actual chunk text"
+
+    def test_get_context_uses_source_document_fallback_when_chunks_missing(self):
+        service = object.__new__(QuizService)
+
+        class EmptyRetriever:
+            def retrieve(self, _query):
+                return []
+
+        service.s3_retriever = EmptyRetriever()
+        service._fetch_s3_chunk_context = lambda file_paths: ""
+        service._fetch_source_file_context = lambda file_paths: "Extracted source file text"
+
+        context = service._get_context_for_query(
+            "Explain data cleaning",
+            ["modules/Module 5/data_cleaning.pdf"],
+        )
+
+        assert context == "Extracted source file text"
+
+    def test_extract_quiz_payload_accepts_single_quoted_python_dict(self):
+        payload = QuizService._extract_quiz_payload(
+            """```python
+{'question': 'What is RAG?', 'options': ['A', 'B', 'C', 'D'], 'correct_answer_letter': 'A'}
+```"""
+        )
+
+        assert isinstance(payload, dict)
+        assert payload["question"] == "What is RAG?"

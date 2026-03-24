@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import uuid
+from ast import literal_eval
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -208,6 +209,71 @@ class QuizService:
             logger.warning("Failed to load quiz fallback chunk context: %s", exc)
             return ""
 
+    def _fetch_source_file_context(
+        self,
+        file_paths: List[str],
+        max_files: int = 3,
+        chars_per_file: int = 2000,
+    ) -> str:
+        if not file_paths:
+            return ""
+
+        try:
+            from pathlib import Path
+
+            from backend.cloud.aws_helpers import get_boto3_client
+            from backend.services.indexing_service import IndexingService
+
+            s3 = get_boto3_client("s3")
+            extractor = IndexingService(redis_cache=None)
+            context_parts: List[str] = []
+            files_read = 0
+
+            for file_path in file_paths:
+                if files_read >= max_files:
+                    break
+
+                key = (file_path or "").strip().lstrip("/")
+                if not key:
+                    continue
+
+                try:
+                    response = s3.get_object(Bucket=config.S3_DOCUMENTS_BUCKET, Key=key)
+                    file_bytes = response["Body"].read()
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to read quiz source document %s: %s", key, exc
+                    )
+                    continue
+
+                try:
+                    pages = extractor._extract_text(
+                        file_bytes,
+                        Path(key).name,
+                        Path(key).suffix.lower(),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to extract quiz source document %s: %s", key, exc
+                    )
+                    continue
+
+                extracted_text = "\n\n".join(
+                    text.strip()
+                    for text, _metadata in pages
+                    if isinstance(text, str) and text.strip()
+                ).strip()
+                if not extracted_text:
+                    continue
+
+                context_parts.append(extracted_text[:chars_per_file])
+                files_read += 1
+
+            return "\n\n".join(context_parts)
+        except Exception as exc:
+            logger.warning("Failed to load quiz source-file context: %s", exc)
+            return ""
+
     @classmethod
     def _has_real_context(cls, context_parts: List[str]) -> bool:
         meaningful_parts = [part.strip() for part in context_parts if part and part.strip()]
@@ -305,7 +371,37 @@ class QuizService:
                 "Using direct S3 chunk fallback context for quiz generation (%s files)",
                 len(file_paths),
             )
-        return fallback_context
+            return fallback_context
+
+        source_context = self._fetch_source_file_context(file_paths)
+        if source_context:
+            logger.info(
+                "Using direct source-document fallback context for quiz generation (%s files)",
+                len(file_paths),
+            )
+        return source_context
+
+    @staticmethod
+    def _extract_quiz_payload(response_text: str) -> Optional[Dict[str, object]]:
+        cleaned_response = (response_text or "").replace("```json", "```").strip()
+
+        match = re.search(r"\{[\s\S]*\}", cleaned_response)
+        candidate = match.group(0) if match else cleaned_response
+        candidate = candidate.strip()
+        if not candidate:
+            return None
+
+        decoders = (json.loads, literal_eval)
+        for decoder in decoders:
+            try:
+                payload = decoder(candidate)
+            except Exception:
+                continue
+            if isinstance(payload, list) and payload:
+                payload = payload[0]
+            if isinstance(payload, dict):
+                return payload
+        return None
 
     def generate_quiz(
         self, user_id: str, selected_folders: List[str], num_questions: int
@@ -345,18 +441,16 @@ class QuizService:
                 prompt = QUESTION_TEMPLATE.format(context_str=context_str[:4000])
                 llm_response = self.llm.complete(prompt, temperature=0.5)
                 response_text = self._extract_completion_text(llm_response)
-
-                # Extract JSON from response
-                cleaned_response = response_text.replace("```json", "```").strip()
-                match = re.search(r"\{[\s\S]*\}", cleaned_response)
-                if not match:
-                    logger.warning(f"Quiz generation attempt {attempts}: no JSON found")
+                payload = self._extract_quiz_payload(response_text)
+                if payload is None:
+                    logger.warning(
+                        "Quiz generation attempt %s: no valid question payload found",
+                        attempts,
+                    )
                     continue
-
-                payload = json.loads(match.group(0))
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, SyntaxError, ValueError) as exc:
                 logger.warning(
-                    f"Quiz generation attempt {attempts}: invalid JSON - {exc}"
+                    f"Quiz generation attempt {attempts}: invalid payload - {exc}"
                 )
                 continue
 
