@@ -8,7 +8,7 @@ import {
   Link2,
   MessageCircle,
 } from "lucide-react";
-import { shareChatSession } from "@/lib/api";
+import { shareChatSession, ensureAbsoluteAppUrl, trackChatShareAction } from "@/lib/api";
 
 // Social media icons as simple SVG components
 function XIcon({ className }: { className?: string }) {
@@ -53,6 +53,7 @@ export function ShareModal({
   token,
 }: ShareModalProps) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -66,7 +67,8 @@ export function ShareModal({
       setError(null);
       try {
         const response = await shareChatSession(token, sessionId);
-        setShareUrl(response.share_url);
+        setShareId(response.share_id);
+        setShareUrl(ensureAbsoluteAppUrl(response.share_url));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to generate share link");
       } finally {
@@ -81,6 +83,7 @@ export function ShareModal({
   useEffect(() => {
     if (!isOpen) {
       setShareUrl(null);
+      setShareId(null);
       setCopied(false);
       setError(null);
     }
@@ -98,15 +101,21 @@ export function ShareModal({
   }, [isOpen, onClose]);
 
   const handleCopyLink = useCallback(async () => {
-    if (!shareUrl) return;
+    if (!shareUrl || !token) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
+      void trackChatShareAction({
+        token,
+        sessionId,
+        channel: "copy_link",
+        shareId,
+      });
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy:", err);
     }
-  }, [shareUrl]);
+  }, [shareUrl, token, sessionId, shareId]);
 
   const getShareText = () => {
     // Truncate message content for sharing
@@ -122,21 +131,30 @@ export function ShareModal({
     if (!shareUrl) return;
     const text = getShareText();
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "x", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl, messageContent]);
+  }, [shareUrl, messageContent, token, sessionId, shareId]);
 
   const handleShareLinkedIn = useCallback(() => {
     if (!shareUrl) return;
     const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "linkedin", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl]);
+  }, [shareUrl, token, sessionId, shareId]);
 
   const handleShareReddit = useCallback(() => {
     if (!shareUrl) return;
     const title = `AI Tutor Chat: ${sessionTitle}`;
     const url = `https://reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(title)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "reddit", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl, sessionTitle]);
+  }, [shareUrl, sessionTitle, token, sessionId, shareId]);
 
   if (!isOpen) return null;
 

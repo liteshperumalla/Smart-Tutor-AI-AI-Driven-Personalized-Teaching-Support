@@ -189,6 +189,32 @@ def test_update_feedback_status_requires_existing_entry(monkeypatch, tmp_path):
     assert saved[entries[0]["id"]]["status"] == "resolved"
 
 
+def test_admin_feedback_includes_message_reports(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
+
+    message_feedback_dir = tmp_path / "user_data" / "alice" / "message_feedback"
+    message_feedback_dir.mkdir(parents=True, exist_ok=True)
+    report_entry = {
+        "session_id": "session-123",
+        "message_index": 4,
+        "feedback_type": "report",
+        "reason": "Inaccurate information",
+        "created_at": "2026-03-24T10:45:00",
+    }
+    (message_feedback_dir / "feedback.jsonl").write_text(
+        json.dumps(report_entry) + "\n",
+        encoding="utf-8",
+    )
+
+    entries = AdminService().get_all_feedback(feedback_type="report")
+
+    assert len(entries) == 1
+    assert entries[0]["type"] == "report"
+    assert entries[0]["reason"] == "Inaccurate information"
+    assert entries[0]["session_id"] == "session-123"
+    assert entries[0]["message_index"] == 4
+
+
 def test_admin_stats_reports_storage_readiness_and_pending_appointments(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
@@ -221,6 +247,90 @@ def test_admin_stats_reports_storage_readiness_and_pending_appointments(monkeypa
     assert stats["pending_appointments"] == 1
     assert stats["storage_readiness"]["ready"] is False
     assert stats["storage_readiness"]["shared_storage_configured"] is False
+
+
+def test_admin_stats_treats_mounted_user_data_as_production_ready(monkeypatch, tmp_path):
+    user_data_root = tmp_path / "user_data"
+    user_data_root.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(user_data_root))
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "ENVIRONMENT", "production")
+    monkeypatch.setattr(config, "USER_DATA_SHARED_STORAGE", False)
+    monkeypatch.setattr(
+        Path,
+        "is_mount",
+        lambda self: str(self).endswith("user_data"),
+    )
+
+    service = AdminService()
+    stats = service.get_admin_stats()
+
+    assert stats["storage_readiness"]["ready"] is True
+    assert stats["storage_readiness"]["path_is_mount"] is True
+    assert stats["storage_readiness"]["warning"] is None
+
+
+def test_admin_stats_include_message_feedback_and_share_actions(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+
+    user_dir = tmp_path / "user_data" / "alice"
+    message_feedback_dir = user_dir / "message_feedback"
+    message_feedback_dir.mkdir(parents=True, exist_ok=True)
+    (message_feedback_dir / "feedback.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "session-a",
+                        "message_index": 1,
+                        "feedback_type": "thumbs_up",
+                        "created_at": "2026-03-24T12:00:00",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "session-a",
+                        "message_index": 2,
+                        "feedback_type": "thumbs_down",
+                        "created_at": "2026-03-24T12:01:00",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "session-a",
+                        "message_index": 3,
+                        "feedback_type": "report",
+                        "reason": "Irrelevant response",
+                        "created_at": "2026-03-24T12:02:00",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    share_history_dir = user_dir / "share_history"
+    share_history_dir.mkdir(parents=True, exist_ok=True)
+    (share_history_dir / "shares.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"channel": "copy_link", "created_at": "2026-03-24T12:10:00"}),
+                json.dumps({"channel": "linkedin", "created_at": "2026-03-24T12:11:00"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    stats = AdminService().get_admin_stats()
+
+    assert stats["total_message_likes"] == 1
+    assert stats["total_message_dislikes"] == 1
+    assert stats["total_message_reports"] == 1
+    assert stats["total_chat_shares"] == 2
 
 
 def test_update_appointment_status_requires_existing_entry(monkeypatch, tmp_path):

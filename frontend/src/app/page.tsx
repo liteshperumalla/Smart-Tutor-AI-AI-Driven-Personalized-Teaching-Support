@@ -24,7 +24,6 @@ const DEFAULT_OVERVIEW: HomeOverview = {
     { title: "Generate a quiz", description: "Create practice quizzes from course content.", href: "/quiz", icon: "quiz" },
     { title: "Code sandbox", description: "Write and execute code in multiple languages.", href: "/code", icon: "code" },
     { title: "Appointments", description: "Schedule time with the professor or TA.", href: "/appointments", icon: "calendar" },
-    { title: "Evaluation", description: "Run RAG system evaluations and benchmarks.", href: "/evaluation", icon: "chart" },
   ],
   system_status: {
     knowledge_base: {
@@ -67,10 +66,10 @@ export default async function Home() {
 
   const stats = overview.system_status;
   const announcements = overview?.announcements ?? [];
-  const quickActions = overview?.quick_actions ?? [];
+  const quickActions = (overview?.quick_actions ?? []).filter(
+    (action) => action.href !== "/evaluation" && action.href !== "/admin/evaluation"
+  );
   const professor = overview?.professor;
-  const issues = stats?.issues ?? [];
-
   return (
     <PageShell contentClassName="gap-10 pb-6" noCard>
         <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
@@ -92,17 +91,6 @@ export default async function Home() {
             </div>
           </div>
         </header>
-
-        {issues.length > 0 && (
-          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-            <p className="font-semibold">Action needed</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              {issues.map((issue) => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          </section>
-        )}
 
         {quickActions.length > 0 && (
           <section className="animate-fade-in-up">

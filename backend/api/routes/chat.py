@@ -43,6 +43,13 @@ class SharedSessionResponse(BaseModel):
     expires_at: str
 
 
+class SharedSessionInfoResponse(BaseModel):
+    title: str
+    message_count: int
+    created_at: Optional[str] = None
+    expires_at: str
+
+
 class SessionUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=80)
     is_pinned: Optional[bool] = None
@@ -78,6 +85,14 @@ class MessageFeedbackResponse(BaseModel):
     success: bool
     feedback_type: Optional[str] = None
     message: Optional[str] = None
+
+
+class ShareActionRequest(BaseModel):
+    channel: str = Field(
+        ...,
+        pattern="^(copy_link|x|linkedin|reddit|whatsapp|email|native_share)$",
+    )
+    share_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
 @router.post("/uploads")
@@ -431,6 +446,19 @@ def get_shared_session(
     )
 
 
+@router.get("/share/{share_id}/info", response_model=SharedSessionInfoResponse)
+def get_shared_session_info(
+    share_id: str,
+    share_service=Depends(get_share_service),
+):
+    share_info = share_service.get_shared_session_info(share_id)
+    if share_info is None:
+        raise HTTPException(
+            status_code=404, detail="Shared session not found or expired"
+        )
+    return SharedSessionInfoResponse(**share_info)
+
+
 @router.delete("/share/{share_id}", dependencies=[Depends(csrf_protect)])
 def revoke_share(
     share_id: str,
@@ -442,6 +470,28 @@ def revoke_share(
     success = share_service.revoke_share(share_id, user["username"])
     if not success:
         raise HTTPException(status_code=404, detail="Share link not found")
+    return {"success": True}
+
+
+@router.post("/sessions/{session_id}/share-events", dependencies=[Depends(csrf_protect)])
+def track_share_event(
+    session_id: str,
+    request: ShareActionRequest,
+    session_data=Depends(get_current_session),
+    chat_service: ChatService = Depends(get_chat_service),
+    share_service=Depends(get_share_service),
+):
+    _, user = session_data
+    session = chat_service.get_session(user["username"], session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    share_service.log_share_action(
+        username=user["username"],
+        session_id=session_id,
+        channel=request.channel,
+        share_id=request.share_id,
+    )
     return {"success": True}
 
 

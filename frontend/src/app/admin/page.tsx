@@ -12,6 +12,10 @@ import {
   HardDrive,
   ShieldAlert,
   TrendingUp,
+  ThumbsUp,
+  ThumbsDown,
+  Flag,
+  Share2,
 } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -71,6 +75,38 @@ export default function AdminDashboard() {
       color: "text-amber-600 dark:text-amber-400",
       bg: "bg-amber-50 dark:bg-amber-950/30",
       border: "border-amber-200 dark:border-amber-900",
+    },
+    {
+      label: "Message Likes",
+      value: stats?.total_message_likes ?? 0,
+      icon: ThumbsUp,
+      color: "text-green-600 dark:text-green-400",
+      bg: "bg-green-50 dark:bg-green-950/30",
+      border: "border-green-200 dark:border-green-900",
+    },
+    {
+      label: "Message Dislikes",
+      value: stats?.total_message_dislikes ?? 0,
+      icon: ThumbsDown,
+      color: "text-red-600 dark:text-red-400",
+      bg: "bg-red-50 dark:bg-red-950/30",
+      border: "border-red-200 dark:border-red-900",
+    },
+    {
+      label: "Message Reports",
+      value: stats?.total_message_reports ?? 0,
+      icon: Flag,
+      color: "text-orange-600 dark:text-orange-400",
+      bg: "bg-orange-50 dark:bg-orange-950/30",
+      border: "border-orange-200 dark:border-orange-900",
+    },
+    {
+      label: "Share Activity",
+      value: stats?.total_chat_shares ?? 0,
+      icon: Share2,
+      color: "text-indigo-600 dark:text-indigo-400",
+      bg: "bg-indigo-50 dark:bg-indigo-950/30",
+      border: "border-indigo-200 dark:border-indigo-900",
     },
     {
       label: "Active Announcements",

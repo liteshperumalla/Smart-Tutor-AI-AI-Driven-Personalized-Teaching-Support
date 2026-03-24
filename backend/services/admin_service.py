@@ -102,7 +102,7 @@ class AdminService:
         feedback_type: Optional[str] = None,
         limit: int = 200,
     ) -> List[Dict[str, Any]]:
-        """Scan all user_data/*/feedback/*.jsonl files and aggregate."""
+        """Scan feedback, bug reports, and message reports across all users."""
         entries: List[Dict[str, Any]] = []
 
         if not self.user_data_root.exists():
@@ -148,6 +148,52 @@ class AdminService:
                 except OSError:
                     continue
 
+            if feedback_type not in (None, "report"):
+                continue
+
+            message_feedback_file = user_dir / "message_feedback" / "feedback.jsonl"
+            if not message_feedback_file.exists():
+                continue
+
+            try:
+                with message_feedback_file.open("r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+
+                        if entry.get("feedback_type") != "report":
+                            continue
+
+                        reason = entry.get("reason")
+                        report_entry = {
+                            "id": str(
+                                uuid.uuid5(
+                                    uuid.NAMESPACE_DNS,
+                                    (
+                                        f"{username}:report:{entry.get('session_id', '')}:"
+                                        f"{entry.get('message_index', '')}:{entry.get('created_at', '')}:"
+                                        f"{reason or ''}"
+                                    ),
+                                )
+                            ),
+                            "username": username,
+                            "type": "report",
+                            "status": "new",
+                            "created_at": entry.get("created_at", ""),
+                            "reason": reason,
+                            "message": reason,
+                            "session_id": str(entry.get("session_id") or ""),
+                            "message_index": _coerce_int(entry.get("message_index")),
+                        }
+                        entries.append(report_entry)
+            except OSError:
+                continue
+
         entries.sort(key=lambda e: e.get("created_at", ""), reverse=True)
         return entries[:limit]
 
@@ -188,6 +234,56 @@ class AdminService:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(statuses, f, indent=2)
+
+    def _summarize_message_feedback(self) -> Dict[str, int]:
+        summary = {
+            "thumbs_up": 0,
+            "thumbs_down": 0,
+            "report": 0,
+        }
+        if not self.user_data_root.exists():
+            return summary
+
+        for user_dir in self.user_data_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            feedback_file = user_dir / "message_feedback" / "feedback.jsonl"
+            if not feedback_file.exists():
+                continue
+            try:
+                with feedback_file.open("r", encoding="utf-8") as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        feedback_type = entry.get("feedback_type")
+                        if feedback_type in summary:
+                            summary[feedback_type] += 1
+            except OSError:
+                continue
+        return summary
+
+    def _count_share_actions(self) -> int:
+        total = 0
+        if not self.user_data_root.exists():
+            return total
+
+        for user_dir in self.user_data_root.iterdir():
+            if not user_dir.is_dir():
+                continue
+            share_file = user_dir / "share_history" / "shares.jsonl"
+            if not share_file.exists():
+                continue
+            try:
+                with share_file.open("r", encoding="utf-8") as handle:
+                    total += sum(1 for line in handle if line.strip())
+            except OSError:
+                continue
+        return total
 
     # ── Announcements CRUD ───────────────────────────────────────
 
@@ -403,6 +499,10 @@ class AdminService:
             "total_queries": 0,
             "total_feedback": 0,
             "new_feedback": 0,
+            "total_message_likes": 0,
+            "total_message_dislikes": 0,
+            "total_message_reports": 0,
+            "total_chat_shares": 0,
             "active_announcements": 0,
             "admin_users": 0,
             "pending_appointments": 0,
@@ -413,22 +513,33 @@ class AdminService:
         return data
 
     def get_storage_readiness(self) -> Dict[str, Any]:
-        path = Path(config.USER_DATA_ROOT)
-        path_str = str(path)
+        raw_path = Path(config.USER_DATA_ROOT)
+        path = raw_path.expanduser()
+        try:
+            resolved_path = path.resolve(strict=False)
+        except OSError:
+            resolved_path = path
+
+        path_str = str(resolved_path)
         path_lower = path_str.lower()
         shared_storage = bool(config.USER_DATA_SHARED_STORAGE)
+        path_exists = resolved_path.exists()
+        try:
+            is_mount = resolved_path.is_mount()
+        except OSError:
+            is_mount = False
         looks_persistent = any(
             marker in path_lower
             for marker in ("efs", "persistent", "mnt", "volume", "/data")
         )
-        path_exists = path.exists()
+        inferred_shared_storage = path_exists and (is_mount or looks_persistent)
 
-        ready = config.ENVIRONMENT != "production" or shared_storage
+        ready = config.ENVIRONMENT != "production" or shared_storage or inferred_shared_storage
         warning = None
-        if config.ENVIRONMENT == "production" and not shared_storage:
+        if config.ENVIRONMENT == "production" and not ready:
             warning = (
                 "USER_DATA_ROOT is used for appointments and feedback, but "
-                "USER_DATA_SHARED_STORAGE is not enabled."
+                "no shared or mounted persistent storage was detected."
             )
 
         return {
@@ -438,6 +549,7 @@ class AdminService:
             "path_exists": path_exists,
             "shared_storage_configured": shared_storage,
             "path_looks_persistent": looks_persistent,
+            "path_is_mount": is_mount,
             "warning": warning,
         }
 
@@ -461,6 +573,8 @@ class AdminService:
             feedback = self.get_all_feedback(limit=10000)
             announcements = self.list_announcements()
             appointments = self.get_all_appointments(limit=10000)
+            message_feedback = self._summarize_message_feedback()
+            share_actions = self._count_share_actions()
 
             # Count query logs from RAG evaluation logs
             total_queries = 0
@@ -484,6 +598,10 @@ class AdminService:
                 "total_queries": total_queries,
                 "total_feedback": len(feedback),
                 "new_feedback": new_feedback,
+                "total_message_likes": message_feedback["thumbs_up"],
+                "total_message_dislikes": message_feedback["thumbs_down"],
+                "total_message_reports": message_feedback["report"],
+                "total_chat_shares": share_actions,
                 "active_announcements": sum(
                     1 for a in announcements if a.get("active", True)
                 ),

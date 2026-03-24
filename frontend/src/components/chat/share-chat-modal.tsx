@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { X, Check, Info, Link2, Mail } from "lucide-react";
-import { shareChatSession, ChatMessageDTO } from "@/lib/api";
+import {
+  shareChatSession,
+  ChatMessageDTO,
+  ensureAbsoluteAppUrl,
+  trackChatShareAction,
+} from "@/lib/api";
 
 // Social media icons
 function XIcon({ className }: { className?: string }) {
@@ -55,6 +60,7 @@ export function ShareChatModal({
   token,
 }: ShareChatModalProps) {
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -68,7 +74,8 @@ export function ShareChatModal({
       setError(null);
       try {
         const response = await shareChatSession(token, sessionId);
-        setShareUrl(response.share_url);
+        setShareId(response.share_id);
+        setShareUrl(ensureAbsoluteAppUrl(response.share_url));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to generate share link");
       } finally {
@@ -83,6 +90,7 @@ export function ShareChatModal({
   useEffect(() => {
     if (!isOpen) {
       setShareUrl(null);
+      setShareId(null);
       setCopied(false);
       setError(null);
     }
@@ -100,49 +108,70 @@ export function ShareChatModal({
   }, [isOpen, onClose]);
 
   const handleCopyLink = useCallback(async () => {
-    if (!shareUrl) return;
+    if (!shareUrl || !token) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
+      void trackChatShareAction({
+        token,
+        sessionId,
+        channel: "copy_link",
+        shareId,
+      });
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy:", err);
     }
-  }, [shareUrl]);
+  }, [shareUrl, token, sessionId, shareId]);
 
   const handleShareX = useCallback(() => {
     if (!shareUrl) return;
     const text = `Check out this conversation on Smart AI Tutor: "${sessionTitle}"`;
     const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "x", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl, sessionTitle]);
+  }, [shareUrl, sessionTitle, token, sessionId, shareId]);
 
   const handleShareLinkedIn = useCallback(() => {
     if (!shareUrl) return;
     const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "linkedin", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl]);
+  }, [shareUrl, token, sessionId, shareId]);
 
   const handleShareReddit = useCallback(() => {
     if (!shareUrl) return;
     const title = `Smart AI Tutor Chat: ${sessionTitle}`;
     const url = `https://reddit.com/submit?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(title)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "reddit", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl, sessionTitle]);
+  }, [shareUrl, sessionTitle, token, sessionId, shareId]);
 
   const handleShareWhatsApp = useCallback(() => {
     if (!shareUrl) return;
     const text = `Check out this conversation on Smart AI Tutor: "${sessionTitle}" ${shareUrl}`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "whatsapp", shareId });
+    }
     window.open(url, "_blank", "width=550,height=420");
-  }, [shareUrl, sessionTitle]);
+  }, [shareUrl, sessionTitle, token, sessionId, shareId]);
 
   const handleShareEmail = useCallback(() => {
     if (!shareUrl) return;
     const subject = `Smart AI Tutor Chat: ${sessionTitle}`;
     const body = `Check out this conversation on Smart AI Tutor:\n\n${shareUrl}`;
+    if (token) {
+      void trackChatShareAction({ token, sessionId, channel: "email", shareId });
+    }
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }, [shareUrl, sessionTitle]);
+  }, [shareUrl, sessionTitle, token, sessionId, shareId]);
 
   // Get preview messages (first user message and first assistant response)
   const getPreviewMessages = () => {

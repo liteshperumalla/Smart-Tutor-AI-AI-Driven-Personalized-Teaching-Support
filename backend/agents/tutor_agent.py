@@ -12,6 +12,7 @@ from typing import Dict
 
 from backend.agents.state import AgentState
 from backend.agents import graph_ops
+from backend.agents.llm_utils import complete_with_model_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,6 @@ def _extract_topics(query: str) -> list[str]:
 
 def tutor_agent(state: AgentState) -> Dict:
     """LangGraph node: general tutoring with RAG."""
-    from backend.llm_provider import get_llm
-
     query = state["input"]
     context = state.get("context_str", "No additional context available.")
     student_name = state.get("student_name", "Student")
@@ -64,14 +63,12 @@ def tutor_agent(state: AgentState) -> Dict:
         query=query,
     )
 
-    llm_kwargs = {}
-    if model_id:
-        llm_kwargs["model_id"] = model_id
-    llm = get_llm(**llm_kwargs)
-
     try:
-        response = llm.complete(prompt)
-        response_text = str(response)
+        response_text = complete_with_model_fallback(
+            prompt=prompt,
+            logger=logger,
+            model_id=model_id,
+        )
     except Exception as exc:
         logger.error("Tutor LLM call failed: %s", exc)
         response_text = (

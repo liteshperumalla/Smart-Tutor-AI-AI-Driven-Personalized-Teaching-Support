@@ -162,7 +162,7 @@ def update_appointment_status(
 
 @router.get("/feedback")
 def list_all_feedback(
-    feedback_type: Optional[str] = Query(None, pattern="^(feedback|bug)$"),
+    feedback_type: Optional[str] = Query(None, pattern="^(feedback|bug|report)$"),
     limit: int = Query(200, ge=1, le=1000),
     session=Depends(get_admin_session),
 ):

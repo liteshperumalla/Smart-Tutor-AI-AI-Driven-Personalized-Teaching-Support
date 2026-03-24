@@ -22,6 +22,10 @@ function withAbsoluteOrigin(url: string): string {
   return `${normalizedOrigin}${normalizedPath}`;
 }
 
+export function ensureAbsoluteAppUrl(url: string): string {
+  return withAbsoluteOrigin(url);
+}
+
 function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
     if (EXPLICIT_API_BASE_URL && !EXPLICIT_API_BASE_URL.startsWith("/")) {
@@ -2182,7 +2186,6 @@ export type ShareSessionResponse = {
   share_id: string;
   share_url: string;
   expires_at: string;
-  session: ChatSessionDTO;
 };
 
 export type SharedSessionInfo = {
@@ -2200,6 +2203,24 @@ export async function shareChatSession(
   return postJSON<ShareSessionResponse>({
     path: `/chat/sessions/${sessionId}/share`,
     body: { expires_in_hours: expiresInHours },
+    token,
+  });
+}
+
+export async function trackChatShareAction({
+  token,
+  sessionId,
+  channel,
+  shareId,
+}: {
+  token: string;
+  sessionId: string;
+  channel: "copy_link" | "x" | "linkedin" | "reddit" | "whatsapp" | "email" | "native_share";
+  shareId?: string | null;
+}): Promise<{ success: boolean }> {
+  return postJSON<{ success: boolean }>({
+    path: `/chat/sessions/${sessionId}/share-events`,
+    body: { channel, share_id: shareId ?? undefined },
     token,
   });
 }
@@ -2297,6 +2318,10 @@ export type AdminStats = {
   total_queries: number;
   total_feedback: number;
   new_feedback: number;
+  total_message_likes: number;
+  total_message_dislikes: number;
+  total_message_reports: number;
+  total_chat_shares: number;
   active_announcements: number;
   admin_users: number;
   pending_appointments: number;
@@ -2307,6 +2332,7 @@ export type AdminStats = {
     path_exists: boolean;
     shared_storage_configured: boolean;
     path_looks_persistent: boolean;
+    path_is_mount?: boolean;
     warning?: string | null;
   };
   error?: string;
@@ -2331,6 +2357,10 @@ function normalizeAdminStats(stats?: Partial<AdminStats> | null): AdminStats {
     total_queries: toFiniteNumber(stats?.total_queries),
     total_feedback: toFiniteNumber(stats?.total_feedback),
     new_feedback: toFiniteNumber(stats?.new_feedback),
+    total_message_likes: toFiniteNumber(stats?.total_message_likes),
+    total_message_dislikes: toFiniteNumber(stats?.total_message_dislikes),
+    total_message_reports: toFiniteNumber(stats?.total_message_reports),
+    total_chat_shares: toFiniteNumber(stats?.total_chat_shares),
     active_announcements: toFiniteNumber(stats?.active_announcements),
     admin_users: toFiniteNumber(stats?.admin_users),
     pending_appointments: toFiniteNumber(stats?.pending_appointments),
@@ -2351,6 +2381,7 @@ function normalizeAdminStats(stats?: Partial<AdminStats> | null): AdminStats {
       path_looks_persistent: Boolean(
         stats?.storage_readiness?.path_looks_persistent
       ),
+      path_is_mount: Boolean(stats?.storage_readiness?.path_is_mount),
       warning:
         typeof stats?.storage_readiness?.warning === "string"
           ? stats.storage_readiness.warning
@@ -2425,7 +2456,7 @@ export type Announcement = {
 export type AdminFeedbackEntry = {
   id: string;
   username: string;
-  type: "feedback" | "bug";
+  type: "feedback" | "bug" | "report";
   status: "new" | "reviewed" | "resolved";
   created_at: string;
   // feedback fields
@@ -2438,6 +2469,10 @@ export type AdminFeedbackEntry = {
   severity?: string;
   description?: string;
   steps?: string;
+  // message report fields
+  reason?: string;
+  session_id?: string;
+  message_index?: number;
 };
 
 export type QuizMetrics = {

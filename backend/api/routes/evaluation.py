@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -1024,6 +1025,41 @@ def get_aws_metrics(
             "source": "AWS Price List API",
         }
 
+    def normalize_pricing_text(value: Optional[str]) -> str:
+        return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+    def model_keywords(model_id: Optional[str]) -> List[str]:
+        raw = str(model_id or "").strip()
+        if not raw:
+            return []
+
+        variants: set[str] = set()
+
+        def add_variant(value: str):
+            normalized = normalize_pricing_text(value)
+            if normalized:
+                variants.add(normalized)
+
+        tail = raw.split(".", 1)[-1]
+        unversioned = re.sub(r"[-_: ]?v\d+(?:[:.]\d+)?$", "", tail, flags=re.IGNORECASE)
+        expanded = re.sub(r"([a-z])([0-9])", r"\1 \2", unversioned, flags=re.IGNORECASE)
+        expanded = re.sub(r"([0-9])([a-z])", r"\1 \2", expanded, flags=re.IGNORECASE)
+
+        for candidate in (raw, tail, unversioned, expanded):
+            add_variant(candidate)
+
+        for candidate in list(variants):
+            if "embed" in candidate:
+                add_variant(candidate.replace("embed", "embeddings"))
+            if "embeddings" in candidate:
+                add_variant(candidate.replace("embeddings", "embed"))
+
+        return sorted(variants, key=len, reverse=True)
+
+    def attributes_match_model(attributes: dict, model_id: Optional[str]) -> bool:
+        haystack = normalize_pricing_text(json_module.dumps(attributes or {}, sort_keys=True))
+        return any(keyword in haystack for keyword in model_keywords(model_id))
+
     def pricing_value_from_dimension(dimension: dict) -> Optional[float]:
         try:
             usd = (dimension or {}).get("pricePerUnit", {}).get("USD")
@@ -1036,19 +1072,31 @@ def get_aws_metrics(
     def fetch_pricing_products(service_code: str, filters: List[dict]) -> List[dict]:
         pricing = build_aws_client("pricing", pricing=True)
         paginator = pricing.get_paginator("get_products")
-        products: List[dict] = []
-        for page in paginator.paginate(
-            ServiceCode=service_code,
-            Filters=filters,
-            FormatVersion="aws_v1",
-            PaginationConfig={"MaxItems": 100, "PageSize": 100},
-        ):
-            for entry in page.get("PriceList", []):
-                try:
-                    products.append(json_module.loads(entry))
-                except (TypeError, json_module.JSONDecodeError):
-                    continue
-        return products
+        filter_sets: List[List[dict]] = [filters]
+
+        if filters:
+            without_location = [f for f in filters if f.get("Field") != "location"]
+            if without_location != filters:
+                filter_sets.append(without_location)
+            filter_sets.append([])
+
+        for current_filters in filter_sets:
+            products: List[dict] = []
+            for page in paginator.paginate(
+                ServiceCode=service_code,
+                Filters=current_filters,
+                FormatVersion="aws_v1",
+                PaginationConfig={"MaxItems": 100, "PageSize": 100},
+            ):
+                for entry in page.get("PriceList", []):
+                    try:
+                        products.append(json_module.loads(entry))
+                    except (TypeError, json_module.JSONDecodeError):
+                        continue
+            if products:
+                return products
+
+        return []
 
     def extract_price(products: List[dict], *, product_match=None, dimension_match=None) -> Optional[float]:
         for product in products:
@@ -1093,28 +1141,26 @@ def get_aws_metrics(
                 {"Type": "TERM_MATCH", "Field": "location", "Value": region_label},
             ] if region_label else []
             bedrock_products = fetch_pricing_products("AmazonBedrock", bedrock_filters)
-            model_id_candidates = {config.BEDROCK_MODEL_ID, config.BEDROCK_EMBEDDING_MODEL_ID}
             snapshot["bedrock"]["llm"]["input_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: any(
-                    candidate and candidate in json_module.dumps(attributes)
-                    for candidate in [config.BEDROCK_MODEL_ID]
+                product_match=lambda _, attributes: attributes_match_model(
+                    attributes, config.BEDROCK_MODEL_ID
                 ),
-                dimension_match=lambda dimension, *_: "input" in ((dimension.get("description") or "").lower()),
+                dimension_match=lambda dimension, *_: "input"
+                in ((dimension.get("description") or "").lower()),
             )
             snapshot["bedrock"]["llm"]["output_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: any(
-                    candidate and candidate in json_module.dumps(attributes)
-                    for candidate in [config.BEDROCK_MODEL_ID]
+                product_match=lambda _, attributes: attributes_match_model(
+                    attributes, config.BEDROCK_MODEL_ID
                 ),
-                dimension_match=lambda dimension, *_: "output" in ((dimension.get("description") or "").lower()),
+                dimension_match=lambda dimension, *_: "output"
+                in ((dimension.get("description") or "").lower()),
             )
             snapshot["bedrock"]["embedding"]["input_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: any(
-                    candidate and candidate in json_module.dumps(attributes)
-                    for candidate in [config.BEDROCK_EMBEDDING_MODEL_ID]
+                product_match=lambda _, attributes: attributes_match_model(
+                    attributes, config.BEDROCK_EMBEDDING_MODEL_ID
                 ),
             )
         except Exception as pricing_error:
@@ -1129,8 +1175,10 @@ def get_aws_metrics(
                 s3_products,
                 product_match=lambda product, attributes: (
                     product.get("product", {}).get("productFamily") == "Storage"
-                    and (attributes.get("storageClass") in {"General Purpose", "Standard"}
-                         or "standard" in json_module.dumps(attributes).lower())
+                    and any(
+                        marker in normalize_pricing_text(json_module.dumps(attributes))
+                        for marker in ["general purpose", "standard"]
+                    )
                 ),
             )
             snapshot["s3"]["get_per_1k"] = extract_price(

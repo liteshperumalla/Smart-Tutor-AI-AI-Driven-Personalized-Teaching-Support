@@ -8,9 +8,9 @@ import {
   AdminFeedbackEntry,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp, Flag } from "lucide-react";
 
-type TabFilter = "all" | "feedback" | "bug";
+type TabFilter = "all" | "feedback" | "bug" | "report";
 
 const statusColors: Record<string, string> = {
   new: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
@@ -66,13 +66,14 @@ export default function AdminFeedbackPage() {
     { key: "all", label: "All", icon: Filter },
     { key: "feedback", label: "Feedback", icon: MessageSquare },
     { key: "bug", label: "Bug Reports", icon: Bug },
+    { key: "report", label: "Message Reports", icon: Flag },
   ];
 
   return (
     <div className="space-y-6">
       <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-white">
         <MessageSquare className="h-5 w-5" />
-        Feedback & Bug Reports
+        Feedback, Reports & Bugs
         <span className="ml-2 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
           {entries.length}
         </span>
@@ -113,6 +114,7 @@ export default function AdminFeedbackPage() {
           {entries.map((entry) => {
             const isExpanded = expanded === entry.id;
             const isFeedback = entry.type === "feedback";
+            const isReport = entry.type === "report";
 
             return (
               <div
@@ -126,6 +128,8 @@ export default function AdminFeedbackPage() {
                 >
                   {isFeedback ? (
                     <MessageSquare className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                  ) : isReport ? (
+                    <Flag className="h-4 w-4 flex-shrink-0 text-orange-500" />
                   ) : (
                     <Bug className="h-4 w-4 flex-shrink-0 text-red-500" />
                   )}
@@ -134,14 +138,21 @@ export default function AdminFeedbackPage() {
                     <p className="truncate text-sm font-medium text-zinc-900 dark:text-white">
                       {isFeedback
                         ? entry.message?.slice(0, 80) || "No message"
+                        : isReport
+                        ? entry.reason?.slice(0, 80) || "No report reason"
                         : entry.description?.slice(0, 80) || "No description"}
-                      {((isFeedback ? entry.message : entry.description) || "").length > 80
+                      {((isFeedback
+                        ? entry.message
+                        : isReport
+                        ? entry.reason
+                        : entry.description) || "").length > 80
                         ? "…"
                         : ""}
                     </p>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       by {entry.username} · {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : "—"}
                       {isFeedback && entry.category && ` · ${entry.category}`}
+                      {isReport && entry.session_id && ` · Session ${entry.session_id.slice(0, 8)}`}
                       {!isFeedback && entry.severity && ` · ${entry.severity}`}
                     </p>
                   </div>
@@ -173,6 +184,21 @@ export default function AdminFeedbackPage() {
                           <div>
                             <span className="font-medium text-zinc-500 dark:text-zinc-400">Message: </span>
                             {entry.message || "—"}
+                          </div>
+                        </>
+                      ) : isReport ? (
+                        <>
+                          <div>
+                            <span className="font-medium text-zinc-500 dark:text-zinc-400">Reason: </span>
+                            {entry.reason || entry.message || "—"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-zinc-500 dark:text-zinc-400">Session ID: </span>
+                            {entry.session_id || "—"}
+                          </div>
+                          <div>
+                            <span className="font-medium text-zinc-500 dark:text-zinc-400">Message Index: </span>
+                            {typeof entry.message_index === "number" ? entry.message_index : "—"}
                           </div>
                         </>
                       ) : (
