@@ -4,6 +4,7 @@ from backend.api.routes.evaluation import (
     _build_drift_summary,
     _load_dataset_questions,
     _resolve_dataset_quality_file,
+    get_metrics_history,
 )
 from backend.config import config
 
@@ -72,3 +73,51 @@ def test_build_drift_summary_reports_average_and_thresholds():
     assert summary["max_drift_score"] == 3.0
     assert summary["high_drift_count"] == 2
     assert summary["high_drift_percentage"] == 66.7
+
+
+def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):
+    log_file = tmp_path / "metrics.jsonl"
+    log_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "timestamp": "2026-03-23T12:00:00+00:00",
+                        "retrieval_metrics": {
+                            "retrieval_time_seconds": None,
+                            "avg_relevance_score": None,
+                            "num_retrieved": None,
+                        },
+                        "generation_metrics": {"generation_time_seconds": 1.2},
+                        "end_to_end_metrics": {"total_time_seconds": None},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "timestamp": "2026-03-23T12:15:00+00:00",
+                        "retrieval_metrics": {
+                            "retrieval_time_seconds": 0.4,
+                            "avg_relevance_score": 0.9,
+                            "num_retrieved": 3,
+                        },
+                        "generation_metrics": {"generation_time_seconds": None},
+                        "end_to_end_metrics": {"total_time_seconds": 1.0},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config, "EVALUATION_LOG_FILE", str(log_file))
+
+    payload = get_metrics_history(hours=24, granularity="hour", session=("admin", {}))
+    history = payload["history"]
+
+    assert history["status"] == "ok"
+    assert history["total_queries"] == 2
+    assert len(history["data_points"]) == 1
+    assert history["data_points"][0]["query_count"] == 2
+    assert history["data_points"][0]["avg_latency"] == 1.1
+    assert history["data_points"][0]["avg_relevance"] == 0.45
+    assert history["data_points"][0]["avg_docs_retrieved"] == 1.5

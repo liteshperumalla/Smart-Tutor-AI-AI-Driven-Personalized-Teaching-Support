@@ -26,6 +26,7 @@ export default function AdminUsersPage() {
     try {
       const data = await fetchAdminUsers(token);
       setUsers(data);
+      setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -70,7 +71,7 @@ export default function AdminUsersPage() {
 
   const filtered = users.filter(
     (u) =>
-      u.username.toLowerCase().includes(search.toLowerCase()) ||
+      (u.username || "").toLowerCase().includes(search.toLowerCase()) ||
       (u.email || "").toLowerCase().includes(search.toLowerCase())
   );
 

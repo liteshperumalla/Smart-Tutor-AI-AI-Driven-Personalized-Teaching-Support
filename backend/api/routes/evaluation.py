@@ -28,6 +28,44 @@ from backend.retrieval_tuning import (
 
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
 
+_AWS_REGION_LABELS = {
+    "us-east-1": "US East (N. Virginia)",
+    "us-east-2": "US East (Ohio)",
+    "us-west-1": "US West (N. California)",
+    "us-west-2": "US West (Oregon)",
+    "eu-west-1": "Europe (Ireland)",
+    "eu-west-2": "Europe (London)",
+    "eu-central-1": "Europe (Frankfurt)",
+    "ap-south-1": "Asia Pacific (Mumbai)",
+    "ap-southeast-1": "Asia Pacific (Singapore)",
+    "ap-southeast-2": "Asia Pacific (Sydney)",
+    "ap-northeast-1": "Asia Pacific (Tokyo)",
+}
+
+
+def _coerce_metric_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_metric_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _aws_region_label(region_code: Optional[str]) -> Optional[str]:
+    if not region_code:
+        return None
+    return _AWS_REGION_LABELS.get(region_code, region_code)
+
 
 class EvaluationRunRequest(BaseModel):
     limit: Optional[int] = Field(default=None, ge=1, le=100)
@@ -227,20 +265,27 @@ def get_realtime_rag_metrics(
         gen_metrics = r.get('generation_metrics', {})
         e2e_metrics = r.get('end_to_end_metrics', {})
 
-        if ret_metrics.get('retrieval_time_seconds'):
-            retrieval_times.append(ret_metrics['retrieval_time_seconds'])
-        if gen_metrics.get('generation_time_seconds'):
-            generation_times.append(gen_metrics['generation_time_seconds'])
-        if e2e_metrics.get('total_time_seconds'):
-            total_times.append(e2e_metrics['total_time_seconds'])
-        elif ret_metrics.get('retrieval_time_seconds') and gen_metrics.get('generation_time_seconds'):
-            total_times.append(ret_metrics['retrieval_time_seconds'] + gen_metrics['generation_time_seconds'])
-        if ret_metrics.get('avg_relevance_score'):
-            relevance_scores.append(ret_metrics['avg_relevance_score'])
-        if ret_metrics.get('num_retrieved'):
-            num_retrieved_list.append(ret_metrics['num_retrieved'])
-        if gen_metrics.get('response_length_words'):
-            response_lengths.append(gen_metrics['response_length_words'])
+        retrieval_time = _coerce_metric_float(ret_metrics.get('retrieval_time_seconds'))
+        generation_time = _coerce_metric_float(gen_metrics.get('generation_time_seconds'))
+        total_time = _coerce_metric_float(e2e_metrics.get('total_time_seconds'))
+        relevance_score = ret_metrics.get('avg_relevance_score')
+        docs_retrieved = ret_metrics.get('num_retrieved')
+        response_length = gen_metrics.get('response_length_words')
+
+        if retrieval_time > 0:
+            retrieval_times.append(retrieval_time)
+        if generation_time > 0:
+            generation_times.append(generation_time)
+        if total_time > 0:
+            total_times.append(total_time)
+        elif retrieval_time > 0 or generation_time > 0:
+            total_times.append(retrieval_time + generation_time)
+        if relevance_score is not None:
+            relevance_scores.append(_coerce_metric_float(relevance_score))
+        if docs_retrieved is not None:
+            num_retrieved_list.append(_coerce_metric_int(docs_retrieved))
+        if response_length is not None:
+            response_lengths.append(_coerce_metric_int(response_length))
 
     def safe_avg(lst):
         return round(sum(lst) / len(lst), 3) if lst else 0
@@ -301,7 +346,7 @@ def get_realtime_rag_metrics(
     quality_summary = None
     if quality_records:
         def safe_avg_field(recs, field):
-            vals = [r.get(field, 0) for r in recs if r.get(field) is not None]
+            vals = [_coerce_metric_float(r.get(field)) for r in recs if r.get(field) is not None]
             return round(sum(vals) / len(vals), 4) if vals else 0
 
         quality_summary = {
@@ -325,12 +370,18 @@ def get_realtime_rag_metrics(
         entry = {
             "timestamp": r.get('timestamp'),
             "query": r.get('query', '')[:100] + ('...' if len(r.get('query', '')) > 100 else ''),
-            "retrieval_time": ret_metrics.get('retrieval_time_seconds', 0),
-            "generation_time": gen_metrics.get('generation_time_seconds', 0),
-            "total_time": e2e_metrics.get('total_time_seconds', 0),
-            "relevance_score": ret_metrics.get('avg_relevance_score', 0),
-            "docs_retrieved": ret_metrics.get('num_retrieved', 0),
-            "response_words": gen_metrics.get('response_length_words', 0),
+            "retrieval_time": _coerce_metric_float(ret_metrics.get('retrieval_time_seconds')),
+            "generation_time": _coerce_metric_float(gen_metrics.get('generation_time_seconds')),
+            "total_time": _coerce_metric_float(e2e_metrics.get('total_time_seconds'))
+            or (
+                _coerce_metric_float(ret_metrics.get('retrieval_time_seconds'))
+                + _coerce_metric_float(gen_metrics.get('generation_time_seconds'))
+            ),
+            "relevance_score": ret_metrics.get('avg_relevance_score')
+            if ret_metrics.get('avg_relevance_score') is not None
+            else None,
+            "docs_retrieved": _coerce_metric_int(ret_metrics.get('num_retrieved')),
+            "response_words": _coerce_metric_int(gen_metrics.get('response_length_words')),
             "mode": metadata.get('mode', 'chat'),
         }
         if qm and isinstance(qm, dict):
@@ -459,15 +510,18 @@ def get_metrics_history(
         ret_metrics = r.get('retrieval_metrics', {})
         gen_metrics = r.get('generation_metrics', {})
         e2e_metrics = r.get('end_to_end_metrics', {})
+        retrieval_time = _coerce_metric_float(ret_metrics.get('retrieval_time_seconds'))
+        generation_time = _coerce_metric_float(gen_metrics.get('generation_time_seconds'))
+        total_time = _coerce_metric_float(e2e_metrics.get('total_time_seconds'))
+        relevance_score = _coerce_metric_float(ret_metrics.get('avg_relevance_score'))
+        docs_retrieved = _coerce_metric_int(ret_metrics.get('num_retrieved'))
 
         buckets[key]["count"] += 1
-        buckets[key]["total_latency"] += e2e_metrics.get('total_time_seconds', 0) or (
-            ret_metrics.get('retrieval_time_seconds', 0) + gen_metrics.get('generation_time_seconds', 0)
-        )
-        buckets[key]["retrieval_latency"] += ret_metrics.get('retrieval_time_seconds', 0)
-        buckets[key]["generation_latency"] += gen_metrics.get('generation_time_seconds', 0)
-        buckets[key]["relevance_sum"] += ret_metrics.get('avg_relevance_score', 0)
-        buckets[key]["docs_retrieved"] += ret_metrics.get('num_retrieved', 0)
+        buckets[key]["total_latency"] += total_time or (retrieval_time + generation_time)
+        buckets[key]["retrieval_latency"] += retrieval_time
+        buckets[key]["generation_latency"] += generation_time
+        buckets[key]["relevance_sum"] += relevance_score
+        buckets[key]["docs_retrieved"] += docs_retrieved
 
     # Convert to sorted list
     data_points = []
@@ -949,7 +1003,173 @@ def get_aws_metrics(
     Returns metrics for all AWS services: Bedrock, S3, DynamoDB, etc.
     """
     import boto3
+    import json as json_module
     from botocore.exceptions import ClientError
+
+    def build_aws_client(service_name: str, *, pricing: bool = False):
+        kwargs = dict(client_kwargs)
+        if pricing:
+            kwargs["region_name"] = "us-east-1"
+        return boto3.client(service_name, **kwargs)
+
+    def unavailable_pricing() -> dict:
+        return {
+            "input_per_1k": None,
+            "output_per_1k": None,
+            "storage_per_gb_month": None,
+            "get_per_1k": None,
+            "put_per_1k": None,
+            "read_per_million": None,
+            "write_per_million": None,
+            "source": "AWS Price List API",
+        }
+
+    def pricing_value_from_dimension(dimension: dict) -> Optional[float]:
+        try:
+            usd = (dimension or {}).get("pricePerUnit", {}).get("USD")
+            if usd in (None, ""):
+                return None
+            return float(usd)
+        except (TypeError, ValueError):
+            return None
+
+    def fetch_pricing_products(service_code: str, filters: List[dict]) -> List[dict]:
+        pricing = build_aws_client("pricing", pricing=True)
+        paginator = pricing.get_paginator("get_products")
+        products: List[dict] = []
+        for page in paginator.paginate(
+            ServiceCode=service_code,
+            Filters=filters,
+            FormatVersion="aws_v1",
+            PaginationConfig={"MaxItems": 100, "PageSize": 100},
+        ):
+            for entry in page.get("PriceList", []):
+                try:
+                    products.append(json_module.loads(entry))
+                except (TypeError, json_module.JSONDecodeError):
+                    continue
+        return products
+
+    def extract_price(products: List[dict], *, product_match=None, dimension_match=None) -> Optional[float]:
+        for product in products:
+            attributes = (product.get("product") or {}).get("attributes") or {}
+            if product_match and not product_match(product, attributes):
+                continue
+            terms = (product.get("terms") or {}).get("OnDemand") or {}
+            for term in terms.values():
+                for dimension in ((term or {}).get("priceDimensions") or {}).values():
+                    if dimension_match and not dimension_match(dimension, product, attributes):
+                        continue
+                    value = pricing_value_from_dimension(dimension)
+                    if value is not None:
+                        return value
+        return None
+
+    region_label = _aws_region_label(config.AWS_REGION)
+
+    def fetch_live_pricing_snapshot() -> dict:
+        snapshot = {
+            "bedrock": {
+                "llm": {"input_per_1k": None, "output_per_1k": None},
+                "embedding": {"input_per_1k": None},
+                "source": "AWS Price List API",
+            },
+            "s3": {
+                "storage_per_gb_month": None,
+                "get_per_1k": None,
+                "put_per_1k": None,
+                "source": "AWS Price List API",
+            },
+            "dynamodb": {
+                "read_per_million": None,
+                "write_per_million": None,
+                "storage_per_gb_month": None,
+                "source": "AWS Price List API",
+            },
+        }
+
+        try:
+            bedrock_filters = [
+                {"Type": "TERM_MATCH", "Field": "location", "Value": region_label},
+            ] if region_label else []
+            bedrock_products = fetch_pricing_products("AmazonBedrock", bedrock_filters)
+            model_id_candidates = {config.BEDROCK_MODEL_ID, config.BEDROCK_EMBEDDING_MODEL_ID}
+            snapshot["bedrock"]["llm"]["input_per_1k"] = extract_price(
+                bedrock_products,
+                product_match=lambda _, attributes: any(
+                    candidate and candidate in json_module.dumps(attributes)
+                    for candidate in [config.BEDROCK_MODEL_ID]
+                ),
+                dimension_match=lambda dimension, *_: "input" in ((dimension.get("description") or "").lower()),
+            )
+            snapshot["bedrock"]["llm"]["output_per_1k"] = extract_price(
+                bedrock_products,
+                product_match=lambda _, attributes: any(
+                    candidate and candidate in json_module.dumps(attributes)
+                    for candidate in [config.BEDROCK_MODEL_ID]
+                ),
+                dimension_match=lambda dimension, *_: "output" in ((dimension.get("description") or "").lower()),
+            )
+            snapshot["bedrock"]["embedding"]["input_per_1k"] = extract_price(
+                bedrock_products,
+                product_match=lambda _, attributes: any(
+                    candidate and candidate in json_module.dumps(attributes)
+                    for candidate in [config.BEDROCK_EMBEDDING_MODEL_ID]
+                ),
+            )
+        except Exception as pricing_error:
+            logging.getLogger(__name__).warning("Bedrock pricing lookup failed: %s", pricing_error)
+
+        try:
+            s3_filters = [
+                {"Type": "TERM_MATCH", "Field": "location", "Value": region_label},
+            ] if region_label else []
+            s3_products = fetch_pricing_products("AmazonS3", s3_filters)
+            snapshot["s3"]["storage_per_gb_month"] = extract_price(
+                s3_products,
+                product_match=lambda product, attributes: (
+                    product.get("product", {}).get("productFamily") == "Storage"
+                    and (attributes.get("storageClass") in {"General Purpose", "Standard"}
+                         or "standard" in json_module.dumps(attributes).lower())
+                ),
+            )
+            snapshot["s3"]["get_per_1k"] = extract_price(
+                s3_products,
+                product_match=lambda product, attributes: product.get("product", {}).get("productFamily") == "API Request",
+                dimension_match=lambda dimension, *_: "get" in ((dimension.get("description") or "").lower()),
+            )
+            snapshot["s3"]["put_per_1k"] = extract_price(
+                s3_products,
+                product_match=lambda product, attributes: product.get("product", {}).get("productFamily") == "API Request",
+                dimension_match=lambda dimension, *_: any(
+                    keyword in ((dimension.get("description") or "").lower())
+                    for keyword in ["put", "copy", "post", "list"]
+                ),
+            )
+        except Exception as pricing_error:
+            logging.getLogger(__name__).warning("S3 pricing lookup failed: %s", pricing_error)
+
+        try:
+            dynamodb_filters = [
+                {"Type": "TERM_MATCH", "Field": "location", "Value": region_label},
+            ] if region_label else []
+            dynamodb_products = fetch_pricing_products("AmazonDynamoDB", dynamodb_filters)
+            snapshot["dynamodb"]["read_per_million"] = extract_price(
+                dynamodb_products,
+                dimension_match=lambda dimension, *_: "read request units" in ((dimension.get("description") or "").lower()),
+            )
+            snapshot["dynamodb"]["write_per_million"] = extract_price(
+                dynamodb_products,
+                dimension_match=lambda dimension, *_: "write request units" in ((dimension.get("description") or "").lower()),
+            )
+            snapshot["dynamodb"]["storage_per_gb_month"] = extract_price(
+                dynamodb_products,
+                product_match=lambda product, *_: product.get("product", {}).get("productFamily") == "Database Storage",
+            )
+        except Exception as pricing_error:
+            logging.getLogger(__name__).warning("DynamoDB pricing lookup failed: %s", pricing_error)
+
+        return snapshot
 
     metrics = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -967,6 +1187,8 @@ def get_aws_metrics(
         if config.AWS_SESSION_TOKEN:
             client_kwargs["aws_session_token"] = config.AWS_SESSION_TOKEN
 
+    live_pricing = fetch_live_pricing_snapshot()
+
     # 1. BEDROCK METRICS
     try:
         metrics["services"]["bedrock"] = {
@@ -975,16 +1197,18 @@ def get_aws_metrics(
                 "llm": {
                     "model_id": config.BEDROCK_MODEL_ID,
                     "pricing": {
-                        "input_per_1k": 0.00099,  # Llama 3/3.1 70B on-demand
-                        "output_per_1k": 0.00099,
+                        "input_per_1k": live_pricing["bedrock"]["llm"]["input_per_1k"],
+                        "output_per_1k": live_pricing["bedrock"]["llm"]["output_per_1k"],
+                        "source": live_pricing["bedrock"]["source"],
                     },
                 },
                 "embedding": {
                     "model_id": config.BEDROCK_EMBEDDING_MODEL_ID,
                     "pricing": {
-                        "input_per_1k": 0.0001,  # Titan Embed v2
+                        "input_per_1k": live_pricing["bedrock"]["embedding"]["input_per_1k"],
+                        "source": live_pricing["bedrock"]["source"],
                     },
-                    "dimension": 1024,
+                    "dimension": None,
                 },
             },
             "available_models": [
@@ -1023,9 +1247,7 @@ def get_aws_metrics(
                 "index_prefix": "faiss_index/",
                 "documents_prefix": "modules/",
                 "pricing": {
-                    "storage_per_gb_month": 0.023,
-                    "get_per_1k": 0.0004,
-                    "put_per_1k": 0.005,
+                    **live_pricing["s3"],
                 },
             }
         except ClientError as e:
@@ -1055,12 +1277,10 @@ def get_aws_metrics(
                 "item_count": table.get("ItemCount", 0),
                 "size_bytes": table.get("TableSizeBytes", 0),
                 "size_mb": round(table.get("TableSizeBytes", 0) / (1024 * 1024), 2),
-                "billing_mode": table.get("BillingModeSummary", {}).get("BillingMode", "PAY_PER_REQUEST"),
+                "billing_mode": table.get("BillingModeSummary", {}).get("BillingMode"),
                 "table_status": table.get("TableStatus", "UNKNOWN"),
                 "pricing": {
-                    "read_per_million": 0.25,
-                    "write_per_million": 1.25,
-                    "storage_per_gb_month": 0.25,
+                    **live_pricing["dynamodb"],
                 },
             }
         except ClientError as e:
@@ -1089,9 +1309,10 @@ def get_aws_metrics(
         metrics["costs"] = {
             "daily": {
                 "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                "total_cost_usd": 0,
-                "total_tokens": 0,
-                "entries": 0,
+                "total_cost_usd": None,
+                "total_tokens": None,
+                "entries": None,
+                "error": "Cost tracking unavailable",
             },
             "tracking_enabled": False,
         }
@@ -1154,9 +1375,19 @@ def get_aws_metrics(
             metrics["services"]["cloudwatch"] = {
                 "status": "limited",
                 "note": "Metrics may require additional permissions",
+                "bedrock_invocations": None,
+                "bedrock_input_tokens": None,
+                "bedrock_output_tokens": None,
+                "bedrock_invocation_latency_ms": None,
             }
     except Exception as e:
-        metrics["services"]["cloudwatch"] = {"status": "unavailable"}
+        metrics["services"]["cloudwatch"] = {
+            "status": "unavailable",
+            "bedrock_invocations": None,
+            "bedrock_input_tokens": None,
+            "bedrock_output_tokens": None,
+            "bedrock_invocation_latency_ms": None,
+        }
 
     # Summary
     active_services = sum(1 for s in metrics["services"].values() if s.get("status") == "active")

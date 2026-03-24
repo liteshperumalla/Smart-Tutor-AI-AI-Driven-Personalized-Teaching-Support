@@ -59,10 +59,48 @@ function getDirectBackendUrl(): string {
   return `${protocol}//${hostname}:${backendPort}`;
 }
 
+function joinApiUrl(baseUrl: string, path: string): string {
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+function getAdminRequestTargets(path: string): string[] {
+  const targets: string[] = [];
+
+  const addTarget = (url: string) => {
+    if (url && !targets.includes(url)) {
+      targets.push(url);
+    }
+  };
+
+  if (typeof window !== "undefined") {
+    addTarget(joinApiUrl(CLIENT_PROXY_API_BASE_URL, path));
+    addTarget(joinApiUrl(getDirectBackendUrl(), path));
+  } else {
+    addTarget(joinApiUrl(getDirectBackendUrl(), path));
+    addTarget(joinApiUrl(resolveApiBaseUrl(), path));
+  }
+
+  return targets;
+}
+
+async function parseRequestError(response: Response): Promise<Error & { status?: number }> {
+  const payload = await response
+    .json()
+    .catch(() => ({ detail: response.statusText || `Request failed with ${response.status}` }));
+  const error = new Error(payload.detail || `Request failed with ${response.status}`) as Error & {
+    status?: number;
+  };
+  error.status = response.status;
+  return error;
+}
+
 /**
- * Admin request — always targets the backend directly so auth-gated `/admin/*`
- * endpoints behave consistently across environments. Admin auth is enforced by
- * the backend's get_admin_session dependency (role == "Admin").
+ * Admin request — use the same-origin proxy first in the browser so production
+ * deployments keep a working auth/cookie path, then fall back to the direct
+ * backend URL when needed. Admin auth is still enforced by the backend's
+ * get_admin_session dependency (role == "Admin").
  */
 async function adminRequest<T>(
   path: string,
@@ -77,26 +115,35 @@ async function adminRequest<T>(
     headers.set("Authorization", `Bearer ${authToken}`);
   }
 
-  const baseUrl = getDirectBackendUrl().replace(/\/$/, "");
-  const url = `${baseUrl}${path}`;
+  const targets = getAdminRequestTargets(path);
+  let lastError: (Error & { status?: number }) | null = null;
 
-  const res = await fetch(url, {
-    ...rest,
-    headers,
-    cache: "no-store",
-    credentials: "include",
-  });
+  for (const url of targets) {
+    try {
+      const res = await fetch(url, {
+        ...rest,
+        headers,
+        cache: "no-store",
+        credentials: "include",
+      });
 
-  if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined") {
-      clearAuthToken();
-      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      if (!res.ok) {
+        lastError = await parseRequestError(res);
+        continue;
+      }
+
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Request failed");
     }
-    const message = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(message.detail || `Request failed with ${res.status}`);
   }
 
-  return (await res.json()) as T;
+  if (lastError?.status === 401 && typeof window !== "undefined") {
+    clearAuthToken();
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
+
+  throw lastError ?? new Error("Request failed");
 }
 
 export type HealthResponse = {
@@ -519,6 +566,37 @@ export type MetricsHistory = {
   data_points: MetricsHistoryDataPoint[];
 };
 
+function normalizeEvaluationLogSummary(summary?: EvaluationLogSummary | null): EvaluationLogSummary {
+  return {
+    total_queries_analyzed: toFiniteNumberOrNull(summary?.total_queries_analyzed) ?? 0,
+    avg_retrieval_time_seconds: toFiniteNumberOrNull(summary?.avg_retrieval_time_seconds) ?? 0,
+    avg_generation_time_seconds: toFiniteNumberOrNull(summary?.avg_generation_time_seconds) ?? 0,
+    avg_total_time_seconds: toFiniteNumberOrNull(summary?.avg_total_time_seconds) ?? 0,
+    avg_num_retrieved: toFiniteNumberOrNull(summary?.avg_num_retrieved) ?? 0,
+    avg_relevance_score: toFiniteNumberOrNull(summary?.avg_relevance_score) ?? 0,
+    error: summary?.error,
+  };
+}
+
+function normalizeMetricsHistory(history?: MetricsHistory | null): MetricsHistory {
+  return {
+    status: history?.status ?? "no_data",
+    message: history?.message,
+    hours: toFiniteNumberOrNull(history?.hours) ?? undefined,
+    granularity: history?.granularity,
+    total_queries: toFiniteNumberOrNull(history?.total_queries) ?? undefined,
+    data_points: (history?.data_points ?? []).map((point) => ({
+      timestamp: point.timestamp ?? "",
+      query_count: toFiniteNumber(point.query_count),
+      avg_latency: toFiniteNumber(point.avg_latency),
+      avg_retrieval_latency: toFiniteNumber(point.avg_retrieval_latency),
+      avg_generation_latency: toFiniteNumber(point.avg_generation_latency),
+      avg_relevance: toFiniteNumber(point.avg_relevance),
+      avg_docs_retrieved: toFiniteNumber(point.avg_docs_retrieved),
+    })),
+  };
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit & { authToken?: string; timeoutMs?: number }
@@ -894,22 +972,30 @@ export async function uploadResourceFile({
   if (description) formData.append("description", description);
   if (order !== undefined) formData.append("order", String(order));
 
-  // Use direct backend URL so admin uploads and other admin APIs share the same routing path.
-  const directUrl = getDirectBackendUrl();
-  const response = await fetch(`${directUrl}/admin/resources/upload`, {
-    method: "POST",
-    headers: token && token !== "authenticated" ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
-    credentials: "include",
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const msg = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(msg.detail || `Upload failed with ${response.status}`);
+  for (const url of getAdminRequestTargets("/admin/resources/upload")) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: token && token !== "authenticated" ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        lastError = await parseRequestError(response);
+        continue;
+      }
+
+      const data = (await response.json()) as { resource: Resource };
+      return data.resource;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Upload failed");
+    }
   }
 
-  const data = (await response.json()) as { resource: Resource };
-  return data.resource;
+  throw lastError ?? new Error("Upload failed");
 }
 
 export async function updateResource(
@@ -1612,7 +1698,7 @@ export async function fetchEvaluationLogSummary(token: string): Promise<Evaluati
     path: "/evaluation/summary",
     token,
   });
-  return data.summary;
+  return normalizeEvaluationLogSummary(data.summary);
 }
 
 export async function fetchEvaluationRuns(
@@ -1807,7 +1893,7 @@ export async function fetchMetricsHistory(
     path: `/evaluation/metrics-history?hours=${hours}&granularity=${granularity}`,
     token,
   });
-  return data.history;
+  return normalizeMetricsHistory(data.history);
 }
 
 export function getMetricsExportUrl(format: "json" | "csv" = "json"): string {
@@ -1835,12 +1921,16 @@ export type AWSMetrics = {
       models?: {
         llm: {
           model_id: string;
-          pricing: { input_per_1k: number; output_per_1k: number };
+          pricing: {
+            input_per_1k?: number | null;
+            output_per_1k?: number | null;
+            source?: string;
+          };
         };
         embedding: {
           model_id: string;
-          pricing: { input_per_1k: number };
-          dimension: number;
+          pricing: { input_per_1k?: number | null; source?: string };
+          dimension?: number | null;
         };
       };
       available_models?: Array<{ id: string; name: string; type: string }>;
@@ -1853,7 +1943,12 @@ export type AWSMetrics = {
       total_size_mb?: number;
       index_prefix?: string;
       documents_prefix?: string;
-      pricing?: { storage_per_gb_month: number; get_per_1k: number; put_per_1k: number };
+      pricing?: {
+        storage_per_gb_month?: number | null;
+        get_per_1k?: number | null;
+        put_per_1k?: number | null;
+        source?: string;
+      };
       error?: string;
     };
     dynamodb?: {
@@ -1864,7 +1959,12 @@ export type AWSMetrics = {
       size_mb?: number;
       billing_mode?: string;
       table_status?: string;
-      pricing?: { read_per_million: number; write_per_million: number; storage_per_gb_month: number };
+      pricing?: {
+        read_per_million?: number | null;
+        write_per_million?: number | null;
+        storage_per_gb_month?: number | null;
+        source?: string;
+      };
       error?: string;
     };
     sts?: {
@@ -1875,16 +1975,19 @@ export type AWSMetrics = {
     };
     cloudwatch?: {
       status: AWSServiceStatus;
-      bedrock_invocations_today?: number;
+      bedrock_invocations?: number | null;
+      bedrock_input_tokens?: number | null;
+      bedrock_output_tokens?: number | null;
+      bedrock_invocation_latency_ms?: number | null;
       note?: string;
     };
   };
   costs: {
     daily: {
       date: string;
-      total_cost_usd: number;
-      total_tokens: number;
-      entries: number;
+      total_cost_usd?: number | null;
+      total_tokens?: number | null;
+      entries?: number | null;
       by_service?: Record<string, number>;
       error?: string;
     };
@@ -2196,6 +2299,7 @@ export type AdminStats = {
   new_feedback: number;
   active_announcements: number;
   admin_users: number;
+  error?: string;
 };
 
 export type AdminUser = {
@@ -2206,6 +2310,35 @@ export type AdminUser = {
   last_login?: string;
   created_at?: string;
 };
+
+function normalizeAdminStats(stats?: Partial<AdminStats> | null): AdminStats {
+  return {
+    total_users: toFiniteNumber(stats?.total_users),
+    total_queries: toFiniteNumber(stats?.total_queries),
+    total_feedback: toFiniteNumber(stats?.total_feedback),
+    new_feedback: toFiniteNumber(stats?.new_feedback),
+    active_announcements: toFiniteNumber(stats?.active_announcements),
+    admin_users: toFiniteNumber(stats?.admin_users),
+    error: stats?.error,
+  };
+}
+
+function normalizeAdminUser(user?: Partial<AdminUser> | null): AdminUser {
+  const email = typeof user?.email === "string" ? user.email : "";
+  const username =
+    typeof user?.username === "string" && user.username.trim()
+      ? user.username
+      : email || "Unknown user";
+
+  return {
+    username,
+    email,
+    role: typeof user?.role === "string" && user.role.trim() ? user.role : "User",
+    display_name: typeof user?.display_name === "string" ? user.display_name : undefined,
+    last_login: typeof user?.last_login === "string" ? user.last_login : undefined,
+    created_at: typeof user?.created_at === "string" ? user.created_at : undefined,
+  };
+}
 
 export type Announcement = {
   id: string;
@@ -2266,9 +2399,26 @@ function normalizeQuizMetrics(metrics?: Partial<QuizMetrics> | null): QuizMetric
       "60-80": Number(scoreDistribution["60-80"] ?? 0),
       "80-100": Number(scoreDistribution["80-100"] ?? 0),
     },
-    popular_topics: Array.isArray(metrics?.popular_topics) ? metrics.popular_topics : [],
-    recent_activity: Array.isArray(metrics?.recent_activity) ? metrics.recent_activity : [],
-    top_performers: Array.isArray(metrics?.top_performers) ? metrics.top_performers : [],
+    popular_topics: Array.isArray(metrics?.popular_topics)
+      ? metrics.popular_topics.map((topic) => ({
+          folder: typeof topic?.folder === "string" ? topic.folder : "Unknown",
+          quiz_count: toFiniteNumber(topic?.quiz_count),
+        }))
+      : [],
+    recent_activity: Array.isArray(metrics?.recent_activity)
+      ? metrics.recent_activity.map((entry) => ({
+          date: typeof entry?.date === "string" ? entry.date : "",
+          count: toFiniteNumber(entry?.count),
+          avg_score: toFiniteNumber(entry?.avg_score),
+        }))
+      : [],
+    top_performers: Array.isArray(metrics?.top_performers)
+      ? metrics.top_performers.map((performer) => ({
+          username: typeof performer?.username === "string" ? performer.username : "Unknown",
+          quizzes_taken: toFiniteNumber(performer?.quizzes_taken),
+          avg_score: toFiniteNumber(performer?.avg_score),
+        }))
+      : [],
     error: metrics?.error,
   };
 }
@@ -2277,7 +2427,7 @@ function normalizeQuizMetrics(metrics?: Partial<QuizMetrics> | null): QuizMetric
 
 export async function fetchAdminStats(token: string): Promise<AdminStats> {
   const data = await adminRequest<{ stats: AdminStats }>("/admin/stats", { authToken: token });
-  return data.stats;
+  return normalizeAdminStats(data.stats);
 }
 
 export async function fetchQuizMetrics(token: string): Promise<QuizMetrics> {
@@ -2287,7 +2437,7 @@ export async function fetchQuizMetrics(token: string): Promise<QuizMetrics> {
 
 export async function fetchAdminUsers(token: string): Promise<AdminUser[]> {
   const data = await adminRequest<{ users: AdminUser[] }>("/admin/users", { authToken: token });
-  return data.users ?? [];
+  return (data.users ?? []).map(normalizeAdminUser);
 }
 
 export async function updateUserRole(
@@ -2399,11 +2549,26 @@ function normalizeAgentMetrics(metrics?: Partial<AgentMetrics> | null): AgentMet
   return {
     total_agent_interactions: Number(metrics?.total_agent_interactions ?? 0),
     unique_users: Number(metrics?.unique_users ?? 0),
-    agent_distribution: metrics?.agent_distribution ?? {},
+    agent_distribution: Object.fromEntries(
+      Object.entries(metrics?.agent_distribution ?? {}).map(([agent, count]) => [agent, toFiniteNumber(count)])
+    ),
     avg_response_time_ms: Number(metrics?.avg_response_time_ms ?? 0),
-    response_time_by_agent: metrics?.response_time_by_agent ?? {},
-    daily_usage: Array.isArray(metrics?.daily_usage) ? metrics.daily_usage : [],
-    top_query_types: Array.isArray(metrics?.top_query_types) ? metrics.top_query_types : [],
+    response_time_by_agent: Object.fromEntries(
+      Object.entries(metrics?.response_time_by_agent ?? {}).map(([agent, value]) => [agent, toFiniteNumber(value)])
+    ),
+    daily_usage: Array.isArray(metrics?.daily_usage)
+      ? metrics.daily_usage.map((entry) => ({
+          date: entry?.date ?? "",
+          count: toFiniteNumber(entry?.count),
+          unique_users: toFiniteNumber(entry?.unique_users),
+        }))
+      : [],
+    top_query_types: Array.isArray(metrics?.top_query_types)
+      ? metrics.top_query_types.map((entry) => ({
+          type: entry?.type ?? "unknown",
+          count: toFiniteNumber(entry?.count),
+        }))
+      : [],
     routing_accuracy: {
       positive_after_route: Number(metrics?.routing_accuracy?.positive_after_route ?? 0),
       negative_after_route: Number(metrics?.routing_accuracy?.negative_after_route ?? 0),
@@ -2430,18 +2595,35 @@ function normalizeKnowledgeGraphMetrics(
   return {
     total_nodes: Number(metrics?.total_nodes ?? 0),
     total_relationships: Number(metrics?.total_relationships ?? 0),
-    nodes_by_type: metrics?.nodes_by_type ?? {},
-    relationships_by_type: metrics?.relationships_by_type ?? {},
+    nodes_by_type: Object.fromEntries(
+      Object.entries(metrics?.nodes_by_type ?? {}).map(([type, count]) => [type, toFiniteNumber(count)])
+    ),
+    relationships_by_type: Object.fromEntries(
+      Object.entries(metrics?.relationships_by_type ?? {}).map(([type, count]) => [type, toFiniteNumber(count)])
+    ),
     most_struggled_concepts: Array.isArray(metrics?.most_struggled_concepts)
-      ? metrics.most_struggled_concepts
+      ? metrics.most_struggled_concepts.map((item) => ({
+          concept: item?.concept ?? "Unknown",
+          students: toFiniteNumber(item?.students),
+        }))
       : [],
     most_studied_topics: Array.isArray(metrics?.most_studied_topics)
-      ? metrics.most_studied_topics
+      ? metrics.most_studied_topics.map((item) => ({
+          topic: item?.topic ?? "Unknown",
+          study_count: toFiniteNumber(item?.study_count),
+        }))
       : [],
     student_engagement: Array.isArray(metrics?.student_engagement)
-      ? metrics.student_engagement
+      ? metrics.student_engagement.map((item) => ({
+          username: item?.username ?? "Unknown",
+          queries: toFiniteNumber(item?.queries),
+          sessions: toFiniteNumber(item?.sessions),
+          doubts: toFiniteNumber(item?.doubts),
+        }))
       : [],
-    feedback_sentiment_overview: metrics?.feedback_sentiment_overview ?? {},
+    feedback_sentiment_overview: Object.fromEntries(
+      Object.entries(metrics?.feedback_sentiment_overview ?? {}).map(([sentiment, count]) => [sentiment, toFiniteNumber(count)])
+    ),
     error: metrics?.error,
   };
 }

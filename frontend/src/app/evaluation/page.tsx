@@ -527,6 +527,23 @@ export function EvaluationContent() {
     fallback: string = "N/A"
   ) => (isFiniteMetric(value) ? `${value.toFixed(digits)}${suffix}` : fallback);
 
+  const formatOptionalMetric = (
+    value: number | null | undefined,
+    digits: number = 0,
+    suffix: string = "",
+    fallback: string = "Unavailable"
+  ) => (isFiniteMetric(value) ? `${value.toFixed(digits)}${suffix}` : fallback);
+
+  const formatOptionalInteger = (
+    value: number | null | undefined,
+    fallback: string = "Unavailable"
+  ) => (isFiniteMetric(value) ? value.toLocaleString() : fallback);
+
+  const formatOptionalText = (
+    value: string | null | undefined,
+    fallback: string = "Unavailable"
+  ) => (value && value.trim() ? value : fallback);
+
   // Color helper for quality scores
   const qualityColor = (score: number | null | undefined) =>
     !isFiniteMetric(score)
@@ -1663,8 +1680,10 @@ export function EvaluationContent() {
               <div>
                 <h3 className="font-semibold text-zinc-900 dark:text-white">AWS Infrastructure</h3>
                 <p className="text-xs text-zinc-500">
-                  Region: {awsMetrics?.region || "us-east-1"} •
-                  {awsMetrics?.summary?.active_services || 0}/{awsMetrics?.summary?.total_services || 0} Services Active
+                  Region: {formatOptionalText(awsMetrics?.region)} •
+                  {isFiniteMetric(awsMetrics?.summary?.active_services) && isFiniteMetric(awsMetrics?.summary?.total_services)
+                    ? `${awsMetrics.summary.active_services}/${awsMetrics.summary.total_services} Services Active`
+                    : "Service summary unavailable"}
                 </p>
               </div>
             </div>
@@ -1698,28 +1717,36 @@ export function EvaluationContent() {
               <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <MetricCard
                   title="Active Services"
-                  value={`${awsMetrics.summary?.active_services || 0}/${awsMetrics.summary?.total_services || 0}`}
+                  value={
+                    isFiniteMetric(awsMetrics.summary?.active_services) && isFiniteMetric(awsMetrics.summary?.total_services)
+                      ? `${awsMetrics.summary.active_services}/${awsMetrics.summary.total_services}`
+                      : "Unavailable"
+                  }
                   subtitle="AWS services connected"
                   icon={CheckCircle}
                   color="emerald"
                 />
                 <MetricCard
                   title="Daily Cost"
-                  value={`$${(awsMetrics.costs?.daily?.total_cost_usd || 0).toFixed(4)}`}
-                  subtitle={awsMetrics.costs?.daily?.date || "Today"}
+                  value={
+                    isFiniteMetric(awsMetrics.costs?.daily?.total_cost_usd)
+                      ? `$${awsMetrics.costs.daily.total_cost_usd.toFixed(4)}`
+                      : "Unavailable"
+                  }
+                  subtitle={formatOptionalText(awsMetrics.costs?.daily?.date)}
                   icon={DollarSign}
                   color="amber"
                 />
                 <MetricCard
                   title="Tokens Processed"
-                  value={(awsMetrics.costs?.daily?.total_tokens || 0).toLocaleString()}
+                  value={formatOptionalInteger(awsMetrics.costs?.daily?.total_tokens)}
                   subtitle="LLM & Embeddings"
                   icon={Cpu}
                   color="indigo"
                 />
                 <MetricCard
                   title="API Entries"
-                  value={awsMetrics.costs?.daily?.entries || 0}
+                  value={formatOptionalInteger(awsMetrics.costs?.daily?.entries)}
                   subtitle="Cost tracking entries"
                   icon={FileText}
                   color="blue"
@@ -1758,27 +1785,51 @@ export function EvaluationContent() {
                           <span className="text-xs text-zinc-500">Primary</span>
                         </div>
                         <p className="text-xs text-zinc-600 dark:text-zinc-400 font-mono truncate">
-                          {awsMetrics.services.bedrock.models.llm?.model_id || "N/A"}
+                          {formatOptionalText(awsMetrics.services.bedrock.models.llm?.model_id)}
                         </p>
                         <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-                          <span>Input: ${awsMetrics.services.bedrock.models.llm?.pricing?.input_per_1k || 0}/1K</span>
+                          <span>
+                            Input: {isFiniteMetric(awsMetrics.services.bedrock.models.llm?.pricing?.input_per_1k)
+                              ? `$${awsMetrics.services.bedrock.models.llm.pricing.input_per_1k.toFixed(6)}`
+                              : "Unavailable"}
+                          </span>
                           <span>•</span>
-                          <span>Output: ${awsMetrics.services.bedrock.models.llm?.pricing?.output_per_1k || 0}/1K</span>
+                          <span>
+                            Output: {isFiniteMetric(awsMetrics.services.bedrock.models.llm?.pricing?.output_per_1k)
+                              ? `$${awsMetrics.services.bedrock.models.llm.pricing.output_per_1k.toFixed(6)}`
+                              : "Unavailable"}
+                          </span>
                         </div>
+                        {awsMetrics.services.bedrock.models.llm?.pricing?.source && (
+                          <div className="mt-2 text-[11px] text-zinc-500">
+                            Source: {awsMetrics.services.bedrock.models.llm.pricing.source}
+                          </div>
+                        )}
                       </div>
 
                       {/* Embedding Model */}
                       <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-zinc-900 dark:text-white">Embedding Model</span>
-                          <span className="text-xs text-zinc-500">{awsMetrics.services.bedrock.models.embedding?.dimension || 1024}d</span>
+                          <span className="text-xs text-zinc-500">
+                            {isFiniteMetric(awsMetrics.services.bedrock.models.embedding?.dimension)
+                              ? `${awsMetrics.services.bedrock.models.embedding.dimension}d`
+                              : "Unavailable"}
+                          </span>
                         </div>
                         <p className="text-xs text-zinc-600 dark:text-zinc-400 font-mono truncate">
-                          {awsMetrics.services.bedrock.models.embedding?.model_id || "N/A"}
+                          {formatOptionalText(awsMetrics.services.bedrock.models.embedding?.model_id)}
                         </p>
                         <div className="mt-2 text-xs text-zinc-500">
-                          Input: ${awsMetrics.services.bedrock.models.embedding?.pricing?.input_per_1k || 0}/1K tokens
+                          Input: {isFiniteMetric(awsMetrics.services.bedrock.models.embedding?.pricing?.input_per_1k)
+                            ? `$${awsMetrics.services.bedrock.models.embedding.pricing.input_per_1k.toFixed(6)}`
+                            : "Unavailable"}
                         </div>
+                        {awsMetrics.services.bedrock.models.embedding?.pricing?.source && (
+                          <div className="mt-2 text-[11px] text-zinc-500">
+                            Source: {awsMetrics.services.bedrock.models.embedding.pricing.source}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1809,27 +1860,34 @@ export function EvaluationContent() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Bucket</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white font-mono truncate max-w-[200px]">
-                        {awsMetrics.services?.s3?.bucket || "N/A"}
+                        {formatOptionalText(awsMetrics.services?.s3?.bucket)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Total Objects</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        {(awsMetrics.services?.s3?.total_objects || 0).toLocaleString()}
+                        {formatOptionalInteger(awsMetrics.services?.s3?.total_objects)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Total Size</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        {awsMetrics.services?.s3?.total_size_mb || 0} MB
+                        {formatOptionalMetric(awsMetrics.services?.s3?.total_size_mb, 2, " MB")}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Storage Cost</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        ${awsMetrics.services?.s3?.pricing?.storage_per_gb_month || 0.023}/GB/mo
+                        {isFiniteMetric(awsMetrics.services?.s3?.pricing?.storage_per_gb_month)
+                          ? `$${awsMetrics.services.s3.pricing.storage_per_gb_month.toFixed(6)}/GB/mo`
+                          : "Unavailable"}
                       </span>
                     </div>
+                    {awsMetrics.services?.s3?.pricing?.source && (
+                      <div className="px-1 text-[11px] text-zinc-500">
+                        Source: {awsMetrics.services.s3.pricing.source}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1858,27 +1916,32 @@ export function EvaluationContent() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Table Name</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white font-mono truncate max-w-[200px]">
-                        {awsMetrics.services?.dynamodb?.table_name || "N/A"}
+                        {formatOptionalText(awsMetrics.services?.dynamodb?.table_name)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Item Count</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        {(awsMetrics.services?.dynamodb?.item_count || 0).toLocaleString()}
+                        {formatOptionalInteger(awsMetrics.services?.dynamodb?.item_count)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Table Size</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        {awsMetrics.services?.dynamodb?.size_mb || 0} MB
+                        {formatOptionalMetric(awsMetrics.services?.dynamodb?.size_mb, 2, " MB")}
                       </span>
                     </div>
                     <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
                       <span className="text-sm text-zinc-600 dark:text-zinc-400">Billing Mode</span>
                       <span className="text-sm font-medium text-zinc-900 dark:text-white">
-                        {awsMetrics.services?.dynamodb?.billing_mode || "PAY_PER_REQUEST"}
+                        {formatOptionalText(awsMetrics.services?.dynamodb?.billing_mode)}
                       </span>
                     </div>
+                    {awsMetrics.services?.dynamodb?.pricing?.source && (
+                      <div className="px-1 text-[11px] text-zinc-500">
+                        Source: {awsMetrics.services.dynamodb.pricing.source}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1908,8 +1971,8 @@ export function EvaluationContent() {
                         </span>
                       </div>
                       <div className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
-                        <p>Account: {awsMetrics.services?.sts?.account_id || "***"}</p>
-                        <p>User: {awsMetrics.services?.sts?.arn_suffix || "N/A"}</p>
+                        <p>Account: {formatOptionalText(awsMetrics.services?.sts?.account_id)}</p>
+                        <p>User: {formatOptionalText(awsMetrics.services?.sts?.arn_suffix)}</p>
                       </div>
                     </div>
 
@@ -1926,7 +1989,10 @@ export function EvaluationContent() {
                         </span>
                       </div>
                       <div className="text-xs text-zinc-600 dark:text-zinc-400">
-                        <p>Bedrock Invocations Today: {awsMetrics.services?.cloudwatch?.bedrock_invocations_today || 0}</p>
+                        <p>Bedrock Invocations: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_invocations)}</p>
+                        <p>Input Tokens: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_input_tokens)}</p>
+                        <p>Output Tokens: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_output_tokens)}</p>
+                        <p>Invocation Latency: {formatOptionalMetric(awsMetrics.services?.cloudwatch?.bedrock_invocation_latency_ms, 0, " ms")}</p>
                         {awsMetrics.services?.cloudwatch?.note && (
                           <p className="mt-1 text-amber-600 dark:text-amber-400">{awsMetrics.services?.cloudwatch?.note}</p>
                         )}

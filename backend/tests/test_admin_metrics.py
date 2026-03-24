@@ -85,3 +85,72 @@ def test_agent_metrics_fallback_uses_runtime_logs(monkeypatch, tmp_path):
     assert metrics["agent_distribution"]["tutor_agent"] == 1
     assert metrics["routing_accuracy"]["positive_after_route"] == 50.0
     assert metrics["routing_accuracy"]["negative_after_route"] == 50.0
+
+
+def test_agent_metrics_handles_null_feedback_aggregates(monkeypatch):
+    class StubNeo4jClient:
+        def execute_read(self, query: str):
+            if "COUNT(ai) AS total" in query:
+                return [{"total": 2, "unique_users": 2, "avg_rt": 840.5}]
+            if "RETURN ai.agent AS agent, COUNT(*) AS cnt" in query:
+                return [{"agent": "tutor_agent", "cnt": 2}]
+            if "avg(ai.response_time_ms) AS avg_rt" in query:
+                return [{"agent": "tutor_agent", "avg_rt": 840.5}]
+            if "COUNT(DISTINCT s.username) AS unique_users" in query:
+                return [{"date": "2026-03-23", "count": 2, "unique_users": 2}]
+            if "COALESCE(ai.query_type, 'unknown')" in query:
+                return [{"type": "general_tutoring", "count": 2}]
+            if "SUM(CASE WHEN ai.sentiment = 'positive'" in query:
+                return [{"pos": None, "neg": None}]
+            return []
+
+    import backend.agents.neo4j_client as neo4j_client
+
+    monkeypatch.setattr(neo4j_client, "get_neo4j_client", lambda: StubNeo4jClient())
+
+    metrics = AdminService().get_agent_metrics()
+
+    assert metrics["total_agent_interactions"] == 2
+    assert metrics["unique_users"] == 2
+    assert metrics["avg_response_time_ms"] == 840
+    assert metrics["routing_accuracy"]["positive_after_route"] == 0
+    assert metrics["routing_accuracy"]["negative_after_route"] == 0
+
+
+def test_summary_stats_ignore_nullable_metric_values(tmp_path):
+    log_file = tmp_path / "rag_metrics.jsonl"
+    log_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "retrieval_metrics": {
+                            "retrieval_time_seconds": None,
+                            "num_retrieved": None,
+                            "avg_relevance_score": None,
+                        },
+                        "generation_metrics": {"generation_time_seconds": 1.5},
+                    }
+                ),
+                json.dumps(
+                    {
+                        "retrieval_metrics": {
+                            "retrieval_time_seconds": 0.5,
+                            "num_retrieved": 4,
+                            "avg_relevance_score": 0.8,
+                        },
+                        "generation_metrics": {"generation_time_seconds": None},
+                    }
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    summary = RAGEvaluationMetrics(str(log_file)).get_summary_stats(last_n=10)
+
+    assert summary["total_queries_analyzed"] == 2
+    assert summary["avg_retrieval_time_seconds"] == 0.25
+    assert summary["avg_generation_time_seconds"] == 0.75
+    assert summary["avg_num_retrieved"] == 2.0
+    assert summary["avg_relevance_score"] == 0.4

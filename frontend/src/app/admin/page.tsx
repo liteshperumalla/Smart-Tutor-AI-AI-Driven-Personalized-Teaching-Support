@@ -21,7 +21,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!token) return;
     fetchAdminStats(token)
-      .then(setStats)
+      .then((data) => {
+        setStats(data);
+        setError(data.error ?? null);
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [token]);

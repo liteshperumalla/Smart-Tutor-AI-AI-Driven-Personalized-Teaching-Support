@@ -208,23 +208,32 @@ class RAGEvaluationMetrics:
 
             # Calculate summary statistics
             total_queries = len(records)
+
+            def safe_metric(value: Any) -> float:
+                try:
+                    if value is None:
+                        return 0.0
+                    return float(value)
+                except (TypeError, ValueError):
+                    return 0.0
+
             avg_retrieval_time = sum(
-                r.get('retrieval_metrics', {}).get('retrieval_time_seconds', 0)
+                safe_metric(r.get('retrieval_metrics', {}).get('retrieval_time_seconds', 0))
                 for r in records
             ) / total_queries
 
             avg_generation_time = sum(
-                r.get('generation_metrics', {}).get('generation_time_seconds', 0)
+                safe_metric(r.get('generation_metrics', {}).get('generation_time_seconds', 0))
                 for r in records
             ) / total_queries
 
             avg_num_retrieved = sum(
-                r.get('retrieval_metrics', {}).get('num_retrieved', 0)
+                safe_metric(r.get('retrieval_metrics', {}).get('num_retrieved', 0))
                 for r in records
             ) / total_queries
 
             avg_relevance_score = sum(
-                r.get('retrieval_metrics', {}).get('avg_relevance_score', 0)
+                safe_metric(r.get('retrieval_metrics', {}).get('avg_relevance_score', 0))
                 for r in records
             ) / total_queries
 

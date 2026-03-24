@@ -35,6 +35,24 @@ def _ensure_announcements_file() -> None:
 _file_lock = threading.Lock()
 
 
+def _coerce_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 class AdminService:
     """Centralised admin business logic."""
 
@@ -46,7 +64,22 @@ class AdminService:
     # ── User Management ──────────────────────────────────────────
 
     def list_users(self) -> List[Dict[str, Any]]:
-        return self.user_db.list_users()
+        users = self.user_db.list_users() or []
+        normalized_users: List[Dict[str, Any]] = []
+
+        for user in users:
+            if not isinstance(user, dict):
+                continue
+            normalized_users.append(
+                {
+                    **user,
+                    "username": str(user.get("username") or user.get("email") or "Unknown user"),
+                    "email": str(user.get("email") or ""),
+                    "role": str(user.get("role") or "User"),
+                }
+            )
+
+        return normalized_users
 
     def update_user_role(self, username: str, new_role: str) -> Dict[str, Any]:
         if new_role not in ("User", "Admin"):
@@ -279,13 +312,17 @@ class AdminService:
                         COUNT(*) AS quiz_count
                     FROM quiz_results
                     WHERE metadata ? 'selected_folders'
+                      AND jsonb_typeof(metadata->'selected_folders') = 'array'
                     GROUP BY folder
                     ORDER BY quiz_count DESC
                     LIMIT 10
                 """)
                 topic_rows = cursor.fetchall()
                 popular_topics = [
-                    {"folder": row["folder"], "quiz_count": row["quiz_count"]}
+                    {
+                        "folder": str(row.get("folder") or "Unknown"),
+                        "quiz_count": _coerce_int(row.get("quiz_count")),
+                    }
                     for row in topic_rows
                 ]
 
@@ -304,8 +341,8 @@ class AdminService:
                 recent_activity = [
                     {
                         "date": row["quiz_date"].isoformat() if row["quiz_date"] else "",
-                        "count": row["count"],
-                        "avg_score": round(float(row["avg_score"]), 1),
+                        "count": _coerce_int(row.get("count")),
+                        "avg_score": round(_coerce_float(row.get("avg_score")), 1),
                     }
                     for row in activity_rows
                 ]
@@ -325,20 +362,22 @@ class AdminService:
                 performer_rows = cursor.fetchall()
                 top_performers = [
                     {
-                        "username": row["username"],
-                        "quizzes_taken": row["quizzes_taken"],
-                        "avg_score": round(float(row["avg_score"]), 1),
+                        "username": str(row.get("username") or "Unknown"),
+                        "quizzes_taken": _coerce_int(row.get("quizzes_taken")),
+                        "avg_score": round(_coerce_float(row.get("avg_score")), 1),
                     }
                     for row in performer_rows
                 ]
 
             return {
-                "total_quizzes": stats_row["total_quizzes"] if stats_row else 0,
-                "unique_users": stats_row["unique_users"] if stats_row else 0,
-                "avg_percentage": round(float(stats_row["avg_percentage"]), 1) if stats_row else 0,
-                "highest_percentage": round(float(stats_row["highest_percentage"]), 1) if stats_row else 0,
-                "lowest_percentage": round(float(stats_row["lowest_percentage"]), 1) if stats_row else 0,
-                "total_questions_answered": stats_row["total_questions_answered"] if stats_row else 0,
+                "total_quizzes": _coerce_int(stats_row.get("total_quizzes") if stats_row else 0),
+                "unique_users": _coerce_int(stats_row.get("unique_users") if stats_row else 0),
+                "avg_percentage": round(_coerce_float(stats_row.get("avg_percentage") if stats_row else 0), 1),
+                "highest_percentage": round(_coerce_float(stats_row.get("highest_percentage") if stats_row else 0), 1),
+                "lowest_percentage": round(_coerce_float(stats_row.get("lowest_percentage") if stats_row else 0), 1),
+                "total_questions_answered": _coerce_int(
+                    stats_row.get("total_questions_answered") if stats_row else 0
+                ),
                 "score_distribution": score_distribution,
                 "popular_topics": popular_topics,
                 "recent_activity": recent_activity,
@@ -351,38 +390,56 @@ class AdminService:
 
     # ── Dashboard Stats ──────────────────────────────────────────
 
-    def get_admin_stats(self) -> Dict[str, Any]:
-        users = self.list_users()
-        feedback = self.get_all_feedback(limit=10000)
-        announcements = self.list_announcements()
-
-        # Count query logs from RAG evaluation logs
-        total_queries = 0
-        log_path = Path("logs") / "rag_evaluation.jsonl"
-        if log_path.exists():
-            try:
-                with log_path.open("r", encoding="utf-8") as f:
-                    total_queries = sum(1 for line in f if line.strip())
-            except OSError:
-                pass
-
-        feedback_statuses = self._load_feedback_statuses()
-        new_feedback = sum(
-            1
-            for fb in feedback
-            if feedback_statuses.get(fb.get("id"), {}).get("status", "new") == "new"
-        )
-
-        return {
-            "total_users": len(users),
-            "total_queries": total_queries,
-            "total_feedback": len(feedback),
-            "new_feedback": new_feedback,
-            "active_announcements": sum(
-                1 for a in announcements if a.get("active", True)
-            ),
-            "admin_users": sum(1 for u in users if u.get("role") == "Admin"),
+    def _empty_admin_stats(self, error: Optional[str] = None) -> Dict[str, Any]:
+        data = {
+            "total_users": 0,
+            "total_queries": 0,
+            "total_feedback": 0,
+            "new_feedback": 0,
+            "active_announcements": 0,
+            "admin_users": 0,
         }
+        if error:
+            data["error"] = error
+        return data
+
+    def get_admin_stats(self) -> Dict[str, Any]:
+        try:
+            users = self.list_users()
+            feedback = self.get_all_feedback(limit=10000)
+            announcements = self.list_announcements()
+
+            # Count query logs from RAG evaluation logs
+            total_queries = 0
+            log_path = Path("logs") / "rag_evaluation.jsonl"
+            if log_path.exists():
+                try:
+                    with log_path.open("r", encoding="utf-8") as f:
+                        total_queries = sum(1 for line in f if line.strip())
+                except OSError:
+                    pass
+
+            feedback_statuses = self._load_feedback_statuses()
+            new_feedback = sum(
+                1
+                for fb in feedback
+                if feedback_statuses.get(fb.get("id"), {}).get("status", "new") == "new"
+            )
+
+            return {
+                "total_users": len(users),
+                "total_queries": total_queries,
+                "total_feedback": len(feedback),
+                "new_feedback": new_feedback,
+                "active_announcements": sum(
+                    1 for a in announcements if a.get("active", True)
+                ),
+                "admin_users": sum(1 for u in users if u.get("role") == "Admin"),
+            }
+        except Exception as e:
+            logger.error("Error getting admin stats: %s", e)
+            logger.warning(f"Admin service error: {e}")
+            return self._empty_admin_stats("Failed to fetch admin stats")
 
     def _empty_agent_metrics(self, error: Optional[str] = None) -> Dict[str, Any]:
         data = {
@@ -559,9 +616,9 @@ class AdminService:
                 "COALESCE(avg(ai.response_time_ms), 0) AS avg_rt"
             )
             row = stats_rows[0] if stats_rows else {}
-            total = row.get("total", 0)
-            unique_users = row.get("unique_users", 0)
-            avg_rt = round(float(row.get("avg_rt", 0)), 0)
+            total = _coerce_int(row.get("total"))
+            unique_users = _coerce_int(row.get("unique_users"))
+            avg_rt = round(_coerce_float(row.get("avg_rt")), 0)
 
             # Agent distribution
             dist_rows = client.execute_read(
@@ -569,7 +626,10 @@ class AdminService:
                 "RETURN ai.agent AS agent, COUNT(*) AS cnt "
                 "ORDER BY cnt DESC"
             )
-            agent_dist = {r["agent"]: r["cnt"] for r in dist_rows}
+            agent_dist = {
+                str(r.get("agent") or "unknown"): _coerce_int(r.get("cnt"))
+                for r in dist_rows
+            }
 
             # Response time by agent
             rt_rows = client.execute_read(
@@ -577,7 +637,10 @@ class AdminService:
                 "WHERE ai.response_time_ms IS NOT NULL "
                 "RETURN ai.agent AS agent, avg(ai.response_time_ms) AS avg_rt "
             )
-            rt_by_agent = {r["agent"]: round(float(r["avg_rt"]), 0) for r in rt_rows}
+            rt_by_agent = {
+                str(r.get("agent") or "unknown"): round(_coerce_float(r.get("avg_rt")), 0)
+                for r in rt_rows
+            }
 
             # Daily usage (last 14 days)
             daily_rows = client.execute_read(
@@ -591,8 +654,8 @@ class AdminService:
             daily = [
                 {
                     "date": r["date"],
-                    "count": r["count"],
-                    "unique_users": r["unique_users"],
+                    "count": _coerce_int(r.get("count")),
+                    "unique_users": _coerce_int(r.get("unique_users")),
                 }
                 for r in daily_rows
             ]
@@ -603,7 +666,13 @@ class AdminService:
                 "RETURN COALESCE(ai.query_type, 'unknown') AS type, COUNT(*) AS count "
                 "ORDER BY count DESC LIMIT 10"
             )
-            top_qt = [{"type": r["type"], "count": r["count"]} for r in qt_rows]
+            top_qt = [
+                {
+                    "type": str(r.get("type") or "unknown"),
+                    "count": _coerce_int(r.get("count")),
+                }
+                for r in qt_rows
+            ]
 
             # Routing accuracy (feedback-based)
             fb_rows = client.execute_read(
@@ -614,8 +683,8 @@ class AdminService:
                 "SUM(CASE WHEN ai.sentiment = 'negative' THEN 1 ELSE 0 END) AS neg"
             )
             fb_row = fb_rows[0] if fb_rows else {}
-            pos = fb_row.get("pos", 0)
-            neg = fb_row.get("neg", 0)
+            pos = _coerce_int(fb_row.get("pos"))
+            neg = _coerce_int(fb_row.get("neg"))
             fb_total = pos + neg
             routing_acc = {
                 "positive_after_route": round(pos / fb_total * 100, 1) if fb_total else 0,
@@ -658,14 +727,20 @@ class AdminService:
             nodes_by_type_rows = client.execute_read(
                 "MATCH (n) RETURN labels(n)[0] AS type, COUNT(*) AS count"
             )
-            nodes_by_type = {r["type"]: r["count"] for r in nodes_by_type_rows}
+            nodes_by_type = {
+                str(r.get("type") or "Unknown"): _coerce_int(r.get("count"))
+                for r in nodes_by_type_rows
+            }
             total_nodes = sum(nodes_by_type.values())
 
             # Relationship counts by type
             rels_by_type_rows = client.execute_read(
                 "MATCH ()-[r]->() RETURN type(r) AS type, COUNT(*) AS count"
             )
-            rels_by_type = {r["type"]: r["count"] for r in rels_by_type_rows}
+            rels_by_type = {
+                str(r.get("type") or "Unknown"): _coerce_int(r.get("count"))
+                for r in rels_by_type_rows
+            }
             total_rels = sum(rels_by_type.values())
 
             # Most struggled concepts
@@ -675,7 +750,10 @@ class AdminService:
                 "ORDER BY students DESC LIMIT 10"
             )
             most_struggled = [
-                {"concept": r["concept"], "students": r["students"]}
+                {
+                    "concept": str(r.get("concept") or "Unknown"),
+                    "students": _coerce_int(r.get("students")),
+                }
                 for r in struggled_rows
             ]
 
@@ -686,7 +764,10 @@ class AdminService:
                 "ORDER BY study_count DESC LIMIT 10"
             )
             most_studied = [
-                {"topic": r["topic"], "study_count": r["study_count"]}
+                {
+                    "topic": str(r.get("topic") or "Unknown"),
+                    "study_count": _coerce_int(r.get("study_count")),
+                }
                 for r in studied_rows
             ]
 
@@ -701,10 +782,10 @@ class AdminService:
             )
             student_engagement = [
                 {
-                    "username": r["username"],
-                    "queries": r["queries"],
-                    "sessions": r["sessions"],
-                    "doubts": r["doubts"],
+                    "username": str(r.get("username") or "Unknown"),
+                    "queries": _coerce_int(r.get("queries")),
+                    "sessions": _coerce_int(r.get("sessions")),
+                    "doubts": _coerce_int(r.get("doubts")),
                 }
                 for r in engagement_rows
             ]
@@ -714,7 +795,10 @@ class AdminService:
                 "MATCH (f:Feedback) "
                 "RETURN f.sentiment AS sentiment, COUNT(*) AS count"
             )
-            feedback_sentiment = {r["sentiment"]: r["count"] for r in feedback_rows}
+            feedback_sentiment = {
+                str(r.get("sentiment") or "unknown"): _coerce_int(r.get("count"))
+                for r in feedback_rows
+            }
 
             return {
                 "total_nodes": total_nodes,
