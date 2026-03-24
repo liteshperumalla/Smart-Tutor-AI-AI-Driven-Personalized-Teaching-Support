@@ -45,6 +45,13 @@ def _resolve_topic_label(folder: str) -> str:
         return _MODULE_TOPIC_LABELS[module_number]
     return folder
 
+
+def _normalize_source_path(path: str) -> str:
+    normalized = (path or "").strip().lstrip("/")
+    if normalized.startswith("modules/"):
+        return normalized[len("modules/") :]
+    return normalized
+
 # Diverse query angles to get varied RAG context per attempt
 _QUERY_VARIANTS = [
     "Explain the key definitions and terminology from this topic",
@@ -96,6 +103,109 @@ class QuizService:
         self._folder_cache: Optional[Dict[str, List[str]]] = None
         # Redis-backed quiz store shared across all workers
         self._redis = get_redis_cache()
+
+    @staticmethod
+    def _extract_completion_text(llm_response: object) -> str:
+        text = getattr(llm_response, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+        return str(llm_response).strip()
+
+    @staticmethod
+    def _normalize_correct_answer_letter(payload: Dict[str, object]) -> Optional[str]:
+        raw_value = payload.get("correct_answer_letter")
+        if isinstance(raw_value, str):
+            candidate = raw_value.strip().upper()
+            candidate = re.sub(
+                r"^(?:OPTION|ANSWER|CORRECT ANSWER)\s*[:\-]?\s*",
+                "",
+                candidate,
+            )
+            match = re.match(r"^([A-D])(?:[\W_].*)?$", candidate)
+            if match:
+                return match.group(1)
+
+            options = payload.get("options")
+            if isinstance(options, list):
+                normalized_options = [
+                    str(opt).strip()
+                    for opt in options
+                    if isinstance(opt, str) and opt.strip()
+                ]
+                for index, option in enumerate(normalized_options[:4]):
+                    if candidate == option.upper():
+                        return chr(ord("A") + index)
+
+        raw_answer = payload.get("correct_answer")
+        if isinstance(raw_answer, str):
+            payload["correct_answer_letter"] = raw_answer
+            return QuizService._normalize_correct_answer_letter(payload)
+
+        return None
+
+    def _fetch_s3_chunk_context(
+        self, file_paths: List[str], max_chunks: int = 8, chars_per_chunk: int = 1200
+    ) -> str:
+        if not file_paths:
+            return ""
+
+        try:
+            from backend.cloud.aws_helpers import get_boto3_client
+
+            s3 = get_boto3_client("s3")
+            context_parts: List[str] = []
+            seen_keys: set[str] = set()
+
+            for file_path in file_paths:
+                normalized_path = _normalize_source_path(file_path)
+                if not normalized_path:
+                    continue
+                chunk_prefix = f"chunks/{normalized_path}/"
+                paginator = s3.get_paginator("list_objects_v2")
+                chunk_count = 0
+
+                for page in paginator.paginate(
+                    Bucket=config.S3_DOCUMENTS_BUCKET,
+                    Prefix=chunk_prefix,
+                    PaginationConfig={"MaxItems": max_chunks},
+                ):
+                    for obj in page.get("Contents", []):
+                        key = obj.get("Key", "")
+                        if not key.endswith(".txt") or key in seen_keys:
+                            continue
+                        try:
+                            response = s3.get_object(
+                                Bucket=config.S3_DOCUMENTS_BUCKET, Key=key
+                            )
+                            text = response["Body"].read().decode(
+                                "utf-8", errors="ignore"
+                            ).strip()
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to read quiz chunk context %s: %s", key, exc
+                            )
+                            continue
+
+                        if not text:
+                            continue
+
+                        context_parts.append(text[:chars_per_chunk])
+                        seen_keys.add(key)
+                        chunk_count += 1
+
+                        if len(context_parts) >= max_chunks or chunk_count >= 2:
+                            break
+
+                    if len(context_parts) >= max_chunks or chunk_count >= 2:
+                        break
+
+                if len(context_parts) >= max_chunks:
+                    break
+
+            return "\n\n".join(context_parts)
+        except Exception as exc:
+            logger.warning("Failed to load quiz fallback chunk context: %s", exc)
+            return ""
 
     def _get_folder_structure(self) -> Dict[str, List[str]]:
         if self._folder_cache is not None:
@@ -149,12 +259,18 @@ class QuizService:
 
             # Post-retrieval filtering: keep only nodes from selected folders
             filtered_nodes = []
+            normalized_file_paths = [_normalize_source_path(path) for path in file_paths]
             for node in nodes:
                 metadata = getattr(node.node, "metadata", {}) or {}
-                source = metadata.get("source_file") or metadata.get("s3_key") or ""
+                source = _normalize_source_path(
+                    metadata.get("source_file") or metadata.get("s3_key") or ""
+                )
                 # Check if this node's source matches any of the selected file paths
                 if file_paths and source:
-                    if any(source.endswith(fp) or fp in source for fp in file_paths):
+                    if any(
+                        fp and (source.endswith(fp) or fp in source)
+                        for fp in normalized_file_paths
+                    ):
                         filtered_nodes.append(node)
                 else:
                     # If no metadata to filter on, include all nodes
@@ -167,10 +283,19 @@ class QuizService:
             for node in nodes_to_use:
                 text = node.node.text if hasattr(node.node, "text") else str(node.node)
                 context_parts.append(text)
-            return "\n\n".join(context_parts)
+            context = "\n\n".join(context_parts).strip()
+            if context:
+                return context
         except Exception as e:
             logger.error(f"Error getting context: {e}")
-            return ""
+
+        fallback_context = self._fetch_s3_chunk_context(file_paths)
+        if fallback_context:
+            logger.info(
+                "Using direct S3 chunk fallback context for quiz generation (%s files)",
+                len(file_paths),
+            )
+        return fallback_context
 
     def generate_quiz(
         self, user_id: str, selected_folders: List[str], num_questions: int
@@ -209,10 +334,11 @@ class QuizService:
             try:
                 prompt = QUESTION_TEMPLATE.format(context_str=context_str[:4000])
                 llm_response = self.llm.complete(prompt, temperature=0.5)
-                response_text = str(llm_response).strip()
+                response_text = self._extract_completion_text(llm_response)
 
                 # Extract JSON from response
-                match = re.search(r"\{[\s\S]*\}", response_text)
+                cleaned_response = response_text.replace("```json", "```").strip()
+                match = re.search(r"\{[\s\S]*\}", cleaned_response)
                 if not match:
                     logger.warning(f"Quiz generation attempt {attempts}: no JSON found")
                     continue
@@ -284,16 +410,26 @@ class QuizService:
     def _is_valid_question(self, payload: Dict[str, object]) -> bool:
         if not isinstance(payload, dict):
             return False
-        if payload.get("correct_answer_letter") not in {"A", "B", "C", "D"}:
-            return False
         options = payload.get("options")
         if not isinstance(options, list) or len(options) != 4:
             return False
-        if not all(isinstance(opt, str) and opt.strip() for opt in options):
+        normalized_options = []
+        for index, opt in enumerate(options):
+            if not isinstance(opt, str) or not opt.strip():
+                return False
+            text = opt.strip()
+            text = re.sub(rf"^[{chr(ord('A') + index)}][\.)\-\]:]\s*", "", text, flags=re.IGNORECASE)
+            normalized_options.append(text)
+        payload["options"] = normalized_options
+
+        correct_letter = self._normalize_correct_answer_letter(payload)
+        if correct_letter not in {"A", "B", "C", "D"}:
             return False
+        payload["correct_answer_letter"] = correct_letter
         question = payload.get("question")
         if not isinstance(question, str) or not question.strip():
             return False
+        payload["question"] = question.strip()
         return True
 
     def save_result(

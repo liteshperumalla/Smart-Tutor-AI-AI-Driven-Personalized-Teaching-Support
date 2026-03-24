@@ -5,6 +5,8 @@ Tests for quiz generation, folder listing, and result retrieval.
 
 import pytest
 
+from backend.services.quiz_service import QuizService
+
 
 class TestQuizEndpoints:
     """Test quiz API endpoints"""
@@ -48,3 +50,50 @@ class TestQuizEndpoints:
         # Returns list of folders (may be empty if no content uploaded),
         # or 500 when AWS credentials are unavailable in CI
         assert response.status_code in (200, 404, 500)
+
+
+class TestQuizServiceParsing:
+    def test_extract_completion_text_prefers_text_attribute(self):
+        service = object.__new__(QuizService)
+
+        class FakeResponse:
+            text = '{"question":"What is RAG?","options":["A","B","C","D"],"correct_answer_letter":"A"}'
+
+            def __str__(self):
+                return "FakeResponse(text omitted)"
+
+        assert service._extract_completion_text(FakeResponse()).startswith('{"question"')
+
+    def test_is_valid_question_normalizes_answer_and_options(self):
+        service = object.__new__(QuizService)
+        payload = {
+            "question": "  What is retrieval-augmented generation?  ",
+            "options": [
+                "A. It combines search with generation",
+                "B. It only summarizes documents",
+                "C. It removes retrieval entirely",
+                "D. It fine-tunes the model every request",
+            ],
+            "correct_answer_letter": "Option A. It combines search with generation",
+        }
+
+        assert service._is_valid_question(payload) is True
+        assert payload["question"] == "What is retrieval-augmented generation?"
+        assert payload["options"][0] == "It combines search with generation"
+        assert payload["correct_answer_letter"] == "A"
+
+    def test_get_context_uses_s3_chunk_fallback_when_retrieval_fails(self, monkeypatch):
+        service = object.__new__(QuizService)
+
+        class BrokenRetriever:
+            def retrieve(self, _query):
+                raise RuntimeError("index unavailable")
+
+        service.s3_retriever = BrokenRetriever()
+        service._fetch_s3_chunk_context = lambda file_paths: "Chunk text fallback"
+
+        context = service._get_context_for_query(
+            "Explain embeddings", ["modules/Module 6/embeddings.pdf"]
+        )
+
+        assert context == "Chunk text fallback"
