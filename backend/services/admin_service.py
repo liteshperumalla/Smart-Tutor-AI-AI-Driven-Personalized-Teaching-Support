@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from backend.config import config
 from backend.database import get_user_db
 from backend.logger import get_logger
+from backend.services.appointment_service import AppointmentService
 
 logger = get_logger(__name__)
 
@@ -59,6 +60,7 @@ class AdminService:
     def __init__(self) -> None:
         self.user_db = get_user_db()
         self.user_data_root = Path(config.USER_DATA_ROOT)
+        self.appointments = AppointmentService()
         _ensure_announcements_file()
 
     # ── User Management ──────────────────────────────────────────
@@ -153,6 +155,11 @@ class AdminService:
         self, feedback_id: str, new_status: str
     ) -> Optional[Dict[str, Any]]:
         """Update the status of a feedback entry stored in the status overlay file."""
+        feedback_exists = any(
+            entry.get("id") == feedback_id for entry in self.get_all_feedback(limit=10000)
+        )
+        if not feedback_exists:
+            return None
         statuses = self._load_feedback_statuses()
         statuses[feedback_id] = {
             "status": new_status,
@@ -398,16 +405,62 @@ class AdminService:
             "new_feedback": 0,
             "active_announcements": 0,
             "admin_users": 0,
+            "pending_appointments": 0,
+            "storage_readiness": self.get_storage_readiness(),
         }
         if error:
             data["error"] = error
         return data
+
+    def get_storage_readiness(self) -> Dict[str, Any]:
+        path = Path(config.USER_DATA_ROOT)
+        path_str = str(path)
+        path_lower = path_str.lower()
+        shared_storage = bool(config.USER_DATA_SHARED_STORAGE)
+        looks_persistent = any(
+            marker in path_lower
+            for marker in ("efs", "persistent", "mnt", "volume", "/data")
+        )
+        path_exists = path.exists()
+
+        ready = config.ENVIRONMENT != "production" or shared_storage
+        warning = None
+        if config.ENVIRONMENT == "production" and not shared_storage:
+            warning = (
+                "USER_DATA_ROOT is used for appointments and feedback, but "
+                "USER_DATA_SHARED_STORAGE is not enabled."
+            )
+
+        return {
+            "ready": ready,
+            "environment": config.ENVIRONMENT,
+            "user_data_root": path_str,
+            "path_exists": path_exists,
+            "shared_storage_configured": shared_storage,
+            "path_looks_persistent": looks_persistent,
+            "warning": warning,
+        }
+
+    def get_all_appointments(
+        self,
+        *,
+        status: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        return [appt.to_dict() for appt in self.appointments.list_all(status=status, limit=limit)]
+
+    def update_appointment_status(
+        self, appointment_id: str, new_status: str
+    ) -> Optional[Dict[str, Any]]:
+        appointment = self.appointments.update_status(appointment_id, new_status)
+        return appointment.to_dict() if appointment else None
 
     def get_admin_stats(self) -> Dict[str, Any]:
         try:
             users = self.list_users()
             feedback = self.get_all_feedback(limit=10000)
             announcements = self.list_announcements()
+            appointments = self.get_all_appointments(limit=10000)
 
             # Count query logs from RAG evaluation logs
             total_queries = 0
@@ -435,6 +488,10 @@ class AdminService:
                     1 for a in announcements if a.get("active", True)
                 ),
                 "admin_users": sum(1 for u in users if u.get("role") == "Admin"),
+                "pending_appointments": sum(
+                    1 for appt in appointments if appt.get("status") == "pending"
+                ),
+                "storage_readiness": self.get_storage_readiness(),
             }
         except Exception as e:
             logger.error("Error getting admin stats: %s", e)

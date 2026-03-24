@@ -146,15 +146,19 @@ class PerUserRateLimiter:
             # Invalid/expired/forged token — fall back to IP-based limiting
             return None
 
-    def _get_rate_limit_key(self, username: str, endpoint: str) -> str:
+    def _get_rate_limit_key(
+        self, username: str, endpoint: str, scope: Optional[str] = None
+    ) -> str:
         """Generate Redis key for rate limiting"""
-        return f"rate_limit:user:{username}:{endpoint}"
+        suffix = f":{scope}" if scope else ""
+        return f"rate_limit:user:{username}:{endpoint}{suffix}"
 
     async def check_rate_limit(
         self,
         request: Request,
         limit: Optional[int] = None,
-        window: Optional[int] = None
+        window: Optional[int] = None,
+        scope: Optional[str] = None,
     ) -> None:
         """
         Check if user has exceeded rate limit
@@ -184,7 +188,7 @@ class PerUserRateLimiter:
         endpoint = f"{request.method}:{request.url.path}"
 
         # Generate rate limit key
-        key = self._get_rate_limit_key(username, endpoint)
+        key = self._get_rate_limit_key(username, endpoint, scope=scope)
 
         try:
             # Use raw Redis client for numeric operations (not the cache wrapper which pickles)

@@ -453,6 +453,14 @@ class Config:
     SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
     SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
     EMAIL_FROM = os.getenv("EMAIL_FROM", "")
+    ADMIN_NOTIFICATION_EMAILS = [
+        email.strip()
+        for email in os.getenv("ADMIN_NOTIFICATION_EMAILS", "").split(",")
+        if email.strip()
+    ]
+    USER_DATA_SHARED_STORAGE = (
+        os.getenv("USER_DATA_SHARED_STORAGE", "false").lower() == "true"
+    )
 
     # Agent System (Multi-Agent LangGraph)
     AGENT_SYSTEM_ENABLED = os.getenv("AGENT_SYSTEM_ENABLED", "false").lower() == "true"

@@ -18,6 +18,7 @@ const REASONS = [
 
 export default function AppointmentsPage() {
   const { token } = useAuthToken();
+  const today = new Date().toISOString().split("T")[0];
   const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [formState, setFormState] = useState<{ loading: boolean; error: string | null; success: boolean }>({
@@ -172,6 +173,7 @@ export default function AppointmentsPage() {
                   <input
                     type="date"
                     name="preferred_date"
+                    min={today}
                     className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
                     required
                   />

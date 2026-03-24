@@ -94,6 +94,7 @@ class QuizGenerationError(RuntimeError):
 
 class QuizService:
     _QUIZ_KEY_PREFIX = "quiz:"
+    _PLACEHOLDER_PREFIX = "[Content from "
 
     def __init__(self) -> None:
         self.storage = get_storage_backend()
@@ -207,6 +208,13 @@ class QuizService:
             logger.warning("Failed to load quiz fallback chunk context: %s", exc)
             return ""
 
+    @classmethod
+    def _has_real_context(cls, context_parts: List[str]) -> bool:
+        meaningful_parts = [part.strip() for part in context_parts if part and part.strip()]
+        if not meaningful_parts:
+            return False
+        return any(not part.startswith(cls._PLACEHOLDER_PREFIX) for part in meaningful_parts)
+
     def _get_folder_structure(self) -> Dict[str, List[str]]:
         if self._folder_cache is not None:
             return self._folder_cache
@@ -284,8 +292,10 @@ class QuizService:
                 text = node.node.text if hasattr(node.node, "text") else str(node.node)
                 context_parts.append(text)
             context = "\n\n".join(context_parts).strip()
-            if context:
+            if context and self._has_real_context(context_parts):
                 return context
+            if context:
+                logger.info("Quiz retrieval returned placeholder-only context; using S3 chunk fallback")
         except Exception as e:
             logger.error(f"Error getting context: {e}")
 

@@ -28,6 +28,10 @@ class UpdateFeedbackStatusRequest(BaseModel):
     status: str = Field(..., pattern="^(new|reviewed|resolved)$")
 
 
+class UpdateAppointmentStatusRequest(BaseModel):
+    status: str = Field(..., pattern="^(pending|confirmed|cancelled|completed)$")
+
+
 class CreateAnnouncementRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1, max_length=5000)
@@ -121,6 +125,37 @@ def delete_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
     return {"success": True, "username": username}
+
+
+# ── Feedback ──────────────────────────────────────────────────────
+
+@router.get("/appointments")
+def list_all_appointments(
+    status: Optional[str] = Query(
+        None, pattern="^(pending|confirmed|cancelled|completed)$"
+    ),
+    limit: int = Query(200, ge=1, le=1000),
+    session=Depends(get_admin_session),
+):
+    svc = get_admin_service()
+    entries = svc.get_all_appointments(status=status, limit=limit)
+    return {"appointments": entries, "total": len(entries)}
+
+
+@router.put("/appointments/{appointment_id}")
+def update_appointment_status(
+    appointment_id: str,
+    payload: UpdateAppointmentStatusRequest,
+    session=Depends(get_admin_session),
+):
+    svc = get_admin_service()
+    result = svc.update_appointment_status(appointment_id, payload.status)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found",
+        )
+    return {"success": True, "appointment": result}
 
 
 # ── Feedback ──────────────────────────────────────────────────────

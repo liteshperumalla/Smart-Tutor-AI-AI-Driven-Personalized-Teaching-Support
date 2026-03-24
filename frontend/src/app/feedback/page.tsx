@@ -38,7 +38,7 @@ export default function FeedbackPage() {
   async function submitToApi(path: string, payload: unknown) {
     if (!token) {
       router.push("/login");
-      return;
+      throw new Error("Please sign in to submit feedback.");
     }
     await postJSON<{ success: boolean }>({ path, body: payload, token });
   }

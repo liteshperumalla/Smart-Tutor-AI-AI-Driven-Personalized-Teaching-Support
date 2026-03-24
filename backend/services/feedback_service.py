@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Literal
 
@@ -18,6 +18,10 @@ FeedbackCategory = Literal[
 ]
 
 BugSeverity = Literal["low", "medium", "high", "critical"]
+
+
+class DuplicateFeedbackError(RuntimeError):
+    """Raised when the same feedback or bug is submitted repeatedly."""
 
 
 @dataclass
@@ -52,6 +56,10 @@ class FeedbackService:
         self.user_root.mkdir(parents=True, exist_ok=True)
 
     def log_feedback(self, entry: FeedbackEntry) -> None:
+        if self._has_duplicate_feedback(entry):
+            raise DuplicateFeedbackError(
+                "A matching feedback submission was already received recently."
+            )
         with self.feedback_file.open("a", encoding="utf-8") as f:
             f.write(self._serialize_feedback(entry))
         self._append_user_entry(entry.username, "feedback", {
@@ -63,6 +71,10 @@ class FeedbackService:
         })
 
     def log_bug_report(self, entry: BugReportEntry) -> None:
+        if self._has_duplicate_bug(entry):
+            raise DuplicateFeedbackError(
+                "A matching bug report was already received recently."
+            )
         with self.bug_file.open("a", encoding="utf-8") as f:
             f.write(self._serialize_bug(entry))
         self._append_user_entry(entry.username, "bug", {
@@ -132,6 +144,41 @@ class FeedbackService:
                     continue
         entries.sort(key=lambda item: item.get("created_at", ""), reverse=True)
         return entries
+
+    def _has_duplicate_feedback(self, entry: FeedbackEntry) -> bool:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        for existing in self._read_entries(entry.username, "feedback"):
+            created_at = existing.get("created_at")
+            try:
+                created = datetime.fromisoformat(str(created_at))
+            except Exception:
+                continue
+            if created < cutoff:
+                break
+            if (
+                str(existing.get("category", "")).strip().lower() == entry.category.strip().lower()
+                and str(existing.get("message", "")).strip().lower() == entry.message.strip().lower()
+            ):
+                return True
+        return False
+
+    def _has_duplicate_bug(self, entry: BugReportEntry) -> bool:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        for existing in self._read_entries(entry.username, "bug"):
+            created_at = existing.get("created_at")
+            try:
+                created = datetime.fromisoformat(str(created_at))
+            except Exception:
+                continue
+            if created < cutoff:
+                break
+            if (
+                str(existing.get("feature", "")).strip().lower() == entry.feature.strip().lower()
+                and str(existing.get("description", "")).strip().lower() == entry.description.strip().lower()
+                and str(existing.get("steps", "")).strip().lower() == entry.steps.strip().lower()
+            ):
+                return True
+        return False
 
     def list_entries(self, username: str) -> Dict[str, List[Dict[str, object]]]:
         return {

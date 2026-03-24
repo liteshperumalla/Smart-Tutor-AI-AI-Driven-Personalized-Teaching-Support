@@ -47,7 +47,12 @@ async def generate_quiz(
     quiz_service: QuizService = Depends(get_quiz_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
-    await rate_limiter.check_rate_limit(request, limit=_QUIZ_GEN_LIMIT, window=_QUIZ_GEN_WINDOW)
+    await rate_limiter.check_rate_limit(
+        request,
+        limit=_QUIZ_GEN_LIMIT,
+        window=_QUIZ_GEN_WINDOW,
+        scope="quiz_generate",
+    )
     await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     _, user = session
     try:

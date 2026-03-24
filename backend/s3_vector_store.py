@@ -55,6 +55,10 @@ class S3VectorStore:
         logger.info(f"S3VectorStore initialized: {self.bucket_name}")
 
     @staticmethod
+    def _default_chunk_s3_key(source_file: str, chunk_index: int) -> str:
+        return f"chunks/{source_file}/chunk_{int(chunk_index):04d}.txt"
+
+    @staticmethod
     def _safe_serialize(data: dict) -> bytes:
         """Serialize vectors + metadata without pickle.
         Format: [8-byte meta JSON length][meta JSON bytes][numpy .npy bytes]
@@ -102,7 +106,10 @@ class S3VectorStore:
             self.vectors.append((chunk_id, vec))
             s3_key = meta.get(
                 "s3_key",
-                f"chunks/{meta.get('source_file', '')}/chunk_{meta.get('chunk_index', 0):03d}.txt",
+                self._default_chunk_s3_key(
+                    meta.get("source_file", ""),
+                    meta.get("chunk_index", 0),
+                ),
             )
             self.metadata[chunk_id] = {
                 "source_file": meta.get("source_file", ""),
@@ -211,6 +218,13 @@ class S3VectorStore:
                     "chunk_id": chunk_id,
                     "source_file": self.metadata[chunk_id].get("source_file", ""),
                     "chunk_index": self.metadata[chunk_id].get("chunk_index", 0),
+                    "s3_key": self.metadata[chunk_id].get(
+                        "s3_key",
+                        self._default_chunk_s3_key(
+                            self.metadata[chunk_id].get("source_file", ""),
+                            self.metadata[chunk_id].get("chunk_index", 0),
+                        ),
+                    ),
                 }
                 for chunk_id, _ in self.vectors
             ]
@@ -298,6 +312,13 @@ class S3VectorStore:
                     "chunk_id": chunk_id,
                     "source_file": self.metadata[chunk_id].get("source_file", ""),
                     "chunk_index": self.metadata[chunk_id].get("chunk_index", 0),
+                    "s3_key": self.metadata[chunk_id].get(
+                        "s3_key",
+                        self._default_chunk_s3_key(
+                            self.metadata[chunk_id].get("source_file", ""),
+                            self.metadata[chunk_id].get("chunk_index", 0),
+                        ),
+                    ),
                 }
                 for chunk_id, _ in self.vectors
             ]

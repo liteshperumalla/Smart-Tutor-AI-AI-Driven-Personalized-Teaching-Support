@@ -82,7 +82,7 @@ class TestQuizServiceParsing:
         assert payload["options"][0] == "It combines search with generation"
         assert payload["correct_answer_letter"] == "A"
 
-    def test_get_context_uses_s3_chunk_fallback_when_retrieval_fails(self, monkeypatch):
+    def test_get_context_uses_s3_chunk_fallback_when_retrieval_fails(self):
         service = object.__new__(QuizService)
 
         class BrokenRetriever:
@@ -97,3 +97,36 @@ class TestQuizServiceParsing:
         )
 
         assert context == "Chunk text fallback"
+
+    def test_get_context_uses_s3_chunk_fallback_for_placeholder_only_results(self):
+        service = object.__new__(QuizService)
+
+        class FakeNode:
+            def __init__(self, text, source_file):
+                self.node = type(
+                    "Node",
+                    (),
+                    {
+                        "text": text,
+                        "metadata": {"source_file": source_file},
+                    },
+                )()
+
+        class PlaceholderRetriever:
+            def retrieve(self, _query):
+                return [
+                    FakeNode(
+                        "[Content from Module 5/data_cleaning.pdf]",
+                        "Module 5/data_cleaning.pdf",
+                    )
+                ]
+
+        service.s3_retriever = PlaceholderRetriever()
+        service._fetch_s3_chunk_context = lambda file_paths: "Actual chunk text"
+
+        context = service._get_context_for_query(
+            "Explain data cleaning",
+            ["modules/Module 5/data_cleaning.pdf"],
+        )
+
+        assert context == "Actual chunk text"

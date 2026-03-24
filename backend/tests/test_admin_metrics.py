@@ -154,3 +154,102 @@ def test_summary_stats_ignore_nullable_metric_values(tmp_path):
     assert summary["avg_generation_time_seconds"] == 0.75
     assert summary["avg_num_retrieved"] == 2.0
     assert summary["avg_relevance_score"] == 0.4
+
+
+def test_update_feedback_status_requires_existing_entry(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+
+    user_feedback_dir = tmp_path / "user_data" / "alice" / "feedback"
+    user_feedback_dir.mkdir(parents=True, exist_ok=True)
+    feedback_entry = {
+        "category": "general",
+        "message": "The feedback flow is clear and useful.",
+        "created_at": "2026-03-24T10:15:00",
+        "name": "Alice",
+        "email": "alice@example.com",
+    }
+    (user_feedback_dir / "feedback.jsonl").write_text(
+        json.dumps(feedback_entry) + "\n",
+        encoding="utf-8",
+    )
+
+    service = AdminService()
+    entries = service.get_all_feedback()
+    assert len(entries) == 1
+
+    assert service.update_feedback_status("missing-id", "resolved") is None
+
+    updated = service.update_feedback_status(entries[0]["id"], "resolved")
+
+    assert updated is not None
+    assert updated["status"] == "resolved"
+    status_file = tmp_path / "data" / "feedback_statuses.json"
+    saved = json.loads(status_file.read_text(encoding="utf-8"))
+    assert saved[entries[0]["id"]]["status"] == "resolved"
+
+
+def test_admin_stats_reports_storage_readiness_and_pending_appointments(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
+    monkeypatch.setattr(config, "DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(config, "ENVIRONMENT", "production")
+    monkeypatch.setattr(config, "USER_DATA_SHARED_STORAGE", False)
+
+    appointment_dir = tmp_path / "user_data" / "alice" / "appointments"
+    appointment_dir.mkdir(parents=True, exist_ok=True)
+    appointment = {
+        "id": "appt-1",
+        "user_id": "alice",
+        "user_name": "Alice",
+        "user_email": "alice@example.com",
+        "appointment_with": "Professor (Dr. Chen)",
+        "preferred_date": "2026-03-29",
+        "preferred_time": "09:00",
+        "primary_reason": "Discuss project",
+        "additional_details": "",
+        "status": "pending",
+        "requested_at": "2026-03-24T09:15:00",
+    }
+    (appointment_dir / "appt-1.json").write_text(
+        json.dumps(appointment),
+        encoding="utf-8",
+    )
+
+    service = AdminService()
+    stats = service.get_admin_stats()
+
+    assert stats["pending_appointments"] == 1
+    assert stats["storage_readiness"]["ready"] is False
+    assert stats["storage_readiness"]["shared_storage_configured"] is False
+
+
+def test_update_appointment_status_requires_existing_entry(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "USER_DATA_ROOT", str(tmp_path / "user_data"))
+    service = AdminService()
+
+    assert service.update_appointment_status("missing-id", "confirmed") is None
+
+    appointment_dir = tmp_path / "user_data" / "alice" / "appointments"
+    appointment_dir.mkdir(parents=True, exist_ok=True)
+    appointment = {
+        "id": "appt-2",
+        "user_id": "alice",
+        "user_name": "Alice",
+        "user_email": "alice@example.com",
+        "appointment_with": "Teaching Assistant (TA)",
+        "preferred_date": "2026-03-30",
+        "preferred_time": "14:00",
+        "primary_reason": "Assignment help",
+        "additional_details": "",
+        "status": "pending",
+        "requested_at": "2026-03-24T11:00:00",
+    }
+    (appointment_dir / "appt-2.json").write_text(
+        json.dumps(appointment),
+        encoding="utf-8",
+    )
+
+    updated = service.update_appointment_status("appt-2", "confirmed")
+
+    assert updated is not None
+    assert updated["status"] == "confirmed"

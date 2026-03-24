@@ -8,6 +8,8 @@ import {
   MessageSquare,
   Activity,
   Megaphone,
+  CalendarDays,
+  HardDrive,
   ShieldAlert,
   TrendingUp,
 } from "lucide-react";
@@ -94,6 +96,14 @@ export default function AdminDashboard() {
       bg: "bg-rose-50 dark:bg-rose-950/30",
       border: "border-rose-200 dark:border-rose-900",
     },
+    {
+      label: "Pending Appointments",
+      value: stats?.pending_appointments ?? 0,
+      icon: CalendarDays,
+      color: "text-cyan-600 dark:text-cyan-400",
+      bg: "bg-cyan-50 dark:bg-cyan-950/30",
+      border: "border-cyan-200 dark:border-cyan-900",
+    },
   ];
 
   return (
@@ -101,6 +111,25 @@ export default function AdminDashboard() {
       <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
         Dashboard Overview
       </h2>
+
+      {stats && !stats.storage_readiness.ready && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <HardDrive className="mt-0.5 h-5 w-5 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Shared storage is not confirmed for production
+              </p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                {stats.storage_readiness.warning || "Appointments and feedback are stored under USER_DATA_ROOT."}
+              </p>
+              <p className="mt-2 text-xs text-amber-700/80 dark:text-amber-400/80">
+                Path: {stats.storage_readiness.user_data_root || "Unavailable"} · Shared flag: {stats.storage_readiness.shared_storage_configured ? "enabled" : "disabled"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => {

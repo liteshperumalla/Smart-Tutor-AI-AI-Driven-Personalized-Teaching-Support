@@ -2299,6 +2299,16 @@ export type AdminStats = {
   new_feedback: number;
   active_announcements: number;
   admin_users: number;
+  pending_appointments: number;
+  storage_readiness: {
+    ready: boolean;
+    environment: string;
+    user_data_root: string;
+    path_exists: boolean;
+    shared_storage_configured: boolean;
+    path_looks_persistent: boolean;
+    warning?: string | null;
+  };
   error?: string;
 };
 
@@ -2311,6 +2321,10 @@ export type AdminUser = {
   created_at?: string;
 };
 
+export type AdminAppointmentEntry = AppointmentRecord & {
+  user_id: string;
+};
+
 function normalizeAdminStats(stats?: Partial<AdminStats> | null): AdminStats {
   return {
     total_users: toFiniteNumber(stats?.total_users),
@@ -2319,6 +2333,29 @@ function normalizeAdminStats(stats?: Partial<AdminStats> | null): AdminStats {
     new_feedback: toFiniteNumber(stats?.new_feedback),
     active_announcements: toFiniteNumber(stats?.active_announcements),
     admin_users: toFiniteNumber(stats?.admin_users),
+    pending_appointments: toFiniteNumber(stats?.pending_appointments),
+    storage_readiness: {
+      ready: Boolean(stats?.storage_readiness?.ready),
+      environment:
+        typeof stats?.storage_readiness?.environment === "string"
+          ? stats.storage_readiness.environment
+          : "",
+      user_data_root:
+        typeof stats?.storage_readiness?.user_data_root === "string"
+          ? stats.storage_readiness.user_data_root
+          : "",
+      path_exists: Boolean(stats?.storage_readiness?.path_exists),
+      shared_storage_configured: Boolean(
+        stats?.storage_readiness?.shared_storage_configured
+      ),
+      path_looks_persistent: Boolean(
+        stats?.storage_readiness?.path_looks_persistent
+      ),
+      warning:
+        typeof stats?.storage_readiness?.warning === "string"
+          ? stats.storage_readiness.warning
+          : undefined,
+    },
     error: stats?.error,
   };
 }
@@ -2337,6 +2374,40 @@ function normalizeAdminUser(user?: Partial<AdminUser> | null): AdminUser {
     display_name: typeof user?.display_name === "string" ? user.display_name : undefined,
     last_login: typeof user?.last_login === "string" ? user.last_login : undefined,
     created_at: typeof user?.created_at === "string" ? user.created_at : undefined,
+  };
+}
+
+function normalizeAppointmentRecord(
+  appointment?: Partial<AppointmentRecord & { user_id?: string }> | null
+): AdminAppointmentEntry {
+  return {
+    id: typeof appointment?.id === "string" ? appointment.id : "",
+    user_id: typeof appointment?.user_id === "string" ? appointment.user_id : "",
+    user_name: typeof appointment?.user_name === "string" ? appointment.user_name : "",
+    user_email: typeof appointment?.user_email === "string" ? appointment.user_email : "",
+    appointment_with:
+      typeof appointment?.appointment_with === "string"
+        ? appointment.appointment_with
+        : "",
+    preferred_date:
+      typeof appointment?.preferred_date === "string"
+        ? appointment.preferred_date
+        : "",
+    preferred_time:
+      typeof appointment?.preferred_time === "string"
+        ? appointment.preferred_time
+        : "",
+    primary_reason:
+      typeof appointment?.primary_reason === "string"
+        ? appointment.primary_reason
+        : "",
+    additional_details:
+      typeof appointment?.additional_details === "string"
+        ? appointment.additional_details
+        : "",
+    status: typeof appointment?.status === "string" ? appointment.status : "pending",
+    requested_at:
+      typeof appointment?.requested_at === "string" ? appointment.requested_at : "",
   };
 }
 
@@ -2472,6 +2543,46 @@ export async function fetchAllFeedback(
   if (limit) params.set("limit", String(limit));
   const query = params.toString() ? `?${params.toString()}` : "";
   return adminRequest<{ feedback: AdminFeedbackEntry[]; total: number }>(`/admin/feedback${query}`, { authToken: token });
+}
+
+export async function fetchAdminAppointments(
+  token: string,
+  appointmentStatus?: string,
+  limit?: number
+): Promise<{ appointments: AdminAppointmentEntry[]; total: number }> {
+  const params = new URLSearchParams();
+  if (appointmentStatus) params.set("status", appointmentStatus);
+  if (limit) params.set("limit", String(limit));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const data = await adminRequest<{ appointments: AdminAppointmentEntry[]; total: number }>(
+    `/admin/appointments${query}`,
+    { authToken: token }
+  );
+  return {
+    appointments: Array.isArray(data.appointments)
+      ? data.appointments.map(normalizeAppointmentRecord)
+      : [],
+    total: toFiniteNumber(data.total),
+  };
+}
+
+export async function updateAdminAppointmentStatus(
+  token: string,
+  appointmentId: string,
+  newStatus: string
+): Promise<{ success: boolean; appointment: AdminAppointmentEntry }> {
+  const data = await adminRequest<{ success: boolean; appointment: AdminAppointmentEntry }>(
+    `/admin/appointments/${encodeURIComponent(appointmentId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ status: newStatus }),
+      authToken: token,
+    }
+  );
+  return {
+    success: Boolean(data.success),
+    appointment: normalizeAppointmentRecord(data.appointment),
+  };
 }
 
 export async function updateFeedbackStatus(
