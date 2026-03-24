@@ -137,6 +137,8 @@ class Config:
         "STORAGE_BACKEND", "filesystem"
     )  # Options: filesystem, postgres, dynamodb
     USER_DATA_ROOT = os.getenv("USER_DATA_ROOT", "user_data")
+    LOGS_DIR = os.getenv("LOGS_DIR", "logs")
+    DATA_DIR = os.getenv("DATA_DIR", "data")
     USERS_FILE = os.getenv("USERS_FILE", "users.json")
     PREV_CHAT_DIR = os.getenv("PREV_CHAT_DIR", "previous_chats")
     QUIZ_RESULTS_DIR = os.getenv("QUIZ_RESULTS_DIR", "quiz_results")
