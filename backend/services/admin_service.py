@@ -112,41 +112,40 @@ class AdminService:
             if not user_dir.is_dir():
                 continue
             fb_dir = user_dir / "feedback"
-            if not fb_dir.exists():
-                continue
 
             username = user_dir.name
 
-            for jsonl_file in fb_dir.glob("*.jsonl"):
-                kind = jsonl_file.stem  # "feedback" or "bug"
-                if feedback_type and kind != feedback_type:
-                    continue
-                try:
-                    with jsonl_file.open("r", encoding="utf-8") as f:
-                        for line in f:
-                            line = line.strip()
-                            if not line:
-                                continue
-                            try:
-                                entry = json.loads(line)
-                                entry["username"] = username
-                                entry["type"] = kind
-                                # Generate a deterministic ID for status tracking
-                                entry.setdefault(
-                                    "id",
-                                    str(
-                                        uuid.uuid5(
-                                            uuid.NAMESPACE_DNS,
-                                            f"{username}:{kind}:{entry.get('created_at', '')}:{entry.get('message', entry.get('description', ''))}",
-                                        )
-                                    ),
-                                )
-                                entry.setdefault("status", "new")
-                                entries.append(entry)
-                            except json.JSONDecodeError:
-                                continue
-                except OSError:
-                    continue
+            if fb_dir.exists():
+                for jsonl_file in fb_dir.glob("*.jsonl"):
+                    kind = jsonl_file.stem  # "feedback" or "bug"
+                    if feedback_type and kind != feedback_type:
+                        continue
+                    try:
+                        with jsonl_file.open("r", encoding="utf-8") as f:
+                            for line in f:
+                                line = line.strip()
+                                if not line:
+                                    continue
+                                try:
+                                    entry = json.loads(line)
+                                    entry["username"] = username
+                                    entry["type"] = kind
+                                    # Generate a deterministic ID for status tracking
+                                    entry.setdefault(
+                                        "id",
+                                        str(
+                                            uuid.uuid5(
+                                                uuid.NAMESPACE_DNS,
+                                                f"{username}:{kind}:{entry.get('created_at', '')}:{entry.get('message', entry.get('description', ''))}",
+                                            )
+                                        ),
+                                    )
+                                    entry.setdefault("status", "new")
+                                    entries.append(entry)
+                                except json.JSONDecodeError:
+                                    continue
+                    except OSError:
+                        continue
 
             if feedback_type not in (None, "report"):
                 continue

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 
 from backend.api.routes.evaluation import (
     _build_drift_summary,
@@ -76,13 +77,16 @@ def test_build_drift_summary_reports_average_and_thresholds():
 
 
 def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):
+    now = datetime.now(timezone.utc)
+    first_ts = now.replace(minute=0, second=0, microsecond=0)
+    second_ts = first_ts.replace(minute=15)
     log_file = tmp_path / "metrics.jsonl"
     log_file.write_text(
         "\n".join(
             [
                 json.dumps(
                     {
-                        "timestamp": "2026-03-23T12:00:00+00:00",
+                        "timestamp": first_ts.isoformat(),
                         "retrieval_metrics": {
                             "retrieval_time_seconds": None,
                             "avg_relevance_score": None,
@@ -94,7 +98,7 @@ def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):
                 ),
                 json.dumps(
                     {
-                        "timestamp": "2026-03-23T12:15:00+00:00",
+                        "timestamp": second_ts.isoformat(),
                         "retrieval_metrics": {
                             "retrieval_time_seconds": 0.4,
                             "avg_relevance_score": 0.9,
