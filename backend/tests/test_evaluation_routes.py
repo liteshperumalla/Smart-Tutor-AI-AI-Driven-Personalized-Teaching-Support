@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from backend.api.routes.evaluation import (
     _build_drift_summary,
     _load_dataset_questions,
+    _model_keywords,
+    _pricing_document_matches_model,
     _resolve_dataset_quality_file,
     get_metrics_history,
 )
@@ -74,6 +76,42 @@ def test_build_drift_summary_reports_average_and_thresholds():
     assert summary["max_drift_score"] == 3.0
     assert summary["high_drift_count"] == 2
     assert summary["high_drift_percentage"] == 66.7
+
+
+def test_model_keywords_include_human_readable_bedrock_aliases():
+    old_llama_keywords = _model_keywords("meta.llama3-70b-instruct-v1:0")
+    new_llama_keywords = _model_keywords("us.meta.llama3-1-70b-instruct-v1:0")
+    titan_keywords = _model_keywords("amazon.titan-embed-text-v2:0")
+
+    assert "meta llama 3 70b instruct" in old_llama_keywords
+    assert "meta llama 3 1 70b instruct" in new_llama_keywords
+    assert "amazon titan text embeddings v2" in titan_keywords
+
+
+def test_pricing_document_matches_bedrock_model_aliases():
+    llama_document = {
+        "product": {
+            "attributes": {
+                "group": "Meta Llama 3 70B Instruct",
+                "operation": "InvokeModel",
+            }
+        }
+    }
+    titan_document = {
+        "product": {
+            "attributes": {
+                "group": "Amazon Titan Text Embeddings V2",
+                "operation": "InvokeModel",
+            }
+        }
+    }
+
+    assert _pricing_document_matches_model(
+        llama_document, "meta.llama3-70b-instruct-v1:0"
+    ) is True
+    assert _pricing_document_matches_model(
+        titan_document, "amazon.titan-embed-text-v2:0"
+    ) is True
 
 
 def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):

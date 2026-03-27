@@ -8,10 +8,8 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "platform-team"
     assignees:
-      - "platform-team"
+      - "liteshperumalla"
     labels:
       - "dependencies"
       - "python"
@@ -40,10 +38,8 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "platform-team"
     assignees:
-      - "platform-team"
+      - "liteshperumalla"
     labels:
       - "dependencies"
       - "javascript"
@@ -68,8 +64,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "platform-team"
     labels:
       - "dependencies"
       - "github-actions"
@@ -85,8 +79,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "platform-team"
     labels:
       - "dependencies"
       - "docker"
@@ -99,8 +91,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "platform-team"
     labels:
       - "dependencies"
       - "docker"
@@ -114,8 +104,6 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "platform-team"
     labels:
       - "dependencies"
       - "terraform"

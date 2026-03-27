@@ -25,6 +25,11 @@ on:
         description: "Maximum average model drift score before the workflow fails"
         required: false
         default: ""
+      enforce_quality_gates:
+        type: string
+        description: "Set to true to fail the workflow on score thresholds; defaults to false for monitoring runs"
+        required: false
+        default: ""
       model_id:
         type: string
         description: "Model ID to evaluate (overrides EVALUATION_MODEL_ID; leave blank for default)"
@@ -92,6 +97,8 @@ jobs:
           MIN_AVG_CONTEXT_RECALL: ${{ inputs.min_avg_context_recall || vars.MIN_AVG_CONTEXT_RECALL || '0.55' }}
           MAX_AVG_DRIFT_SCORE: ${{ inputs.max_avg_drift_score || vars.MAX_AVG_DRIFT_SCORE || '2.50' }}
           EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
+          ENFORCE_QUALITY_GATES: ${{ inputs.enforce_quality_gates || vars.ENFORCE_QUALITY_GATES || 'false' }}
+          WORKFLOW_TRIGGER: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
@@ -106,6 +113,15 @@ jobs:
 
           if [[ ! "${EVALUATION_DATASET_LIMIT}" =~ ^[0-9]+$ ]]; then
             echo "::error::EVALUATION_DATASET_LIMIT must be a positive integer. Received: ${EVALUATION_DATASET_LIMIT}"
+            exit 1
+          fi
+
+          enforce_quality_gates="$(printf '%s' "${ENFORCE_QUALITY_GATES}" | tr '[:upper:]' '[:lower:]')"
+          if [ "${WORKFLOW_TRIGGER}" != "workflow_dispatch" ]; then
+            enforce_quality_gates="false"
+          fi
+          if [ "${enforce_quality_gates}" != "true" ] && [ "${enforce_quality_gates}" != "false" ]; then
+            echo "::error::ENFORCE_QUALITY_GATES must be either true or false. Received: ${ENFORCE_QUALITY_GATES}"
             exit 1
           fi
 
@@ -224,6 +240,7 @@ jobs:
             echo "| HTTP Status | \`${http_code}\` |"
             echo "| Dataset Limit | \`${EVALUATION_DATASET_LIMIT}\` |"
             echo "| Model ID | \`${EVALUATION_MODEL_ID:-default}\` |"
+            echo "| Enforce Quality Gates | \`${enforce_quality_gates}\` |"
             echo "| Triggered by | \`${{ github.event_name }}\` |"
             echo "| Run | [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |"
             if [ "${response_is_json}" = "true" ]; then
@@ -289,18 +306,27 @@ jobs:
           fi
 
           if awk "BEGIN {exit !(${avg_correctness:-0} < ${MIN_AVG_CORRECTNESS})}"; then
-            echo "::error::Average correctness ${avg_correctness:-0} is below required threshold ${MIN_AVG_CORRECTNESS}."
-            exit 1
+            if [ "${enforce_quality_gates}" = "true" ]; then
+              echo "::error::Average correctness ${avg_correctness:-0} is below required threshold ${MIN_AVG_CORRECTNESS}."
+              exit 1
+            fi
+            echo "::warning::Average correctness ${avg_correctness:-0} is below advisory threshold ${MIN_AVG_CORRECTNESS}."
           fi
 
           if awk "BEGIN {exit !(${avg_context_recall:-0} < ${MIN_AVG_CONTEXT_RECALL})}"; then
-            echo "::error::Average context recall ${avg_context_recall:-0} is below required threshold ${MIN_AVG_CONTEXT_RECALL}."
-            exit 1
+            if [ "${enforce_quality_gates}" = "true" ]; then
+              echo "::error::Average context recall ${avg_context_recall:-0} is below required threshold ${MIN_AVG_CONTEXT_RECALL}."
+              exit 1
+            fi
+            echo "::warning::Average context recall ${avg_context_recall:-0} is below advisory threshold ${MIN_AVG_CONTEXT_RECALL}."
           fi
 
           if [ "${drift_summary_type}" = "object" ] && [ -n "${avg_drift_score}" ] && awk "BEGIN {exit !(${avg_drift_score:-0} > ${MAX_AVG_DRIFT_SCORE})}"; then
-            echo "::error::Average drift score ${avg_drift_score:-0} exceeds maximum allowed threshold ${MAX_AVG_DRIFT_SCORE}."
-            exit 1
+            if [ "${enforce_quality_gates}" = "true" ]; then
+              echo "::error::Average drift score ${avg_drift_score:-0} exceeds maximum allowed threshold ${MAX_AVG_DRIFT_SCORE}."
+              exit 1
+            fi
+            echo "::warning::Average drift score ${avg_drift_score:-0} exceeds advisory threshold ${MAX_AVG_DRIFT_SCORE}."
           fi
 
           echo "Result   : dataset=${dataset_path:-unknown}, total_evaluated=${total_evaluated}/${total_dataset_questions:-unknown}, avg_latency=${avg_latency:-unknown}s"

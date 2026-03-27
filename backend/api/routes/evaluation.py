@@ -19,6 +19,7 @@ from backend.services.evaluation_service import (
 )
 from backend.services.evaluation_run_store import append_run, list_runs, get_latest_run
 from backend.cost_tracking import get_cost_tracker
+from backend.bedrock_embeddings import BedrockEmbeddings
 from backend.config import config
 from backend.retrieval_tuning import (
     build_grounded_answer_prompt,
@@ -42,6 +43,89 @@ _AWS_REGION_LABELS = {
     "ap-southeast-2": "Asia Pacific (Sydney)",
     "ap-northeast-1": "Asia Pacific (Tokyo)",
 }
+
+
+def _normalize_pricing_text(value: Optional[str]) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _compact_pricing_text(value: Optional[str]) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _model_keywords(model_id: Optional[str]) -> List[str]:
+    raw = str(model_id or "").strip()
+    if not raw:
+        return []
+
+    variants: set[str] = set()
+
+    def add_variant(value: str):
+        normalized = _normalize_pricing_text(value)
+        if normalized:
+            variants.add(normalized)
+
+    raw_no_region = re.sub(r"^[a-z]{2}\.", "", raw, flags=re.IGNORECASE)
+    tail = raw_no_region.split(".", 1)[-1]
+    unversioned = re.sub(r"[-_: ]?v\d+(?:[:.]\d+)?$", "", tail, flags=re.IGNORECASE)
+    expanded = re.sub(r"([a-z])([0-9])", r"\1 \2", unversioned, flags=re.IGNORECASE)
+    expanded = re.sub(r"([0-9])([a-z])", r"\1 \2", expanded, flags=re.IGNORECASE)
+
+    for candidate in (raw, raw_no_region, tail, unversioned, expanded):
+        add_variant(candidate)
+
+    if "llama" in raw.lower():
+        major_minor = None
+        if "llama3-1" in raw.lower() or "llama 3 1" in _normalize_pricing_text(raw):
+            major_minor = "3.1"
+        elif "llama3" in raw.lower() or "llama 3" in _normalize_pricing_text(raw):
+            major_minor = "3"
+
+        size_match = re.search(r"(\d+)\s*b", _normalize_pricing_text(raw))
+        size_token = f"{size_match.group(1)}b" if size_match else ""
+        instruction_suffix = " instruct" if "instruct" in raw.lower() else ""
+        if major_minor:
+            for prefix in ("", "meta "):
+                add_variant(f"{prefix}llama {major_minor} {size_token}{instruction_suffix}".strip())
+                if size_match:
+                    add_variant(
+                        f"{prefix}llama {major_minor} {size_match.group(1)} b{instruction_suffix}".strip()
+                    )
+
+    if "titan" in raw.lower() and "embed" in raw.lower():
+        version_match = re.search(r"v\s*(\d+)", _normalize_pricing_text(raw))
+        version = version_match.group(1) if version_match else ""
+        suffix = f" v{version}" if version else ""
+        for candidate in (
+            f"amazon titan text embeddings{suffix}",
+            f"titan text embeddings{suffix}",
+            f"amazon titan embeddings{suffix}",
+            f"titan embeddings{suffix}",
+            f"titan embed text{suffix}",
+        ):
+            add_variant(candidate)
+
+    return sorted(variants, key=len, reverse=True)
+
+
+def _pricing_document_matches_model(pricing_document: dict, model_id: Optional[str]) -> bool:
+    haystack = _normalize_pricing_text(json.dumps(pricing_document or {}, sort_keys=True))
+    compact_haystack = _compact_pricing_text(haystack)
+    haystack_tokens = set(haystack.split())
+
+    for keyword in _model_keywords(model_id):
+        if keyword in haystack:
+            return True
+
+        compact_keyword = _compact_pricing_text(keyword)
+        if compact_keyword and compact_keyword in compact_haystack:
+            return True
+
+        keyword_tokens = set(keyword.split())
+        if keyword_tokens and keyword_tokens.issubset(haystack_tokens):
+            return True
+
+    return False
 
 
 def _coerce_metric_float(value, default: float = 0.0) -> float:
@@ -1025,41 +1109,6 @@ def get_aws_metrics(
             "source": "AWS Price List API",
         }
 
-    def normalize_pricing_text(value: Optional[str]) -> str:
-        return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
-
-    def model_keywords(model_id: Optional[str]) -> List[str]:
-        raw = str(model_id or "").strip()
-        if not raw:
-            return []
-
-        variants: set[str] = set()
-
-        def add_variant(value: str):
-            normalized = normalize_pricing_text(value)
-            if normalized:
-                variants.add(normalized)
-
-        tail = raw.split(".", 1)[-1]
-        unversioned = re.sub(r"[-_: ]?v\d+(?:[:.]\d+)?$", "", tail, flags=re.IGNORECASE)
-        expanded = re.sub(r"([a-z])([0-9])", r"\1 \2", unversioned, flags=re.IGNORECASE)
-        expanded = re.sub(r"([0-9])([a-z])", r"\1 \2", expanded, flags=re.IGNORECASE)
-
-        for candidate in (raw, tail, unversioned, expanded):
-            add_variant(candidate)
-
-        for candidate in list(variants):
-            if "embed" in candidate:
-                add_variant(candidate.replace("embed", "embeddings"))
-            if "embeddings" in candidate:
-                add_variant(candidate.replace("embeddings", "embed"))
-
-        return sorted(variants, key=len, reverse=True)
-
-    def attributes_match_model(attributes: dict, model_id: Optional[str]) -> bool:
-        haystack = normalize_pricing_text(json_module.dumps(attributes or {}, sort_keys=True))
-        return any(keyword in haystack for keyword in model_keywords(model_id))
-
     def pricing_value_from_dimension(dimension: dict) -> Optional[float]:
         try:
             usd = (dimension or {}).get("pricePerUnit", {}).get("USD")
@@ -1143,24 +1192,27 @@ def get_aws_metrics(
             bedrock_products = fetch_pricing_products("AmazonBedrock", bedrock_filters)
             snapshot["bedrock"]["llm"]["input_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: attributes_match_model(
-                    attributes, config.BEDROCK_MODEL_ID
+                product_match=lambda product, attributes: _pricing_document_matches_model(
+                    {"product": product.get("product"), "attributes": attributes},
+                    config.BEDROCK_MODEL_ID,
                 ),
                 dimension_match=lambda dimension, *_: "input"
                 in ((dimension.get("description") or "").lower()),
             )
             snapshot["bedrock"]["llm"]["output_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: attributes_match_model(
-                    attributes, config.BEDROCK_MODEL_ID
+                product_match=lambda product, attributes: _pricing_document_matches_model(
+                    {"product": product.get("product"), "attributes": attributes},
+                    config.BEDROCK_MODEL_ID,
                 ),
                 dimension_match=lambda dimension, *_: "output"
                 in ((dimension.get("description") or "").lower()),
             )
             snapshot["bedrock"]["embedding"]["input_per_1k"] = extract_price(
                 bedrock_products,
-                product_match=lambda _, attributes: attributes_match_model(
-                    attributes, config.BEDROCK_EMBEDDING_MODEL_ID
+                product_match=lambda product, attributes: _pricing_document_matches_model(
+                    {"product": product.get("product"), "attributes": attributes},
+                    config.BEDROCK_EMBEDDING_MODEL_ID,
                 ),
             )
         except Exception as pricing_error:
@@ -1176,7 +1228,7 @@ def get_aws_metrics(
                 product_match=lambda product, attributes: (
                     product.get("product", {}).get("productFamily") == "Storage"
                     and any(
-                        marker in normalize_pricing_text(json_module.dumps(attributes))
+                        marker in _normalize_pricing_text(json_module.dumps(attributes))
                         for marker in ["general purpose", "standard"]
                     )
                 ),
@@ -1256,7 +1308,7 @@ def get_aws_metrics(
                         "input_per_1k": live_pricing["bedrock"]["embedding"]["input_per_1k"],
                         "source": live_pricing["bedrock"]["source"],
                     },
-                    "dimension": None,
+                    "dimension": BedrockEmbeddings.EMBEDDING_DIMENSION,
                 },
             },
             "available_models": [

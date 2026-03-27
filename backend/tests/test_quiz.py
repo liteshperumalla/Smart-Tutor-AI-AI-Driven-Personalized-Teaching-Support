@@ -4,6 +4,7 @@ Tests for quiz generation, folder listing, and result retrieval.
 """
 
 import pytest
+from backend.services.models import QuizResult
 
 from backend.services.quiz_service import QuizService
 
@@ -158,3 +159,123 @@ class TestQuizServiceParsing:
 
         assert isinstance(payload, dict)
         assert payload["question"] == "What is RAG?"
+
+    def test_is_similar_question_rejects_rephrased_duplicates(self):
+        existing_questions = [
+            {
+                "question": "What is the primary reason for normalizing text in the Tweet Text column?",
+                "options": [
+                    "To remove duplicate tweets",
+                    "To handle missing values",
+                    "To ensure consistency in text representation",
+                    "To remove special characters and links",
+                ],
+                "correct_answer_letter": "C",
+            }
+        ]
+        payload = {
+            "question": "What is the primary purpose of normalizing the Tweet Text column during data cleaning?",
+            "options": [
+                "To remove special characters and links",
+                "To handle missing values",
+                "To ensure consistency and improve readability",
+                "To remove duplicates",
+            ],
+            "correct_answer_letter": "C",
+        }
+
+        assert QuizService._is_similar_question(payload, existing_questions) is True
+
+    def test_shuffle_question_options_updates_correct_answer_letter(self):
+        service = object.__new__(QuizService)
+
+        class FakeRandom:
+            @staticmethod
+            def shuffle(items):
+                items[:] = [items[2], items[0], items[3], items[1]]
+
+        service._random = FakeRandom()
+        payload = {
+            "question": "What is RAG?",
+            "options": ["Search", "Summarization", "Retrieval and generation", "Translation"],
+            "correct_answer_letter": "C",
+        }
+
+        service._shuffle_question_options(payload)
+
+        assert payload["options"] == [
+            "Retrieval and generation",
+            "Search",
+            "Translation",
+            "Summarization",
+        ]
+        assert payload["correct_answer_letter"] == "A"
+
+    def test_save_result_normalizes_lowercase_and_option_text_answers(self):
+        service = object.__new__(QuizService)
+
+        class FakeRedis:
+            def __init__(self):
+                self.data = {
+                    "quiz:test-quiz": {
+                        "questions": [
+                            {
+                                "id": "q1",
+                                "question": "What is RAG?",
+                                "options": [
+                                    "It combines retrieval with generation",
+                                    "It removes retrieval entirely",
+                                    "It only summarizes documents",
+                                    "It trains the model every request",
+                                ],
+                                "correct_answer_letter": "A",
+                                "explanation": "RAG augments generation with retrieved context.",
+                            },
+                            {
+                                "id": "q2",
+                                "question": "What does preprocessing improve?",
+                                "options": [
+                                    "Only styling",
+                                    "Data quality",
+                                    "GPU temperature",
+                                    "Database sharding",
+                                ],
+                                "correct_answer_letter": "B",
+                                "explanation": "Preprocessing improves data quality before modeling.",
+                            },
+                        ],
+                        "selected_folders": ["Module 5"],
+                    }
+                }
+
+            def get(self, key):
+                return self.data.get(key)
+
+            def delete(self, key):
+                self.data.pop(key, None)
+
+        class FakeStorage:
+            def __init__(self):
+                self.saved = None
+
+            def save_quiz_result(self, result: QuizResult) -> None:
+                self.saved = result
+
+        service._redis = FakeRedis()
+        service.storage = FakeStorage()
+
+        result = service.save_result(
+            user_id="alice",
+            quiz_id="test-quiz",
+            answers={
+                "q1": "a",
+                "q2": "Data quality",
+            },
+        )
+
+        assert result.score == 2
+        assert result.total_questions == 2
+        responses = result.metadata["responses"]
+        assert responses[0]["user_answer"] == "A"
+        assert responses[1]["user_answer"] == "B"
+        assert responses[1]["user_answer_text"] == "Data quality"

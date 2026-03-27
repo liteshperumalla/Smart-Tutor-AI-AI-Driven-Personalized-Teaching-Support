@@ -28,12 +28,19 @@ jobs:
   chaos:
     name: Apply Chaos Mesh Experiments
     runs-on: ubuntu-latest
-    if: vars.ENABLE_PRODUCTION_CHAOS == 'true'
     permissions:
       contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+            echo "::error::Missing required secret KUBE_CONFIG_DATA"
+            exit 1
+          fi
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4

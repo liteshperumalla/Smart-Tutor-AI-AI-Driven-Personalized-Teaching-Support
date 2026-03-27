@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 import uuid
 from ast import literal_eval
 from dataclasses import asdict
 from datetime import datetime
+from difflib import SequenceMatcher
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
@@ -65,14 +68,56 @@ _QUERY_VARIANTS = [
     "What are the security or performance considerations mentioned",
 ]
 
+_QUESTION_STOPWORDS = {
+    "about",
+    "after",
+    "all",
+    "and",
+    "are",
+    "during",
+    "for",
+    "from",
+    "how",
+    "into",
+    "its",
+    "main",
+    "most",
+    "primary",
+    "purpose",
+    "reason",
+    "step",
+    "that",
+    "the",
+    "their",
+    "these",
+    "this",
+    "what",
+    "when",
+    "which",
+    "why",
+    "with",
+}
+
 QUESTION_TEMPLATE = """You are an expert quiz question writer. Based on the following context, generate ONE high-quality multiple-choice question with four options (A, B, C, D).
+
+Topic:
+{topic_label}
+
+Question angle:
+{question_angle}
 
 Context:
 {context_str}
 
+Questions already used in this quiz:
+{used_questions}
+
 Requirements:
 - The question should test UNDERSTANDING, not just memorization of facts.
+- Ask about a concept that is different from the already used questions.
+- Do not reuse the same "primary reason/purpose/goal" stem unless the underlying concept is genuinely different.
 - All four options must be plausible — avoid obviously wrong distractors.
+- Make the correct answer specific to this context, not a generic restatement that could fit multiple questions.
 - Include a 2-3 sentence explanation of why the correct answer is right.
 
 Return ONLY a JSON object in this exact format:
@@ -102,6 +147,7 @@ class QuizService:
         self.s3_retriever = S3Retriever(similarity_top_k=5)
         from backend.llm_provider import get_llm
         self.llm = get_llm()
+        self._random = random.SystemRandom()
         self._folder_cache: Optional[Dict[str, List[str]]] = None
         # Redis-backed quiz store shared across all workers
         self._redis = get_redis_cache()
@@ -142,6 +188,195 @@ class QuizService:
         if isinstance(raw_answer, str):
             payload["correct_answer_letter"] = raw_answer
             return QuizService._normalize_correct_answer_letter(payload)
+
+        return None
+
+    @staticmethod
+    def _normalize_similarity_text(value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9\s]", " ", (value or "").lower())
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    @classmethod
+    def _tokenize_similarity_text(cls, value: str) -> set[str]:
+        normalized = cls._normalize_similarity_text(value)
+        return {
+            token
+            for token in normalized.split()
+            if len(token) > 2 and token not in _QUESTION_STOPWORDS
+        }
+
+    @staticmethod
+    def _jaccard_similarity(left: set[str], right: set[str]) -> float:
+        if not left or not right:
+            return 0.0
+        union = left | right
+        if not union:
+            return 0.0
+        return len(left & right) / len(union)
+
+    @classmethod
+    def _is_similar_question(
+        cls,
+        payload: Dict[str, object],
+        existing_questions: List[Dict[str, object]],
+    ) -> bool:
+        new_question = str(payload.get("question", ""))
+        new_question_normalized = cls._normalize_similarity_text(new_question)
+        new_question_tokens = cls._tokenize_similarity_text(new_question)
+        new_correct_letter = str(payload.get("correct_answer_letter", "A"))
+        new_options = payload.get("options") or []
+        new_correct_index = ord(new_correct_letter) - ord("A")
+        new_correct_option = (
+            str(new_options[new_correct_index])
+            if isinstance(new_options, list) and 0 <= new_correct_index < len(new_options)
+            else ""
+        )
+        new_correct_normalized = cls._normalize_similarity_text(new_correct_option)
+        new_correct_tokens = cls._tokenize_similarity_text(new_correct_option)
+
+        for existing in existing_questions:
+            existing_question = str(existing.get("question", ""))
+            existing_question_normalized = cls._normalize_similarity_text(existing_question)
+            if new_question_normalized == existing_question_normalized:
+                return True
+
+            existing_question_tokens = cls._tokenize_similarity_text(existing_question)
+            question_similarity = cls._jaccard_similarity(
+                new_question_tokens, existing_question_tokens
+            )
+            question_sequence_similarity = SequenceMatcher(
+                None, new_question_normalized, existing_question_normalized
+            ).ratio()
+            shared_question_tokens = new_question_tokens & existing_question_tokens
+
+            existing_correct_letter = str(existing.get("correct_answer_letter", "A"))
+            existing_options = existing.get("options") or []
+            existing_correct_index = ord(existing_correct_letter) - ord("A")
+            existing_correct_option = (
+                str(existing_options[existing_correct_index])
+                if isinstance(existing_options, list)
+                and 0 <= existing_correct_index < len(existing_options)
+                else ""
+            )
+            existing_correct_normalized = cls._normalize_similarity_text(
+                existing_correct_option
+            )
+            answer_similarity = cls._jaccard_similarity(
+                new_correct_tokens,
+                cls._tokenize_similarity_text(existing_correct_option),
+            )
+            answer_sequence_similarity = SequenceMatcher(
+                None, new_correct_normalized, existing_correct_normalized
+            ).ratio()
+
+            if question_similarity >= 0.72:
+                return True
+            if question_sequence_similarity >= 0.74:
+                return True
+            if len(shared_question_tokens) >= 4 and (
+                answer_similarity >= 0.34 or answer_sequence_similarity >= 0.55
+            ):
+                return True
+            if question_similarity >= 0.5 and answer_similarity >= 0.6:
+                return True
+
+        return False
+
+    @staticmethod
+    def _build_focus_label(file_path: str) -> str:
+        stem = Path(_normalize_source_path(file_path)).stem.replace("_", " ").strip()
+        return stem or "selected topic"
+
+    @staticmethod
+    def _context_sections_from_text(context_str: str) -> List[str]:
+        sections = [
+            re.sub(r"\s+", " ", part).strip()
+            for part in re.split(r"\n\s*\n+", context_str or "")
+            if part and part.strip()
+        ]
+        if len(sections) > 1:
+            return sections
+
+        sentences = [
+            sentence.strip()
+            for sentence in re.split(r"(?<=[.!?])\s+", context_str or "")
+            if sentence and sentence.strip()
+        ]
+        if len(sentences) >= 4:
+            return [
+                " ".join(sentences[index : index + 3]).strip()
+                for index in range(0, len(sentences), 2)
+                if " ".join(sentences[index : index + 3]).strip()
+            ]
+
+        cleaned = re.sub(r"\s+", " ", context_str or "").strip()
+        return [cleaned] if cleaned else []
+
+    @classmethod
+    def _select_context_excerpt(cls, context_str: str, attempt_index: int) -> str:
+        sections = cls._context_sections_from_text(context_str)
+        if not sections:
+            return ""
+        if len(sections) == 1:
+            return sections[0][:4000]
+
+        window_size = min(3, len(sections))
+        max_start = max(len(sections) - window_size, 0)
+        start = ((attempt_index - 1) * window_size) % (max_start + 1)
+        excerpt = "\n\n".join(sections[start : start + window_size]).strip()
+        return excerpt[:4000]
+
+    @staticmethod
+    def _format_used_questions(existing_questions: List[Dict[str, object]]) -> str:
+        if not existing_questions:
+            return "None yet."
+        recent_questions = [
+            f"- {str(question.get('question', '')).strip()}"
+            for question in existing_questions[-3:]
+            if str(question.get("question", "")).strip()
+        ]
+        return "\n".join(recent_questions) if recent_questions else "None yet."
+
+    def _shuffle_question_options(self, payload: Dict[str, object]) -> None:
+        options = payload.get("options")
+        correct_letter = str(payload.get("correct_answer_letter", "A"))
+        if not isinstance(options, list) or len(options) != 4:
+            return
+
+        correct_index = ord(correct_letter) - ord("A")
+        if not 0 <= correct_index < len(options):
+            return
+
+        indexed_options = list(enumerate(options))
+        self._random.shuffle(indexed_options)
+        payload["options"] = [text for _, text in indexed_options]
+        for new_index, (original_index, _text) in enumerate(indexed_options):
+            if original_index == correct_index:
+                payload["correct_answer_letter"] = chr(ord("A") + new_index)
+                break
+
+    @classmethod
+    def _normalize_submitted_answer(
+        cls, raw_answer: Optional[str], options: List[str]
+    ) -> Optional[str]:
+        if not isinstance(raw_answer, str):
+            return None
+        candidate = raw_answer.strip()
+        if not candidate:
+            return None
+
+        payload: Dict[str, object] = {
+            "options": list(options or []),
+            "correct_answer_letter": candidate,
+        }
+        normalized_letter = cls._normalize_correct_answer_letter(payload)
+        if normalized_letter in {"A", "B", "C", "D"}:
+            return normalized_letter
+
+        normalized_candidate = cls._normalize_similarity_text(candidate)
+        for index, option in enumerate(options or []):
+            if cls._normalize_similarity_text(str(option)) == normalized_candidate:
+                return chr(ord("A") + index)
 
         return None
 
@@ -418,18 +653,28 @@ class QuizService:
             raise ValueError("Selected folders do not contain indexed files")
 
         questions: List[Dict[str, object]] = []
-        generated_questions = set()
         attempts = 0
-        max_attempts = num_questions * 5
+        max_attempts = max(num_questions * 8, len(files) * 3)
+        file_rotation = list(files)
+        self._random.shuffle(file_rotation)
 
         # Generate quiz questions
         while len(questions) < num_questions and attempts < max_attempts:
             attempts += 1
 
             # Rotate through diverse query variants for varied context
-            query = _QUERY_VARIANTS[(attempts - 1) % len(_QUERY_VARIANTS)]
-            logger.info(f"Quiz generation attempt {attempts} using query: {query[:60]}...")
-            context_str = self._get_context_for_query(query, files)
+            target_file = file_rotation[(attempts - 1) % len(file_rotation)]
+            topic_label = _resolve_topic_label(selected_folders[(attempts - 1) % len(selected_folders)])
+            file_focus = self._build_focus_label(target_file)
+            query_angle = _QUERY_VARIANTS[(attempts - 1) % len(_QUERY_VARIANTS)]
+            query = f"{topic_label} - {file_focus}: {query_angle}"
+            logger.info(
+                "Quiz generation attempt %s using file %s and query angle %s",
+                attempts,
+                target_file,
+                query_angle,
+            )
+            context_str = self._get_context_for_query(query, [target_file])
 
             if not context_str:
                 logger.warning(
@@ -438,7 +683,12 @@ class QuizService:
                 continue
 
             try:
-                prompt = QUESTION_TEMPLATE.format(context_str=context_str[:4000])
+                prompt = QUESTION_TEMPLATE.format(
+                    topic_label=f"{topic_label} ({file_focus})",
+                    question_angle=query_angle,
+                    context_str=self._select_context_excerpt(context_str, attempts),
+                    used_questions=self._format_used_questions(questions),
+                )
                 llm_response = self.llm.complete(prompt, temperature=0.5)
                 response_text = self._extract_completion_text(llm_response)
                 payload = self._extract_quiz_payload(response_text)
@@ -456,9 +706,10 @@ class QuizService:
 
             if not self._is_valid_question(payload):
                 continue
+            self._shuffle_question_options(payload)
 
             question_text = payload["question"].strip()
-            if question_text in generated_questions:
+            if self._is_similar_question(payload, questions):
                 continue
 
             # Use LLM-generated explanation, fall back to context snippet
@@ -476,7 +727,6 @@ class QuizService:
                     "explanation": explanation,
                 }
             )
-            generated_questions.add(question_text)
             logger.info(f"Generated question {len(questions)}/{num_questions}")
 
         if not questions:
@@ -562,16 +812,26 @@ class QuizService:
         for question in questions:
             qid = question["id"]
             correct = question["correct_answer_letter"]
-            user_answer = answers.get(qid)
+            user_answer = self._normalize_submitted_answer(
+                answers.get(qid), question.get("options", [])
+            )
             is_correct = user_answer == correct
             if is_correct:
                 score += 1
+            correct_index = ord(correct) - ord("A")
+            user_index = ord(user_answer) - ord("A") if user_answer else None
             detailed_results.append(
                 {
                     "question_id": qid,
                     "question": question["question"],
                     "correct_answer": correct,
+                    "correct_answer_text": question["options"][correct_index]
+                    if 0 <= correct_index < len(question["options"])
+                    else None,
                     "user_answer": user_answer,
+                    "user_answer_text": question["options"][user_index]
+                    if user_index is not None and 0 <= user_index < len(question["options"])
+                    else None,
                     "is_correct": is_correct,
                     "explanation": question.get("explanation", ""),
                 }

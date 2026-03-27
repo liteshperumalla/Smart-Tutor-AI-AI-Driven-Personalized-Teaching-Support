@@ -13,7 +13,6 @@ jobs:
   compliance-scan:
     name: SOC2 Compliance Scan
     runs-on: ubuntu-latest
-    if: vars.ENABLE_PRODUCTION_COMPLIANCE == 'true'
     permissions:
       contents: read
     env:
@@ -24,6 +23,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+
+          missing=()
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+            missing+=("AWS_ACCESS_KEY_ID")
+          fi
+          if [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            missing+=("AWS_SECRET_ACCESS_KEY")
+          fi
+          if [ -z "${KUBE_CONFIG_DATA:-}" ]; then
+            missing+=("KUBE_CONFIG_DATA")
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required production compliance configuration."
+            printf 'Missing: %s\n' "${missing[*]}"
+            exit 1
+          fi
 
       - name: Install conftest
         run: |
@@ -51,10 +71,6 @@ jobs:
       - name: Configure kubeconfig
         run: |
           set -euo pipefail
-          if [ -z "${KUBE_CONFIG_DATA:-}" ]; then
-            echo "KUBE_CONFIG_DATA not set; skipping cluster scans."
-            exit 0
-          fi
           mkdir -p "$HOME/.kube"
           echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"

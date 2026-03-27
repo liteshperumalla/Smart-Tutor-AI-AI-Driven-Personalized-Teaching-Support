@@ -11,12 +11,31 @@ jobs:
   observability:
     name: Deploy Monitoring Stack
     runs-on: ubuntu-latest
-    if: vars.ENABLE_PRODUCTION_MONITORING == 'true'
     permissions:
       contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        env:
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
+            missing+=("KUBE_CONFIG_DATA")
+          fi
+          if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
+            missing+=("GRAFANA_ADMIN_PASSWORD")
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required production observability configuration."
+            printf 'Missing: %s\n' "${missing[*]}"
+            exit 1
+          fi
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
