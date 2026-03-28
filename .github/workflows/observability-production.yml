@@ -2,12 +2,6 @@ name: Production Observability Bootstrap
 
 on:
   workflow_dispatch:
-    inputs:
-      app_dir:
-        type: string
-        description: "EC2 app directory"
-        required: false
-        default: ""
 
 concurrency:
   group: production-observability
@@ -24,7 +18,7 @@ jobs:
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-      EC2_APP_DIR: ${{ inputs.app_dir || vars.EC2_APP_DIR || '/home/ubuntu/smart-tutor' }}
+      OBSERVABILITY_DIR: ${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -46,6 +40,16 @@ jobs:
             exit 1
           fi
 
+      - name: Package observability files
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/observability-bundle.tgz \
+            docker-compose.observability.yml \
+            monitoring/prometheus/prometheus-ec2.yml \
+            monitoring/prometheus/alerts.yml \
+            monitoring/grafana/dashboards \
+            monitoring/grafana/datasources
+
       - name: Bootstrap observability stack on EC2
         run: |
           set -euo pipefail
@@ -53,14 +57,21 @@ jobs:
           key_file="$(mktemp)"
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
           chmod 600 "${key_file}"
-          remote_app_dir="$(printf '%q' "${EC2_APP_DIR}")"
+          remote_observability_dir="$(printf '%q' "${OBSERVABILITY_DIR}")"
           remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
 
-          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
+          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ${remote_observability_dir}"
+          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${OBSERVABILITY_DIR}/observability-bundle.tgz"
+
+          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "OBSERVABILITY_DIR=${remote_observability_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
           set -euo pipefail
 
-          APP_DIR="${EC2_APP_DIR:-/home/ubuntu/smart-tutor}"
-          cd "${APP_DIR}"
+          OBS_DIR="${OBSERVABILITY_DIR:-/home/ubuntu/smart-tutor-observability}"
+          mkdir -p "${OBS_DIR}"
+          cd "${OBS_DIR}"
+
+          tar -xzf observability-bundle.tgz
+          rm -f observability-bundle.tgz
 
           command -v docker >/dev/null
           docker compose version >/dev/null
@@ -92,7 +103,7 @@ jobs:
             echo "## Production Observability"
             echo ""
             echo "- Target: \`${EC2_HOST}\`"
-            echo "- App directory: \`${EC2_APP_DIR}\`"
+            echo "- Remote directory: \`${OBSERVABILITY_DIR}\`"
             echo "- Stack file: \`docker-compose.observability.yml\`"
             echo "- Services: \`prometheus\`, \`grafana\`, \`node-exporter\`, \`cadvisor\`"
             echo "- Prometheus readiness and Grafana health checks completed"

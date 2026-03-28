@@ -4,12 +4,6 @@ on:
   schedule:
     - cron: "0 8 * * 1"
   workflow_dispatch:
-    inputs:
-      app_dir:
-        type: string
-        description: "EC2 app directory"
-        required: false
-        default: ""
 
 concurrency:
   group: production-compliance-scan
@@ -28,7 +22,7 @@ jobs:
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-      EC2_APP_DIR: ${{ inputs.app_dir || vars.EC2_APP_DIR || '/home/ubuntu/smart-tutor' }}
+      EC2_APP_DIR: ${{ vars.EC2_APP_DIR || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY EC2_HOST EC2_USER EC2_SSH_KEY; do
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
@@ -49,11 +43,16 @@ jobs:
             done
             exit 1
           fi
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::warning::AWS inventory credentials are not configured. AWS account snapshot steps will be skipped."
+          fi
 
       - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         uses: unfor19/install-aws-cli-action@v1
 
       - name: Capture AWS compliance snapshot
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/compliance-report
@@ -75,6 +74,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          mkdir -p /tmp/compliance-report
           key_file="$(mktemp)"
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
           chmod 600 "${key_file}"
@@ -95,18 +95,22 @@ jobs:
             fi
           }
 
-          APP_DIR="${EC2_APP_DIR:-/home/ubuntu/smart-tutor}"
+          APP_DIR="${EC2_APP_DIR:-}"
           DATA_ROOT="/home/ubuntu/smart-tutor-data"
 
           check "docker installed" command -v docker
           check "backend container running" sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
           check "backend health endpoint responds" curl -fsS http://localhost:8010/health
-          check "app directory exists" test -d "${APP_DIR}"
           check "shared logs directory exists" test -d "${DATA_ROOT}/logs"
           check "shared user data directory exists" test -d "${DATA_ROOT}/user_data"
           check "shared chroma directory exists" test -d "${DATA_ROOT}/chroma_db"
           check "backend restart policy is unless-stopped" sh -c "[ \"$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' smart-tutor-backend)\" = 'unless-stopped' ]"
           check "backend logs mount configured" sh -c "docker inspect smart-tutor-backend | grep -q '/home/ubuntu/smart-tutor-data/logs'"
+          if [ -n "${APP_DIR}" ]; then
+            check "configured app directory exists" test -d "${APP_DIR}"
+          else
+            echo "[INFO] No EC2_APP_DIR configured; skipping repo-directory check."
+          fi
 
           echo ""
           echo "=== Running containers ==="
