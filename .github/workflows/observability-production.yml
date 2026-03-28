@@ -85,14 +85,56 @@ jobs:
           docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
             docker network create smart-tutor_smart-tutor-network
 
-          docker compose --env-file .env.observability -f docker-compose.observability.yml up -d
+          compose_cmd=(docker compose --env-file .env.observability -f docker-compose.observability.yml)
 
-          curl -fsS http://127.0.0.1:9090/-/ready >/dev/null
-          curl -fsS http://127.0.0.1:3001/api/health >/dev/null
-          curl -fsS http://127.0.0.1:9100/metrics >/dev/null
-          curl -fsS http://127.0.0.1:8080/metrics >/dev/null
+          wait_http() {
+            local name="$1"
+            local url="$2"
+            local attempts="${3:-30}"
+            local sleep_seconds="${4:-5}"
 
-          docker compose --env-file .env.observability -f docker-compose.observability.yml ps
+            for attempt in $(seq 1 "${attempts}"); do
+              if curl -fsS "${url}" >/dev/null; then
+                echo "[PASS] ${name} ready: ${url}"
+                return 0
+              fi
+              echo "[WAIT] ${name} not ready yet (${attempt}/${attempts}): ${url}"
+              sleep "${sleep_seconds}"
+            done
+
+            echo "[FAIL] ${name} did not become ready: ${url}"
+            return 1
+          }
+
+          dump_diagnostics() {
+            echo ""
+            echo "=== docker compose ps ==="
+            "${compose_cmd[@]}" ps || true
+            echo ""
+            echo "=== docker compose logs (last 200 lines) ==="
+            "${compose_cmd[@]}" logs --tail=200 || true
+          }
+
+          "${compose_cmd[@]}" up -d --remove-orphans
+
+          if ! wait_http "Prometheus" "http://127.0.0.1:9090/-/ready" 36 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "Grafana" "http://127.0.0.1:3001/api/health" 36 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "Node Exporter" "http://127.0.0.1:9100/metrics" 24 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "cAdvisor" "http://127.0.0.1:8080/metrics" 24 5; then
+            dump_diagnostics
+            exit 1
+          fi
+
+          "${compose_cmd[@]}" ps
           EOF
 
           rm -f "${key_file}"
