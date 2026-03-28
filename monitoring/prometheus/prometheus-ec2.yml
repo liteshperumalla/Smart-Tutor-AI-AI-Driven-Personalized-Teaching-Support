@@ -1,0 +1,42 @@
+# Prometheus configuration for single-EC2 production
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'smart-ai-tutor-ec2'
+    environment: 'production'
+
+rule_files:
+  - 'alerts.yml'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  - job_name: 'backend-api'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['smart-tutor-backend:8000']
+        labels:
+          service: 'backend-api'
+          app: 'smart-ai-tutor'
+    scrape_interval: 10s
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+          instance: 'ec2-host'
+    scrape_interval: 30s
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          service: 'cadvisor'
+          instance: 'ec2-host'
+    scrape_interval: 30s

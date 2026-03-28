@@ -1,10 +1,11 @@
 """
 RAG Quality Evaluator — LLM-as-Judge
 
-Uses a single Bedrock LLM call to score three quality dimensions:
+Uses a single Bedrock LLM call to score quality dimensions:
   1. Faithfulness  — Is the answer grounded in the provided context?
   2. Answer Relevance — Does the answer actually address the question?
   3. Context Recall — Did the retrieved context cover the question's needs?
+  4. Correctness — Is the answer correct, preferably against a reference answer?
 
 Also provides a pure-computation `compute_context_precision` function
 that needs no LLM call and can be run on every chat query cheaply.
@@ -24,8 +25,9 @@ logger = logging.getLogger(__name__)
 # ── Single-prompt LLM-as-Judge template ──────────────────────────────
 JUDGE_PROMPT = """\
 You are a strict RAG quality evaluator. Given a user question, the retrieved \
-context passages, and the generated answer, score THREE dimensions on a scale \
-from 0.0 to 1.0. Be critical — only give high scores when truly deserved.
+context passages, the generated answer, and an optional reference answer, \
+score FOUR dimensions on a scale from 0.0 to 1.0. Be critical — only give \
+high scores when truly deserved.
 
 ### Scoring rubric
 1. **Faithfulness** (0-1): Every claim in the answer must be directly \
@@ -40,6 +42,11 @@ the question at all.
 information needed to answer the question comprehensively. Deduct if \
 important aspects are missing from the context. Score 0 if the context \
 is completely irrelevant.
+4. **Correctness** (0-1): If a reference answer is provided, compare the \
+generated answer to that reference and score factual correctness and \
+completeness. If no reference answer is provided, estimate correctness from \
+the question, context, and generated answer. Score 0 for materially incorrect \
+answers and near 1 only for answers that are substantially correct.
 
 ### Input
 **Question:** {question}
@@ -50,9 +57,12 @@ is completely irrelevant.
 **Generated Answer:**
 {answer}
 
+**Reference Answer:**
+{reference_answer}
+
 ### Output
 Respond with ONLY a JSON object (no markdown, no extra text):
-{{"faithfulness": <float>, "answer_relevance": <float>, "context_recall": <float>, "reasoning": "<brief 1-2 sentence justification>"}}
+{{"faithfulness": <float>, "answer_relevance": <float>, "context_recall": <float>, "correctness": <float>, "reasoning": "<brief 1-2 sentence justification>"}}
 """
 
 
@@ -87,6 +97,7 @@ def evaluate_quality(
     question: str,
     context_passages: List[str],
     answer: str,
+    reference_answer: Optional[str] = None,
     model_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run LLM-as-judge evaluation on a single query.
@@ -95,11 +106,12 @@ def evaluate_quality(
         question: The user's original question.
         context_passages: The text of each retrieved context passage.
         answer: The generated answer text.
+        reference_answer: Optional reference answer from the evaluation dataset.
         model_id: Optional Bedrock model ID to use for judging.
 
     Returns:
         Dict with keys: faithfulness, answer_relevance, context_recall,
-        reasoning, and correctness (geometric mean of the three).
+        correctness, and reasoning.
     """
     # Build context string with numbered passages
     if context_passages:
@@ -113,6 +125,7 @@ def evaluate_quality(
         question=question,
         context=context_str,
         answer=answer,
+        reference_answer=reference_answer.strip() if reference_answer else "(No reference answer provided)",
     )
 
     try:
@@ -137,18 +150,17 @@ def evaluate_quality(
         faithfulness = _clamp(float(scores.get("faithfulness", 0)))
         answer_relevance = _clamp(float(scores.get("answer_relevance", 0)))
         context_recall = _clamp(float(scores.get("context_recall", 0)))
-        reasoning = str(scores.get("reasoning", ""))
-
-        # Correctness = geometric mean of the three dimensions
-        correctness = round(
+        fallback_correctness = round(
             (faithfulness * answer_relevance * context_recall) ** (1 / 3), 4
         )
+        correctness = _clamp(float(scores.get("correctness", fallback_correctness)))
+        reasoning = str(scores.get("reasoning", ""))
 
         return {
             "faithfulness": round(faithfulness, 4),
             "answer_relevance": round(answer_relevance, 4),
             "context_recall": round(context_recall, 4),
-            "correctness": correctness,
+            "correctness": round(correctness, 4),
             "reasoning": reasoning,
         }
 
@@ -167,7 +179,8 @@ def evaluate_batch(
     """Run LLM-as-judge on a batch of logged queries.
 
     Args:
-        queries: List of dicts, each with keys: query, context_passages, answer.
+        queries: List of dicts, each with keys: query, context_passages, answer,
+            and optional reference_answer.
         model_id: Optional Bedrock model ID.
 
     Returns:
@@ -186,12 +199,19 @@ def evaluate_batch(
         q = entry.get("query", "")
         ctx = entry.get("context_passages", [])
         ans = entry.get("answer", "")
+        reference_answer = entry.get("reference_answer")
         scores_list = entry.get("retrieval_scores", [])
 
         if not q or not ans:
             continue
 
-        scores = evaluate_quality(q, ctx, ans, model_id=model_id)
+        scores = evaluate_quality(
+            q,
+            ctx,
+            ans,
+            reference_answer=reference_answer,
+            model_id=model_id,
+        )
         ctx_precision = compute_context_precision(scores_list)
         scores["context_precision"] = ctx_precision
 

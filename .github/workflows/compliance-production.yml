@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 8 * * 1"
   workflow_dispatch:
+    inputs:
+      app_dir:
+        type: string
+        description: "EC2 app directory"
+        required: false
+        default: ""
 
 concurrency:
   group: production-compliance-scan
@@ -11,7 +17,7 @@ concurrency:
 
 jobs:
   compliance-scan:
-    name: SOC2 Compliance Scan
+    name: EC2 Compliance Scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -19,7 +25,10 @@ jobs:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      EC2_APP_DIR: ${{ inputs.app_dir || vars.EC2_APP_DIR || '/home/ubuntu/smart-tutor' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,65 +36,94 @@ jobs:
       - name: Validate required configuration
         run: |
           set -euo pipefail
-
           missing=()
-          if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
-            missing+=("AWS_ACCESS_KEY_ID")
-          fi
-          if [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-            missing+=("AWS_SECRET_ACCESS_KEY")
-          fi
-          if [ -z "${KUBE_CONFIG_DATA:-}" ]; then
-            missing+=("KUBE_CONFIG_DATA")
-          fi
-
+          for name in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required production compliance configuration."
-            printf 'Missing: %s\n' "${missing[*]}"
+            for item in "${missing[@]}"; do
+              echo "::error::Missing required secret ${item}"
+            done
             exit 1
           fi
-
-      - name: Install conftest
-        run: |
-          set -euo pipefail
-          curl -fsSL https://github.com/open-policy-agent/conftest/releases/download/v0.58.0/conftest_0.58.0_Linux_x86_64.tar.gz -o /tmp/conftest.tar.gz
-          tar -xzf /tmp/conftest.tar.gz -C /tmp
-          sudo mv /tmp/conftest /usr/local/bin/conftest
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.17.2
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.32.2
 
       - name: Install AWS CLI
         uses: unfor19/install-aws-cli-action@v1
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.2.2
-
-      - name: Configure kubeconfig
+      - name: Capture AWS compliance snapshot
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.kube"
-          echo "$KUBE_CONFIG_DATA" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
+          mkdir -p /tmp/compliance-report
 
-      - name: Run compliance scan
+          aws sts get-caller-identity > /tmp/compliance-report/aws-identity.json
+          aws cloudtrail describe-trails > /tmp/compliance-report/cloudtrail.json
+          aws secretsmanager list-secrets \
+            --query 'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}' \
+            --output json > /tmp/compliance-report/secrets-rotation.json
+          aws rds describe-db-instances \
+            --query 'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}' \
+            --output json > /tmp/compliance-report/rds-config.json
+          aws ec2 describe-instances \
+            --filters "Name=ip-address,Values=${EC2_HOST}" \
+            --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
+            --output json > /tmp/compliance-report/ec2-instance.json
+
+      - name: Run remote EC2 compliance checks
         run: |
           set -euo pipefail
-          chmod +x compliance/scans/compliance-scan.sh
-          ./compliance/scans/compliance-scan.sh soc2
+
+          key_file="$(mktemp)"
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+          remote_app_dir="$(printf '%q' "${EC2_APP_DIR}")"
+
+          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} bash -s" > /tmp/compliance-report/ec2-host-checks.txt <<'EOF'
+          set -euo pipefail
+
+          failures=0
+          check() {
+            local description="$1"
+            shift
+            if "$@"; then
+              echo "[PASS] ${description}"
+            else
+              echo "[FAIL] ${description}"
+              failures=$((failures + 1))
+            fi
+          }
+
+          APP_DIR="${EC2_APP_DIR:-/home/ubuntu/smart-tutor}"
+          DATA_ROOT="/home/ubuntu/smart-tutor-data"
+
+          check "docker installed" command -v docker
+          check "backend container running" sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
+          check "backend health endpoint responds" curl -fsS http://localhost:8010/health
+          check "app directory exists" test -d "${APP_DIR}"
+          check "shared logs directory exists" test -d "${DATA_ROOT}/logs"
+          check "shared user data directory exists" test -d "${DATA_ROOT}/user_data"
+          check "shared chroma directory exists" test -d "${DATA_ROOT}/chroma_db"
+          check "backend restart policy is unless-stopped" sh -c "[ \"$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' smart-tutor-backend)\" = 'unless-stopped' ]"
+          check "backend logs mount configured" sh -c "docker inspect smart-tutor-backend | grep -q '/home/ubuntu/smart-tutor-data/logs'"
+
+          echo ""
+          echo "=== Running containers ==="
+          docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+
+          if [ "${failures}" -gt 0 ]; then
+            exit 1
+          fi
+          EOF
+
+          rm -f "${key_file}"
 
       - name: Upload compliance artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: production-compliance-report
-          path: /tmp/compliance-reports-*/
+          path: /tmp/compliance-report/
           if-no-files-found: warn
           retention-days: 30

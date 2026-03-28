@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from backend.api.routes.evaluation import (
     _build_drift_summary,
+    _load_dataset_entries,
     _load_dataset_questions,
     _model_keywords,
     _pricing_document_matches_model,
@@ -57,6 +58,41 @@ def test_load_dataset_questions_supports_json_test_cases(tmp_path):
     assert _load_dataset_questions(dataset_file) == [
         "Summarize transformers",
         "Define chunking",
+    ]
+
+
+def test_load_dataset_entries_extracts_reference_answers(tmp_path):
+    dataset_file = tmp_path / "evaluation.json"
+    dataset_file.write_text(
+        json.dumps(
+            {
+                "queries": [
+                    {
+                        "query": "What is machine learning?",
+                        "ground_truth_answer": "A field of AI focused on learning from data.",
+                    },
+                    {
+                        "instruction": "Define chunking",
+                        "output": "Chunking splits documents into smaller pieces.",
+                        "input": "Some source context",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _load_dataset_entries(dataset_file) == [
+        {
+            "question": "What is machine learning?",
+            "reference_answer": "A field of AI focused on learning from data.",
+            "source_input": "",
+        },
+        {
+            "question": "Define chunking",
+            "reference_answer": "Chunking splits documents into smaller pieces.",
+            "source_input": "Some source context",
+        },
     ]
 
 

@@ -2,6 +2,12 @@ name: Production Observability Bootstrap
 
 on:
   workflow_dispatch:
+    inputs:
+      app_dir:
+        type: string
+        description: "EC2 app directory"
+        required: false
+        default: ""
 
 concurrency:
   group: production-observability
@@ -9,144 +15,85 @@ concurrency:
 
 jobs:
   observability:
-    name: Deploy Monitoring Stack
+    name: Deploy Monitoring Stack On EC2
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      EC2_APP_DIR: ${{ inputs.app_dir || vars.EC2_APP_DIR || '/home/ubuntu/smart-tutor' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Validate required configuration
-        env:
-          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
-
           missing=()
-          if [ -z "${{ secrets.KUBE_CONFIG_DATA }}" ]; then
-            missing+=("KUBE_CONFIG_DATA")
-          fi
-          if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
-            missing+=("GRAFANA_ADMIN_PASSWORD")
-          fi
-
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY GRAFANA_ADMIN_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required production observability configuration."
-            printf 'Missing: %s\n' "${missing[*]}"
+            for item in "${missing[@]}"; do
+              echo "::error::Missing required secret ${item}"
+            done
             exit 1
           fi
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.32.2
-
-      - name: Install Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.17.2
-
-      - name: Configure kubeconfig
+      - name: Bootstrap observability stack on EC2
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG_DATA }}" | base64 -d > "$HOME/.kube/config"
-          chmod 600 "$HOME/.kube/config"
 
-      - name: Create monitoring namespace
-        run: |
+          key_file="$(mktemp)"
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+          remote_app_dir="$(printf '%q' "${EC2_APP_DIR}")"
+          remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
+
+          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
           set -euo pipefail
-          kubectl get namespace monitoring >/dev/null 2>&1 || kubectl create namespace monitoring
 
-      - name: Add Helm repositories
-        run: |
-          set -euo pipefail
-          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-          helm repo add kubecost https://kubecost.github.io/cost-analyzer/
-          helm repo update
+          APP_DIR="${EC2_APP_DIR:-/home/ubuntu/smart-tutor}"
+          cd "${APP_DIR}"
 
-      - name: Install Prometheus and Grafana
-        env:
-          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GRAFANA_ADMIN_PASSWORD:-}" ]; then
-            echo "::error::Missing required secret GRAFANA_ADMIN_PASSWORD"
-            exit 1
-          fi
+          command -v docker >/dev/null
+          docker compose version >/dev/null
 
-          helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-            --namespace monitoring \
-            --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
-            --set grafana.sidecar.dashboards.enabled=true \
-            --set grafana.sidecar.dashboards.searchNamespace=ALL \
-            --set grafana.sidecar.dashboards.label=grafana_dashboard \
-            --set grafana.sidecar.datasources.enabled=true \
-            --set grafana.sidecar.datasources.searchNamespace=ALL \
-            --set grafana.sidecar.datasources.label=grafana_datasource \
-            --set prometheus.prometheusSpec.retention=30d
+          cat > .env.observability <<ENVFILE
+          GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+          GRAFANA_PORT_EXPOSE=3001
+          GRAFANA_ROOT_URL=http://localhost:3001
+          ENVFILE
 
-      - name: Install Kubecost
-        run: |
-          set -euo pipefail
-          helm upgrade --install kubecost kubecost/cost-analyzer \
-            --namespace monitoring \
-            -f monitoring/finops/kubecost/kubecost-values.yaml
+          docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
+            docker network create smart-tutor_smart-tutor-network
 
-      - name: Publish Grafana datasources
-        run: |
-          set -euo pipefail
-          kubectl create configmap grafana-datasources \
-            --namespace monitoring \
-            --from-file=prometheus.yml=monitoring/grafana/datasources/prometheus.yml \
-            --from-file=loki-datasource.yaml=monitoring/logging/dashboards/loki-datasource.yaml \
-            --dry-run=client -o yaml | \
-            kubectl label --local -f - grafana_datasource=1 -o yaml | \
-            kubectl apply -f -
+          docker compose --env-file .env.observability -f docker-compose.observability.yml up -d
 
-      - name: Publish Grafana dashboards
-        run: |
-          set -euo pipefail
-          for dashboard in monitoring/grafana/dashboards/*.json monitoring/slo/*.json monitoring/finops/dashboards/*.json; do
-            name="$(basename "$dashboard" .json)"
-            kubectl create configmap "grafana-dashboard-${name}" \
-              --namespace monitoring \
-              --from-file="$(basename "$dashboard")=$dashboard" \
-              --dry-run=client -o yaml | \
-              kubectl label --local -f - grafana_dashboard=1 -o yaml | \
-              kubectl apply -f -
-          done
+          curl -fsS http://127.0.0.1:9090/-/ready >/dev/null
+          curl -fsS http://127.0.0.1:3001/api/health >/dev/null
+          curl -fsS http://127.0.0.1:9100/metrics >/dev/null
+          curl -fsS http://127.0.0.1:8080/metrics >/dev/null
 
-      - name: Publish Loki and Promtail configs
-        run: |
-          set -euo pipefail
-          kubectl create configmap loki-config \
-            --namespace monitoring \
-            --from-file=loki.yaml=monitoring/logging/loki/loki-config.yaml \
-            --dry-run=client -o yaml | kubectl apply -f -
+          docker compose --env-file .env.observability -f docker-compose.observability.yml ps
+          EOF
 
-          kubectl create configmap promtail-config \
-            --namespace monitoring \
-            --from-file=promtail.yaml=monitoring/logging/promtail/promtail-config.yaml \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy tracing and logging stack
-        run: |
-          set -euo pipefail
-          kubectl apply -f monitoring/tracing/opentelemetry/otel-collector-config.yaml
-          kubectl apply -f monitoring/tracing/opentelemetry/otel-collector-deployment.yaml
-          kubectl apply -f monitoring/tracing/jaeger/jaeger-all-in-one.yaml
-          kubectl apply -f monitoring/logging/loki/loki-deployment.yaml
-          kubectl apply -f monitoring/logging/promtail/promtail-daemonset.yaml
+          rm -f "${key_file}"
 
       - name: Summary
         run: |
           {
             echo "## Production Observability"
             echo ""
-            echo "- Prometheus/Grafana deployed via kube-prometheus-stack"
-            echo "- Kubecost installed from \`monitoring/finops/kubecost/kubecost-values.yaml\`"
-            echo "- Loki, Promtail, Jaeger, and the OTEL collector applied from repo manifests"
-            echo "- Grafana datasources and dashboards published from repo configs"
+            echo "- Target: \`${EC2_HOST}\`"
+            echo "- App directory: \`${EC2_APP_DIR}\`"
+            echo "- Stack file: \`docker-compose.observability.yml\`"
+            echo "- Services: \`prometheus\`, \`grafana\`, \`node-exporter\`, \`cadvisor\`"
+            echo "- Prometheus readiness and Grafana health checks completed"
           } >> "$GITHUB_STEP_SUMMARY"

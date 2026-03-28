@@ -666,8 +666,29 @@ def _resolve_dataset_quality_file() -> Path:
     return candidates[0]
 
 
-def _load_dataset_questions(dataset_file: Path) -> List[str]:
-    questions: List[str] = []
+def _load_dataset_entries(dataset_file: Path) -> List[dict]:
+    entries: List[dict] = []
+
+    def append_entry(raw_entry: dict):
+        if not isinstance(raw_entry, dict):
+            return
+        question = (raw_entry.get("instruction") or raw_entry.get("query") or "").strip()
+        if not question:
+            return
+        reference_answer = (
+            raw_entry.get("output")
+            or raw_entry.get("ground_truth_answer")
+            or raw_entry.get("expected_answer")
+            or ""
+        )
+        source_input = raw_entry.get("input") or raw_entry.get("context") or ""
+        entries.append(
+            {
+                "question": question,
+                "reference_answer": str(reference_answer).strip(),
+                "source_input": str(source_input).strip(),
+            }
+        )
 
     if dataset_file.suffix.lower() == ".jsonl":
         with open(dataset_file, "r", encoding="utf-8") as f:
@@ -676,36 +697,30 @@ def _load_dataset_questions(dataset_file: Path) -> List[str]:
                     entry = json.loads(line.strip())
                 except json.JSONDecodeError:
                     continue
-                if not isinstance(entry, dict):
-                    continue
-                question = (entry.get("instruction") or entry.get("query") or "").strip()
-                if question:
-                    questions.append(question)
-        return questions
+                append_entry(entry)
+        return entries
 
     with open(dataset_file, "r", encoding="utf-8") as f:
         payload = json.load(f)
 
     if isinstance(payload, list):
-        entries = payload
+        raw_entries = payload
     elif isinstance(payload, dict):
         if isinstance(payload.get("test_cases"), list):
-            entries = payload.get("test_cases", [])
+            raw_entries = payload.get("test_cases", [])
         elif isinstance(payload.get("queries"), list):
-            entries = payload.get("queries", [])
+            raw_entries = payload.get("queries", [])
         else:
-            entries = []
+            raw_entries = []
     else:
-        entries = []
+        raw_entries = []
 
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        question = (entry.get("instruction") or entry.get("query") or "").strip()
-        if question:
-            questions.append(question)
+    for entry in raw_entries:
+        append_entry(entry)
 
-    return questions
+    return entries
+def _load_dataset_questions(dataset_file: Path) -> List[str]:
+    return [entry["question"] for entry in _load_dataset_entries(dataset_file)]
 
 
 def _build_drift_summary(drift_records: List[dict], enabled: bool) -> dict:
@@ -750,9 +765,9 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
             "message": f"Evaluation dataset not found at {dataset_file}",
         }
 
-    questions = _load_dataset_questions(dataset_file)
+    dataset_entries = _load_dataset_entries(dataset_file)
 
-    if not questions:
+    if not dataset_entries:
         return {
             "total_evaluated": 0,
             "quality_summary": None,
@@ -762,7 +777,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
         }
 
     # Limit the number of questions
-    questions = questions[:limit]
+    dataset_entries = dataset_entries[:limit]
 
     # Initialize retriever and LLM
     retriever = create_s3_retriever(similarity_top_k=max(6, config.SIMILARITY_TOP_K + 2))
@@ -779,7 +794,9 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     drift_monitor = get_drift_monitor()
     drift_records = []
 
-    for question in questions:
+    for entry in dataset_entries:
+        question = entry["question"]
+        reference_answer = entry.get("reference_answer") or None
         drift = None
         try:
             drift = drift_monitor.score(question) if drift_monitor else None
@@ -823,6 +840,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 question=question,
                 context_passages=context_passages,
                 answer=response_text,
+                reference_answer=reference_answer,
                 model_id=model_id,
             )
             ctx_precision = compute_context_precision(retrieval_scores)
@@ -843,6 +861,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 "docs_retrieved": len(retrieved_nodes),
                 "retrieval_limit": retrieval_limit,
                 "drift_score": drift.get("drift_score") if drift else None,
+                "has_reference_answer": bool(reference_answer),
                 "avg_retrieval_score": round(
                     sum(retrieval_scores) / len(retrieval_scores), 4
                 ) if retrieval_scores else 0,
@@ -870,6 +889,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
                 "latency": 0,
                 "docs_retrieved": 0,
                 "drift_score": drift.get("drift_score") if drift else None,
+                "has_reference_answer": bool(reference_answer),
                 "avg_retrieval_score": 0,
             })
 
@@ -895,7 +915,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
 
     return {
         "total_evaluated": evaluated_count,
-        "total_dataset_questions": len(questions),
+        "total_dataset_questions": len(dataset_entries),
         "avg_latency": avg_latency,
         "dataset_path": str(dataset_file),
         "drift_summary": _build_drift_summary(drift_records, drift_monitor is not None),
