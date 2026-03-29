@@ -55,13 +55,14 @@ jobs:
           set -euo pipefail
 
           key_file="$(mktemp)"
+          trap 'rm -f "${key_file}"' EXIT
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
           chmod 600 "${key_file}"
           remote_observability_dir="$(printf '%q' "${OBSERVABILITY_DIR}")"
           remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
 
           ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ${remote_observability_dir}"
-          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${OBSERVABILITY_DIR}/observability-bundle.tgz"
+          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${remote_observability_dir}/observability-bundle.tgz"
 
           ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "OBSERVABILITY_DIR=${remote_observability_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
           set -euo pipefail
@@ -74,6 +75,7 @@ jobs:
           rm -f observability-bundle.tgz
 
           command -v docker >/dev/null
+          command -v curl >/dev/null
           docker compose version >/dev/null
 
           cat > .env.observability <<ENVFILE
@@ -136,8 +138,6 @@ jobs:
 
           "${compose_cmd[@]}" ps
           EOF
-
-          rm -f "${key_file}"
 
       - name: Summary
         run: |
