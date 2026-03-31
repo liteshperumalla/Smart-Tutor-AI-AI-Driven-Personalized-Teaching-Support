@@ -430,7 +430,7 @@ jobs:
 
             echo "=== Waiting for candidate backend health check ==="
             for i in $(seq 1 24); do
-              if curl -sf http://localhost:18010/health > /dev/null; then
+              if curl -sf http://localhost:18010/ready > /dev/null; then
                 echo "Candidate backend healthy after $((i * 5))s"
                 break
               fi
@@ -462,7 +462,7 @@ jobs:
 
             echo "=== Waiting for production backend health check ==="
             for i in $(seq 1 24); do
-              if curl -sf http://localhost:8010/health > /dev/null; then
+              if curl -sf http://localhost:8010/ready > /dev/null; then
                 echo "Production backend healthy after $((i * 5))s"
                 break
               fi

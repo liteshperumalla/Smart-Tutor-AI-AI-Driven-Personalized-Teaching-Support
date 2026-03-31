@@ -83,7 +83,7 @@ async def enforce_https(request: Request, call_next):
         # Check if request is over HTTP (not HTTPS)
         if request.url.scheme != "https":
             # Allow health check and docs on HTTP for internal use
-            if request.url.path not in ["/health", "/docs", "/redoc", "/openapi.json"]:
+            if request.url.path not in ["/health", "/ready", "/docs", "/redoc", "/openapi.json"]:
                 # Get the HTTPS URL
                 https_url = request.url.replace(scheme="https")
                 return JSONResponse(
@@ -165,6 +165,17 @@ async def health_check(request: Request):
 
     return {
         **health,
+        "environment": config.ENVIRONMENT,
+        "version": "1.0.0"
+    }
+
+
+@app.get("/ready")
+@limiter.limit("30/minute")
+async def readiness_check(request: Request):
+    """Lightweight readiness probe for deploys and load balancers."""
+    return {
+        "status": "ready",
         "environment": config.ENVIRONMENT,
         "version": "1.0.0"
     }
