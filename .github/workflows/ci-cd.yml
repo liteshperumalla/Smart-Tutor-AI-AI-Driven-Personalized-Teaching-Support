@@ -241,7 +241,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-    needs: [backend-tests, frontend-tests]
+    needs: [dependency-scanning, backend-tests, frontend-tests]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 60
     permissions:
@@ -402,7 +402,10 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: GHCR_TOKEN,ACTOR,BACKEND_IMAGE
           script: |
-            set -e
+            set -euo pipefail
+
+            command -v docker >/dev/null
+            command -v curl >/dev/null
 
             echo "=== Authenticating with GHCR ==="
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin

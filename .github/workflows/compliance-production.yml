@@ -51,24 +51,45 @@ jobs:
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         uses: unfor19/install-aws-cli-action@v1
 
-      - name: Capture AWS compliance snapshot
+      - name: Capture AWS compliance snapshot from runner
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           mkdir -p /tmp/compliance-report
+          mkdir -p /tmp/compliance-report/aws-fallback-needed
 
-          aws sts get-caller-identity > /tmp/compliance-report/aws-identity.json
-          aws cloudtrail describe-trails > /tmp/compliance-report/cloudtrail.json
-          aws secretsmanager list-secrets \
-            --query 'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}' \
-            --output json > /tmp/compliance-report/secrets-rotation.json
-          aws rds describe-db-instances \
-            --query 'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}' \
-            --output json > /tmp/compliance-report/rds-config.json
-          aws ec2 describe-instances \
-            --filters "Name=ip-address,Values=${EC2_HOST}" \
-            --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
-            --output json > /tmp/compliance-report/ec2-instance.json
+          capture_snapshot() {
+            local name="$1"
+            local target="$2"
+            local empty_json="$3"
+            shift 3
+
+            if "$@" > "${target}"; then
+              echo "Captured ${name} from runner."
+            else
+              echo "${empty_json}" > "${target}"
+              touch "/tmp/compliance-report/aws-fallback-needed/${name}"
+              echo "::warning::Unable to capture ${name} from runner; EC2 fallback will be attempted."
+            fi
+          }
+
+          capture_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
+            aws sts get-caller-identity
+          capture_snapshot "cloudtrail" "/tmp/compliance-report/cloudtrail.json" "{}" \
+            aws cloudtrail describe-trails
+          capture_snapshot "secrets-rotation" "/tmp/compliance-report/secrets-rotation.json" "[]" \
+            aws secretsmanager list-secrets \
+              --query 'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}' \
+              --output json
+          capture_snapshot "rds-config" "/tmp/compliance-report/rds-config.json" "[]" \
+            aws rds describe-db-instances \
+              --query 'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}' \
+              --output json
+          capture_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+            aws ec2 describe-instances \
+              --filters "Name=ip-address,Values=${EC2_HOST}" \
+              --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
+              --output json
 
       - name: Run remote EC2 compliance checks
         run: |
@@ -120,6 +141,66 @@ jobs:
             exit 1
           fi
           EOF
+
+          rm -f "${key_file}"
+
+      - name: Capture AWS compliance snapshot from EC2 fallback
+        run: |
+          set -uo pipefail
+
+          mkdir -p /tmp/compliance-report
+          mkdir -p /tmp/compliance-report/aws-fallback-needed
+
+          needs_fallback=0
+          for name in aws-identity cloudtrail secrets-rotation rds-config ec2-instance; do
+            if [ -f "/tmp/compliance-report/aws-fallback-needed/${name}" ]; then
+              needs_fallback=1
+            fi
+          done
+
+          if [ "${needs_fallback}" -eq 0 ] && \
+             [ -s /tmp/compliance-report/aws-identity.json ] && \
+             [ -s /tmp/compliance-report/cloudtrail.json ] && \
+             [ -s /tmp/compliance-report/secrets-rotation.json ] && \
+             [ -s /tmp/compliance-report/rds-config.json ] && \
+             [ -s /tmp/compliance-report/ec2-instance.json ]; then
+            echo "Runner snapshot is complete; skipping EC2 fallback."
+            exit 0
+          fi
+
+          key_file="$(mktemp)"
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+
+          capture_remote_snapshot() {
+            local name="$1"
+            local target="$2"
+            local empty_json="$3"
+            shift 3
+
+            if [ ! -f "/tmp/compliance-report/aws-fallback-needed/${name}" ] && [ -s "${target}" ]; then
+              return 0
+            fi
+
+            if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "command -v aws >/dev/null 2>&1 && $*" > "${target}"; then
+              rm -f "/tmp/compliance-report/aws-fallback-needed/${name}"
+              echo "Captured ${name} from EC2 fallback."
+            else
+              echo "${empty_json}" > "${target}"
+              echo "::warning::Unable to capture ${name} from runner or EC2 host."
+            fi
+          }
+
+          capture_remote_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
+            aws sts get-caller-identity
+          capture_remote_snapshot "cloudtrail" "/tmp/compliance-report/cloudtrail.json" "{}" \
+            aws cloudtrail describe-trails
+          capture_remote_snapshot "secrets-rotation" "/tmp/compliance-report/secrets-rotation.json" "[]" \
+            aws secretsmanager list-secrets --query "'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}'" --output json
+          capture_remote_snapshot "rds-config" "/tmp/compliance-report/rds-config.json" "[]" \
+            aws rds describe-db-instances --query "'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}'" --output json
+          capture_remote_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+            aws ec2 describe-instances --filters "Name=ip-address,Values=${EC2_HOST}" --query "'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}'" --output json
 
           rm -f "${key_file}"
 

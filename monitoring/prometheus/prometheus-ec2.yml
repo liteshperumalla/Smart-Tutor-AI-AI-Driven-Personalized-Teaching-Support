@@ -6,6 +6,11 @@ global:
     cluster: 'smart-ai-tutor-ec2'
     environment: 'production'
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
 rule_files:
   - 'alerts.yml'
 
@@ -24,6 +29,22 @@ scrape_configs:
           service: 'backend-api'
           app: 'smart-ai-tutor'
     scrape_interval: 10s
+
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'postgres'
+          database: 'smart_tutor'
+    scrape_interval: 30s
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          service: 'redis'
+          cache: 'rag-cache'
+    scrape_interval: 30s
 
   - job_name: 'node'
     static_configs:

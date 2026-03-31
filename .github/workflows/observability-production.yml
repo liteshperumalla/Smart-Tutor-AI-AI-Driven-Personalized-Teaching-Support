@@ -45,6 +45,7 @@ jobs:
           set -euo pipefail
           tar -czf /tmp/observability-bundle.tgz \
             docker-compose.observability.yml \
+            monitoring/alertmanager/alertmanager.yml \
             monitoring/prometheus/prometheus-ec2.yml \
             monitoring/prometheus/alerts.yml \
             monitoring/grafana/dashboards \
@@ -55,18 +56,20 @@ jobs:
           set -euo pipefail
 
           key_file="$(mktemp)"
+          trap 'rm -f "${key_file}"' EXIT
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
           chmod 600 "${key_file}"
           remote_observability_dir="$(printf '%q' "${OBSERVABILITY_DIR}")"
           remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
 
           ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ${remote_observability_dir}"
-          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${OBSERVABILITY_DIR}/observability-bundle.tgz"
+          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${remote_observability_dir}/observability-bundle.tgz"
 
           ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "OBSERVABILITY_DIR=${remote_observability_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
           set -euo pipefail
 
           OBS_DIR="${OBSERVABILITY_DIR:-/home/ubuntu/smart-tutor-observability}"
+          SMART_TUTOR_ENV_FILE="${SMART_TUTOR_ENV_FILE:-$HOME/smart-tutor.env}"
           mkdir -p "${OBS_DIR}"
           cd "${OBS_DIR}"
 
@@ -74,13 +77,140 @@ jobs:
           rm -f observability-bundle.tgz
 
           command -v docker >/dev/null
+          command -v curl >/dev/null
+          command -v python3 >/dev/null
           docker compose version >/dev/null
+
+          if [ ! -f "${SMART_TUTOR_ENV_FILE}" ]; then
+            echo "Missing application environment file: ${SMART_TUTOR_ENV_FILE}"
+            exit 1
+          fi
+
+          set -a
+          . "${SMART_TUTOR_ENV_FILE}"
+          set +a
+
+          required_env=(
+            POSTGRES_HOST
+            POSTGRES_DB
+            POSTGRES_USER
+            POSTGRES_PASSWORD
+            REDIS_HOST
+            REDIS_PASSWORD
+          )
+          missing_env=()
+          for name in "${required_env[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing_env+=("${name}")
+            fi
+          done
+          if [ ${#missing_env[@]} -gt 0 ]; then
+            echo "Missing required application observability settings in ${SMART_TUTOR_ENV_FILE}: ${missing_env[*]}"
+            exit 1
+          fi
+
+          if [ -n "${POSTGRES_SSLMODE:-}" ]; then
+            postgres_sslmode="${POSTGRES_SSLMODE}"
+          elif [ "${POSTGRES_HOST}" = "postgres" ] || [ "${POSTGRES_HOST}" = "localhost" ] || [ "${POSTGRES_HOST}" = "127.0.0.1" ]; then
+            postgres_sslmode="disable"
+          else
+            postgres_sslmode="require"
+          fi
+
+          if [ "${REDIS_SSL:-false}" = "true" ]; then
+            redis_exporter_address="rediss://${REDIS_HOST}:${REDIS_PORT:-6379}"
+          else
+            redis_exporter_address="redis://${REDIS_HOST}:${REDIS_PORT:-6379}"
+          fi
+
+          alertmanager_route_entries=""
+          alertmanager_receivers=$'receivers:\n  - name: "null"\n'
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            alertmanager_route_entries+=$'    - receiver: "slack"\n      continue: true\n'
+            alertmanager_receivers+=$(cat <<ALERTSLACK
+              - name: "slack"
+                slack_configs:
+                  - api_url: "${SLACK_WEBHOOK_URL}"
+                    username: "Smart Tutor Alerts"
+                    icon_emoji: ":rotating_light:"
+                    send_resolved: true
+                    color: '{{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}'
+                    title: '[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}'
+                    pretext: '{{ if eq .Status "resolved" }}Resolved{{ else }}Firing{{ end }} alert for Smart AI Tutor production'
+                    text: '{{ range .Alerts }}• *{{ .Annotations.summary }}*{{ if .Annotations.description }}\n{{ .Annotations.description }}{{ end }}{{ "\n" }}{{ end }}'
+                    fields:
+                      - title: "Environment"
+                        value: '{{ .CommonLabels.environment }}'
+                        short: true
+                      - title: "Component"
+                        value: '{{ .CommonLabels.component }}'
+                        short: true
+                      - title: "Status"
+                        value: '{{ .Status }}'
+                        short: true
+                      - title: "Alert Count"
+                        value: '{{ len .Alerts }}'
+                        short: true
+                    footer: 'Alertmanager via Production Observability'
+                    mrkdwn_in:
+                      - pretext
+                      - text
+                    ALERTSLACK
+            )
+            alertmanager_receivers+=$'\n'
+          fi
+
+          if [ -n "${ALERTS_EMAIL_TO:-${EMAIL_FROM:-}}" ] && [ -n "${SMTP_SERVER:-}" ] && [ -n "${SMTP_USERNAME:-}" ] && [ -n "${SMTP_PASSWORD:-}" ]; then
+            alert_email_to="${ALERTS_EMAIL_TO:-${EMAIL_FROM}}"
+            alertmanager_route_entries+=$'    - receiver: "email"\n      continue: true\n'
+            alertmanager_receivers+=$(cat <<ALERTEMAIL
+              - name: "email"
+                email_configs:
+                  - to: "${alert_email_to}"
+                    from: "${EMAIL_FROM:-${SMTP_USERNAME}}"
+                    smarthost: "${SMTP_SERVER}:${SMTP_PORT:-587}"
+                    auth_username: "${SMTP_USERNAME}"
+                    auth_password: "${SMTP_PASSWORD}"
+                    require_tls: true
+                    send_resolved: true
+            ALERTEMAIL
+            )
+            alertmanager_receivers+=$'\n'
+          fi
+
+          if [ -n "${alertmanager_route_entries}" ]; then
+            alertmanager_routes_block=$(printf '  routes:\n%s' "${alertmanager_route_entries}")
+          else
+            alertmanager_routes_block=""
+          fi
 
           cat > .env.observability <<ENVFILE
           GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
           GRAFANA_PORT_EXPOSE=3001
           GRAFANA_ROOT_URL=http://localhost:3001
+          POSTGRES_HOST=${POSTGRES_HOST}
+          POSTGRES_PORT=${POSTGRES_PORT:-5432}
+          POSTGRES_DB=${POSTGRES_DB}
+          POSTGRES_USER=${POSTGRES_USER}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+          POSTGRES_SSLMODE=${postgres_sslmode}
+          REDIS_EXPORTER_ADDRESS=${redis_exporter_address}
+          REDIS_PASSWORD=${REDIS_PASSWORD}
           ENVFILE
+
+          cat > monitoring/alertmanager/alertmanager.yml <<ALERTMANAGER
+          global:
+            resolve_timeout: 5m
+          route:
+            receiver: "null"
+            group_by: ["alertname", "component", "severity"]
+            group_wait: 30s
+            group_interval: 5m
+            repeat_interval: 4h
+          ${alertmanager_routes_block}
+
+          ${alertmanager_receivers}
+          ALERTMANAGER
 
           docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
             docker network create smart-tutor_smart-tutor-network
@@ -115,6 +245,55 @@ jobs:
             "${compose_cmd[@]}" logs --tail=200 || true
           }
 
+          require_prometheus_target_health() {
+            local expected_jobs_csv="$1"
+            local attempts="${2:-12}"
+            local sleep_seconds="${3:-5}"
+            local payload
+
+            for attempt in $(seq 1 "${attempts}"); do
+              payload="$(curl -fsS "http://127.0.0.1:9090/api/v1/targets")"
+              if TARGET_PAYLOAD="${payload}" EXPECTED_JOBS="${expected_jobs_csv}" python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          payload = json.loads(os.environ["TARGET_PAYLOAD"])
+          expected = [job for job in os.environ["EXPECTED_JOBS"].split(",") if job]
+          active = payload.get("data", {}).get("activeTargets", [])
+          health_by_job = {}
+          for target in active:
+              labels = target.get("labels", {})
+              job = labels.get("job")
+              if not job:
+                  continue
+              health_by_job.setdefault(job, set()).add(target.get("health"))
+
+          missing = [job for job in expected if job not in health_by_job]
+          unhealthy = [
+              job for job in expected
+              if job in health_by_job and health_by_job[job] != {"up"}
+          ]
+          if missing or unhealthy:
+              if missing:
+                  print(f"Missing Prometheus targets: {', '.join(missing)}")
+              if unhealthy:
+                  print(f"Unhealthy Prometheus targets: {', '.join(unhealthy)}")
+              sys.exit(1)
+
+          print("Validated Prometheus targets:", ", ".join(expected))
+          PY
+              then
+                return 0
+              fi
+
+              echo "[WAIT] Prometheus targets not healthy yet (${attempt}/${attempts})"
+              sleep "${sleep_seconds}"
+            done
+
+            return 1
+          }
+
           "${compose_cmd[@]}" up -d --remove-orphans
 
           if ! wait_http "Prometheus" "http://127.0.0.1:9090/-/ready" 36 5; then
@@ -122,6 +301,18 @@ jobs:
             exit 1
           fi
           if ! wait_http "Grafana" "http://127.0.0.1:3001/api/health" 36 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "Alertmanager" "http://127.0.0.1:9093/-/healthy" 24 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "Postgres Exporter" "http://127.0.0.1:9187/metrics" 24 5; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! wait_http "Redis Exporter" "http://127.0.0.1:9121/metrics" 24 5; then
             dump_diagnostics
             exit 1
           fi
@@ -134,10 +325,13 @@ jobs:
             exit 1
           fi
 
+          if ! require_prometheus_target_health "prometheus,backend-api,postgresql,redis,node,cadvisor"; then
+            dump_diagnostics
+            exit 1
+          fi
+
           "${compose_cmd[@]}" ps
           EOF
-
-          rm -f "${key_file}"
 
       - name: Summary
         run: |
@@ -147,6 +341,6 @@ jobs:
             echo "- Target: \`${EC2_HOST}\`"
             echo "- Remote directory: \`${OBSERVABILITY_DIR}\`"
             echo "- Stack file: \`docker-compose.observability.yml\`"
-            echo "- Services: \`prometheus\`, \`grafana\`, \`node-exporter\`, \`cadvisor\`"
-            echo "- Prometheus readiness and Grafana health checks completed"
+            echo "- Services: \`prometheus\`, \`grafana\`, \`alertmanager\`, \`postgres-exporter\`, \`redis-exporter\`, \`node-exporter\`, \`cadvisor\`"
+            echo "- Prometheus target validation completed for: \`backend-api\`, \`postgresql\`, \`redis\`, \`node\`, \`cadvisor\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -14,6 +14,10 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--storage.tsdb.retention.time=30d'
+    depends_on:
+      - alertmanager
+      - postgres-exporter
+      - redis-exporter
     networks:
       - smart-tutor-network
     restart: unless-stopped
@@ -34,6 +38,46 @@ services:
       - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     depends_on:
       - prometheus
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: smart-tutor-alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: smart-tutor-postgres-exporter
+    ports:
+      - "127.0.0.1:9187:9187"
+    environment:
+      - DATA_SOURCE_URI=${POSTGRES_HOST:?Set POSTGRES_HOST in .env.observability}:${POSTGRES_PORT:-5432}/${POSTGRES_DB:?Set POSTGRES_DB in .env.observability}?sslmode=${POSTGRES_SSLMODE:-require}
+      - DATA_SOURCE_USER=${POSTGRES_USER:?Set POSTGRES_USER in .env.observability}
+      - DATA_SOURCE_PASS=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.observability}
+    networks:
+      - smart-tutor-network
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: smart-tutor-redis-exporter
+    ports:
+      - "127.0.0.1:9121:9121"
+    environment:
+      - REDIS_ADDR=${REDIS_EXPORTER_ADDRESS:?Set REDIS_EXPORTER_ADDRESS in .env.observability}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.observability}
     networks:
       - smart-tutor-network
     restart: unless-stopped
@@ -80,3 +124,4 @@ networks:
 volumes:
   prometheus_data:
   grafana_data:
+  alertmanager_data:
