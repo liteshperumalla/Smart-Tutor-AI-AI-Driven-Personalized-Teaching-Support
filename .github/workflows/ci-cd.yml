@@ -549,6 +549,10 @@ jobs:
               docker pull "$BACKEND_IMAGE"
             }
 
+            container_ipv4() {
+              docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+            }
+
             wait_for_backend_ready() {
               local name="$1"
               local url="$2"
@@ -603,17 +607,24 @@ jobs:
               --restart unless-stopped \
               --network smart-tutor_smart-tutor-network \
               --env-file ~/smart-tutor.env \
-              -p 18010:8000 \
               -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
               -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
               -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
 
+            candidate_ip="$(container_ipv4 smart-tutor-backend-candidate)"
+            if [ -z "$candidate_ip" ]; then
+              echo "Unable to determine candidate backend container IP"
+              docker inspect smart-tutor-backend-candidate || true
+              docker rm -f smart-tutor-backend-candidate || true
+              exit 1
+            fi
+
             echo "=== Waiting for candidate backend readiness ==="
             if ! wait_for_backend_ready \
               "Candidate backend" \
-              "http://localhost:18010/ready" \
+              "http://${candidate_ip}:8000/ready" \
               "smart-tutor-backend-candidate" \
               60 \
               5; then
@@ -666,7 +677,7 @@ jobs:
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
-            echo "| Backend candidate probe | \`http://localhost:18010/ready\` |"
+            echo "| Backend candidate probe | \`http://<candidate-container-ip>:8000/ready\` |"
             echo "| Backend production probe | \`http://localhost:8010/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
