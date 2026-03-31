@@ -550,19 +550,14 @@ jobs:
             }
 
             probe_candidate_backend() {
-              local candidate_ip
-              candidate_ip="$(
+              local health_status
+              health_status="$(
                 docker inspect \
-                  --format '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
-                  smart-tutor-backend-candidate 2>/dev/null
+                  --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' \
+                  smart-tutor-backend-candidate 2>/dev/null || true
               )"
 
-              if [ -z "${candidate_ip}" ]; then
-                echo "Candidate backend has no container IP yet" >&2
-                return 1
-              fi
-
-              curl -sf --connect-timeout 2 --max-time 3 "http://${candidate_ip}:8000/ready" >/dev/null
+              [ "${health_status}" = "healthy" ]
             }
 
             probe_production_backend() {
@@ -623,6 +618,11 @@ jobs:
               --restart unless-stopped \
               --network smart-tutor_smart-tutor-network \
               --env-file ~/smart-tutor.env \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
               -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
               -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
               -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
@@ -685,7 +685,7 @@ jobs:
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
-            echo "| Backend candidate probe | \`curl http://<candidate-container-ip>:8000/ready\` |"
+            echo "| Backend candidate probe | Docker healthcheck on \`http://127.0.0.1:8000/ready\` inside candidate container |"
             echo "| Backend production probe | \`curl http://localhost:8010/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
