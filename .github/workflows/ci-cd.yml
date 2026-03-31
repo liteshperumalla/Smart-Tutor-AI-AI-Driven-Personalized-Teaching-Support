@@ -402,6 +402,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push backend image
+        id: build_backend_image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -414,6 +415,7 @@ jobs:
           cache-to: type=gha,mode=min,scope=backend-image
 
       - name: Smoke test backend image
+        id: smoke_test_backend_image
         run: |
           set -euo pipefail
           backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
@@ -425,6 +427,7 @@ jobs:
             python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/backend/rag/tests/test_dataset.json'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
 
       - name: Build & push frontend image
+        id: build_frontend_image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
@@ -485,6 +488,7 @@ jobs:
           done
 
       - name: Deploy backend to EC2
+        id: deploy_backend
         uses: appleboy/ssh-action@v1.0.3
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -501,6 +505,39 @@ jobs:
 
             command -v docker >/dev/null
             command -v curl >/dev/null
+
+            retry_command() {
+              local description="$1"
+              local attempts="${2:-4}"
+              local sleep_seconds="${3:-10}"
+              shift 3
+
+              local attempt=1
+              until "$@"; do
+                local exit_code=$?
+                if [ "$attempt" -ge "$attempts" ]; then
+                  echo "${description} failed after ${attempts} attempts"
+                  return "$exit_code"
+                fi
+
+                echo "${description} failed on attempt ${attempt}/${attempts}; retrying in ${sleep_seconds}s..."
+                attempt=$((attempt + 1))
+                sleep "${sleep_seconds}"
+              done
+            }
+
+            ghcr_preflight() {
+              curl -fsSI --max-time 20 https://ghcr.io/v2/ >/dev/null
+            }
+
+            docker_login_ghcr() {
+              docker logout ghcr.io >/dev/null 2>&1 || true
+              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+            }
+
+            docker_pull_backend_image() {
+              docker pull "$BACKEND_IMAGE"
+            }
 
             wait_for_backend_ready() {
               local name="$1"
@@ -542,10 +579,11 @@ jobs:
             }
 
             echo "=== Authenticating with GHCR ==="
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+            retry_command "GHCR reachability check" 4 10 ghcr_preflight
+            retry_command "GHCR authentication" 4 15 docker_login_ghcr
 
             echo "=== Pulling image: $BACKEND_IMAGE ==="
-            docker pull "$BACKEND_IMAGE"
+            retry_command "Backend image pull" 4 15 docker_pull_backend_image
 
             echo "=== Starting candidate backend container on port 18010 ==="
             docker stop smart-tutor-backend-candidate 2>/dev/null || true
@@ -621,8 +659,12 @@ jobs:
             echo "| Backend candidate probe | \`http://localhost:18010/ready\` |"
             echo "| Backend production probe | \`http://localhost:8010/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
+            echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
+            echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
+            echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
+            echo "| Backend deploy | \`${{ steps.deploy_backend.outcome }}\` |"
             if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-              echo "| Frontend deploy | Vercel configured |"
+              echo "| Frontend deploy | \`${{ steps.vercel_deploy.outcome }}\` |"
               echo "| Vercel deployment | \`${{ steps.vercel_deploy.outputs.deployment_url }}\` |"
             else
               echo "| Frontend deploy | skipped: Vercel secrets not configured |"
