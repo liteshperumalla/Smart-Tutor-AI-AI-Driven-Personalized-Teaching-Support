@@ -549,19 +549,24 @@ jobs:
               docker pull "$BACKEND_IMAGE"
             }
 
-            container_ipv4() {
-              docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+            probe_candidate_backend() {
+              docker exec smart-tutor-backend-candidate \
+                curl -sf --connect-timeout 2 --max-time 3 http://127.0.0.1:8000/ready >/dev/null
+            }
+
+            probe_production_backend() {
+              curl -sf --connect-timeout 2 --max-time 3 http://localhost:8010/ready >/dev/null
             }
 
             wait_for_backend_ready() {
               local name="$1"
-              local url="$2"
-              local container="$3"
+              local container="$2"
+              local probe_fn="$3"
               local attempts="${4:-60}"
               local sleep_seconds="${5:-5}"
 
               for i in $(seq 1 "${attempts}"); do
-                if curl -sf "${url}" > /dev/null; then
+                if "${probe_fn}"; then
                   echo "${name} healthy after $((i * sleep_seconds))s"
                   return 0
                 fi
@@ -613,19 +618,11 @@ jobs:
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
 
-            candidate_ip="$(container_ipv4 smart-tutor-backend-candidate)"
-            if [ -z "$candidate_ip" ]; then
-              echo "Unable to determine candidate backend container IP"
-              docker inspect smart-tutor-backend-candidate || true
-              docker rm -f smart-tutor-backend-candidate || true
-              exit 1
-            fi
-
             echo "=== Waiting for candidate backend readiness ==="
             if ! wait_for_backend_ready \
               "Candidate backend" \
-              "http://${candidate_ip}:8000/ready" \
               "smart-tutor-backend-candidate" \
+              probe_candidate_backend \
               60 \
               5; then
               docker rm -f smart-tutor-backend-candidate || true
@@ -651,8 +648,8 @@ jobs:
             echo "=== Waiting for production backend readiness ==="
             if ! wait_for_backend_ready \
               "Production backend" \
-              "http://localhost:8010/ready" \
               "smart-tutor-backend" \
+              probe_production_backend \
               60 \
               5; then
               exit 1
@@ -677,8 +674,8 @@ jobs:
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
-            echo "| Backend candidate probe | \`http://<candidate-container-ip>:8000/ready\` |"
-            echo "| Backend production probe | \`http://localhost:8010/ready\` |"
+            echo "| Backend candidate probe | \`docker exec smart-tutor-backend-candidate curl http://127.0.0.1:8000/ready\` |"
+            echo "| Backend production probe | \`curl http://localhost:8010/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
             echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
