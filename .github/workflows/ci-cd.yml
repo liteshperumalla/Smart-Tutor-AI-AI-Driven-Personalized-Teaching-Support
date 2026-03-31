@@ -527,7 +527,17 @@ jobs:
             }
 
             ghcr_preflight() {
-              curl -fsSI --max-time 20 https://ghcr.io/v2/ >/dev/null
+              local status
+              status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://ghcr.io/v2/ || true)"
+              case "$status" in
+                200|401|403|405)
+                  return 0
+                  ;;
+                *)
+                  echo "Unexpected GHCR preflight status: ${status:-unavailable}" >&2
+                  return 1
+                  ;;
+              esac
             }
 
             docker_login_ghcr() {
