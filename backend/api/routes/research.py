@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import logging
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
@@ -9,13 +11,25 @@ logger = logging.getLogger(__name__)
 from backend.api.dependencies import get_current_session
 from backend.validators import FileValidator
 from backend.exceptions import InvalidFileError
-from backend.services.research_service import (
-    ResearchService,
-    get_research_service,
-)
-from backend.services.status_service import get_knowledge_base_stats
+
+if TYPE_CHECKING:
+    from backend.services.research_service import ResearchService
 
 router = APIRouter(prefix="/research", tags=["research"])
+
+
+def get_research_service():
+    from backend.services.research_service import get_research_service as _get_research_service
+
+    return _get_research_service()
+
+
+def get_knowledge_base_stats():
+    from backend.services.status_service import (
+        get_knowledge_base_stats as _get_knowledge_base_stats,
+    )
+
+    return _get_knowledge_base_stats()
 
 
 # ==================== REQUEST MODELS ====================

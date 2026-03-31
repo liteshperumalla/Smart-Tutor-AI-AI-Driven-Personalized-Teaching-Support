@@ -39,7 +39,6 @@ from youtube_transcript_api import (
 )
 
 from backend.config import config
-from utils import search_web_results
 from backend.s3_retriever import S3Retriever
 from backend.s3_vector_store import S3VectorStore
 from backend.bedrock_embeddings import BedrockEmbeddings
@@ -58,6 +57,12 @@ CHUNK_SIZE = 1000
 CHUNK_OVERLAP = 100
 UPLOADS_PREFIX = "research_uploads/"
 TEXT_CHUNKS_PREFIX = "research_chunks/"
+
+
+def _search_web_results(*args, **kwargs):
+    from utils import search_web_results
+
+    return search_web_results(*args, **kwargs)
 
 
 def _validate_url_not_internal(url: str) -> None:
@@ -811,7 +816,7 @@ class ResearchService:
     def search_web(self, query: str, max_results: int = 5) -> Dict[str, Any]:
         """Search web for supplementary information."""
         try:
-            results = search_web_results(query, max_results)
+            results = _search_web_results(query, max_results)
             return {
                 "query": query,
                 "web_results": results,

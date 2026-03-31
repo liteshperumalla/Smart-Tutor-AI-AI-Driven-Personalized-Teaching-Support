@@ -1,25 +1,36 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend.rate_limiter import limiter, PerUserRateLimiter
-from backend.services.feedback_service import (
-    FeedbackEntry,
-    FeedbackService,
-    BugReportEntry,
-    DuplicateFeedbackError,
-    get_feedback_service,
-)
-from backend.services.notification_service import notify_feedback_received
+
+if TYPE_CHECKING:
+    from backend.services.feedback_service import FeedbackService
 
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 _FEEDBACK_LIMIT = 12
 _FEEDBACK_WINDOW = 3600
+
+
+def get_feedback_service():
+    from backend.services.feedback_service import get_feedback_service as _get_feedback_service
+
+    return _get_feedback_service()
+
+
+def notify_feedback_received(**kwargs):
+    from backend.services.notification_service import (
+        notify_feedback_received as _notify_feedback_received,
+    )
+
+    return _notify_feedback_received(**kwargs)
 
 
 class FeedbackPayload(BaseModel):
@@ -47,6 +58,11 @@ async def submit_feedback(
     service: FeedbackService = Depends(get_feedback_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    from backend.services.feedback_service import (
+        DuplicateFeedbackError,
+        FeedbackEntry,
+    )
+
     await rate_limiter.check_rate_limit(
         request,
         limit=_FEEDBACK_LIMIT,
@@ -84,6 +100,11 @@ async def submit_bug(
     service: FeedbackService = Depends(get_feedback_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    from backend.services.feedback_service import (
+        BugReportEntry,
+        DuplicateFeedbackError,
+    )
+
     await rate_limiter.check_rate_limit(
         request,
         limit=_FEEDBACK_LIMIT,

@@ -1,31 +1,61 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
-from typing import Optional, List
+from typing import List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend import posthog_tracker
 from backend.csrf_protection import csrf_protect
 from backend.rate_limiter import PerUserRateLimiter
-from backend.services.chat_service import get_chat_service, ChatService, get_llm_semaphore
-from backend.services.research_service import get_research_service, ResearchService
-from backend.services.share_service import get_share_service
-from backend.services.message_feedback_service import (
-    get_feedback_service,
-    MessageFeedback,
-    MessageFeedbackService,
-    FeedbackType,
-)
 from backend.services.models import ChatMessage
 from backend.validators import FileValidator
 from backend.exceptions import InvalidFileError
 
+if TYPE_CHECKING:
+    from backend.services.chat_service import ChatService
+    from backend.services.message_feedback_service import MessageFeedbackService
+    from backend.services.research_service import ResearchService
+
 _logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+def get_chat_service():
+    from backend.services.chat_service import get_chat_service as _get_chat_service
+
+    return _get_chat_service()
+
+
+def get_llm_semaphore():
+    from backend.services.chat_service import get_llm_semaphore as _get_llm_semaphore
+
+    return _get_llm_semaphore()
+
+
+def get_research_service():
+    from backend.services.research_service import get_research_service as _get_research_service
+
+    return _get_research_service()
+
+
+def get_share_service():
+    from backend.services.share_service import get_share_service as _get_share_service
+
+    return _get_share_service()
+
+
+def get_feedback_service():
+    from backend.services.message_feedback_service import (
+        get_feedback_service as _get_feedback_service,
+    )
+
+    return _get_feedback_service()
 
 
 class ShareRequest(BaseModel):
@@ -532,7 +562,9 @@ def submit_message_feedback(
             detail="Feedback can only be submitted for assistant messages"
         )
 
-    feedback_type: FeedbackType = request.type  # type: ignore
+    from backend.services.message_feedback_service import MessageFeedback
+
+    feedback_type = request.type
 
     # For thumbs up/down, check if the same type already exists (toggle behavior)
     if feedback_type in ("thumbs_up", "thumbs_down"):

@@ -1,4 +1,6 @@
-from typing import Dict, List
+from __future__ import annotations
+
+from typing import Dict, List, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -7,13 +9,17 @@ from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend import posthog_tracker
 from backend.config import config
 from backend.rate_limiter import limiter, PerUserRateLimiter
-from backend.services.quiz_service import (
-    QuizGenerationError,
-    get_quiz_service,
-    QuizService,
-)
+
+if TYPE_CHECKING:
+    from backend.services.quiz_service import QuizService
 
 router = APIRouter(prefix="/quiz", tags=["quiz"])
+
+
+def get_quiz_service():
+    from backend.services.quiz_service import get_quiz_service as _get_quiz_service
+
+    return _get_quiz_service()
 
 # Quiz-specific rate limits
 _QUIZ_GEN_LIMIT = 5      # max quiz generations per user per window
@@ -47,6 +53,8 @@ async def generate_quiz(
     quiz_service: QuizService = Depends(get_quiz_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    from backend.services.quiz_service import QuizGenerationError
+
     await rate_limiter.check_rate_limit(
         request,
         limit=_QUIZ_GEN_LIMIT,

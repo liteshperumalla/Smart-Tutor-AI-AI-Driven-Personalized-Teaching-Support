@@ -1,21 +1,38 @@
+from __future__ import annotations
+
 from datetime import date, time
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend.rate_limiter import limiter, PerUserRateLimiter
-from backend.services.appointment_service import (
-    get_appointment_service,
-    AppointmentService,
-    DuplicateAppointmentError,
-)
-from backend.services.notification_service import notify_appointment_created
+
+if TYPE_CHECKING:
+    from backend.services.appointment_service import AppointmentService
 
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 _APPOINTMENT_LIMIT = 6
 _APPOINTMENT_WINDOW = 3600
+
+
+def get_appointment_service():
+    from backend.services.appointment_service import (
+        get_appointment_service as _get_appointment_service,
+    )
+
+    return _get_appointment_service()
+
+
+def notify_appointment_created(**kwargs):
+    from backend.services.notification_service import (
+        notify_appointment_created as _notify_appointment_created,
+    )
+
+    return _notify_appointment_created(**kwargs)
 
 
 class AppointmentRequest(BaseModel):
@@ -49,6 +66,8 @@ async def create_appointment(
     service: AppointmentService = Depends(get_appointment_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    from backend.services.appointment_service import DuplicateAppointmentError
+
     await rate_limiter.check_rate_limit(
         request,
         limit=_APPOINTMENT_LIMIT,

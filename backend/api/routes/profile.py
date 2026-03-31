@@ -1,13 +1,30 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from backend.api.dependencies import get_current_session
-from backend.auth_service import AuthService, get_auth_service
 from backend.exceptions import InvalidCredentialsError, PasswordValidationError
-from backend.services.profile_service import ProfileService, get_profile_service
+
+if TYPE_CHECKING:
+    from backend.auth_service import AuthService
+    from backend.services.profile_service import ProfileService
 
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+
+def get_auth_service():
+    from backend.auth_service import get_auth_service as _get_auth_service
+
+    return _get_auth_service()
+
+
+def get_profile_service():
+    from backend.services.profile_service import get_profile_service as _get_profile_service
+
+    return _get_profile_service()
 
 MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024  # 5 MB
 

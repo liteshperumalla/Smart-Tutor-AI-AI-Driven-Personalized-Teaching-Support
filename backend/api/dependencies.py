@@ -1,15 +1,25 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from fastapi import Depends, Header, HTTPException, Query, Request, status
 
-from backend.auth_service import get_auth_service, AuthService
-from backend.rate_limiter import get_rate_limiter, PerUserRateLimiter
 from backend.config import config
+
+if TYPE_CHECKING:
+    from backend.auth_service import AuthService
+    from backend.rate_limiter import PerUserRateLimiter
 
 
 def get_auth_service_dep() -> AuthService:
+    from backend.auth_service import get_auth_service
+
     return get_auth_service()
 
 
 def get_rate_limiter_dep() -> PerUserRateLimiter:
+    from backend.rate_limiter import get_rate_limiter
+
     return get_rate_limiter()
 
 

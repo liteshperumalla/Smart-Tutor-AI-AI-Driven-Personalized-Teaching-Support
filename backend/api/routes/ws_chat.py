@@ -5,8 +5,6 @@ Real-time chat using WebSocket for instant message streaming
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from backend.websocket.manager import manager
-from backend.auth_service import get_auth_service
-from backend.services.chat_service import get_chat_service
 from backend.services.models import ChatMessage
 from backend.logger import get_logger
 import json
@@ -14,6 +12,18 @@ import asyncio
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger(__name__)
+
+
+def get_auth_service():
+    from backend.auth_service import get_auth_service as _get_auth_service
+
+    return _get_auth_service()
+
+
+def get_chat_service():
+    from backend.services.chat_service import get_chat_service as _get_chat_service
+
+    return _get_chat_service()
 
 
 @router.websocket("/ws/chat/{session_id}")

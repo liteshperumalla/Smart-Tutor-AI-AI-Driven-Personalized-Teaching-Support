@@ -1,14 +1,15 @@
+from __future__ import annotations
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-from backend.auth_service import AuthService, get_auth_service
 from backend import posthog_tracker
 from backend.exceptions import (
     EmailNotVerifiedError,
@@ -30,7 +31,16 @@ from backend.rate_limiter import (
 )  # Import from rate_limiter to avoid circular imports
 from backend.csrf_protection import csrf_protect
 
+if TYPE_CHECKING:
+    from backend.auth_service import AuthService
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def get_auth_service():
+    from backend.auth_service import get_auth_service as _get_auth_service
+
+    return _get_auth_service()
 
 
 async def get_optional_session_user(

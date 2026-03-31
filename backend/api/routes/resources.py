@@ -2,10 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.api.dependencies import get_current_session
 from backend.resources_catalog import RESOURCES
-from backend.services.resource_service import get_resource_service
 
 
 router = APIRouter(prefix="/resources", tags=["resources"])
+
+
+def get_resource_service():
+    from backend.services.resource_service import get_resource_service as _get_resource_service
+
+    return _get_resource_service()
 
 
 @router.get("")

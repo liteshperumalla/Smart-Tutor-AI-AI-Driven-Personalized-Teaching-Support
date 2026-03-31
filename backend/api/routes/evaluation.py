@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import json
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, Query, status
@@ -13,13 +15,7 @@ from backend.api.dependencies import (
     get_admin_session,
     get_evaluation_cron_token,
 )
-from backend.services.evaluation_service import (
-    EvaluationService,
-    get_evaluation_service,
-)
 from backend.services.evaluation_run_store import append_run, list_runs, get_latest_run
-from backend.cost_tracking import get_cost_tracker
-from backend.bedrock_embeddings import BedrockEmbeddings
 from backend.config import config
 from backend.retrieval_tuning import (
     build_grounded_answer_prompt,
@@ -28,7 +24,30 @@ from backend.retrieval_tuning import (
     select_diverse_items,
 )
 
+if TYPE_CHECKING:
+    from backend.services.evaluation_service import EvaluationService
+
 router = APIRouter(prefix="/evaluation", tags=["evaluation"])
+
+
+def get_evaluation_service():
+    from backend.services.evaluation_service import (
+        get_evaluation_service as _get_evaluation_service,
+    )
+
+    return _get_evaluation_service()
+
+
+def get_cost_tracker():
+    from backend.cost_tracking import get_cost_tracker as _get_cost_tracker
+
+    return _get_cost_tracker()
+
+
+def _bedrock_embedding_dimension() -> int:
+    from backend.bedrock_embeddings import BedrockEmbeddings
+
+    return BedrockEmbeddings.EMBEDDING_DIMENSION
 
 _AWS_REGION_LABELS = {
     "us-east-1": "US East (N. Virginia)",
@@ -1328,7 +1347,7 @@ def get_aws_metrics(
                         "input_per_1k": live_pricing["bedrock"]["embedding"]["input_per_1k"],
                         "source": live_pricing["bedrock"]["source"],
                     },
-                    "dimension": BedrockEmbeddings.EMBEDDING_DIMENSION,
+                    "dimension": _bedrock_embedding_dimension(),
                 },
             },
             "available_models": [

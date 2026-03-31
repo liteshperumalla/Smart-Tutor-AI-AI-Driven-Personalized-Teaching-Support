@@ -6,11 +6,21 @@ from backend.content.home_content import (
     PROFESSOR,
     QUICK_ACTIONS,
 )
-from backend.services.status_service import get_system_status
-from backend.services.admin_service import get_admin_service
 
 
 router = APIRouter(prefix="/home", tags=["home"])
+
+
+def get_system_status():
+    from backend.services.status_service import get_system_status as _get_system_status
+
+    return _get_system_status()
+
+
+def get_admin_service():
+    from backend.services.admin_service import get_admin_service as _get_admin_service
+
+    return _get_admin_service()
 
 
 @router.get("/overview")

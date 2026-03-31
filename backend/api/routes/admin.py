@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Admin API Routes
 All endpoints require Admin role via get_admin_session dependency.
@@ -8,14 +10,29 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 from backend.api.dependencies import get_admin_session
-from backend.services.admin_service import get_admin_service
-from backend.services.resource_service import get_resource_service
-from backend.services.indexing_service import get_indexing_service
 
 # File extensions that the indexing pipeline can process
 _INDEXABLE_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md", ".ipynb"}
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def get_admin_service():
+    from backend.services.admin_service import get_admin_service as _get_admin_service
+
+    return _get_admin_service()
+
+
+def get_resource_service():
+    from backend.services.resource_service import get_resource_service as _get_resource_service
+
+    return _get_resource_service()
+
+
+def get_indexing_service():
+    from backend.services.indexing_service import get_indexing_service as _get_indexing_service
+
+    return _get_indexing_service()
 
 
 # ── Request Models ────────────────────────────────────────────────
