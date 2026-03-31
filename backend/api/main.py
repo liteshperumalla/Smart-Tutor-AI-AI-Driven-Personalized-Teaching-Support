@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from fastapi import FastAPI, Request, Response, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -12,6 +14,8 @@ from backend.api.routes import register_routes
 from backend.config import config
 from backend.metrics import PrometheusMiddleware, metrics_handler, set_app_info
 from backend.rate_limiter import limiter  # Import from rate_limiter to avoid circular imports
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Smart AI Tutor API",
@@ -274,13 +278,94 @@ async def metrics(
     return metrics_handler()
 
 
+def _get_startup_background_tasks() -> list[asyncio.Task]:
+    tasks = getattr(app.state, "startup_background_tasks", None)
+    if tasks is None:
+        tasks = []
+        app.state.startup_background_tasks = tasks
+    return tasks
+
+
+def _schedule_startup_background_task(name: str, coro) -> None:
+    task = asyncio.create_task(coro, name=f"startup:{name}")
+    tasks = _get_startup_background_tasks()
+    tasks.append(task)
+
+    def _on_done(completed_task: asyncio.Task) -> None:
+        try:
+            completed_task.result()
+        except asyncio.CancelledError:
+            logger.info("ℹ️  %s cancelled", name)
+        except Exception as exc:
+            logger.warning("%s failed: %s", name, exc)
+        finally:
+            if completed_task in tasks:
+                tasks.remove(completed_task)
+
+    task.add_done_callback(_on_done)
+    logger.info("ℹ️  %s scheduled in background", name)
+
+
+async def _initialize_langfuse_background() -> None:
+    from backend.langfuse_setup import init_langfuse
+
+    if await asyncio.to_thread(init_langfuse):
+        logger.info("✅ Langfuse tracing initialized")
+    else:
+        logger.info("ℹ️  Langfuse tracing not active")
+
+
+async def _write_reproducibility_manifest_background() -> None:
+    from backend.reproducibility import write_manifest
+
+    await asyncio.to_thread(write_manifest, config.REPRODUCIBILITY_MANIFEST_PATH)
+    logger.info("✅ Reproducibility manifest written")
+
+
+async def _run_warmup_background() -> None:
+    from backend.warmup import run_warmup
+
+    await run_warmup()
+
+
+def _seed_admin_user() -> None:
+    from backend.database import get_user_db
+    import bcrypt
+
+    user_db = get_user_db()
+    users = user_db.list_users()
+    has_admin = any(u.get("role") == "Admin" for u in users)
+
+    if has_admin:
+        logger.info("✅ Admin user already exists")
+        return
+
+    admin_password = os.environ.get("ADMIN_SEED_PASSWORD")
+    if not admin_password:
+        logger.warning("⚠️  No ADMIN_SEED_PASSWORD env var set — skipping admin seed")
+        return
+
+    hashed = bcrypt.hashpw(
+        admin_password.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
+    user_db.create_user(
+        username="admin",
+        password_hash=hashed,
+        email="admin@infra-mind.com",
+        full_name="Admin",
+        role="Admin",
+    )
+    logger.info("Admin user seeded (password from ADMIN_SEED_PASSWORD env var)")
+
+
+async def _seed_admin_user_background() -> None:
+    await asyncio.to_thread(_seed_admin_user)
+
+
 # Startup event - validate configuration
 @app.on_event("startup")
 async def startup_event():
     """Validate configuration and initialize resources on startup"""
-    import logging
-    logger = logging.getLogger(__name__)
-
     logger.info("=" * 60)
     logger.info("Smart AI Tutor API Starting Up")
     logger.info(f"Environment: {config.ENVIRONMENT}")
@@ -338,58 +423,18 @@ async def startup_event():
     else:
         logger.info("ℹ️  OpenTelemetry tracing not active")
 
-    # Initialize Langfuse tracing
-    from backend.langfuse_setup import init_langfuse
-    if init_langfuse():
-        logger.info("✅ Langfuse tracing initialized")
-    else:
-        logger.info("ℹ️  Langfuse tracing not active")
+    # Optional startup work should not block readiness in production.
+    _schedule_startup_background_task("Langfuse tracing initialization", _initialize_langfuse_background())
 
-    # Write reproducibility manifest (best-effort)
     if config.REPRODUCIBILITY_ENABLED:
-        try:
-            from backend.reproducibility import write_manifest
-            write_manifest(config.REPRODUCIBILITY_MANIFEST_PATH)
-            logger.info("✅ Reproducibility manifest written")
-        except Exception as exc:
-            logger.warning("Reproducibility manifest failed: %s", exc)
+        _schedule_startup_background_task(
+            "Reproducibility manifest write",
+            _write_reproducibility_manifest_background(),
+        )
 
-    # Cold-start warmup (best-effort)
-    try:
-        from backend.warmup import run_warmup
-        await run_warmup()
-    except Exception as exc:
-        logger.warning("Warmup failed: %s", exc)
+    _schedule_startup_background_task("Cold-start warmup", _run_warmup_background())
 
-    # Seed admin user if none exists
-    try:
-        from backend.database import get_user_db
-        import bcrypt
-
-        user_db = get_user_db()
-        users = user_db.list_users()
-        has_admin = any(u.get("role") == "Admin" for u in users)
-
-        if not has_admin:
-            admin_password = os.environ.get("ADMIN_SEED_PASSWORD")
-            if not admin_password:
-                logger.warning("⚠️  No ADMIN_SEED_PASSWORD env var set — skipping admin seed")
-            else:
-                hashed = bcrypt.hashpw(
-                    admin_password.encode("utf-8"), bcrypt.gensalt()
-                ).decode("utf-8")
-                user_db.create_user(
-                    username="admin",
-                    password_hash=hashed,
-                    email="admin@infra-mind.com",
-                    full_name="Admin",
-                    role="Admin",
-                )
-                logger.info("Admin user seeded (password from ADMIN_SEED_PASSWORD env var)")
-        else:
-            logger.info("✅ Admin user already exists")
-    except Exception as e:
-        logger.warning(f"⚠️  Admin seeding skipped: {e}")
+    _schedule_startup_background_task("Admin user seed", _seed_admin_user_background())
 
     logger.info("=" * 60)
 
@@ -398,12 +443,16 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup resources on shutdown"""
-    import logging
-    logger = logging.getLogger(__name__)
-
     logger.info("=" * 60)
     logger.info("Smart AI Tutor API Shutting Down")
     logger.info("=" * 60)
+
+    background_tasks = list(getattr(app.state, "startup_background_tasks", []))
+    for task in background_tasks:
+        if not task.done():
+            task.cancel()
+    if background_tasks:
+        await asyncio.gather(*background_tasks, return_exceptions=True)
 
     # Close database connections
     try:
