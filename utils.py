@@ -79,13 +79,21 @@ PERSIST_DIR = "./persisted_index"
 os.makedirs(PERSIST_DIR, exist_ok=True)
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
-# Initialize LLM for response generation
-try:
-    Settings.llm = get_llm()
-    logging.info(f"LLM initialized for response generation: {config.LLM_PROVIDER}")
-except Exception as e:
-    logging.error(f"Failed to initialize LLM: {e}")
-    Settings.llm = None
+def _ensure_response_llm_initialized() -> None:
+    """Initialize the default LlamaIndex LLM lazily.
+
+    Import-time initialization blocks FastAPI startup in production because it can
+    trigger remote Bedrock setup before the app starts serving `/ready`.
+    """
+    if Settings.llm is not None:
+        return
+
+    try:
+        Settings.llm = get_llm()
+        logging.info(f"LLM initialized for response generation: {config.LLM_PROVIDER}")
+    except Exception as e:
+        logging.error(f"Failed to initialize LLM: {e}")
+        Settings.llm = None
 
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "").strip()
@@ -603,6 +611,7 @@ def generate_response_with_sources(
                 }
             )
 
+        _ensure_response_llm_initialized()
         synth = get_response_synthesizer(response_mode="compact")
         response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
         response_text = str(response_obj)
@@ -1025,6 +1034,8 @@ def generate_response_stream_and_sources(
                 custom_llm = get_llm(model_id=model_id)
                 synth_kwargs["llm"] = custom_llm
                 logging.info(f"Using custom LLM model: {model_id}")
+            else:
+                _ensure_response_llm_initialized()
 
             synth = get_response_synthesizer(**synth_kwargs)
             streaming_response_obj = synth.synthesize(
