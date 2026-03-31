@@ -561,7 +561,14 @@ jobs:
             }
 
             probe_production_backend() {
-              curl -sf --connect-timeout 2 --max-time 3 http://localhost:8010/ready >/dev/null
+              local health_status
+              health_status="$(
+                docker inspect \
+                  --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' \
+                  smart-tutor-backend 2>/dev/null || true
+              )"
+
+              [ "${health_status}" = "healthy" ]
             }
 
             wait_for_backend_ready() {
@@ -649,6 +656,11 @@ jobs:
               --restart unless-stopped \
               --network smart-tutor_smart-tutor-network \
               --env-file ~/smart-tutor.env \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
               -p 8010:8000 \
               -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
               -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
@@ -686,7 +698,7 @@ jobs:
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
             echo "| Backend candidate probe | Docker healthcheck on \`http://127.0.0.1:8000/ready\` inside candidate container |"
-            echo "| Backend production probe | \`curl http://localhost:8010/ready\` |"
+            echo "| Backend production probe | \`docker inspect smart-tutor-backend health\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
             echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
