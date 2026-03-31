@@ -550,8 +550,19 @@ jobs:
             }
 
             probe_candidate_backend() {
-              docker exec smart-tutor-backend-candidate \
-                curl -sf --connect-timeout 2 --max-time 3 http://127.0.0.1:8000/ready >/dev/null
+              local candidate_ip
+              candidate_ip="$(
+                docker inspect \
+                  --format '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+                  smart-tutor-backend-candidate 2>/dev/null
+              )"
+
+              if [ -z "${candidate_ip}" ]; then
+                echo "Candidate backend has no container IP yet" >&2
+                return 1
+              fi
+
+              curl -sf --connect-timeout 2 --max-time 3 "http://${candidate_ip}:8000/ready" >/dev/null
             }
 
             probe_production_backend() {
@@ -674,7 +685,7 @@ jobs:
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
-            echo "| Backend candidate probe | \`docker exec smart-tutor-backend-candidate curl http://127.0.0.1:8000/ready\` |"
+            echo "| Backend candidate probe | \`curl http://<candidate-container-ip>:8000/ready\` |"
             echo "| Backend production probe | \`curl http://localhost:8010/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
