@@ -212,3 +212,55 @@ jobs:
           path: /tmp/compliance-report/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Compliance summary
+        if: always()
+        run: |
+          set -euo pipefail
+
+          report_dir="/tmp/compliance-report"
+          host_report="${report_dir}/ec2-host-checks.txt"
+          pass_count=0
+          fail_count=0
+          info_count=0
+
+          if [ -f "${host_report}" ]; then
+            pass_count="$(grep -c '^\[PASS\]' "${host_report}" || true)"
+            fail_count="$(grep -c '^\[FAIL\]' "${host_report}" || true)"
+            info_count="$(grep -c '^\[INFO\]' "${host_report}" || true)"
+          fi
+
+          aws_identity_status="missing"
+          cloudtrail_status="missing"
+          secrets_rotation_status="missing"
+          rds_status="missing"
+          ec2_status="missing"
+
+          [ -s "${report_dir}/aws-identity.json" ] && aws_identity_status="captured"
+          [ -s "${report_dir}/cloudtrail.json" ] && cloudtrail_status="captured"
+          [ -s "${report_dir}/secrets-rotation.json" ] && secrets_rotation_status="captured"
+          [ -s "${report_dir}/rds-config.json" ] && rds_status="captured"
+          [ -s "${report_dir}/ec2-instance.json" ] && ec2_status="captured"
+
+          {
+            echo "## Production Compliance Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Workflow trigger | \`${{ github.event_name }}\` |"
+            echo "| Target host | \`${EC2_HOST}\` |"
+            echo "| EC2 app directory | \`${EC2_APP_DIR:-not-configured}\` |"
+            echo "| Host checks report | \`${host_report}\` $([ -f "${host_report}" ] && echo 'found' || echo 'missing') |"
+            echo "| Passed checks | \`${pass_count}\` |"
+            echo "| Failed checks | \`${fail_count}\` |"
+            echo "| Informational checks | \`${info_count}\` |"
+            echo "| AWS identity snapshot | \`${aws_identity_status}\` |"
+            echo "| CloudTrail snapshot | \`${cloudtrail_status}\` |"
+            echo "| Secrets rotation snapshot | \`${secrets_rotation_status}\` |"
+            echo "| RDS config snapshot | \`${rds_status}\` |"
+            echo "| EC2 inventory snapshot | \`${ec2_status}\` |"
+            echo ""
+            echo "Artifacts:"
+            echo "- \`production-compliance-report\`"
+            echo "- Remote host checks plus runner/EC2 AWS inventory snapshots"
+          } >> "$GITHUB_STEP_SUMMARY"

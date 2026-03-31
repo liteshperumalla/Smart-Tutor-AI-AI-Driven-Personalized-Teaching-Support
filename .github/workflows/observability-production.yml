@@ -78,10 +78,7 @@ jobs:
 
           command -v docker >/dev/null
           command -v curl >/dev/null
-<<<<<<< HEAD
           command -v python3 >/dev/null
-=======
->>>>>>> 65fa319d4c4d74e9b7de59aef19f8fc488c9b0ff
           docker compose version >/dev/null
 
           if [ ! -f "${SMART_TUTOR_ENV_FILE}" ]; then
@@ -341,9 +338,19 @@ jobs:
           {
             echo "## Production Observability"
             echo ""
-            echo "- Target: \`${EC2_HOST}\`"
-            echo "- Remote directory: \`${OBSERVABILITY_DIR}\`"
-            echo "- Stack file: \`docker-compose.observability.yml\`"
-            echo "- Services: \`prometheus\`, \`grafana\`, \`alertmanager\`, \`postgres-exporter\`, \`redis-exporter\`, \`node-exporter\`, \`cadvisor\`"
-            echo "- Prometheus target validation completed for: \`backend-api\`, \`postgresql\`, \`redis\`, \`node\`, \`cadvisor\`"
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Workflow trigger | \`${{ github.event_name }}\` |"
+            echo "| Target host | \`${EC2_HOST}\` |"
+            echo "| Remote directory | \`${OBSERVABILITY_DIR}\` |"
+            echo "| Bundle file | \`docker-compose.observability.yml\` |"
+            echo "| Config source | \`~/smart-tutor.env\` on EC2 |"
+            echo "| Services | \`prometheus\`, \`grafana\`, \`alertmanager\`, \`postgres-exporter\`, \`redis-exporter\`, \`node-exporter\`, \`cadvisor\` |"
+            echo "| Validated HTTP checks | \`9090/-/ready\`, \`3001/api/health\`, \`9093/-/healthy\`, \`9187/metrics\`, \`9121/metrics\`, \`9100/metrics\`, \`8080/metrics\` |"
+            echo "| Validated Prometheus jobs | \`prometheus\`, \`backend-api\`, \`postgresql\`, \`redis\`, \`node\`, \`cadvisor\` |"
+            echo ""
+            echo "Notifications:"
+            echo "- Slack alerts are enabled when \`SLACK_WEBHOOK_URL\` is present in \`~/smart-tutor.env\`."
+            echo "- Email alerts are enabled when \`ALERTS_EMAIL_TO\`, \`SMTP_SERVER\`, \`SMTP_USERNAME\`, and \`SMTP_PASSWORD\` are present."
+            echo "- When both are configured, Alertmanager fans out to both receivers."
           } >> "$GITHUB_STEP_SUMMARY"
