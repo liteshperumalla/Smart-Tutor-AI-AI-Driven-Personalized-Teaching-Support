@@ -78,7 +78,10 @@ jobs:
 
           command -v docker >/dev/null
           command -v curl >/dev/null
+<<<<<<< HEAD
           command -v python3 >/dev/null
+=======
+>>>>>>> 65fa319d4c4d74e9b7de59aef19f8fc488c9b0ff
           docker compose version >/dev/null
 
           if [ ! -f "${SMART_TUTOR_ENV_FILE}" ]; then
