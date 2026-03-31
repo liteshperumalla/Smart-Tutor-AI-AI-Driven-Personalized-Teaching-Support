@@ -8,19 +8,19 @@ from backend.services import get_storage_backend
 from backend.services.models import ChatMessage, ChatSession
 
 
-def _generate_response_stream_and_sources(*args, **kwargs):
+def generate_response_stream_and_sources(*args, **kwargs):
     from utils import generate_response_stream_and_sources
 
     return generate_response_stream_and_sources(*args, **kwargs)
 
 
-def _sanitize_filename(value: str) -> str:
+def sanitize_filename(value: str) -> str:
     from utils import sanitize_filename
 
     return sanitize_filename(value)
 
 
-def _make_session_title(messages):
+def make_session_title(messages):
     from utils import make_session_title
 
     return make_session_title(messages)
@@ -66,7 +66,7 @@ class ChatService:
         self.storage.save_chat_session(username, session)
 
     def create_session(self, username: str, title: Optional[str] = None) -> ChatSession:
-        session_id = _sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
+        session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
         default_title = _normalize_session_title(title)
         session = ChatSession(
             id=session_id,
@@ -80,7 +80,7 @@ class ChatService:
         session.messages.append(message)
         session.updated_at = datetime.now(timezone.utc)
         if message.role == "assistant" and _is_auto_title_placeholder(session.title):
-            title = _make_session_title([[msg.role, msg.content] for msg in session.messages])
+            title = make_session_title([[msg.role, msg.content] for msg in session.messages])
             normalized_title = _normalize_session_title(title, default=session.title)
             if normalized_title and normalized_title != session.title:
                 session.title = normalized_title
@@ -150,7 +150,7 @@ class ChatService:
             )
             return generator, sources, routed_model_id
 
-        generator, sources = _generate_response_stream_and_sources(
+        generator, sources = generate_response_stream_and_sources(
             query, user_id=user_id, session_id=session_id, model_id=routed_model_id
         )
         return generator, sources, routed_model_id

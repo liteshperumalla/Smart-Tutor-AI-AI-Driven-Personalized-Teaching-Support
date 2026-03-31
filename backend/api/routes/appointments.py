@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from datetime import date, time
 from typing import TYPE_CHECKING
 
@@ -50,7 +48,7 @@ class AppointmentRequest(BaseModel):
 @router.get("")
 def list_appointments(
     session=Depends(get_current_session),
-    service: AppointmentService = Depends(get_appointment_service),
+    service: "AppointmentService" = Depends(get_appointment_service),
 ):
     _, user = session
     appointments = service.list_for_user(user["username"])
@@ -63,7 +61,7 @@ async def create_appointment(
     request: Request,
     payload: AppointmentRequest,
     session=Depends(get_current_session),
-    service: AppointmentService = Depends(get_appointment_service),
+    service: "AppointmentService" = Depends(get_appointment_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     from backend.services.appointment_service import DuplicateAppointmentError

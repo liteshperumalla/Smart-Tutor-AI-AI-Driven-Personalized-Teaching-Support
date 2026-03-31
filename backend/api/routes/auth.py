@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Header
@@ -46,7 +44,7 @@ def get_auth_service():
 async def get_optional_session_user(
     request: Request,
     authorization: str | None = Header(None, alias="Authorization"),
-    auth_service: AuthService = Depends(get_auth_service_dep),
+    auth_service: "AuthService" = Depends(get_auth_service_dep),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """
@@ -213,7 +211,7 @@ class PasswordSetupRequest(BaseModel):
 def signup(
     payload: SignupRequest,
     request: Request,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     try:
         user = auth_service.register_user(
@@ -272,7 +270,7 @@ def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     """
     Login endpoint - sets secure HttpOnly cookies for authentication.
@@ -329,7 +327,7 @@ def login(
 def google_callback(
     payload: GoogleAuthRequest,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     """
     Google OAuth callback - sets secure HttpOnly cookies for authentication.
@@ -376,7 +374,7 @@ def google_callback(
 def request_email_verification(
     request: Request,
     payload: EmailVerificationRequest,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     if not payload.username and not payload.email:
         raise HTTPException(
@@ -398,7 +396,7 @@ def request_email_verification(
 def confirm_email_verification(
     request: Request,
     payload: EmailVerificationConfirmRequest,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     try:
         auth_service.confirm_email_verification(payload.username, payload.code)
@@ -413,7 +411,7 @@ def setup_password(
     request: Request,
     payload: PasswordSetupRequest,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     try:
         user = auth_service.complete_password_setup(
@@ -450,7 +448,7 @@ def setup_password(
 def refresh_token(
     request: Request,
     response: Response,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     """
     Refresh access token using refresh token from cookie.
@@ -504,7 +502,7 @@ def refresh_token(
 def request_password_reset(
     request: Request,  # Required for rate limiting
     payload: PasswordResetRequest,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     if not payload.username and not payload.email:
         raise HTTPException(
@@ -533,7 +531,7 @@ def request_password_reset(
 def confirm_password_reset(
     request: Request,
     payload: PasswordResetConfirmRequest,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     if payload.new_password != payload.confirm_password:
         raise HTTPException(
@@ -574,7 +572,7 @@ def logout(
     request: Request,
     response: Response,
     session=Depends(get_current_session),
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: "AuthService" = Depends(get_auth_service),
 ):
     """
     Logout endpoint - clears authentication cookies.

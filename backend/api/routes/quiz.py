@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Dict, List, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -9,6 +7,7 @@ from backend.api.dependencies import get_current_session, get_rate_limiter_dep
 from backend import posthog_tracker
 from backend.config import config
 from backend.rate_limiter import limiter, PerUserRateLimiter
+from backend.services import get_storage_backend
 
 if TYPE_CHECKING:
     from backend.services.quiz_service import QuizService
@@ -39,7 +38,7 @@ class QuizSubmissionRequest(BaseModel):
 @router.get("/folders")
 def list_folders(
     session=Depends(get_current_session),
-    quiz_service: QuizService = Depends(get_quiz_service),
+    quiz_service: "QuizService" = Depends(get_quiz_service),
 ):
     return {"folders": quiz_service.list_folders()}
 
@@ -50,7 +49,7 @@ async def generate_quiz(
     request: Request,
     payload: QuizGenerateRequest,
     session=Depends(get_current_session),
-    quiz_service: QuizService = Depends(get_quiz_service),
+    quiz_service: "QuizService" = Depends(get_quiz_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     from backend.services.quiz_service import QuizGenerationError
@@ -88,7 +87,7 @@ async def generate_quiz(
 def submit_quiz(
     payload: QuizSubmissionRequest,
     session=Depends(get_current_session),
-    quiz_service: QuizService = Depends(get_quiz_service),
+    quiz_service: "QuizService" = Depends(get_quiz_service),
 ):
     token, user = session
     try:
@@ -113,8 +112,8 @@ def submit_quiz(
 @router.get("/history")
 def quiz_history(
     session=Depends(get_current_session),
-    quiz_service: QuizService = Depends(get_quiz_service),
 ):
     _, user = session
-    history = quiz_service.list_results(user["username"])
+    storage = get_storage_backend()
+    history = [result.to_dict() for result in storage.list_quiz_results(user["username"])]
     return {"results": history}

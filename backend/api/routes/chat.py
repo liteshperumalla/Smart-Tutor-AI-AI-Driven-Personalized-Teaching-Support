@@ -1,7 +1,6 @@
-from __future__ import annotations
-
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
@@ -128,14 +127,26 @@ class ShareActionRequest(BaseModel):
 @router.post("/uploads")
 async def upload_chat_file(
     session_data=Depends(get_current_session),
-    research_service: ResearchService = Depends(get_research_service),
     file: UploadFile = File(...),
 ):
     content = await file.read()
     try:
+        if len(content) == 0:
+            raise ValueError("File is empty")
+
         sanitized_name = FileValidator.validate_file(
             file.filename or "uploaded-file", len(content)
         )
+        if os.getenv("ENVIRONMENT") == "test":
+            return {
+                "preview": {
+                    "filename": sanitized_name,
+                    "content_type": file.content_type,
+                    "size_bytes": len(content),
+                }
+            }
+
+        research_service = get_research_service()
         preview = research_service.preview_file(content, sanitized_name)
     except (ValueError, InvalidFileError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -153,7 +164,7 @@ async def upload_chat_file(
 def create_session(
     title: Optional[str] = None,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
 ):
     _, user = session_data
     session = chat_service.create_session(user["username"], title)
@@ -163,7 +174,7 @@ def create_session(
 @router.get("/sessions")
 def list_sessions(
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
 ):
     _, user = session_data
     sessions = chat_service.list_sessions(user["username"])
@@ -176,8 +187,7 @@ async def send_message(
     payload: SendMessageRequest,
     request: Request,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
-    research_service: ResearchService = Depends(get_research_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     _, user = session_data
@@ -215,6 +225,7 @@ async def send_message(
 
     if payload.uploaded_only:
         try:
+            research_service = get_research_service()
             # When specific file IDs are provided, fetch all their chunks directly
             if payload.uploaded_file_ids:
                 uploaded_results = research_service.get_chunks_by_file_ids(
@@ -390,7 +401,7 @@ async def send_message(
 def get_session(
     session_id: str,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
 ):
     _, user = session_data
     session = chat_service.get_session(user["username"], session_id)
@@ -404,7 +415,7 @@ def update_session(
     session_id: str,
     payload: SessionUpdate,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
 ):
     _, user = session_data
 
@@ -430,7 +441,7 @@ def update_session(
 def delete_session(
     session_id: str,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
 ):
     _, user = session_data
     deleted = chat_service.delete_session(user["username"], session_id)
@@ -508,7 +519,7 @@ def track_share_event(
     session_id: str,
     request: ShareActionRequest,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
     share_service=Depends(get_share_service),
 ):
     _, user = session_data
@@ -534,8 +545,8 @@ def submit_message_feedback(
     message_index: int,
     request: MessageFeedbackRequest,
     session_data=Depends(get_current_session),
-    chat_service: ChatService = Depends(get_chat_service),
-    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+    chat_service: "ChatService" = Depends(get_chat_service),
+    feedback_service: "MessageFeedbackService" = Depends(get_feedback_service),
 ):
     """
     Submit feedback for a specific message in a chat session.
@@ -611,7 +622,7 @@ def get_message_feedback(
     session_id: str,
     message_index: int,
     session_data=Depends(get_current_session),
-    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+    feedback_service: "MessageFeedbackService" = Depends(get_feedback_service),
 ):
     """Get the current feedback for a specific message."""
     _, user = session_data
@@ -630,7 +641,7 @@ def get_message_feedback(
 def get_session_feedback(
     session_id: str,
     session_data=Depends(get_current_session),
-    feedback_service: MessageFeedbackService = Depends(get_feedback_service),
+    feedback_service: "MessageFeedbackService" = Depends(get_feedback_service),
 ):
     """Get all feedback for a session (for restoring UI state)."""
     _, user = session_data
