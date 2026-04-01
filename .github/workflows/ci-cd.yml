@@ -542,12 +542,17 @@ jobs:
 
             docker_login_ghcr() {
               docker logout ghcr.io >/dev/null 2>&1 || true
-              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+              if command -v timeout >/dev/null 2>&1; then
+                timeout --signal=TERM 120s bash -lc 'printf "%s\n" "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null'
+                return $?
+              fi
+
+              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null
             }
 
             docker_pull_backend_image() {
-              docker logout ghcr.io >/dev/null 2>&1 || true
-              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null
+              docker_login_ghcr
 
               if command -v timeout >/dev/null 2>&1; then
                 if timeout --signal=TERM 300s docker pull "$BACKEND_IMAGE"; then
@@ -615,9 +620,8 @@ jobs:
               done
             }
 
-            echo "=== Authenticating with GHCR ==="
+            echo "=== Checking GHCR reachability ==="
             retry_command "GHCR reachability check" 4 10 ghcr_preflight
-            retry_command "GHCR authentication" 4 15 docker_login_ghcr
 
             echo "=== Pulling image: $BACKEND_IMAGE ==="
             retry_command "Backend image pull" 6 20 docker_pull_backend_image
