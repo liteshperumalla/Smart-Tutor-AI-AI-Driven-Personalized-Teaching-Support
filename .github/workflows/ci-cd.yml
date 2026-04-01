@@ -552,21 +552,26 @@ jobs:
             }
 
             docker_pull_backend_image() {
+              local exit_code
               docker_login_ghcr
 
               if command -v timeout >/dev/null 2>&1; then
-                if timeout --signal=TERM 300s docker pull "$BACKEND_IMAGE"; then
-                  return 0
-                fi
-
-                local exit_code=$?
-                if [ "$exit_code" -eq 124 ]; then
-                  echo "Backend image pull hit 300s timeout" >&2
-                fi
-                return "$exit_code"
+                timeout --signal=TERM 300s docker pull "$BACKEND_IMAGE"
+                exit_code=$?
+              else
+                docker pull "$BACKEND_IMAGE"
+                exit_code=$?
               fi
 
-              docker pull "$BACKEND_IMAGE"
+              if [ "$exit_code" -eq 0 ]; then
+                return 0
+              fi
+
+              if [ "$exit_code" -eq 124 ]; then
+                echo "Backend image pull hit 300s timeout" >&2
+              fi
+
+              return "$exit_code"
             }
 
             probe_candidate_backend() {
@@ -625,6 +630,7 @@ jobs:
 
             echo "=== Pulling image: $BACKEND_IMAGE ==="
             retry_command "Backend image pull" 6 20 docker_pull_backend_image
+            docker image inspect "$BACKEND_IMAGE" >/dev/null
 
             echo "=== Starting candidate backend container on port 18010 ==="
             docker stop smart-tutor-backend-candidate 2>/dev/null || true
