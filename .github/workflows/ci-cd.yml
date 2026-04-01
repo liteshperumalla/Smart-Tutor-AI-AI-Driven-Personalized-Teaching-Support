@@ -574,16 +574,44 @@ jobs:
               return "$exit_code"
             }
 
-            probe_candidate_backend() {
-              docker exec smart-tutor-backend-candidate \
+            docker_with_timeout() {
+              local seconds="$1"
+              shift
+
+              if command -v timeout >/dev/null 2>&1; then
+                timeout --signal=TERM "${seconds}" "$@"
+                return $?
+              fi
+
+              "$@"
+            }
+
+            get_container_health() {
+              docker_with_timeout 5s docker inspect \
+                --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+                "$1" 2>/dev/null || true
+            }
+
+            probe_backend_container() {
+              local container="$1"
+              local health_status
+
+              health_status="$(get_container_health "${container}")"
+              if [ "${health_status}" = "healthy" ]; then
+                return 0
+              fi
+
+              docker_with_timeout 5s docker exec "${container}" \
                 curl -sf --connect-timeout 1 --max-time 2 \
                 http://127.0.0.1:8000/ready >/dev/null
             }
 
+            probe_candidate_backend() {
+              probe_backend_container smart-tutor-backend-candidate
+            }
+
             probe_production_backend() {
-              docker exec smart-tutor-backend \
-                curl -sf --connect-timeout 1 --max-time 2 \
-                http://127.0.0.1:8000/ready >/dev/null
+              probe_backend_container smart-tutor-backend
             }
 
             wait_for_backend_ready() {
@@ -609,11 +637,13 @@ jobs:
 
                 if [ $((i % 6)) -eq 0 ]; then
                   echo "=== ${name} still starting (${i}/${attempts}) ==="
+                  echo "Health status: $(get_container_health "${container}")"
                   docker logs "${container}" --tail 40 || true
                 fi
 
                 if [ "$i" -eq "${attempts}" ]; then
                   echo "${name} failed readiness check after $((attempts * sleep_seconds))s"
+                  echo "Final health status: $(get_container_health "${container}")"
                   docker ps -a --filter "name=${container}" || true
                   docker logs "${container}" --tail 200 || true
                   docker inspect "${container}" || true
