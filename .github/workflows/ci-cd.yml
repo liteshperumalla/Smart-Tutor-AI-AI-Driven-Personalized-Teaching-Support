@@ -507,7 +507,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 20m
+          command_timeout: 35m
           source: ${{ steps.export_backend_image.outputs.archive_path }}
           target: /tmp/
 
@@ -521,7 +521,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 40m
+          command_timeout: 75m
           envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
           script: |
             set -euo pipefail
@@ -560,6 +560,39 @@ jobs:
               fi
 
               "$@"
+            }
+
+            docker_prepare_for_load() {
+              echo "=== Docker disk usage before load ==="
+              df -h / /tmp || true
+              docker system df || true
+
+              docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+              docker stop smart-tutor-backend 2>/dev/null || true
+              docker rm smart-tutor-backend 2>/dev/null || true
+
+              echo "=== Pruning unused Docker data before load ==="
+              docker image prune -af || true
+              docker builder prune -af || true
+            }
+
+            docker_load_backend_image() {
+              docker_prepare_for_load
+              test -f "$BACKEND_IMAGE_ARCHIVE"
+
+              if docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                echo "=== Docker disk usage after load ==="
+                df -h / /tmp || true
+                docker system df || true
+                return 0
+              else
+                local exit_code=$?
+                echo "docker load failed with exit code ${exit_code}" >&2
+                echo "=== Docker disk usage after failed load ==="
+                df -h / /tmp || true
+                docker system df || true
+                return "$exit_code"
+              fi
             }
 
             get_container_health() {
@@ -632,8 +665,7 @@ jobs:
             }
 
             echo "=== Loading backend image bundle: $BACKEND_IMAGE_ARCHIVE ==="
-            test -f "$BACKEND_IMAGE_ARCHIVE"
-            docker_with_timeout 10m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'
+            docker_load_backend_image
             docker image inspect "$BACKEND_IMAGE" >/dev/null
 
             echo "=== Starting candidate backend container on port 18010 ==="
