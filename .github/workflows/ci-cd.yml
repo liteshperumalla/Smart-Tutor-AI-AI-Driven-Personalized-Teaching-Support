@@ -498,7 +498,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 20m
+          command_timeout: 40m
           envs: GHCR_TOKEN,ACTOR,BACKEND_IMAGE
           script: |
             set -euo pipefail
@@ -546,6 +546,21 @@ jobs:
             }
 
             docker_pull_backend_image() {
+              docker logout ghcr.io >/dev/null 2>&1 || true
+              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null
+
+              if command -v timeout >/dev/null 2>&1; then
+                if timeout --signal=TERM 300s docker pull "$BACKEND_IMAGE"; then
+                  return 0
+                fi
+
+                local exit_code=$?
+                if [ "$exit_code" -eq 124 ]; then
+                  echo "Backend image pull hit 300s timeout" >&2
+                fi
+                return "$exit_code"
+              fi
+
               docker pull "$BACKEND_IMAGE"
             }
 
@@ -605,7 +620,7 @@ jobs:
             retry_command "GHCR authentication" 4 15 docker_login_ghcr
 
             echo "=== Pulling image: $BACKEND_IMAGE ==="
-            retry_command "Backend image pull" 4 15 docker_pull_backend_image
+            retry_command "Backend image pull" 6 20 docker_pull_backend_image
 
             echo "=== Starting candidate backend container on port 18010 ==="
             docker stop smart-tutor-backend-candidate 2>/dev/null || true
