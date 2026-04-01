@@ -426,6 +426,19 @@ jobs:
             "${backend_image}" \
             python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/backend/rag/tests/test_dataset.json'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
 
+      - name: Export backend image bundle
+        id: export_backend_image
+        run: |
+          set -euo pipefail
+          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
+          archive_path="backend-image-${{ steps.version.outputs.version }}.tar.gz"
+
+          docker save "${backend_image}" | gzip -1 > "${archive_path}"
+          ls -lh "${archive_path}"
+
+          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=$(basename "${archive_path}")" >> "$GITHUB_OUTPUT"
+
       - name: Build & push frontend image
         id: build_frontend_image
         uses: docker/build-push-action@v5
@@ -487,24 +500,35 @@ jobs:
             fi
           done
 
+      - name: Transfer backend image bundle to EC2
+        id: transfer_backend_image
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          source: ${{ steps.export_backend_image.outputs.archive_path }}
+          target: /tmp/
+
       - name: Deploy backend to EC2
         id: deploy_backend
         uses: appleboy/ssh-action@v1.0.3
         env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ACTOR: ${{ github.actor }}
           BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
+          BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 40m
-          envs: GHCR_TOKEN,ACTOR,BACKEND_IMAGE
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
           script: |
             set -euo pipefail
 
             command -v docker >/dev/null
             command -v curl >/dev/null
+            command -v gzip >/dev/null
 
             retry_command() {
               local description="$1"
@@ -524,54 +548,6 @@ jobs:
                 attempt=$((attempt + 1))
                 sleep "${sleep_seconds}"
               done
-            }
-
-            ghcr_preflight() {
-              local status
-              status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://ghcr.io/v2/ || true)"
-              case "$status" in
-                200|401|403|405)
-                  return 0
-                  ;;
-                *)
-                  echo "Unexpected GHCR preflight status: ${status:-unavailable}" >&2
-                  return 1
-                  ;;
-              esac
-            }
-
-            docker_login_ghcr() {
-              docker logout ghcr.io >/dev/null 2>&1 || true
-
-              if command -v timeout >/dev/null 2>&1; then
-                timeout --signal=TERM 120s bash -lc 'printf "%s\n" "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null'
-                return $?
-              fi
-
-              printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin >/dev/null
-            }
-
-            docker_pull_backend_image() {
-              local exit_code
-              docker_login_ghcr
-
-              if command -v timeout >/dev/null 2>&1; then
-                timeout --signal=TERM 300s docker pull "$BACKEND_IMAGE"
-                exit_code=$?
-              else
-                docker pull "$BACKEND_IMAGE"
-                exit_code=$?
-              fi
-
-              if [ "$exit_code" -eq 0 ]; then
-                return 0
-              fi
-
-              if [ "$exit_code" -eq 124 ]; then
-                echo "Backend image pull hit 300s timeout" >&2
-              fi
-
-              return "$exit_code"
             }
 
             docker_with_timeout() {
@@ -655,11 +631,9 @@ jobs:
               done
             }
 
-            echo "=== Checking GHCR reachability ==="
-            retry_command "GHCR reachability check" 4 10 ghcr_preflight
-
-            echo "=== Pulling image: $BACKEND_IMAGE ==="
-            retry_command "Backend image pull" 6 20 docker_pull_backend_image
+            echo "=== Loading backend image bundle: $BACKEND_IMAGE_ARCHIVE ==="
+            test -f "$BACKEND_IMAGE_ARCHIVE"
+            docker_with_timeout 10m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'
             docker image inspect "$BACKEND_IMAGE" >/dev/null
 
             echo "=== Starting candidate backend container on port 18010 ==="
@@ -725,6 +699,7 @@ jobs:
 
             echo "=== Cleaning up candidate container ==="
             docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+            rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
 
             echo "=== Pruning all unused images/layers ==="
             docker image prune -af || true
@@ -741,12 +716,14 @@ jobs:
             echo "| Commit | \`${{ github.sha }}\` |"
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
+            echo "| Backend image bundle | \`${{ steps.export_backend_image.outputs.archive_name }}\` |"
             echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
             echo "| Backend candidate probe | \`docker exec smart-tutor-backend-candidate curl http://127.0.0.1:8000/ready\` |"
             echo "| Backend production probe | \`docker exec smart-tutor-backend curl http://127.0.0.1:8000/ready\` |"
             echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
             echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
             echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
+            echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
             echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
             echo "| Backend deploy | \`${{ steps.deploy_backend.outcome }}\` |"
             if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
