@@ -183,6 +183,7 @@ jobs:
       - name: Deploy frontend preview to Vercel
         id: vercel_deploy
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        continue-on-error: true
         working-directory: frontend
         run: |
           set -euo pipefail
@@ -197,6 +198,11 @@ jobs:
 
           vercel inspect "$deployment_url" --token="$VERCEL_TOKEN" >/tmp/vercel-inspect.txt
           echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Note non-blocking Vercel deploy failure
+        if: ${{ steps.vercel_deploy.outcome == 'failure' }}
+        run: |
+          echo "::warning::Frontend Vercel preview deploy failed, but backend staging deployment will continue. Review the 'Deploy frontend preview to Vercel' step for details."
 
       - name: Transfer backend image bundle to staging EC2
         id: transfer_backend_image

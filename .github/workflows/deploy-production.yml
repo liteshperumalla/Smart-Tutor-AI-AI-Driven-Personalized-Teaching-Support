@@ -197,6 +197,7 @@ jobs:
       - name: Deploy frontend to Vercel
         id: vercel_deploy
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        continue-on-error: true
         working-directory: frontend
         run: |
           set -euo pipefail
@@ -211,6 +212,11 @@ jobs:
 
           vercel inspect "$deployment_url" --token="$VERCEL_TOKEN" >/tmp/vercel-inspect.txt
           echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Note non-blocking Vercel deploy failure
+        if: ${{ steps.vercel_deploy.outcome == 'failure' }}
+        run: |
+          echo "::warning::Frontend Vercel deploy failed, but backend deployment will continue. Review the 'Deploy frontend to Vercel' step for details."
 
       - name: Cleanup old Vercel production deployments
         if: ${{ steps.vercel_deploy.outputs.deployment_url != '' }}
