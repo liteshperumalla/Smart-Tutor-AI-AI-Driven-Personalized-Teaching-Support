@@ -203,8 +203,7 @@ jobs:
           set -euo pipefail
           npm install --global vercel@latest
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          vercel build --prod --token="$VERCEL_TOKEN"
-          deployment_url="$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
+          deployment_url="$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
           if [ -z "$deployment_url" ]; then
             echo "::error::Vercel deploy did not return a deployment URL."
             exit 1
