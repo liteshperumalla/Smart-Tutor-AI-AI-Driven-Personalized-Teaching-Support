@@ -6,18 +6,17 @@ on:
       backend_image_tag:
         description: Backend image tag to roll back to
         required: true
+        type: string
       reason:
         description: Reason for rollback
         required: false
         default: Manual production rollback
+        type: string
       update_gitops_manifest:
         description: Update GitOps production backend tag after rollback
-        required: true
-        type: choice
-        options:
-          - "true"
-          - "false"
-        default: "true"
+        required: false
+        default: "yes"
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -28,22 +27,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rollback-backend:
+  rollback_backend:
     name: Roll Back Production Backend
     runs-on: ubuntu-latest
-    environment:
-      name: production
+    environment: production
     permissions:
       contents: write
       packages: read
     timeout-minutes: 120
-    env:
-      BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ inputs.backend_image_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: main
+
+      - name: Resolve rollback configuration
+        id: config
+        run: |
+          set -euo pipefail
+
+          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ inputs.backend_image_tag }}"
+          archive_name="backend-rollback-${{ inputs.backend_image_tag }}.tar.gz"
+
+          case "${{ inputs.update_gitops_manifest }}" in
+            yes|YES|true|TRUE|1)
+              update_gitops=true
+              ;;
+            *)
+              update_gitops=false
+              ;;
+          esac
+
+          echo "backend_image=${backend_image}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=${archive_name}" >> "$GITHUB_OUTPUT"
+          echo "update_gitops=${update_gitops}" >> "$GITHUB_OUTPUT"
 
       - name: Validate required production secrets
         env:
@@ -73,15 +90,19 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull rollback backend image
+        env:
+          BACKEND_IMAGE: ${{ steps.config.outputs.backend_image }}
         run: |
           set -euo pipefail
           docker pull "${BACKEND_IMAGE}"
 
       - name: Export rollback backend image bundle
         id: export_backend_image
+        env:
+          BACKEND_IMAGE: ${{ steps.config.outputs.backend_image }}
         run: |
           set -euo pipefail
-          archive_path="backend-rollback-${{ inputs.backend_image_tag }}.tar.gz"
+          archive_path="${{ steps.config.outputs.archive_name }}"
           docker save "${BACKEND_IMAGE}" | gzip -1 > "${archive_path}"
           ls -lh "${archive_path}"
           echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
@@ -102,7 +123,7 @@ jobs:
         id: rollback_backend
         uses: appleboy/ssh-action@v1.0.3
         env:
-          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          BACKEND_IMAGE: ${{ steps.config.outputs.backend_image }}
           BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -245,7 +266,7 @@ jobs:
             docker image prune -af || true
 
       - name: Update GitOps backend tag
-        if: ${{ inputs.update_gitops_manifest == 'true' }}
+        if: ${{ steps.config.outputs.update_gitops == 'true' }}
         env:
           VERSION: ${{ inputs.backend_image_tag }}
         run: |
@@ -294,5 +315,5 @@ jobs:
             echo "| Reason | \`${{ inputs.reason }}\` |"
             echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
             echo "| Backend rollback | \`${{ steps.rollback_backend.outcome }}\` |"
-            echo "| GitOps update | \`${{ inputs.update_gitops_manifest }}\` |"
+            echo "| GitOps update | \`${{ steps.config.outputs.update_gitops }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
