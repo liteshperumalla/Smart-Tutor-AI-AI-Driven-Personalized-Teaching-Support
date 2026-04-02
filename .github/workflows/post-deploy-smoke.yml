@@ -1,0 +1,113 @@
+name: Post-Deploy Smoke Tests
+
+on:
+  workflow_run:
+    workflows: ["Production Deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-post-deploy-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke-tests:
+    name: Production Smoke Tests
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PUBLIC_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+      PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+    steps:
+      - name: Validate required smoke-test secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required production smoke-test secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Run internal EC2 smoke tests
+        id: internal_smoke
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+
+            command -v docker >/dev/null
+            command -v curl >/dev/null
+
+            echo "=== Containers ==="
+            docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+
+            echo "=== Backend ready ==="
+            curl -fsS http://127.0.0.1:8010/ready >/dev/null
+
+            echo "=== Backend health ==="
+            curl -fsS http://127.0.0.1:8010/health >/dev/null
+
+            echo "=== Backend metrics ==="
+            curl -fsS http://127.0.0.1:8010/metrics >/dev/null
+
+            echo "=== In-container ready probe ==="
+            docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/ready >/dev/null
+
+      - name: Run external smoke tests
+        id: external_smoke
+        if: ${{ env.PUBLIC_APP_URL != '' || env.PUBLIC_API_URL != '' }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$PUBLIC_APP_URL" ]; then
+            curl -fsS --max-time 20 "$PUBLIC_APP_URL" >/dev/null
+          fi
+
+          if [ -n "$PUBLIC_API_URL" ]; then
+            curl -fsS --max-time 20 "$PUBLIC_API_URL/ready" >/dev/null
+          fi
+
+      - name: Smoke summary
+        if: always()
+        run: |
+          {
+            echo "## Post-Deploy Smoke Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Trigger | \`${{ github.event_name }}\` |"
+            echo "| Internal EC2 smoke | \`${{ steps.internal_smoke.outcome }}\` |"
+            echo "| External smoke | \`${{ steps.external_smoke.outcome || 'skipped' }}\` |"
+            echo "| Public app URL | \`${{ env.PUBLIC_APP_URL || 'not configured' }}\` |"
+            echo "| Public API URL | \`${{ env.PUBLIC_API_URL || 'not configured' }}\` |"
+            echo ""
+            echo "Executed checks:"
+            echo "- Localhost backend `/ready`"
+            echo "- Localhost backend `/health`"
+            echo "- Localhost backend `/metrics`"
+            echo "- In-container backend `/ready`"
+          } >> "$GITHUB_STEP_SUMMARY"

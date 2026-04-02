@@ -1,0 +1,295 @@
+name: Production Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_image_tag:
+        description: Backend image tag to roll back to
+        required: true
+      reason:
+        description: Reason for rollback
+        required: false
+        default: Manual production rollback
+      update_gitops_manifest:
+        description: Update GitOps production backend tag after rollback
+        required: true
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
+
+concurrency:
+  group: production-rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback-backend:
+    name: Roll Back Production Backend
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      contents: write
+      packages: read
+    timeout-minutes: 120
+    env:
+      BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ inputs.backend_image_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Validate required production secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required production rollback secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull rollback backend image
+        run: |
+          set -euo pipefail
+          docker pull "${BACKEND_IMAGE}"
+
+      - name: Export rollback backend image bundle
+        id: export_backend_image
+        run: |
+          set -euo pipefail
+          archive_path="backend-rollback-${{ inputs.backend_image_tag }}.tar.gz"
+          docker save "${BACKEND_IMAGE}" | gzip -1 > "${archive_path}"
+          ls -lh "${archive_path}"
+          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=$(basename "${archive_path}")" >> "$GITHUB_OUTPUT"
+
+      - name: Transfer rollback bundle to EC2
+        id: transfer_backend_image
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 35m
+          source: ${{ steps.export_backend_image.outputs.archive_path }}
+          target: /tmp/
+
+      - name: Roll back backend on EC2
+        id: rollback_backend
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 75m
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
+          script: |
+            set -euo pipefail
+
+            command -v docker >/dev/null
+            command -v curl >/dev/null
+            command -v gzip >/dev/null
+
+            docker_with_timeout() {
+              local seconds="$1"
+              shift
+
+              if command -v timeout >/dev/null 2>&1; then
+                timeout --signal=TERM "${seconds}" "$@"
+                return $?
+              fi
+
+              "$@"
+            }
+
+            docker_prepare_for_load() {
+              docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+              docker stop smart-tutor-backend 2>/dev/null || true
+              docker rm smart-tutor-backend 2>/dev/null || true
+              docker image prune -af || true
+              docker builder prune -af || true
+            }
+
+            docker_load_backend_image() {
+              docker_prepare_for_load
+              test -f "$BACKEND_IMAGE_ARCHIVE"
+              docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'
+            }
+
+            get_container_health() {
+              docker_with_timeout 5s docker inspect \
+                --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+                "$1" 2>/dev/null || true
+            }
+
+            probe_backend_container() {
+              local container="$1"
+              local health_status
+
+              health_status="$(get_container_health "${container}")"
+              if [ "${health_status}" = "healthy" ]; then
+                return 0
+              fi
+
+              docker_with_timeout 5s docker exec "${container}" \
+                curl -sf --connect-timeout 1 --max-time 2 \
+                http://127.0.0.1:8000/ready >/dev/null
+            }
+
+            wait_for_backend_ready() {
+              local name="$1"
+              local container="$2"
+              local attempts="${3:-60}"
+              local sleep_seconds="${4:-5}"
+
+              for i in $(seq 1 "${attempts}"); do
+                if probe_backend_container "${container}"; then
+                  echo "${name} healthy after $((i * sleep_seconds))s"
+                  return 0
+                fi
+
+                if ! docker ps --format '{{.Names}}' | grep -qx "${container}"; then
+                  echo "${name} container is no longer running"
+                  docker ps -a --filter "name=${container}" || true
+                  docker logs "${container}" --tail 200 || true
+                  docker inspect "${container}" || true
+                  return 1
+                fi
+
+                sleep "${sleep_seconds}"
+              done
+
+              echo "${name} failed readiness check after $((attempts * sleep_seconds))s"
+              docker ps -a --filter "name=${container}" || true
+              docker logs "${container}" --tail 200 || true
+              docker inspect "${container}" || true
+              return 1
+            }
+
+            echo "=== Loading rollback image bundle ==="
+            docker_load_backend_image
+            docker image inspect "$BACKEND_IMAGE" >/dev/null
+
+            echo "=== Starting rollback candidate backend ==="
+            docker stop smart-tutor-backend-candidate 2>/dev/null || true
+            docker rm smart-tutor-backend-candidate 2>/dev/null || true
+            docker run -d \
+              --name smart-tutor-backend-candidate \
+              --restart unless-stopped \
+              --network smart-tutor_smart-tutor-network \
+              --env-file "$HOME/smart-tutor.env" \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
+              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "$BACKEND_IMAGE" \
+              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+            wait_for_backend_ready "Rollback candidate backend" "smart-tutor-backend-candidate" 60 5
+
+            echo "=== Replacing production backend container ==="
+            docker stop smart-tutor-backend 2>/dev/null || true
+            docker rm smart-tutor-backend 2>/dev/null || true
+            docker run -d \
+              --name smart-tutor-backend \
+              --restart unless-stopped \
+              --network smart-tutor_smart-tutor-network \
+              --env-file "$HOME/smart-tutor.env" \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
+              -p 8010:8000 \
+              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "$BACKEND_IMAGE" \
+              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+            wait_for_backend_ready "Rolled back production backend" "smart-tutor-backend" 60 5
+
+            docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+            rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
+            docker image prune -af || true
+
+      - name: Update GitOps backend tag
+        if: ${{ inputs.update_gitops_manifest }}
+        env:
+          VERSION: ${{ inputs.backend_image_tag }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          version = os.environ["VERSION"]
+          path = Path("helm/smart-ai-tutor/values-production.yaml")
+          text = path.read_text()
+
+          updated, count = re.subn(
+              r"(backend:\n(?:.*\n)*?\s+image:\n(?:.*\n)*?\s+tag:\s*)([^\n]+)",
+              rf"\1{version}",
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+            raise SystemExit("failed to update backend image tag block")
+
+          path.write_text(updated)
+          PY
+
+          if git diff --quiet -- helm/smart-ai-tutor/values-production.yaml; then
+            echo "No GitOps rollback change to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/smart-ai-tutor/values-production.yaml
+          git commit -m "chore(gitops): roll back production backend to ${{ inputs.backend_image_tag }}"
+          git push
+
+      - name: Rollback summary
+        if: always()
+        run: |
+          {
+            echo "## Production Rollback Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Backend image tag | \`${{ inputs.backend_image_tag }}\` |"
+            echo "| Reason | \`${{ inputs.reason }}\` |"
+            echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
+            echo "| Backend rollback | \`${{ steps.rollback_backend.outcome }}\` |"
+            echo "| GitOps update | \`${{ inputs.update_gitops_manifest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
