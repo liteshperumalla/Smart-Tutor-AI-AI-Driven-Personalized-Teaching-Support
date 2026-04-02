@@ -278,18 +278,46 @@ jobs:
               "$@"
             }
 
-            docker_prepare_for_load() {
-              echo "=== Docker disk usage before load ==="
+            docker_container_exists() {
+              docker ps -a --format '{{.Names}}' | grep -qx "$1"
+            }
+
+            docker_force_remove() {
+              local container="$1"
+
+              if docker_container_exists "${container}"; then
+                echo "Removing container: ${container}"
+                docker_with_timeout 30s docker rm -f "${container}" || true
+              fi
+            }
+
+            docker_log_disk_usage() {
               df -h / /tmp || true
               docker system df || true
+            }
 
-              docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
-              docker stop smart-tutor-backend 2>/dev/null || true
-              docker rm smart-tutor-backend 2>/dev/null || true
+            docker_prepare_for_load() {
+              echo "=== Docker disk usage before load ==="
+              docker_log_disk_usage
 
-              echo "=== Pruning unused Docker data before load ==="
-              docker image prune -af || true
-              docker builder prune -af || true
+              echo "=== Removing stale candidate container before load ==="
+              docker_force_remove smart-tutor-backend-candidate
+
+              local archive_bytes available_kb available_bytes
+              archive_bytes="$(stat -c %s "$BACKEND_IMAGE_ARCHIVE")"
+              available_kb="$(df -Pk /tmp | awk 'NR==2 {print $4}')"
+              available_bytes="$((available_kb * 1024))"
+
+              echo "Archive size bytes: ${archive_bytes}"
+              echo "Available bytes on /tmp filesystem: ${available_bytes}"
+
+              if [ "${available_bytes}" -lt $((archive_bytes * 2)) ]; then
+                echo "=== Low free space detected; pruning unused Docker data before load ==="
+                docker_with_timeout 10m docker image prune -af || true
+                docker_with_timeout 10m docker builder prune -af || true
+              else
+                echo "=== Skipping Docker prune before load; enough free space is available ==="
+              fi
             }
 
             docker_load_backend_image() {
@@ -298,17 +326,37 @@ jobs:
 
               if docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
                 echo "=== Docker disk usage after load ==="
-                df -h / /tmp || true
-                docker system df || true
+                docker_log_disk_usage
                 return 0
               else
                 local exit_code=$?
                 echo "docker load failed with exit code ${exit_code}" >&2
                 echo "=== Docker disk usage after failed load ==="
-                df -h / /tmp || true
-                docker system df || true
+                docker_log_disk_usage
                 return "$exit_code"
               fi
+            }
+
+            docker_replace_production_container() {
+              echo "=== Replacing production backend container ==="
+              docker_force_remove smart-tutor-backend
+
+              docker run -d \
+                --name smart-tutor-backend \
+                --restart unless-stopped \
+                --network smart-tutor_smart-tutor-network \
+                --env-file ~/smart-tutor.env \
+                --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+                --health-interval 5s \
+                --health-timeout 3s \
+                --health-start-period 10s \
+                --health-retries 3 \
+                -p 8010:8000 \
+                -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+                -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+                -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+                "$BACKEND_IMAGE" \
+                uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
             }
 
             get_container_health() {
@@ -385,8 +433,7 @@ jobs:
             docker image inspect "$BACKEND_IMAGE" >/dev/null
 
             echo "=== Starting candidate backend container ==="
-            docker stop smart-tutor-backend-candidate 2>/dev/null || true
-            docker rm smart-tutor-backend-candidate 2>/dev/null || true
+            docker_force_remove smart-tutor-backend-candidate
             docker run -d \
               --name smart-tutor-backend-candidate \
               --restart unless-stopped \
@@ -414,26 +461,7 @@ jobs:
               exit 1
             fi
 
-            echo "=== Replacing production backend container ==="
-            docker stop smart-tutor-backend 2>/dev/null || true
-            docker rm smart-tutor-backend 2>/dev/null || true
-
-            docker run -d \
-              --name smart-tutor-backend \
-              --restart unless-stopped \
-              --network smart-tutor_smart-tutor-network \
-              --env-file ~/smart-tutor.env \
-              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
-              --health-interval 5s \
-              --health-timeout 3s \
-              --health-start-period 10s \
-              --health-retries 3 \
-              -p 8010:8000 \
-              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
-              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
-              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
-              "$BACKEND_IMAGE" \
-              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+            docker_replace_production_container
 
             echo "=== Waiting for production backend readiness ==="
             if ! wait_for_backend_ready \
@@ -450,7 +478,7 @@ jobs:
             rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
 
             echo "=== Pruning all unused images/layers ==="
-            docker image prune -af || true
+            docker_with_timeout 10m docker image prune -af || true
 
       - name: Deployment summary
         if: always()
