@@ -115,8 +115,7 @@ jobs:
           done
 
           if [ "$present" -ne 0 ] && [ "$present" -ne 3 ]; then
-            echo "::error::Vercel deploy secrets are partially configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID together."
-            exit 1
+            echo "::warning::Vercel deploy secrets are partially configured. Frontend deploy will be skipped until VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID are all set."
           fi
 
       - name: Generate version tag

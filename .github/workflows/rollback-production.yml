@@ -13,8 +13,11 @@ on:
       update_gitops_manifest:
         description: Update GitOps production backend tag after rollback
         required: true
-        type: boolean
-        default: true
+        type: choice
+        options:
+          - "true"
+          - "false"
+        default: "true"
 
 env:
   REGISTRY: ghcr.io
@@ -242,7 +245,7 @@ jobs:
             docker image prune -af || true
 
       - name: Update GitOps backend tag
-        if: ${{ inputs.update_gitops_manifest }}
+        if: ${{ inputs.update_gitops_manifest == 'true' }}
         env:
           VERSION: ${{ inputs.backend_image_tag }}
         run: |
