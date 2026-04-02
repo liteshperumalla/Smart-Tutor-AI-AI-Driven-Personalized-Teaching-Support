@@ -1,0 +1,557 @@
+name: Production Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20.9.0"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      deploy_ref: ${{ steps.target.outputs.deploy_ref }}
+      promote_gitops: ${{ steps.target.outputs.promote_gitops }}
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      github.event_name == 'workflow_dispatch'
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NEXT_PUBLIC_API_BASE_URL: /api/backend
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
+    steps:
+      - name: Resolve deployment target
+        id: target
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            checkout_ref="${{ github.event.workflow_run.head_sha }}"
+            deploy_ref="${{ github.event.workflow_run.head_branch }}"
+          else
+            checkout_ref="${{ inputs.git_ref }}"
+            deploy_ref="${{ inputs.git_ref }}"
+          fi
+
+          case "${deploy_ref}" in
+            main|refs/heads/main)
+              promote_gitops=true
+              ;;
+            *)
+              promote_gitops=false
+              ;;
+          esac
+
+          echo "checkout_ref=${checkout_ref}" >> "$GITHUB_OUTPUT"
+          echo "deploy_ref=${deploy_ref}" >> "$GITHUB_OUTPUT"
+          echo "promote_gitops=${promote_gitops}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.checkout_ref }}
+          fetch-depth: 1
+
+      - name: Validate required deployment secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+
+          missing_backend=()
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+            if [ -z "${!name:-}" ]; then
+              missing_backend+=("$name")
+            fi
+          done
+
+          if [ "${#missing_backend[@]}" -gt 0 ]; then
+            echo "::error::Missing required backend deploy secrets: ${missing_backend[*]}"
+            exit 1
+          fi
+
+      - name: Validate optional Vercel configuration
+        run: |
+          set -euo pipefail
+
+          present=0
+          for value in "${VERCEL_TOKEN}" "${VERCEL_ORG_ID}" "${VERCEL_PROJECT_ID}"; do
+            if [ -n "$value" ]; then
+              present=$((present + 1))
+            fi
+          done
+
+          if [ "$present" -ne 0 ] && [ "$present" -ne 3 ]; then
+            echo "::error::Vercel deploy secrets are partially configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID together."
+            exit 1
+          fi
+
+      - name: Generate version tag
+        id: version
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "version=$(date +%Y%m%d)-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend image
+        id: build_backend_image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=backend-image
+          cache-to: type=gha,mode=min,scope=backend-image
+
+      - name: Smoke test backend image
+        id: smoke_test_backend_image
+        run: |
+          set -euo pipefail
+          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
+          echo "Validating backend image runtime: ${backend_image}"
+          docker pull "${backend_image}"
+          docker run --rm \
+            -e ENVIRONMENT=test \
+            "${backend_image}" \
+            python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/backend/rag/tests/test_dataset.json'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
+
+      - name: Export backend image bundle
+        id: export_backend_image
+        run: |
+          set -euo pipefail
+          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
+          archive_path="backend-image-${{ steps.version.outputs.version }}.tar.gz"
+
+          docker save "${backend_image}" | gzip -1 > "${archive_path}"
+          ls -lh "${archive_path}"
+
+          echo "archive_path=${archive_path}" >> "$GITHUB_OUTPUT"
+          echo "archive_name=$(basename "${archive_path}")" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push frontend image
+        id: build_frontend_image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ env.NEXT_PUBLIC_API_BASE_URL }}
+            BACKEND_API_BASE_URL=${{ env.BACKEND_API_BASE_URL }}
+            NEXT_PUBLIC_APP_BASE_URL=${{ env.NEXT_PUBLIC_APP_BASE_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ env.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+            NEXT_PUBLIC_GOOGLE_REDIRECT_URI=${{ env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=frontend-image
+          cache-to: type=gha,mode=min,scope=frontend-image
+
+      - name: Deploy frontend to Vercel
+        id: vercel_deploy
+        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm install --global vercel@latest
+          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          vercel build --prod --token="$VERCEL_TOKEN"
+          deployment_url="$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
+          if [ -z "$deployment_url" ]; then
+            echo "::error::Vercel deploy did not return a deployment URL."
+            exit 1
+          fi
+
+          vercel inspect "$deployment_url" --token="$VERCEL_TOKEN" >/tmp/vercel-inspect.txt
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup old Vercel production deployments
+        if: ${{ steps.vercel_deploy.outputs.deployment_url != '' }}
+        working-directory: frontend
+        env:
+          DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
+        run: |
+          set -euo pipefail
+
+          deployments_json="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
+          deploy_count="$(echo "$deployments_json" | jq 'length')"
+          if [ "$deploy_count" -le 1 ]; then
+            echo "No old production deployments to remove."
+            exit 0
+          fi
+
+          echo "Keeping active deployment: $DEPLOYMENT_URL"
+
+          echo "$deployments_json" | jq -r '.[].url' | while read -r url; do
+            if [ -n "$url" ] && [ "$url" != "$DEPLOYMENT_URL" ]; then
+              echo "Removing old deployment: $url"
+              vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
+            fi
+          done
+
+      - name: Transfer backend image bundle to EC2
+        id: transfer_backend_image
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 35m
+          source: ${{ steps.export_backend_image.outputs.archive_path }}
+          target: /tmp/
+
+      - name: Deploy backend to EC2
+        id: deploy_backend
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
+          BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 75m
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
+          script: |
+            set -euo pipefail
+
+            command -v docker >/dev/null
+            command -v curl >/dev/null
+            command -v gzip >/dev/null
+
+            docker_with_timeout() {
+              local seconds="$1"
+              shift
+
+              if command -v timeout >/dev/null 2>&1; then
+                timeout --signal=TERM "${seconds}" "$@"
+                return $?
+              fi
+
+              "$@"
+            }
+
+            docker_prepare_for_load() {
+              echo "=== Docker disk usage before load ==="
+              df -h / /tmp || true
+              docker system df || true
+
+              docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+              docker stop smart-tutor-backend 2>/dev/null || true
+              docker rm smart-tutor-backend 2>/dev/null || true
+
+              echo "=== Pruning unused Docker data before load ==="
+              docker image prune -af || true
+              docker builder prune -af || true
+            }
+
+            docker_load_backend_image() {
+              docker_prepare_for_load
+              test -f "$BACKEND_IMAGE_ARCHIVE"
+
+              if docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                echo "=== Docker disk usage after load ==="
+                df -h / /tmp || true
+                docker system df || true
+                return 0
+              else
+                local exit_code=$?
+                echo "docker load failed with exit code ${exit_code}" >&2
+                echo "=== Docker disk usage after failed load ==="
+                df -h / /tmp || true
+                docker system df || true
+                return "$exit_code"
+              fi
+            }
+
+            get_container_health() {
+              docker_with_timeout 5s docker inspect \
+                --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+                "$1" 2>/dev/null || true
+            }
+
+            probe_backend_container() {
+              local container="$1"
+              local health_status
+
+              health_status="$(get_container_health "${container}")"
+              if [ "${health_status}" = "healthy" ]; then
+                return 0
+              fi
+
+              docker_with_timeout 5s docker exec "${container}" \
+                curl -sf --connect-timeout 1 --max-time 2 \
+                http://127.0.0.1:8000/ready >/dev/null
+            }
+
+            probe_candidate_backend() {
+              probe_backend_container smart-tutor-backend-candidate
+            }
+
+            probe_production_backend() {
+              probe_backend_container smart-tutor-backend
+            }
+
+            wait_for_backend_ready() {
+              local name="$1"
+              local container="$2"
+              local probe_fn="$3"
+              local attempts="${4:-60}"
+              local sleep_seconds="${5:-5}"
+
+              for i in $(seq 1 "${attempts}"); do
+                if "${probe_fn}"; then
+                  echo "${name} healthy after $((i * sleep_seconds))s"
+                  return 0
+                fi
+
+                if ! docker ps --format '{{.Names}}' | grep -qx "${container}"; then
+                  echo "${name} container is no longer running"
+                  docker ps -a --filter "name=${container}" || true
+                  docker logs "${container}" --tail 200 || true
+                  docker inspect "${container}" || true
+                  return 1
+                fi
+
+                if [ $((i % 6)) -eq 0 ]; then
+                  echo "=== ${name} still starting (${i}/${attempts}) ==="
+                  echo "Health status: $(get_container_health "${container}")"
+                  docker logs "${container}" --tail 40 || true
+                fi
+
+                if [ "$i" -eq "${attempts}" ]; then
+                  echo "${name} failed readiness check after $((attempts * sleep_seconds))s"
+                  echo "Final health status: $(get_container_health "${container}")"
+                  docker ps -a --filter "name=${container}" || true
+                  docker logs "${container}" --tail 200 || true
+                  docker inspect "${container}" || true
+                  return 1
+                fi
+
+                echo "Attempt $i/${attempts}; retrying in ${sleep_seconds}s..."
+                sleep "${sleep_seconds}"
+              done
+            }
+
+            echo "=== Loading backend image bundle: $BACKEND_IMAGE_ARCHIVE ==="
+            docker_load_backend_image
+            docker image inspect "$BACKEND_IMAGE" >/dev/null
+
+            echo "=== Starting candidate backend container ==="
+            docker stop smart-tutor-backend-candidate 2>/dev/null || true
+            docker rm smart-tutor-backend-candidate 2>/dev/null || true
+            docker run -d \
+              --name smart-tutor-backend-candidate \
+              --restart unless-stopped \
+              --network smart-tutor_smart-tutor-network \
+              --env-file ~/smart-tutor.env \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
+              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "$BACKEND_IMAGE" \
+              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+            echo "=== Waiting for candidate backend readiness ==="
+            if ! wait_for_backend_ready \
+              "Candidate backend" \
+              "smart-tutor-backend-candidate" \
+              probe_candidate_backend \
+              60 \
+              5; then
+              docker rm -f smart-tutor-backend-candidate || true
+              exit 1
+            fi
+
+            echo "=== Replacing production backend container ==="
+            docker stop smart-tutor-backend 2>/dev/null || true
+            docker rm smart-tutor-backend 2>/dev/null || true
+
+            docker run -d \
+              --name smart-tutor-backend \
+              --restart unless-stopped \
+              --network smart-tutor_smart-tutor-network \
+              --env-file ~/smart-tutor.env \
+              --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
+              --health-interval 5s \
+              --health-timeout 3s \
+              --health-start-period 10s \
+              --health-retries 3 \
+              -p 8010:8000 \
+              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "$BACKEND_IMAGE" \
+              uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+            echo "=== Waiting for production backend readiness ==="
+            if ! wait_for_backend_ready \
+              "Production backend" \
+              "smart-tutor-backend" \
+              probe_production_backend \
+              60 \
+              5; then
+              exit 1
+            fi
+
+            echo "=== Cleaning up candidate container ==="
+            docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
+            rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
+
+            echo "=== Pruning all unused images/layers ==="
+            docker image prune -af || true
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Build And Deploy Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Workflow trigger | \`${{ github.event_name }}\` |"
+            echo "| Deploy ref | \`${{ steps.target.outputs.deploy_ref }}\` |"
+            echo "| Commit | \`${{ steps.version.outputs.sha }}\` |"
+            echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
+            echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
+            echo "| Backend image bundle | \`${{ steps.export_backend_image.outputs.archive_name }}\` |"
+            echo "| Frontend image | \`ghcr.io/${{ env.IMAGE_NAME }}-frontend:${{ steps.version.outputs.version }}\` |"
+            echo "| Backend candidate probe | \`docker exec smart-tutor-backend-candidate curl http://127.0.0.1:8000/ready\` |"
+            echo "| Backend production probe | \`docker exec smart-tutor-backend curl http://127.0.0.1:8000/ready\` |"
+            echo "| EC2 deploy target | \`${{ secrets.EC2_HOST != '' && 'configured' || 'missing' }}\` |"
+            echo "| Backend image build | \`${{ steps.build_backend_image.outcome }}\` |"
+            echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
+            echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
+            echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
+            echo "| Backend deploy | \`${{ steps.deploy_backend.outcome }}\` |"
+            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+              echo "| Frontend deploy | \`${{ steps.vercel_deploy.outcome }}\` |"
+              echo "| Vercel deployment | \`${{ steps.vercel_deploy.outputs.deployment_url }}\` |"
+            else
+              echo "| Frontend deploy | skipped: Vercel secrets not configured |"
+            fi
+            echo ""
+            echo "Stages:"
+            echo "- Backend image build and smoke test"
+            echo "- Frontend image build"
+            echo "- Optional Vercel production deploy"
+            echo "- Backend EC2 rolling replacement via candidate container"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  gitops-promote:
+    name: GitOps Promote
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy]
+    if: >-
+      needs.build-and-deploy.result == 'success' &&
+      needs.build-and-deploy.outputs.promote_gitops == 'true' &&
+      github.actor != 'github-actions[bot]' &&
+      vars.ENABLE_GITOPS_PRODUCTION == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update production image tags
+        env:
+          VERSION: ${{ needs.build-and-deploy.outputs.version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          version = os.environ["VERSION"]
+          path = Path("helm/smart-ai-tutor/values-production.yaml")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  r"(backend:\n(?:.*\n)*?\s+image:\n(?:.*\n)*?\s+tag:\s*)([^\n]+)",
+                  rf"\1{version}",
+              ),
+              (
+                  r"(frontend:\n(?:.*\n)*?\s+image:\n(?:.*\n)*?\s+tag:\s*)([^\n]+)",
+                  rf"\1{version}",
+              ),
+          ]
+
+          updated = text
+          for pattern, replacement in replacements:
+              updated, count = re.subn(pattern, replacement, updated, count=1, flags=re.MULTILINE)
+              if count != 1:
+                  raise SystemExit(f"failed to update expected image tag block: {pattern}")
+
+          path.write_text(updated)
+          PY
+
+      - name: Commit promoted release
+        env:
+          VERSION: ${{ needs.build-and-deploy.outputs.version }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- helm/smart-ai-tutor/values-production.yaml; then
+            echo "No GitOps changes to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add helm/smart-ai-tutor/values-production.yaml
+          git commit -m "chore(gitops): promote production images to ${VERSION}"
+          git push
