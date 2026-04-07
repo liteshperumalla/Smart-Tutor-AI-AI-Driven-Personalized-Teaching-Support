@@ -160,22 +160,18 @@ jobs:
               || true
           }
 
-          invoke_ec2_container_fallback() {
+          invoke_ec2_internal_endpoint() {
             if [ -z "${EC2_HOST}" ] || [ -z "${EC2_USER}" ] || [ -z "${EC2_SSH_KEY}" ]; then
               return 1
             fi
 
-            local python_script
-            local python_script_b64
             local key_file
-            python_script='import json, os; from backend.api.routes.evaluation import _run_dataset_quality, _store_dataset_run; limit = int(os.environ["EVALUATION_DATASET_LIMIT"]); model_id = os.environ.get("EVALUATION_MODEL_ID") or None; result = _run_dataset_quality(limit, model_id); record = _store_dataset_run(result, limit, model_id, source="scheduled"); print(json.dumps({**result, "run_record": record}))'
-            python_script_b64="$(printf '%s' "${python_script}" | base64 | tr -d '\n')"
             key_file="$(mktemp)"
             printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
             chmod 600 "${key_file}"
 
             if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
-              "EVALUATION_DATASET_LIMIT='${EVALUATION_DATASET_LIMIT}' EVALUATION_MODEL_ID='${EVALUATION_MODEL_ID}' EVAL_SCRIPT_B64='${python_script_b64}' docker exec -e EVALUATION_DATASET_LIMIT -e EVALUATION_MODEL_ID -e EVAL_SCRIPT_B64 smart-tutor-backend sh -lc 'printf \"%s\" \"\$EVAL_SCRIPT_B64\" | base64 -d | python -'" \
+              "docker exec smart-tutor-backend curl -sS --fail-with-body --max-time 300 -X POST http://127.0.0.1:8000/evaluation/run-scheduled -H 'Content-Type: application/json' -H 'X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}' -d '${payload}'" \
               > /tmp/eval_response.json 2>/tmp/eval_fallback_error.log
             then
               rm -f "${key_file}"
@@ -186,26 +182,29 @@ jobs:
             return 1
           }
 
-          # First try the public API path. If the ingress layer returns a 5xx,
-          # fall back to running the same scheduled evaluation inside the
-          # production backend container on EC2 so nginx/proxy issues do not
-          # break the daily pipeline.
+          # Prefer the internal backend path when EC2 credentials are available.
+          # That keeps the scheduled evaluation independent of public nginx /
+          # load balancer failures. Fall back to the public endpoint only when
+          # internal execution is unavailable.
           response_source="public-api"
-          http_code="$(invoke_public_endpoint)"
-          should_fallback="false"
-          case "${http_code:-}" in
-            ""|5??)
-              should_fallback="true"
-              ;;
-          esac
+          http_code=""
 
-          if [ "${should_fallback}" = "true" ]; then
-            if invoke_ec2_container_fallback; then
-              http_code="200"
-              response_source="ec2-container-fallback"
-            elif [ -s /tmp/eval_fallback_error.log ]; then
+          if invoke_ec2_internal_endpoint; then
+            http_code="200"
+            response_source="ec2-container-internal"
+          else
+            if [ -s /tmp/eval_fallback_error.log ]; then
               cp /tmp/eval_fallback_error.log /tmp/eval_response.json
             fi
+
+            http_code="$(invoke_public_endpoint)"
+            case "${http_code:-}" in
+              ""|5??)
+                if [ -s /tmp/eval_fallback_error.log ]; then
+                  cp /tmp/eval_fallback_error.log /tmp/eval_response.json
+                fi
+                ;;
+            esac
           fi
 
           response=$(cat /tmp/eval_response.json 2>/dev/null || echo "(no response body)")
