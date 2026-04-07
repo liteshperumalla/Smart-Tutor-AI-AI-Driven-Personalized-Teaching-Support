@@ -7,6 +7,7 @@ from backend.api.routes.evaluation import (
     _load_dataset_questions,
     _model_keywords,
     _pricing_document_matches_model,
+    _run_dataset_quality,
     _resolve_dataset_quality_file,
     get_metrics_history,
 )
@@ -199,3 +200,30 @@ def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):
     assert history["data_points"][0]["avg_latency"] == 1.1
     assert history["data_points"][0]["avg_relevance"] == 0.45
     assert history["data_points"][0]["avg_docs_retrieved"] == 1.5
+
+
+def test_run_dataset_quality_returns_structured_error_on_init_failure(
+    monkeypatch, tmp_path
+):
+    import backend.s3_retriever as s3_retriever
+
+    dataset_file = tmp_path / "evaluation.jsonl"
+    dataset_file.write_text(
+        json.dumps({"instruction": "Explain retrieval-augmented generation"}) + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(config, "EVALUATION_DATASET_FILE", str(dataset_file))
+
+    def broken_retriever(*args, **kwargs):
+        raise RuntimeError("bedrock init failed")
+
+    monkeypatch.setattr(s3_retriever, "create_s3_retriever", broken_retriever)
+
+    result = _run_dataset_quality(limit=1, model_id=None)
+
+    assert result["total_evaluated"] == 0
+    assert result["total_dataset_questions"] == 1
+    assert result["quality_summary"] is None
+    assert result["error"] == "initialization_failed"
+    assert "bedrock init failed" in result["message"]

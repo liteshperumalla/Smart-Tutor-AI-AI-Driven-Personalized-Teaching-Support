@@ -91,6 +91,9 @@ jobs:
         env:
           EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL || vars.EVALUATION_BACKEND_URL_PROD }}
           EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
+          EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+          EC2_USER: ${{ secrets.EC2_USER || '' }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY || '' }}
           # workflow_dispatch inputs override the repo variable when provided
           EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || vars.EVALUATION_DATASET_LIMIT || '20' }}
           MIN_AVG_CORRECTNESS: ${{ inputs.min_avg_correctness || vars.MIN_AVG_CORRECTNESS || '0.55' }}
@@ -141,12 +144,7 @@ jobs:
           echo "Payload  : ${payload}"
           echo ""
 
-          # --fail-with-body  → non-zero exit on 4xx/5xx but still capture body
-          # --write-out       → capture HTTP status code separately from body
-          # --max-time 300    → 5-minute hard timeout (evaluation can be slow)
-          # --retry 2         → retry transient network errors twice
-          # --retry-delay 5   → wait 5 s between retries
-          http_code=$(
+          invoke_public_endpoint() {
             curl -sS \
               --fail-with-body \
               --max-time 300 \
@@ -159,8 +157,56 @@ jobs:
               -d "${payload}" \
               --output /tmp/eval_response.json \
               --write-out "%{http_code}" \
-            || true   # prevent -e from killing us before we can print diagnostics
-          )
+              || true
+          }
+
+          invoke_ec2_container_fallback() {
+            if [ -z "${EC2_HOST}" ] || [ -z "${EC2_USER}" ] || [ -z "${EC2_SSH_KEY}" ]; then
+              return 1
+            fi
+
+            local python_script
+            local python_script_b64
+            local key_file
+            python_script='import json, os; from backend.api.routes.evaluation import _run_dataset_quality, _store_dataset_run; limit = int(os.environ["EVALUATION_DATASET_LIMIT"]); model_id = os.environ.get("EVALUATION_MODEL_ID") or None; result = _run_dataset_quality(limit, model_id); record = _store_dataset_run(result, limit, model_id, source="scheduled"); print(json.dumps({**result, "run_record": record}))'
+            python_script_b64="$(printf '%s' "${python_script}" | base64 | tr -d '\n')"
+            key_file="$(mktemp)"
+            printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+            chmod 600 "${key_file}"
+
+            if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+              "EVALUATION_DATASET_LIMIT='${EVALUATION_DATASET_LIMIT}' EVALUATION_MODEL_ID='${EVALUATION_MODEL_ID}' EVAL_SCRIPT_B64='${python_script_b64}' docker exec -e EVALUATION_DATASET_LIMIT -e EVALUATION_MODEL_ID -e EVAL_SCRIPT_B64 smart-tutor-backend sh -lc 'printf \"%s\" \"\$EVAL_SCRIPT_B64\" | base64 -d | python -'" \
+              > /tmp/eval_response.json 2>/tmp/eval_fallback_error.log
+            then
+              rm -f "${key_file}"
+              return 0
+            fi
+
+            rm -f "${key_file}"
+            return 1
+          }
+
+          # First try the public API path. If the ingress layer returns a 5xx,
+          # fall back to running the same scheduled evaluation inside the
+          # production backend container on EC2 so nginx/proxy issues do not
+          # break the daily pipeline.
+          response_source="public-api"
+          http_code="$(invoke_public_endpoint)"
+          should_fallback="false"
+          case "${http_code:-}" in
+            ""|5??)
+              should_fallback="true"
+              ;;
+          esac
+
+          if [ "${should_fallback}" = "true" ]; then
+            if invoke_ec2_container_fallback; then
+              http_code="200"
+              response_source="ec2-container-fallback"
+            elif [ -s /tmp/eval_fallback_error.log ]; then
+              cp /tmp/eval_fallback_error.log /tmp/eval_response.json
+            fi
+          fi
 
           response=$(cat /tmp/eval_response.json 2>/dev/null || echo "(no response body)")
 
@@ -238,6 +284,7 @@ jobs:
             echo "| Field | Value |"
             echo "|-------|-------|"
             echo "| HTTP Status | \`${http_code}\` |"
+            echo "| Response Source | \`${response_source}\` |"
             echo "| Dataset Limit | \`${EVALUATION_DATASET_LIMIT}\` |"
             echo "| Model ID | \`${EVALUATION_MODEL_ID:-default}\` |"
             echo "| Enforce Quality Gates | \`${enforce_quality_gates}\` |"

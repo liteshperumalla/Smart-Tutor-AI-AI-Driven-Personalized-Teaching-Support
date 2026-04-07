@@ -798,9 +798,31 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     # Limit the number of questions
     dataset_entries = dataset_entries[:limit]
 
-    # Initialize retriever and LLM
-    retriever = create_s3_retriever(similarity_top_k=max(6, config.SIMILARITY_TOP_K + 2))
-    llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
+    # Initialize retrieval and generation components before iterating through
+    # the dataset so failures are reported as structured JSON instead of
+    # bubbling up as an unhandled request error.
+    try:
+        retriever = create_s3_retriever(
+            similarity_top_k=max(6, config.SIMILARITY_TOP_K + 2)
+        )
+        llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
+        drift_monitor = get_drift_monitor()
+    except Exception as exc:
+        logging.getLogger(__name__).exception(
+            "Failed to initialize dataset evaluation pipeline"
+        )
+        return {
+            "total_evaluated": 0,
+            "total_dataset_questions": len(dataset_entries),
+            "avg_latency": 0,
+            "quality_summary": None,
+            "individual_results": [],
+            "dataset_path": str(dataset_file),
+            "drift_summary": _build_drift_summary([], enabled=False),
+            "recommendations": [],
+            "error": "initialization_failed",
+            "message": f"Failed to initialize evaluation pipeline: {exc}",
+        }
 
     individual_results = []
     faithfulness_sum = 0.0
@@ -810,7 +832,6 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     correctness_sum = 0.0
     total_latency = 0.0
     evaluated_count = 0
-    drift_monitor = get_drift_monitor()
     drift_records = []
 
     for entry in dataset_entries:
