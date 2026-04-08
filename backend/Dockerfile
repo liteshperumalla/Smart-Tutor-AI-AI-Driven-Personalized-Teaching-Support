@@ -26,10 +26,15 @@ COPY backend/requirements.txt ./requirements.txt
 # Use PyTorch CPU index as primary so torch resolves to CPU wheels instead of CUDA builds.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --use-deprecated=legacy-resolver \
+    pip install --no-cache-dir --no-compile --use-deprecated=legacy-resolver \
       --index-url https://download.pytorch.org/whl/cpu \
       --extra-index-url https://pypi.org/simple \
-      -r requirements.txt
+      -r requirements.txt && \
+    find /usr/local/lib/python3.11/site-packages \
+      -type d \( -name __pycache__ -o -name tests -o -name test \) \
+      -prune -exec rm -rf '{}' + && \
+    find /usr/local/lib/python3.11/site-packages \
+      -type f -name '*.pyc' -delete
 
 # Download RAG dependencies (as root) - use BuildKit cache mount for nltk data
 RUN --mount=type=cache,target=/usr/local/share/nltk_data \
@@ -40,6 +45,7 @@ ENV HF_HOME=/app/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/app/.cache/huggingface
 ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/huggingface
 ENV HOME=/app
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Copy only backend application code with proper ownership
 COPY --chown=appuser:appuser backend/ ./backend/

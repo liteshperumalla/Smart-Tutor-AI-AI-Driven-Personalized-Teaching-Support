@@ -269,6 +269,8 @@ jobs:
               test -f "$BACKEND_IMAGE_ARCHIVE"
 
               if docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                echo "=== Removing backend image archive after successful load ==="
+                rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
                 echo "=== Docker disk usage after load ==="
                 df -h / /tmp || true
                 docker system df || true

@@ -335,6 +335,8 @@ jobs:
               test -f "$BACKEND_IMAGE_ARCHIVE"
 
               if docker_with_timeout 45m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                echo "=== Removing backend image archive after successful load ==="
+                rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
                 echo "=== Docker disk usage after load ==="
                 docker_log_disk_usage
                 return 0
@@ -350,6 +352,8 @@ jobs:
                 docker_with_timeout 10m docker builder prune -af || true
 
                 if docker_with_timeout 45m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                  echo "=== Removing backend image archive after successful retry load ==="
+                  rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
                   echo "=== Docker disk usage after retry load ==="
                   docker_log_disk_usage
                   return 0
