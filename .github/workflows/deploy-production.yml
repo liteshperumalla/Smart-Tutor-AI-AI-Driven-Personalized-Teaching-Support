@@ -243,14 +243,41 @@ jobs:
 
       - name: Transfer backend image bundle to EC2
         id: transfer_backend_image
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          command_timeout: 35m
-          source: ${{ steps.export_backend_image.outputs.archive_path }}
-          target: /tmp/
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          ARCHIVE_PATH: ${{ steps.export_backend_image.outputs.archive_path }}
+          ARCHIVE_NAME: ${{ steps.export_backend_image.outputs.archive_name }}
+        run: |
+          set -euo pipefail
+
+          key_file="$(mktemp)"
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+
+          remote_archive="/tmp/${ARCHIVE_NAME}"
+
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+            "set -euo pipefail;
+             rm -f /tmp/backend-image-*.tar.gz /tmp/backend-image-*.tar /tmp/drone-scp-* /tmp/*.tmp 2>/dev/null || true;
+             docker image prune -af >/dev/null 2>&1 || true;
+             docker container prune -f >/dev/null 2>&1 || true;
+             docker builder prune -af >/dev/null 2>&1 || true;
+             df -h / /tmp || true"
+
+          scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
+
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+            "set -euo pipefail;
+             test -f '${remote_archive}';
+             ls -lh '${remote_archive}';
+             df -h / /tmp || true"
+
+          rm -f "${key_file}"
 
       - name: Deploy backend to EC2
         id: deploy_backend
