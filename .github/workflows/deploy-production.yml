@@ -307,6 +307,12 @@ jobs:
 
               echo "=== Removing stale candidate container before load ==="
               docker_force_remove smart-tutor-backend-candidate
+              docker_force_remove smart-tutor-backend-old
+
+              echo "=== Pruning unused Docker images before load ==="
+              docker_with_timeout 10m docker image prune -af || true
+              docker_with_timeout 10m docker container prune -f || true
+              docker_with_timeout 10m docker builder prune -af || true
 
               local archive_bytes available_kb available_bytes
               archive_bytes="$(stat -c %s "$BACKEND_IMAGE_ARCHIVE")"
@@ -316,12 +322,11 @@ jobs:
               echo "Archive size bytes: ${archive_bytes}"
               echo "Available bytes on /tmp filesystem: ${available_bytes}"
 
-              if [ "${available_bytes}" -lt $((archive_bytes * 2)) ]; then
-                echo "=== Low free space detected; pruning unused Docker data before load ==="
-                docker_with_timeout 10m docker image prune -af || true
-                docker_with_timeout 10m docker builder prune -af || true
+              if [ "${available_bytes}" -lt $((archive_bytes * 3)) ]; then
+                echo "=== Free space still low after prune; running a second image prune pass ==="
+                docker_with_timeout 15m docker image prune -af || true
               else
-                echo "=== Skipping Docker prune before load; enough free space is available ==="
+                echo "=== Free space looks sufficient after prune ==="
               fi
             }
 
@@ -329,7 +334,7 @@ jobs:
               docker_prepare_for_load
               test -f "$BACKEND_IMAGE_ARCHIVE"
 
-              if docker_with_timeout 30m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+              if docker_with_timeout 45m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
                 echo "=== Docker disk usage after load ==="
                 docker_log_disk_usage
                 return 0
@@ -337,6 +342,22 @@ jobs:
                 local exit_code=$?
                 echo "docker load failed with exit code ${exit_code}" >&2
                 echo "=== Docker disk usage after failed load ==="
+                docker_log_disk_usage
+
+                echo "=== Retrying docker load after aggressive prune ==="
+                docker_with_timeout 15m docker image prune -af || true
+                docker_with_timeout 10m docker container prune -f || true
+                docker_with_timeout 10m docker builder prune -af || true
+
+                if docker_with_timeout 45m bash -lc 'gzip -dc "$BACKEND_IMAGE_ARCHIVE" | docker load'; then
+                  echo "=== Docker disk usage after retry load ==="
+                  docker_log_disk_usage
+                  return 0
+                fi
+
+                exit_code=$?
+                echo "docker load retry failed with exit code ${exit_code}" >&2
+                echo "=== Docker disk usage after retry failure ==="
                 docker_log_disk_usage
                 return "$exit_code"
               fi

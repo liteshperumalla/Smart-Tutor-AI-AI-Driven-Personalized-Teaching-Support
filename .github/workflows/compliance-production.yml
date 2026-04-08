@@ -101,7 +101,7 @@ jobs:
           chmod 600 "${key_file}"
           remote_app_dir="$(printf '%q' "${EC2_APP_DIR}")"
 
-          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} bash -s" > /tmp/compliance-report/ec2-host-checks.txt <<'EOF'
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} bash -s" > /tmp/compliance-report/ec2-host-checks.txt <<'EOF'
           set -euo pipefail
 
           failures=0
@@ -123,40 +123,40 @@ jobs:
           }
 
           backend_ready() {
-            timed 15s curl -fsS --connect-timeout 2 --max-time 10 http://localhost:8010/ready >/dev/null \
-              || timed 20s docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 10 http://127.0.0.1:8000/ready >/dev/null
+            timed 15 curl -fsS --connect-timeout 2 --max-time 10 http://localhost:8010/ready >/dev/null \
+              || timed 20 docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 10 http://127.0.0.1:8000/ready >/dev/null
           }
 
           backend_health() {
-            timed 20s curl -fsS --connect-timeout 2 --max-time 15 http://localhost:8010/health >/dev/null \
-              || timed 25s docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 15 http://127.0.0.1:8000/health >/dev/null
+            timed 20 curl -fsS --connect-timeout 2 --max-time 15 http://localhost:8010/health >/dev/null \
+              || timed 25 docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 15 http://127.0.0.1:8000/health >/dev/null
           }
 
           APP_DIR="${EC2_APP_DIR:-}"
           DATA_ROOT="/home/ubuntu/smart-tutor-data"
 
-          check "docker installed" timed 10s command -v docker
-          check "backend container running" timed 20s sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
+          check "docker installed" timed 10 command -v docker
+          check "backend container running" timed 20 sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
           check "backend readiness endpoint responds" backend_ready
           if backend_health; then
             echo "[PASS] backend health endpoint responds"
           else
             echo "[INFO] backend health endpoint is unavailable or degraded; readiness probe passed"
           fi
-          check "shared logs directory exists" timed 10s test -d "${DATA_ROOT}/logs"
-          check "shared user data directory exists" timed 10s test -d "${DATA_ROOT}/user_data"
-          check "shared chroma directory exists" timed 10s test -d "${DATA_ROOT}/chroma_db"
-          check "backend restart policy is unless-stopped" timed 20s sh -c "[ \"$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' smart-tutor-backend)\" = 'unless-stopped' ]"
-          check "backend logs mount configured" timed 20s sh -c "docker inspect smart-tutor-backend | grep -q '/home/ubuntu/smart-tutor-data/logs'"
+          check "shared logs directory exists" timed 10 test -d "${DATA_ROOT}/logs"
+          check "shared user data directory exists" timed 10 test -d "${DATA_ROOT}/user_data"
+          check "shared chroma directory exists" timed 10 test -d "${DATA_ROOT}/chroma_db"
+          check "backend restart policy is unless-stopped" timed 20 sh -c "[ \"$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' smart-tutor-backend)\" = 'unless-stopped' ]"
+          check "backend logs mount configured" timed 20 sh -c "docker inspect smart-tutor-backend | grep -q '/home/ubuntu/smart-tutor-data/logs'"
           if [ -n "${APP_DIR}" ]; then
-            check "configured app directory exists" timed 10s test -d "${APP_DIR}"
+            check "configured app directory exists" timed 10 test -d "${APP_DIR}"
           else
             echo "[INFO] No EC2_APP_DIR configured; skipping repo-directory check."
           fi
 
           echo ""
           echo "=== Running containers ==="
-          timed 20s docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+          timed 20 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
 
           if [ "${failures}" -gt 0 ]; then
             exit 1

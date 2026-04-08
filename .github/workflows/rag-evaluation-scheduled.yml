@@ -166,12 +166,17 @@ jobs:
             fi
 
             local key_file
+            local payload_b64
+            local token_b64
             key_file="$(mktemp)"
+            payload_b64="$(printf '%s' "${payload}" | base64 | tr -d '\n')"
+            token_b64="$(printf '%s' "${EVALUATION_CRON_TOKEN}" | base64 | tr -d '\n')"
             printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
             chmod 600 "${key_file}"
 
             if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
-              "docker exec smart-tutor-backend curl -sS --fail-with-body --max-time 300 -X POST http://127.0.0.1:8000/evaluation/run-scheduled -H 'Content-Type: application/json' -H 'X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}' -d '${payload}'" \
+              -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+              "EVALUATION_PAYLOAD_B64='${payload_b64}' EVALUATION_TOKEN_B64='${token_b64}' bash -lc 'payload=\$(printf %s \"\$EVALUATION_PAYLOAD_B64\" | base64 -d); token=\$(printf %s \"\$EVALUATION_TOKEN_B64\" | base64 -d); curl -sS --fail-with-body --max-time 300 -X POST http://127.0.0.1:8010/evaluation/run-scheduled -H \"Content-Type: application/json\" -H \"X-Evaluation-Token: \$token\" -d \"\$payload\"'" \
               > /tmp/eval_response.json 2>/tmp/eval_fallback_error.log
             then
               rm -f "${key_file}"
@@ -191,20 +196,13 @@ jobs:
 
           if invoke_ec2_internal_endpoint; then
             http_code="200"
-            response_source="ec2-container-internal"
+            response_source="ec2-host-internal"
           else
             if [ -s /tmp/eval_fallback_error.log ]; then
               cp /tmp/eval_fallback_error.log /tmp/eval_response.json
             fi
 
             http_code="$(invoke_public_endpoint)"
-            case "${http_code:-}" in
-              ""|5??)
-                if [ -s /tmp/eval_fallback_error.log ]; then
-                  cp /tmp/eval_fallback_error.log /tmp/eval_response.json
-                fi
-                ;;
-            esac
           fi
 
           response=$(cat /tmp/eval_response.json 2>/dev/null || echo "(no response body)")
