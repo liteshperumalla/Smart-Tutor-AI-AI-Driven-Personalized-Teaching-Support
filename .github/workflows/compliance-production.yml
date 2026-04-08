@@ -117,9 +117,9 @@ jobs:
           }
 
           timed() {
-            timeout "${1}"
+            local seconds="$1"
             shift
-            "$@"
+            timeout "${seconds}" "$@"
           }
 
           backend_ready() {
