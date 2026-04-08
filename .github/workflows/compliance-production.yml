@@ -135,7 +135,7 @@ jobs:
           APP_DIR="${EC2_APP_DIR:-}"
           DATA_ROOT="/home/ubuntu/smart-tutor-data"
 
-          check "docker installed" timed 10 command -v docker
+          check "docker installed" timed 10 sh -c "command -v docker >/dev/null"
           check "backend container running" timed 20 sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
           check "backend readiness endpoint responds" backend_ready
           if backend_health; then
@@ -143,20 +143,20 @@ jobs:
           else
             echo "[INFO] backend health endpoint is unavailable or degraded; readiness probe passed"
           fi
-          check "shared logs directory exists" timed 10 test -d "${DATA_ROOT}/logs"
-          check "shared user data directory exists" timed 10 test -d "${DATA_ROOT}/user_data"
-          check "shared chroma directory exists" timed 10 test -d "${DATA_ROOT}/chroma_db"
+          check "shared logs directory exists" timed 10 sh -c "test -d \"${DATA_ROOT}/logs\""
+          check "shared user data directory exists" timed 10 sh -c "test -d \"${DATA_ROOT}/user_data\""
+          check "shared chroma directory exists" timed 10 sh -c "test -d \"${DATA_ROOT}/chroma_db\""
           check "backend restart policy is unless-stopped" timed 20 sh -c "[ \"$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' smart-tutor-backend)\" = 'unless-stopped' ]"
           check "backend logs mount configured" timed 20 sh -c "docker inspect smart-tutor-backend | grep -q '/home/ubuntu/smart-tutor-data/logs'"
           if [ -n "${APP_DIR}" ]; then
-            check "configured app directory exists" timed 10 test -d "${APP_DIR}"
+            check "configured app directory exists" timed 10 sh -c "test -d \"${APP_DIR}\""
           else
             echo "[INFO] No EC2_APP_DIR configured; skipping repo-directory check."
           fi
 
           echo ""
           echo "=== Running containers ==="
-          timed 20 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+          timed 20 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' || true
 
           if [ "${failures}" -gt 0 ]; then
             exit 1
