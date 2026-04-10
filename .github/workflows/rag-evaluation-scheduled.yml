@@ -94,13 +94,16 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST || '' }}
           EC2_USER: ${{ secrets.EC2_USER || '' }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY || '' }}
-          # workflow_dispatch inputs override the repo variable when provided
-          EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || vars.EVALUATION_DATASET_LIMIT || '20' }}
+          REQUESTED_EVALUATION_DATASET_LIMIT: ${{ inputs.dataset_limit || '' }}
+          DEFAULT_EVALUATION_DATASET_LIMIT: ${{ vars.EVALUATION_DATASET_LIMIT || '20' }}
+          SCHEDULED_EVALUATION_DATASET_LIMIT: ${{ vars.EVALUATION_SCHEDULED_DATASET_LIMIT || '5' }}
           MIN_AVG_CORRECTNESS: ${{ inputs.min_avg_correctness || vars.MIN_AVG_CORRECTNESS || '0.55' }}
           MIN_AVG_CONTEXT_RECALL: ${{ inputs.min_avg_context_recall || vars.MIN_AVG_CONTEXT_RECALL || '0.55' }}
           MAX_AVG_DRIFT_SCORE: ${{ inputs.max_avg_drift_score || vars.MAX_AVG_DRIFT_SCORE || '2.50' }}
           EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
           ENFORCE_QUALITY_GATES: ${{ inputs.enforce_quality_gates || vars.ENFORCE_QUALITY_GATES || 'false' }}
+          INTERNAL_EVALUATION_TIMEOUT_SECONDS: ${{ vars.EVALUATION_INTERNAL_TIMEOUT_SECONDS || '900' }}
+          PUBLIC_EVALUATION_TIMEOUT_SECONDS: ${{ vars.EVALUATION_PUBLIC_TIMEOUT_SECONDS || '120' }}
           WORKFLOW_TRIGGER: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -114,8 +117,18 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "${EVALUATION_DATASET_LIMIT}" =~ ^[0-9]+$ ]]; then
-            echo "::error::EVALUATION_DATASET_LIMIT must be a positive integer. Received: ${EVALUATION_DATASET_LIMIT}"
+          if [ "${WORKFLOW_TRIGGER}" = "workflow_dispatch" ]; then
+            if [ -n "${REQUESTED_EVALUATION_DATASET_LIMIT}" ]; then
+              dataset_limit="${REQUESTED_EVALUATION_DATASET_LIMIT}"
+            else
+              dataset_limit="${DEFAULT_EVALUATION_DATASET_LIMIT}"
+            fi
+          else
+            dataset_limit="${SCHEDULED_EVALUATION_DATASET_LIMIT}"
+          fi
+
+          if [[ ! "${dataset_limit}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Evaluation dataset limit must be a positive integer. Received: ${dataset_limit}"
             exit 1
           fi
 
@@ -128,16 +141,16 @@ jobs:
             exit 1
           fi
 
-          if [ "${EVALUATION_DATASET_LIMIT}" -lt 1 ] || [ "${EVALUATION_DATASET_LIMIT}" -gt 64 ]; then
-            echo "::error::EVALUATION_DATASET_LIMIT must be between 1 and 64 to match backend validation. Received: ${EVALUATION_DATASET_LIMIT}"
+          if [ "${dataset_limit}" -lt 1 ] || [ "${dataset_limit}" -gt 64 ]; then
+            echo "::error::Evaluation dataset limit must be between 1 and 64 to match backend validation. Received: ${dataset_limit}"
             exit 1
           fi
 
           # Build JSON payload — only include model_id when explicitly set
           if [ -n "${EVALUATION_MODEL_ID}" ]; then
-            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}, \"model_id\": \"${EVALUATION_MODEL_ID}\"}"
+            payload="{\"limit\": ${dataset_limit}, \"model_id\": \"${EVALUATION_MODEL_ID}\"}"
           else
-            payload="{\"limit\": ${EVALUATION_DATASET_LIMIT}}"
+            payload="{\"limit\": ${dataset_limit}}"
           fi
 
           echo "Endpoint : ${base_url}/evaluation/run-scheduled"
@@ -147,8 +160,8 @@ jobs:
           invoke_public_endpoint() {
             curl -sS \
               --fail-with-body \
-              --max-time 300 \
-              --retry 2 \
+              --max-time "${PUBLIC_EVALUATION_TIMEOUT_SECONDS}" \
+              --retry 1 \
               --retry-delay 5 \
               --retry-all-errors \
               -X POST "${base_url}/evaluation/run-scheduled" \
@@ -176,7 +189,7 @@ jobs:
 
             if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
               -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-              "EVALUATION_PAYLOAD_B64='${payload_b64}' EVALUATION_TOKEN_B64='${token_b64}' bash -lc 'payload=\$(printf %s \"\$EVALUATION_PAYLOAD_B64\" | base64 -d); token=\$(printf %s \"\$EVALUATION_TOKEN_B64\" | base64 -d); curl -sS --fail-with-body --max-time 300 -X POST http://127.0.0.1:8010/evaluation/run-scheduled -H \"Content-Type: application/json\" -H \"X-Evaluation-Token: \$token\" -d \"\$payload\"'" \
+              "EVALUATION_PAYLOAD_B64='${payload_b64}' EVALUATION_TOKEN_B64='${token_b64}' EVALUATION_TIMEOUT='${INTERNAL_EVALUATION_TIMEOUT_SECONDS}' bash -lc 'payload=\$(printf %s \"\$EVALUATION_PAYLOAD_B64\" | base64 -d); token=\$(printf %s \"\$EVALUATION_TOKEN_B64\" | base64 -d); curl -fsS --connect-timeout 2 --max-time 10 http://127.0.0.1:8010/ready >/dev/null; curl -sS --fail-with-body --max-time \"\$EVALUATION_TIMEOUT\" -X POST http://127.0.0.1:8010/evaluation/run-scheduled -H \"Content-Type: application/json\" -H \"X-Evaluation-Token: \$token\" -d \"\$payload\"'" \
               > /tmp/eval_response.json 2>/tmp/eval_fallback_error.log
             then
               rm -f "${key_file}"
@@ -256,7 +269,7 @@ jobs:
           if [ "${response_is_json}" = "true" ]; then
             jq \
               --arg http_code "${http_code}" \
-              --arg dataset_limit "${EVALUATION_DATASET_LIMIT}" \
+              --arg dataset_limit "${dataset_limit}" \
               --arg min_avg_correctness "${MIN_AVG_CORRECTNESS}" \
               --arg min_avg_context_recall "${MIN_AVG_CONTEXT_RECALL}" \
               --arg max_avg_drift_score "${MAX_AVG_DRIFT_SCORE}" \
@@ -271,7 +284,7 @@ jobs:
                 response: .
               }' /tmp/eval_response.json > /tmp/eval_summary.json
           else
-            printf '%s\n' "{\"http_code\":\"${http_code}\",\"dataset_limit\":\"${EVALUATION_DATASET_LIMIT}\",\"response_is_json\":false}" > /tmp/eval_summary.json
+            printf '%s\n' "{\"http_code\":\"${http_code}\",\"dataset_limit\":\"${dataset_limit}\",\"response_is_json\":false}" > /tmp/eval_summary.json
           fi
 
           # ── Write Job Summary ──────────────────────────────────────────────
@@ -282,7 +295,7 @@ jobs:
             echo "|-------|-------|"
             echo "| HTTP Status | \`${http_code}\` |"
             echo "| Response Source | \`${response_source}\` |"
-            echo "| Dataset Limit | \`${EVALUATION_DATASET_LIMIT}\` |"
+            echo "| Dataset Limit | \`${dataset_limit}\` |"
             echo "| Model ID | \`${EVALUATION_MODEL_ID:-default}\` |"
             echo "| Enforce Quality Gates | \`${enforce_quality_gates}\` |"
             echo "| Triggered by | \`${{ github.event_name }}\` |"
