@@ -140,8 +140,13 @@ jobs:
             return 1
           }
 
+          backend_health_status() {
+            docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' smart-tutor-backend 2>/dev/null
+          }
+
           backend_ready_once() {
-            timed 25 curl -fsS --connect-timeout 3 --max-time 20 http://localhost:8010/ready >/dev/null \
+            [ "$(backend_health_status)" = "healthy" ] \
+              || timed 25 curl -fsS --connect-timeout 3 --max-time 20 http://localhost:8010/ready >/dev/null \
               || timed 30 docker exec smart-tutor-backend curl -fsS --connect-timeout 3 --max-time 15 http://127.0.0.1:8000/ready >/dev/null
           }
 
@@ -183,6 +188,9 @@ jobs:
           echo ""
           echo "=== Running containers ==="
           timed 20 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' || true
+          echo ""
+          echo "=== Backend health status ==="
+          timed 20 backend_health_status || true
 
           if [ "${failures}" -gt 0 ]; then
             exit 1

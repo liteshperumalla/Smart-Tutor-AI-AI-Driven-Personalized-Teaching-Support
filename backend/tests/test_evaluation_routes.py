@@ -12,6 +12,7 @@ from backend.api.routes.evaluation import (
     get_metrics_history,
 )
 from backend.config import config
+from backend.scripts.run_scheduled_evaluation import run_scheduled_evaluation
 
 
 def test_resolve_dataset_quality_file_prefers_configured_path(monkeypatch, tmp_path):
@@ -227,3 +228,31 @@ def test_run_dataset_quality_returns_structured_error_on_init_failure(
     assert result["quality_summary"] is None
     assert result["error"] == "initialization_failed"
     assert "bedrock init failed" in result["message"]
+
+
+def test_run_scheduled_evaluation_wraps_result_and_record(monkeypatch):
+    expected_result = {"total_evaluated": 2, "quality_summary": {"avg_correctness": 0.8}}
+    expected_record = {"id": "run-123"}
+
+    monkeypatch.setattr(
+        "backend.scripts.run_scheduled_evaluation._run_dataset_quality",
+        lambda limit, model_id: {**expected_result, "limit": limit, "model_id": model_id},
+    )
+    monkeypatch.setattr(
+        "backend.scripts.run_scheduled_evaluation._store_dataset_run",
+        lambda result, limit, model_id, source: {
+            **expected_record,
+            "source": source,
+            "limit": limit,
+            "model_id": model_id,
+            "result_total": result["total_evaluated"],
+        },
+    )
+
+    payload = run_scheduled_evaluation(limit=5, model_id="model-x", source="scheduled")
+
+    assert payload["total_evaluated"] == 2
+    assert payload["run_record"]["id"] == "run-123"
+    assert payload["run_record"]["source"] == "scheduled"
+    assert payload["run_record"]["limit"] == 5
+    assert payload["run_record"]["model_id"] == "model-x"

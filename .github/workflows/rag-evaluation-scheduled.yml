@@ -179,17 +179,29 @@ jobs:
             fi
 
             local key_file
-            local payload_b64
-            local token_b64
+            local model_arg
             key_file="$(mktemp)"
-            payload_b64="$(printf '%s' "${payload}" | base64 | tr -d '\n')"
-            token_b64="$(printf '%s' "${EVALUATION_CRON_TOKEN}" | base64 | tr -d '\n')"
             printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
             chmod 600 "${key_file}"
 
+            model_arg=""
+            if [ -n "${EVALUATION_MODEL_ID}" ]; then
+              model_arg="--model-id ${EVALUATION_MODEL_ID}"
+            fi
+
             if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
               -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-              "EVALUATION_PAYLOAD_B64='${payload_b64}' EVALUATION_TOKEN_B64='${token_b64}' EVALUATION_TIMEOUT='${INTERNAL_EVALUATION_TIMEOUT_SECONDS}' bash -lc 'payload=\$(printf %s \"\$EVALUATION_PAYLOAD_B64\" | base64 -d); token=\$(printf %s \"\$EVALUATION_TOKEN_B64\" | base64 -d); curl -fsS --connect-timeout 2 --max-time 10 http://127.0.0.1:8010/ready >/dev/null; curl -sS --fail-with-body --max-time \"\$EVALUATION_TIMEOUT\" -X POST http://127.0.0.1:8010/evaluation/run-scheduled -H \"Content-Type: application/json\" -H \"X-Evaluation-Token: \$token\" -d \"\$payload\"'" \
+              "DATASET_LIMIT='${dataset_limit}' EVALUATION_TIMEOUT='${INTERNAL_EVALUATION_TIMEOUT_SECONDS}' MODEL_ARG='${model_arg}' bash -lc '
+                set -euo pipefail
+                for _ in 1 2 3 4 5 6; do
+                  status=\$(docker inspect -f \"{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}\" smart-tutor-backend 2>/dev/null || true)
+                  if [ \"\$status\" = \"healthy\" ] || [ \"\$status\" = \"none\" ]; then
+                    break
+                  fi
+                  sleep 10
+                done
+                timeout \"\$EVALUATION_TIMEOUT\" docker exec smart-tutor-backend sh -lc \"python -m backend.scripts.run_scheduled_evaluation --limit \$DATASET_LIMIT --source scheduled \$MODEL_ARG\"
+              '" \
               > /tmp/eval_response.json 2>/tmp/eval_fallback_error.log
             then
               rm -f "${key_file}"
@@ -209,7 +221,7 @@ jobs:
 
           if invoke_ec2_internal_endpoint; then
             http_code="200"
-            response_source="ec2-host-internal"
+            response_source="ec2-container-script"
           else
             if [ -s /tmp/eval_fallback_error.log ]; then
               cp /tmp/eval_fallback_error.log /tmp/eval_response.json
