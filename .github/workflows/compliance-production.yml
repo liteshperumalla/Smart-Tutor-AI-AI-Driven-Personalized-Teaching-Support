@@ -122,14 +122,40 @@ jobs:
             timeout "${seconds}" "$@"
           }
 
+          retry_check() {
+            local attempts="$1"
+            local sleep_seconds="$2"
+            shift 2
+
+            local i
+            for i in $(seq 1 "${attempts}"); do
+              if "$@"; then
+                return 0
+              fi
+              if [ "${i}" -lt "${attempts}" ]; then
+                sleep "${sleep_seconds}"
+              fi
+            done
+
+            return 1
+          }
+
+          backend_ready_once() {
+            timed 25 curl -fsS --connect-timeout 3 --max-time 20 http://localhost:8010/ready >/dev/null \
+              || timed 30 docker exec smart-tutor-backend curl -fsS --connect-timeout 3 --max-time 15 http://127.0.0.1:8000/ready >/dev/null
+          }
+
           backend_ready() {
-            timed 15 curl -fsS --connect-timeout 2 --max-time 10 http://localhost:8010/ready >/dev/null \
-              || timed 20 docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 10 http://127.0.0.1:8000/ready >/dev/null
+            retry_check 3 5 backend_ready_once
+          }
+
+          backend_health_once() {
+            timed 30 curl -fsS --connect-timeout 3 --max-time 20 http://localhost:8010/health >/dev/null \
+              || timed 35 docker exec smart-tutor-backend curl -fsS --connect-timeout 3 --max-time 15 http://127.0.0.1:8000/health >/dev/null
           }
 
           backend_health() {
-            timed 20 curl -fsS --connect-timeout 2 --max-time 15 http://localhost:8010/health >/dev/null \
-              || timed 25 docker exec smart-tutor-backend curl -fsS --connect-timeout 2 --max-time 15 http://127.0.0.1:8000/health >/dev/null
+            retry_check 2 5 backend_health_once
           }
 
           APP_DIR="${EC2_APP_DIR:-}"
