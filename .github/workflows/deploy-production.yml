@@ -560,7 +560,7 @@ jobs:
             echo "| Backend deploy | \`${{ steps.deploy_backend.outcome }}\` |"
             if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
               echo "| Frontend deploy | \`${{ steps.vercel_deploy.outcome }}\` |"
-              echo "| Vercel deployment | \`${{ steps.vercel_deploy.outputs.deployment_url }}\` |"
+              echo "| Vercel deployment | \`${{ steps.vercel_deploy.outputs.deployment_url || 'n/a' }}\` |"
             else
               echo "| Frontend deploy | skipped: Vercel secrets not configured |"
             fi

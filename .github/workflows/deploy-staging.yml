@@ -452,9 +452,13 @@ jobs:
             echo "| Backend smoke test | \`${{ steps.smoke_test_backend_image.outcome }}\` |"
             echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
             echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
-            echo "| Frontend preview deploy | \`${{ steps.vercel_deploy.outcome || 'skipped' }}\` |"
-            echo "| Frontend preview URL | \`${{ steps.vercel_deploy.outputs.deployment_url }}\` |"
             echo "| Backend staging deploy | \`${{ steps.deploy_backend.outcome }}\` |"
+            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+              echo "| Frontend preview deploy | \`${{ steps.vercel_deploy.outcome }}\` |"
+              echo "| Frontend preview URL | \`${{ steps.vercel_deploy.outputs.deployment_url || 'n/a' }}\` |"
+            else
+              echo "| Frontend preview deploy | skipped: Vercel secrets not configured |"
+            fi
             echo ""
             echo "Stages:"
             echo "- Backend image build and smoke test"

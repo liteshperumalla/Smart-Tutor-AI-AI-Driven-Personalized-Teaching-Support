@@ -1,0 +1,10 @@
+.env.local
+.env.vercel.local
+.next
+.swc
+.vercel
+coverage
+node_modules
+test-api.html
+test-chat-api.html
+tsconfig.tsbuildinfo
