@@ -198,7 +198,6 @@ jobs:
         id: vercel_deploy
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         continue-on-error: true
-        working-directory: frontend
         run: |
           set -euo pipefail
           npm install --global vercel@latest
@@ -219,7 +218,6 @@ jobs:
 
       - name: Cleanup old Vercel production deployments
         if: ${{ steps.vercel_deploy.outputs.deployment_url != '' }}
-        working-directory: frontend
         env:
           DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
         run: |

@@ -184,7 +184,6 @@ jobs:
         id: vercel_deploy
         if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         continue-on-error: true
-        working-directory: frontend
         run: |
           set -euo pipefail
           npm install --global vercel@latest

@@ -94,6 +94,15 @@ jobs:
       - name: Smoke summary
         if: always()
         run: |
+          external_outcome="${{ steps.external_smoke.outcome }}"
+          if [ -z "${external_outcome}" ]; then
+            if [ -z "${PUBLIC_APP_URL}" ] && [ -z "${PUBLIC_API_URL}" ]; then
+              external_outcome="skipped: PRODUCTION_APP_URL and PRODUCTION_API_URL not configured"
+            else
+              external_outcome="skipped"
+            fi
+          fi
+
           {
             echo "## Post-Deploy Smoke Summary"
             echo ""
@@ -101,7 +110,7 @@ jobs:
             echo "|------|-------|"
             echo "| Trigger | \`${{ github.event_name }}\` |"
             echo "| Internal EC2 smoke | \`${{ steps.internal_smoke.outcome }}\` |"
-            echo "| External smoke | \`${{ steps.external_smoke.outcome || 'skipped' }}\` |"
+            echo "| External smoke | \`${external_outcome}\` |"
             echo "| Public app URL | \`${{ env.PUBLIC_APP_URL || 'not configured' }}\` |"
             echo "| Public API URL | \`${{ env.PUBLIC_API_URL || 'not configured' }}\` |"
             echo ""
@@ -110,4 +119,9 @@ jobs:
             echo "- Localhost backend `/health`"
             echo "- Localhost backend `/metrics`"
             echo "- In-container backend `/ready`"
+            if [ -n "${PUBLIC_APP_URL}" ] || [ -n "${PUBLIC_API_URL}" ]; then
+              echo "- External public URL smoke checks"
+            else
+              echo "- External public URL smoke checks skipped because production URLs are not configured"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
