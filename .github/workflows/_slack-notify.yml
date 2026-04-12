@@ -86,6 +86,8 @@ jobs:
           FIELDS_JSON: ${{ inputs.fields }}
           STATUS: ${{ inputs.status }}
           VERBIAGE: ${{ steps.meta.outputs.verbiage }}
+          RUN_URL: ${{ steps.meta.outputs.run_url }}
+          ACTOR: ${{ steps.meta.outputs.actor }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -105,24 +107,16 @@ jobs:
           fields_blocks = []
           try:
               fields = json.loads(fields_json)
-              blocks = []
               for f in fields:
                   title = f.get("title", "")
                   value = f.get("value", "")
-                  short = f.get("short", False)
-                  blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
-                  if short:
-                      blocks.append({"type": "mrkdwn", "text": ""})
-              for i in range(0, len(blocks), 2):
-                  if i + 1 < len(blocks):
-                      fields_blocks.append({"type": "section", "fields": [blocks[i], blocks[i+1]]})
-                  else:
-                      fields_blocks.append({"type": "section", "fields": [blocks[i]]})
+                  if title or value:
+                      fields_blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
           except Exception:
               fields_blocks = []
 
-          run_url = f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-          actor   = os.environ["GITHUB_ACTOR"]
+          run_url = os.environ.get("RUN_URL") or f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          actor   = os.environ.get("ACTOR") or os.environ["GITHUB_ACTOR"]
 
           payload = {
               "username": "GitHub Actions",
@@ -132,7 +126,8 @@ jobs:
                   "blocks": [
                       {"type": "header", "text": {"type": "plain_text", "text": f"{verbiage} {emoji}", "emoji": True}},
                       {"type": "section", "text": {"type": "mrkdwn", "text": message}},
-                      *fields_blocks,
+                      *([{"type": "section", "fields": fields_blocks[:10]}] if fields_blocks else []),
+                      *([{"type": "section", "fields": fields_blocks[10:20]}] if len(fields_blocks) > 10 else []),
                       {"type": "context", "elements": [{
                           "type": "mrkdwn",
                           "text": f"<{run_url}|View run #{os.environ['GITHUB_RUN_NUMBER']}> | Triggered by <https://github.com/{actor}|{actor}>"
@@ -158,9 +153,11 @@ jobs:
             echo "::warning::SLACK_WEBHOOK_URL_SMART_TUTOR_AI is not configured — skipping."
             exit 0
           fi
-          curl -sS -X POST -H "Content-type: application/json" \
+          if ! curl --fail -sS -X POST -H "Content-type: application/json" \
             --data @"${{ steps.build.outputs.payload_file }}" \
-            "${SLACK_WEBHOOK_URL}" || true
+            "${SLACK_WEBHOOK_URL}"; then
+            echo "::warning::Failed to send Slack notification to #smart-tutor-ai."
+          fi
 
       - name: Send to #app-development-analytics
         if: inputs.channel == 'APP_DEV_ANALYTICS'
@@ -172,6 +169,8 @@ jobs:
             echo "::warning::SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS is not configured — skipping."
             exit 0
           fi
-          curl -sS -X POST -H "Content-type: application/json" \
+          if ! curl --fail -sS -X POST -H "Content-type: application/json" \
             --data @"${{ steps.build.outputs.payload_file }}" \
-            "${SLACK_WEBHOOK_URL}" || true
+            "${SLACK_WEBHOOK_URL}"; then
+            echo "::warning::Failed to send Slack notification to #app-development-analytics."
+          fi

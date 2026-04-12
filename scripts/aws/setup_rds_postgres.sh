@@ -178,7 +178,7 @@ if [ $? -eq 0 ]; then
     echo ""
     echo "Run this to create tables:"
     echo "  source venv/bin/activate"
-    echo "  python3 backend/services/storage/init_postgres.py"
+    echo "  alembic -c alembic.ini upgrade head"
     echo ""
 
     echo ""

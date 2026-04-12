@@ -1,21 +1,23 @@
-"""
-Initialize PostgreSQL Database Schema
-Creates tables for users and quiz results
-"""
+"""Apply Alembic migrations to initialize the PostgreSQL schema."""
+
+from pathlib import Path
 
 import psycopg2
-from psycopg2 import sql
+from alembic import command
+from alembic.config import Config
+
 from backend.config import config
+from backend.db.url import build_postgres_url_string
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 def init_postgres_schema():
-    """Initialize PostgreSQL database schema"""
+    """Apply the Alembic migration head to PostgreSQL and verify the result."""
 
     print("=" * 70)
-    print("Initializing PostgreSQL Schema")
+    print("Applying PostgreSQL Alembic Migrations")
     print("=" * 70)
     print()
 
@@ -35,76 +37,25 @@ def init_postgres_schema():
     print()
 
     try:
-        # Connect to database
+        repo_root = Path(__file__).resolve().parents[3]
+        alembic_ini = repo_root / "alembic.ini"
+        if not alembic_ini.exists():
+            raise FileNotFoundError(f"Missing Alembic configuration: {alembic_ini}")
+
+        alembic_cfg = Config(str(alembic_ini))
+        alembic_cfg.set_main_option("script_location", str(repo_root / "backend" / "alembic"))
+        alembic_cfg.set_main_option("sqlalchemy.url", build_postgres_url_string())
+
+        print("Running Alembic upgrade head...")
+        command.upgrade(alembic_cfg, "head")
+        print("✅ Alembic migrations applied")
+        print()
+
         conn = psycopg2.connect(**conn_params)
         cur = conn.cursor()
 
         print("✅ Connected to PostgreSQL")
         print()
-
-        # Create users table
-        print("Creating 'users' table...")
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                username VARCHAR(255) PRIMARY KEY,
-                password_hash VARCHAR(255) NOT NULL,
-                email VARCHAR(255),
-                full_name VARCHAR(255),
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_login TIMESTAMP,
-                login_attempts INTEGER DEFAULT 0,
-                locked_until TIMESTAMP,
-                metadata JSONB
-            )
-        """)
-        print("✅ 'users' table created")
-
-        # Create index on email
-        print("Creating index on email...")
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_users_email
-            ON users(email)
-        """)
-        print("✅ Email index created")
-        print()
-
-        # Create quiz_results table
-        print("Creating 'quiz_results' table...")
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS quiz_results (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(255) NOT NULL,
-                quiz_id VARCHAR(255) NOT NULL,
-                score INTEGER,
-                total_questions INTEGER,
-                answers JSONB,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                completed_at TIMESTAMP,
-                metadata JSONB,
-                CONSTRAINT fk_user FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE
-            )
-        """)
-        print("✅ 'quiz_results' table created")
-
-        # Create indexes for quiz_results
-        print("Creating quiz_results indexes...")
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_quiz_results_username
-            ON quiz_results(username)
-        """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_quiz_results_quiz_id
-            ON quiz_results(quiz_id)
-        """)
-        cur.execute("""
-            CREATE INDEX IF NOT EXISTS idx_quiz_results_created_at
-            ON quiz_results(created_at DESC)
-        """)
-        print("✅ Quiz results indexes created")
-        print()
-
-        # Commit changes
-        conn.commit()
 
         # Verify tables
         print("Verifying tables...")
@@ -129,7 +80,7 @@ def init_postgres_schema():
         print("✅ PostgreSQL Schema Initialized Successfully!")
         print("=" * 70)
         print()
-        print("Ready to use hybrid storage (PostgreSQL + DynamoDB)")
+        print("Schema is now managed by Alembic migrations")
 
         return True
 

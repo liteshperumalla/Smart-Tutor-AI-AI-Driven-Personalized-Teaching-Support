@@ -18,9 +18,10 @@ on:
         description: Migration strategy
         required: true
         type: choice
+        default: alembic
         options:
-          - auto
           - alembic
+          - auto
           - schema-init
 
 concurrency:
@@ -105,17 +106,9 @@ jobs:
         if: ${{ steps.strategy.outputs.resolved == 'alembic' }}
         run: |
           set -euo pipefail
+          alembic -c alembic.ini upgrade head
 
-          if [ -f alembic.ini ]; then
-            alembic -c alembic.ini upgrade head
-          elif [ -f backend/alembic.ini ]; then
-            alembic -c backend/alembic.ini upgrade head
-          else
-            echo "::error::Alembic configuration disappeared before execution."
-            exit 1
-          fi
-
-      - name: Run schema initializer
+      - name: Run legacy schema initializer
         if: ${{ steps.strategy.outputs.resolved == 'schema-init' }}
         env:
           ENVIRONMENT: ${{ inputs.environment_name }}
@@ -139,6 +132,6 @@ jobs:
             echo "| Database name | \`${{ env.POSTGRES_DB }}\` |"
             echo ""
             echo "Notes:"
-            echo "- \`schema-init\` uses \`python -m backend.services.storage.init_postgres\`."
-            echo "- \`alembic\` requires an \`alembic.ini\` file and migration revisions in the repo."
+            echo "- \`alembic\` is the default and runs \`alembic -c alembic.ini upgrade head\`."
+            echo "- \`schema-init\` is the legacy fallback and now delegates to Alembic migrations."
           } >> "$GITHUB_STEP_SUMMARY"

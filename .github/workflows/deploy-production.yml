@@ -636,63 +636,46 @@ jobs:
           git commit -m "chore(gitops): promote production images to ${VERSION}"
           git push
 
-  notify-deploy:
-    name: Notify Deploy Result
-    runs-on: ubuntu-latest
+  notify-deploy-smart-tutor-ai:
+    name: Notify Deploy Result (#smart-tutor-ai)
     needs: [build-and-deploy]
     if: always()
-    permissions:
-      contents: read
-    env:
-      WORKFLOW_STATUS: ${{ needs.build-and-deploy.result }}
-    steps:
-      - name: Resolve notification data
-        id: vars
-        run: |
-          workflow_status="${{ needs.build-and-deploy.result }}"
-          if [ "${workflow_status}" = "skipped" ]; then
-            overall="success"
-          elif [ "${workflow_status}" = "failure" ]; then
-            overall="failure"
-          else
-            overall="success"
-          fi
-          echo "overall=${overall}" >> "$GITHUB_OUTPUT"
-          echo "version=${{ needs.build-and-deploy.outputs.version || 'n/a' }}" >> "$GITHUB_OUTPUT"
-          echo "deploy_ref=${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}" >> "$GITHUB_OUTPUT"
+    uses: ./.github/workflows/_slack-notify.yml
+    secrets: inherit
+    with:
+      channel: SMART_TUTOR_AI
+      workflow_name: Production Deploy
+      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      verbiage: Deploy
+      message: |
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        Deployment is live on production EC2.
+      fields: >-
+        [
+          {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
+          {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
+          {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+        ]
 
-      - name: Notify #smart-tutor-ai
-        uses: ./.github/workflows/_slack-notify.yml
-        with:
-          channel: SMART_TUTOR_AI
-          workflow_name: Production Deploy
-          status: ${{ steps.vars.outputs.overall }}
-          verbiage: Deploy
-          message: |
-            :white_check_mark: *Production deploy SUCCEEDED*
-            Deployment is live on production EC2.
-          fields: >-
-            [
-              {"title": "Version", "value": "${{ steps.vars.outputs.version }}", "short": true},
-              {"title": "Deploy Ref", "value": "${{ steps.vars.outputs.deploy_ref }}", "short": true},
-              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-              {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
-            ]
-
-      - name: Notify #app-development-analytics
-        uses: ./.github/workflows/_slack-notify.yml
-        with:
-          channel: APP_DEV_ANALYTICS
-          workflow_name: Production Deploy
-          status: ${{ steps.vars.outputs.overall }}
-          verbiage: Deploy
-          message: |
-            :white_check_mark: *Production deploy SUCCEEDED*
-            Deployment completed and promoted via GitOps.
-          fields: >-
-            [
-              {"title": "Version", "value": "${{ steps.vars.outputs.version }}", "short": true},
-              {"title": "Deploy Ref", "value": "${{ steps.vars.outputs.deploy_ref }}", "short": true},
-              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-              {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
-            ]
+  notify-deploy-app-development-analytics:
+    name: Notify Deploy Result (#app-development-analytics)
+    needs: [build-and-deploy]
+    if: always()
+    uses: ./.github/workflows/_slack-notify.yml
+    secrets: inherit
+    with:
+      channel: APP_DEV_ANALYTICS
+      workflow_name: Production Deploy
+      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      verbiage: Deploy
+      message: |
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        Deployment completed and promoted via GitOps.
+      fields: >-
+        [
+          {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
+          {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
+          {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+        ]
