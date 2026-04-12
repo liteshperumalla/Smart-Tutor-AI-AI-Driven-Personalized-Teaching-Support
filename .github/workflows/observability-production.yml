@@ -354,3 +354,53 @@ jobs:
             echo "- Email alerts are enabled when \`ALERTS_EMAIL_TO\`, \`SMTP_SERVER\`, \`SMTP_USERNAME\`, and \`SMTP_PASSWORD\` are present."
             echo "- When both are configured, Alertmanager fans out to both receivers."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  notify-observability:
+    name: Notify Observability Deploy
+    runs-on: ubuntu-latest
+    needs: [observability]
+    if: always()
+    permissions:
+      contents: read
+    env:
+      OBS_STATUS: ${{ needs.observability.result }}
+      OBS_DIR: ${{ env.OBSERVABILITY_DIR }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+    steps:
+      - name: Notify #smart-tutor-ai
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: SMART_TUTOR_AI
+          workflow_name: Production Observability Bootstrap
+          status: ${{ needs.observability.result == 'failure' && 'failure' || 'success' }}
+          verbiage: Observability
+          message: |
+            ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED* — monitoring stack not deployed.' || ':white_check_mark: *Observability bootstrap SUCCEEDED* — Prometheus, Grafana, Alertmanager, and exporters are running.' }}
+            Manual dispatch only — this workflow does not run on a schedule.
+          fields: >-
+            [
+              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Remote Directory", "value": "${OBS_DIR}", "short": true},
+              {"title": "Result", "value": "${{ needs.observability.result }}", "short": true},
+              {"title": "Grafana URL", "value": "[http://${EC2_HOST}:3001](http://${EC2_HOST}:3001)", "short": true},
+              {"title": "Prometheus URL", "value": "[http://${EC2_HOST}:9090](http://${EC2_HOST}:9090)", "short": true}
+            ]
+
+      - name: Notify #app-development-analytics
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: APP_DEV_ANALYTICS
+          workflow_name: Production Observability Bootstrap
+          status: ${{ needs.observability.result == 'failure' && 'failure' || 'success' }}
+          verbiage: Observability
+          message: |
+            ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED*' || ':white_check_mark: *Observability bootstrap completed* — monitoring stack deployed to EC2.' }}
+            Services: Prometheus, Grafana, Alertmanager, postgres-exporter, redis-exporter, node-exporter, cadvisor.
+          fields: >-
+            [
+              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Remote Directory", "value": "${OBS_DIR}", "short": true},
+              {"title": "Result", "value": "${{ needs.observability.result }}", "short": true},
+              {"title": "Grafana URL", "value": "[http://${EC2_HOST}:3001](http://${EC2_HOST}:3001)", "short": true},
+              {"title": "Prometheus URL", "value": "[http://${EC2_HOST}:9090](http://${EC2_HOST}:9090)", "short": true}
+            ]

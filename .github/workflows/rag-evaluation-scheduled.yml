@@ -159,7 +159,7 @@ jobs:
 
           invoke_public_endpoint() {
             curl -sS \
-              --fail-with-body \
+              --fail \
               --max-time "${PUBLIC_EVALUATION_TIMEOUT_SECONDS}" \
               --retry 1 \
               --retry-delay 5 \
@@ -416,3 +416,86 @@ jobs:
             /tmp/eval_response.json
             /tmp/eval_summary.json
           if-no-files-found: ignore
+
+  notify-rag-evaluation:
+    name: Notify RAG Evaluation Result
+    runs-on: ubuntu-latest
+    needs: [run-dataset-evaluation]
+    if: always()
+    permissions:
+      contents: read
+    steps:
+      - name: Download evaluation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rag-evaluation-response-${{ github.run_id }}
+          path: /tmp
+          if-no-files-found: ignore
+
+      - name: Resolve quality metrics
+        id: notify-vars
+        run: |
+          set -euo pipefail
+
+          eval_result="${{ needs.run-dataset-evaluation.result }}"
+          overall_status="success"
+          quality_gate="PASSED"
+
+          if [ "${eval_result}" = "failure" ]; then
+            overall_status="failure"
+            quality_gate="FAILED"
+          elif [ -f /tmp/eval_summary.json ]; then
+            avg_c="$(jq -r '.response.quality_summary.avg_correctness // "0"' /tmp/eval_summary.json 2>/dev/null || echo "0")"
+            if [ -n "${avg_c}" ] && [ "${avg_c}" != "null" ]; then
+              is_below="$(echo "${avg_c} < 0.55" | bc 2>/dev/null || echo "0")"
+              if [ "${is_below}" -eq 1 ]; then
+                overall_status="warning"
+                quality_gate="BELOW_THRESHOLD"
+              fi
+            fi
+          fi
+
+          echo "status=${overall_status}" >> "$GITHUB_OUTPUT"
+          echo "quality_gate=${quality_gate}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify #smart-tutor-ai
+        if: always()
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: SMART_TUTOR_AI
+          workflow_name: Scheduled RAG Evaluation
+          status: ${{ steps.notify-vars.outputs.status }}
+          verbiage: RAG Eval
+          message: |
+            :white_check_mark: *RAG evaluation completed*
+            Quality gate: *${{ steps.notify-vars.outputs.quality_gate }}*
+          fields: >-
+            [
+              {"title": "Avg Correctness", "value": "$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Context Recall", "value": "$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Drift Score", "value": "$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Total Evaluated", "value": "$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Quality Gate", "value": "${{ steps.notify-vars.outputs.quality_gate }}", "short": true},
+              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true}
+            ]
+
+      - name: Notify #app-development-analytics
+        if: always()
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: APP_DEV_ANALYTICS
+          workflow_name: Scheduled RAG Evaluation
+          status: ${{ steps.notify-vars.outputs.status }}
+          verbiage: RAG Eval
+          message: |
+            :white_check_mark: *RAG evaluation completed*
+            Quality gate: *${{ steps.notify-vars.outputs.quality_gate }}* | Evaluated: $(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown) questions
+          fields: >-
+            [
+              {"title": "Avg Correctness", "value": "$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Context Recall", "value": "$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Drift Score", "value": "$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Total Evaluated", "value": "$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Quality Gate", "value": "${{ steps.notify-vars.outputs.quality_gate }}", "short": true},
+              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true}
+            ]

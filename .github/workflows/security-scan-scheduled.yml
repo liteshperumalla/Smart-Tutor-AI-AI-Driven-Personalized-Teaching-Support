@@ -129,10 +129,10 @@ jobs:
 
       - name: Create issue if vulnerabilities found
         if: >-
-          vars.CREATE_SECURITY_ISSUES == 'true' && (
+          ${{ vars.CREATE_SECURITY_ISSUES == 'true' && (
             (matrix.component == 'backend' && steps.pip-audit.outputs.vulns_found == 'true') ||
             (matrix.component == 'frontend' && steps.npm-audit.outputs.vulns_found == 'true')
-          )
+          ) }}
         uses: actions/github-script@v7
         with:
           script: |
@@ -309,3 +309,74 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
+
+  notify-security-scan:
+    name: Notify Security Scan Result
+    runs-on: ubuntu-latest
+    needs: [trivy-scheduled-scan, dependency-audit, container-scan, license-compliance, sbom-generation, security-scorecard]
+    if: always()
+    permissions:
+      contents: read
+    env:
+      SCAN_RESULT: ${{ needs.trivy-scheduled-scan.result }}
+      DEP_RESULT: ${{ needs.dependency-audit.result }}
+      CONTAINER_RESULT: ${{ needs.container-scan.result }}
+      LICENSE_RESULT: ${{ needs.license-compliance.result }}
+      SBOM_RESULT: ${{ needs.sbom-generation.result }}
+      SCORECARD_RESULT: ${{ needs.security-scorecard.result }}
+    steps:
+      - name: Compute overall status
+        id: status
+        run: |
+          set -euo pipefail
+          overall="success"
+          if [ "${SCAN_RESULT}" = "failure" ] || [ "${DEP_RESULT}" = "failure" ] || [ "${CONTAINER_RESULT}" = "failure" ]; then
+            overall="failure"
+          elif [ "${LICENSE_RESULT}" = "failure" ] || [ "${SBOM_RESULT}" = "failure" ]; then
+            overall="warning"
+          fi
+          echo "overall=${overall}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify #smart-tutor-ai
+        env:
+          OVERALL: ${{ steps.status.outputs.overall }}
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: SMART_TUTOR_AI
+          workflow_name: Scheduled Security Scan
+          status: ${{ env.OVERALL }}
+          verbiage: Security Scan
+          message: |
+            ${{ env.OVERALL == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || env.OVERALL == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — no critical issues' }}
+            Daily automated scan of codebase, containers, dependencies, and licenses.
+          fields: >-
+            [
+              {"title": "Trivy Scan", "value": "${{ env.SCAN_RESULT }}", "short": true},
+              {"title": "Dependency Audit", "value": "${{ env.DEP_RESULT }}", "short": true},
+              {"title": "Container Scan", "value": "${{ env.CONTAINER_RESULT }}", "short": true},
+              {"title": "License Compliance", "value": "${{ env.LICENSE_RESULT }}", "short": true},
+              {"title": "SBOM", "value": "${{ env.SBOM_RESULT }}", "short": true},
+              {"title": "Scorecard", "value": "${{ env.SCORECARD_RESULT }}", "short": true}
+            ]
+
+      - name: Notify #app-development-analytics
+        env:
+          OVERALL: ${{ steps.status.outputs.overall }}
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: APP_DEV_ANALYTICS
+          workflow_name: Scheduled Security Scan
+          status: ${{ env.OVERALL }}
+          verbiage: Security Scan
+          message: |
+            ${{ env.OVERALL == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || env.OVERALL == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — all checks passed' }}
+            Daily security scan results — Trivy, dependency audit, container image scan, license compliance, SBOM, and OpenSSF scorecard.
+          fields: >-
+            [
+              {"title": "Trivy Scan", "value": "${{ env.SCAN_RESULT }}", "short": true},
+              {"title": "Dependency Audit", "value": "${{ env.DEP_RESULT }}", "short": true},
+              {"title": "Container Scan", "value": "${{ env.CONTAINER_RESULT }}", "short": true},
+              {"title": "License Compliance", "value": "${{ env.LICENSE_RESULT }}", "short": true},
+              {"title": "SBOM", "value": "${{ env.SBOM_RESULT }}", "short": true},
+              {"title": "Scorecard", "value": "${{ env.SCORECARD_RESULT }}", "short": true}
+            ]

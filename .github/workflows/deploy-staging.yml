@@ -93,15 +93,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          present=0
-          for value in "${VERCEL_TOKEN}" "${VERCEL_ORG_ID}" "${VERCEL_PROJECT_ID}"; do
-            if [ -n "$value" ]; then
-              present=$((present + 1))
-            fi
-          done
+          vercel_configured=0
+          if [ -n "${VERCEL_TOKEN}" ] && [ -n "${VERCEL_ORG_ID}" ] && [ -n "${VERCEL_PROJECT_ID}" ]; then
+            vercel_configured=1
+          fi
 
-          if [ "$present" -ne 0 ] && [ "$present" -ne 3 ]; then
-            echo "::warning::Vercel deploy secrets are partially configured. Frontend preview deploy will be skipped until VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID are all set."
+          if [ "${vercel_configured}" -eq 0 ]; then
+            echo "::warning::Vercel deploy secrets are not fully configured. Frontend preview deploy will be skipped. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID to enable."
           fi
 
       - name: Generate version tag

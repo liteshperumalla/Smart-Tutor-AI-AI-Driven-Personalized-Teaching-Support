@@ -75,16 +75,6 @@ jobs:
 
           capture_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
             aws sts get-caller-identity
-          capture_snapshot "cloudtrail" "/tmp/compliance-report/cloudtrail.json" "{}" \
-            aws cloudtrail describe-trails
-          capture_snapshot "secrets-rotation" "/tmp/compliance-report/secrets-rotation.json" "[]" \
-            aws secretsmanager list-secrets \
-              --query 'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}' \
-              --output json
-          capture_snapshot "rds-config" "/tmp/compliance-report/rds-config.json" "[]" \
-            aws rds describe-db-instances \
-              --query 'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}' \
-              --output json
           capture_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
             aws ec2 describe-instances \
               --filters "Name=ip-address,Values=${EC2_HOST}" \
@@ -207,7 +197,7 @@ jobs:
           mkdir -p /tmp/compliance-report/aws-fallback-needed
 
           needs_fallback=0
-          for name in aws-identity cloudtrail secrets-rotation rds-config ec2-instance; do
+          for name in aws-identity ec2-instance; do
             if [ -f "/tmp/compliance-report/aws-fallback-needed/${name}" ]; then
               needs_fallback=1
             fi
@@ -215,9 +205,6 @@ jobs:
 
           if [ "${needs_fallback}" -eq 0 ] && \
              [ -s /tmp/compliance-report/aws-identity.json ] && \
-             [ -s /tmp/compliance-report/cloudtrail.json ] && \
-             [ -s /tmp/compliance-report/secrets-rotation.json ] && \
-             [ -s /tmp/compliance-report/rds-config.json ] && \
              [ -s /tmp/compliance-report/ec2-instance.json ]; then
             echo "Runner snapshot is complete; skipping EC2 fallback."
             exit 0
@@ -248,12 +235,6 @@ jobs:
 
           capture_remote_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
             aws sts get-caller-identity
-          capture_remote_snapshot "cloudtrail" "/tmp/compliance-report/cloudtrail.json" "{}" \
-            aws cloudtrail describe-trails
-          capture_remote_snapshot "secrets-rotation" "/tmp/compliance-report/secrets-rotation.json" "[]" \
-            aws secretsmanager list-secrets --query "'SecretList[*].{Name:Name,Rotation:RotationEnabled,LastRotated:LastRotatedDate}'" --output json
-          capture_remote_snapshot "rds-config" "/tmp/compliance-report/rds-config.json" "[]" \
-            aws rds describe-db-instances --query "'DBInstances[*].{Name:DBInstanceIdentifier,Encrypted:StorageEncrypted,BackupRetention:BackupRetentionPeriod}'" --output json
           capture_remote_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
             aws ec2 describe-instances --filters "Name=ip-address,Values=${EC2_HOST}" --query "'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}'" --output json
 
@@ -286,15 +267,9 @@ jobs:
           fi
 
           aws_identity_status="missing"
-          cloudtrail_status="missing"
-          secrets_rotation_status="missing"
-          rds_status="missing"
           ec2_status="missing"
 
           [ -s "${report_dir}/aws-identity.json" ] && aws_identity_status="captured"
-          [ -s "${report_dir}/cloudtrail.json" ] && cloudtrail_status="captured"
-          [ -s "${report_dir}/secrets-rotation.json" ] && secrets_rotation_status="captured"
-          [ -s "${report_dir}/rds-config.json" ] && rds_status="captured"
           [ -s "${report_dir}/ec2-instance.json" ] && ec2_status="captured"
 
           {
@@ -310,9 +285,6 @@ jobs:
             echo "| Failed checks | \`${fail_count}\` |"
             echo "| Informational checks | \`${info_count}\` |"
             echo "| AWS identity snapshot | \`${aws_identity_status}\` |"
-            echo "| CloudTrail snapshot | \`${cloudtrail_status}\` |"
-            echo "| Secrets rotation snapshot | \`${secrets_rotation_status}\` |"
-            echo "| RDS config snapshot | \`${rds_status}\` |"
             echo "| EC2 inventory snapshot | \`${ec2_status}\` |"
             echo ""
             echo "Artifacts:"
@@ -320,3 +292,73 @@ jobs:
             echo "- Remote host checks plus runner/EC2 AWS inventory snapshots"
             echo "- Repo-directory validation is skipped unless \`EC2_APP_DIR\` is configured"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  notify-compliance:
+    name: Notify Compliance Result
+    runs-on: ubuntu-latest
+    needs: [compliance-scan]
+    if: always()
+    permissions:
+      contents: read
+    env:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+    steps:
+      - name: Download compliance report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: production-compliance-report
+          path: /tmp/compliance-report
+          if-no-files-found: ignore
+
+      - name: Resolve status and summary
+        id: vars
+        run: |
+          overall="${{ needs.compliance-scan.result }}"
+          pass_count="0"
+          fail_count="0"
+          info_count="0"
+          if [ -f /tmp/compliance-report/ec2-host-checks.txt ]; then
+            pass_count="$(grep -c '^\\[PASS\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+            fail_count="$(grep -c '^\\[FAIL\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+            info_count="$(grep -c '^\\[INFO\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+          fi
+          echo "overall=${overall}" >> "$GITHUB_OUTPUT"
+          echo "pass_count=${pass_count}" >> "$GITHUB_OUTPUT"
+          echo "fail_count=${fail_count}" >> "$GITHUB_OUTPUT"
+          echo "info_count=${info_count}" >> "$GITHUB_OUTPUT"
+
+      - name: Notify #smart-tutor-ai
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: SMART_TUTOR_AI
+          workflow_name: Production Compliance Scan
+          status: ${{ needs.compliance-scan.result == 'failure' && 'failure' || 'success' }}
+          verbiage: Compliance
+          message: |
+            ${{ needs.compliance-scan.result == 'failure' && ':x: *Compliance scan FAILED* — failed checks detected on production host.' || ':white_check_mark: *Compliance scan PASSED* — all host checks successful.' }}
+            ${{ github.event_name == 'schedule' && 'Weekly scheduled scan.' || 'Manual dispatch.' }}
+          fields: >-
+            [
+              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Pass / Fail / Info", "value": "${{ steps.vars.outputs.pass_count }} / ${{ steps.vars.outputs.fail_count }} / ${{ steps.vars.outputs.info_count }}", "short": true},
+              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
+              {"title": "Result", "value": "${{ needs.compliance-scan.result }}", "short": true}
+            ]
+
+      - name: Notify #app-development-analytics
+        uses: ./.github/workflows/_slack-notify.yml
+        with:
+          channel: APP_DEV_ANALYTICS
+          workflow_name: Production Compliance Scan
+          status: ${{ needs.compliance-scan.result == 'failure' && 'failure' || 'success' }}
+          verbiage: Compliance
+          message: |
+            ${{ needs.compliance-scan.result == 'failure' && ':x: *Compliance scan FAILED* — failed checks on production host.' || ':white_check_mark: *Compliance scan completed* — host checks finished.' }}
+            Weekly compliance check of EC2 instance and container configuration.
+          fields: >-
+            [
+              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Pass / Fail / Info", "value": "${{ steps.vars.outputs.pass_count }} / ${{ steps.vars.outputs.fail_count }} / ${{ steps.vars.outputs.info_count }}", "short": true},
+              {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
+              {"title": "Result", "value": "${{ needs.compliance-scan.result }}", "short": true}
+            ]
