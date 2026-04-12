@@ -371,11 +371,10 @@ jobs:
         Manual dispatch only — this workflow does not run on a schedule.
       fields: >-
         [
-          {"title": "Target Host", "value": "${{ secrets.EC2_HOST }}", "short": true},
           {"title": "Remote Directory", "value": "${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}", "short": true},
           {"title": "Result", "value": "${{ needs.observability.result }}", "short": true},
-          {"title": "Grafana URL", "value": "[http://${{ secrets.EC2_HOST }}:3001](http://${{ secrets.EC2_HOST }}:3001)", "short": true},
-          {"title": "Prometheus URL", "value": "[http://${{ secrets.EC2_HOST }}:9090](http://${{ secrets.EC2_HOST }}:9090)", "short": true}
+          {"title": "Grafana Port", "value": "3001", "short": true},
+          {"title": "Prometheus Port", "value": "9090", "short": true}
         ]
 
   notify-observability-app-development-analytics:
@@ -394,9 +393,8 @@ jobs:
         Services: Prometheus, Grafana, Alertmanager, postgres-exporter, redis-exporter, node-exporter, cadvisor.
       fields: >-
         [
-          {"title": "Target Host", "value": "${{ secrets.EC2_HOST }}", "short": true},
           {"title": "Remote Directory", "value": "${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}", "short": true},
           {"title": "Result", "value": "${{ needs.observability.result }}", "short": true},
-          {"title": "Grafana URL", "value": "[http://${{ secrets.EC2_HOST }}:3001](http://${{ secrets.EC2_HOST }}:3001)", "short": true},
-          {"title": "Prometheus URL", "value": "[http://${{ secrets.EC2_HOST }}:9090](http://${{ secrets.EC2_HOST }}:9090)", "short": true}
+          {"title": "Grafana Port", "value": "3001", "short": true},
+          {"title": "Prometheus Port", "value": "9090", "short": true}
         ]

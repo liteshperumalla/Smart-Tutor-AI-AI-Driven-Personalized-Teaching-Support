@@ -30,16 +30,26 @@ jobs:
   review:
     name: AI Code Review
     runs-on: ubuntu-latest
-    if: ${{ env.PR_TITLE != '' }}
+    if: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
     outputs:
       action: ${{ steps.post_comment.outputs.action || 'skipped' }}
       comment_url: ${{ steps.post_comment.outputs.comment_url || '' }}
       affected: ${{ steps.changed_areas.outputs.affected }}
+      pr_number: ${{ steps.pr_meta.outputs.pr_number }}
+      base_ref: ${{ steps.pr_meta.outputs.base_ref }}
+      head_ref: ${{ steps.pr_meta.outputs.head_ref }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Resolve PR metadata
+        id: pr_meta
+        run: |
+          echo "pr_number=${{ github.event.pull_request.number || inputs.pr_number || '0' }}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${{ github.event.pull_request.base.ref || '' }}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${{ github.event.pull_request.head.ref || '' }}" >> "$GITHUB_OUTPUT"
 
       - name: Get PR diff
         id: diff
@@ -193,7 +203,7 @@ jobs:
 
       - name: Post review comment
         id: post_comment
-        if: ${{ env.PR_NUMBER != '0' }}
+        if: ${{ steps.pr_meta.outputs.pr_number != '0' }}
         env:
           REPORT_CONTENT: ${{ steps.build_report.outputs.report }}
         uses: actions/github-script@v7
@@ -234,13 +244,14 @@ jobs:
       - name: Upload diff artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coderabbit-pr-diff-${{ env.PR_NUMBER }}
+          name: coderabbit-pr-diff-${{ steps.pr_meta.outputs.pr_number }}
           path: /tmp/review/pr.diff
           retention-days: 1
 
       - name: Review summary
         if: always()
         env:
+          PR_NUMBER: ${{ steps.pr_meta.outputs.pr_number }}
           AFFECTED: ${{ steps.changed_areas.outputs.affected }}
           REVIEW_ACTION: ${{ steps.post_comment.outputs.action }}
           REVIEW_COMMENT_URL: ${{ steps.post_comment.outputs.comment_url }}
@@ -281,14 +292,14 @@ jobs:
       status: ${{ needs.review.result == 'failure' && 'failure' || 'success' }}
       verbiage: AI Review
       message: |
-        :white_check_mark: *AI code review posted to PR #${{ env.PR_NUMBER }}*
+        :white_check_mark: *AI code review posted to PR #${{ needs.review.outputs.pr_number || '0' }}*
         Action: *${{ needs.review.outputs.action || 'skipped' }}* | Areas: *${{ needs.review.outputs.affected || 'all' }}*
         ${{ needs.review.outputs.comment_url != '' && format('<{0}|View review comment>', needs.review.outputs.comment_url) || '' }}
       fields: >-
         [
-          {"title": "PR", "value": "#${{ env.PR_NUMBER }}", "short": true},
-          {"title": "Base", "value": "${{ env.BASE_REF }}", "short": true},
-          {"title": "Head", "value": "${{ env.HEAD_REF }}", "short": true},
+          {"title": "PR", "value": "#${{ needs.review.outputs.pr_number || '0' }}", "short": true},
+          {"title": "Base", "value": "${{ needs.review.outputs.base_ref || 'n/a' }}", "short": true},
+          {"title": "Head", "value": "${{ needs.review.outputs.head_ref || 'n/a' }}", "short": true},
           {"title": "Affected Areas", "value": "${{ needs.review.outputs.affected || 'all' }}", "short": true},
           {"title": "Action", "value": "${{ needs.review.outputs.action || 'skipped' }}", "short": true},
           {"title": "Comment", "value": "${{ needs.review.outputs.comment_url != '' && format('<{0}|View in GitHub>', needs.review.outputs.comment_url) || 'n/a' }}", "short": false}
@@ -306,14 +317,14 @@ jobs:
       status: ${{ needs.review.result == 'failure' && 'failure' || 'success' }}
       verbiage: AI Review
       message: |
-        :white_check_mark: *AI code review posted to PR #${{ env.PR_NUMBER }}*
+        :white_check_mark: *AI code review posted to PR #${{ needs.review.outputs.pr_number || '0' }}*
         Action: *${{ needs.review.outputs.action || 'skipped' }}* | Areas: *${{ needs.review.outputs.affected || 'all' }}*
         ${{ needs.review.outputs.comment_url != '' && format('<{0}|View review comment>', needs.review.outputs.comment_url) || '' }}
       fields: >-
         [
-          {"title": "PR", "value": "#${{ env.PR_NUMBER }}", "short": true},
-          {"title": "Base", "value": "${{ env.BASE_REF }}", "short": true},
-          {"title": "Head", "value": "${{ env.HEAD_REF }}", "short": true},
+          {"title": "PR", "value": "#${{ needs.review.outputs.pr_number || '0' }}", "short": true},
+          {"title": "Base", "value": "${{ needs.review.outputs.base_ref || 'n/a' }}", "short": true},
+          {"title": "Head", "value": "${{ needs.review.outputs.head_ref || 'n/a' }}", "short": true},
           {"title": "Affected Areas", "value": "${{ needs.review.outputs.affected || 'all' }}", "short": true},
           {"title": "Action", "value": "${{ needs.review.outputs.action || 'skipped' }}", "short": true},
           {"title": "Comment", "value": "${{ needs.review.outputs.comment_url != '' && format('<{0}|View in GitHub>', needs.review.outputs.comment_url) || 'n/a' }}", "short": false}
