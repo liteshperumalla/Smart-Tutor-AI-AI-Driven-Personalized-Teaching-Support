@@ -327,6 +327,9 @@ jobs:
           echo "fail_count=${fail_count}" >> "$GITHUB_OUTPUT"
           echo "info_count=${info_count}" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout for Slack notify
+        uses: actions/checkout@v4
+
       - name: Notify #smart-tutor-ai
         uses: ./.github/workflows/_slack-notify.yml
         with:

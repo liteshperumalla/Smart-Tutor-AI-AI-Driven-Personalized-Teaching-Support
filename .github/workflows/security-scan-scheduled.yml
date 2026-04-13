@@ -337,6 +337,9 @@ jobs:
           fi
           echo "overall=${overall}" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout for Slack notify
+        uses: actions/checkout@v4
+
       - name: Notify #smart-tutor-ai
         env:
           OVERALL: ${{ steps.status.outputs.overall }}
