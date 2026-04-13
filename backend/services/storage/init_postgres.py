@@ -43,7 +43,8 @@ def init_postgres_schema():
             raise FileNotFoundError(f"Missing Alembic configuration: {alembic_ini}")
 
         alembic_cfg = Config(str(alembic_ini))
-        alembic_cfg.set_main_option("script_location", str(repo_root / "backend" / "alembic"))
+        # alembic.ini already sets script_location = backend/alembic and
+        # prepends backend/ to sys.path — only override the DB URL here.
         alembic_cfg.set_main_option("sqlalchemy.url", build_postgres_url_string())
 
         print("Running Alembic upgrade head...")

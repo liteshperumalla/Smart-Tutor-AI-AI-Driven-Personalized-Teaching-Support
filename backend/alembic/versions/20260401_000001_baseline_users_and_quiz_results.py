@@ -213,6 +213,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if context.is_offline_mode():
+        # Offline SQL scripts only support upgrade; drop in reverse dependency order
+        op.drop_table("quiz_results", if_exists=True)
+        op.drop_table("users", if_exists=True)
+        return
+
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
