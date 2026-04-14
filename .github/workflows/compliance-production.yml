@@ -334,6 +334,7 @@ jobs:
         uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
           workflow_name: Production Compliance Scan
           status: ${{ needs.compliance-scan.result == 'failure' && 'failure' || 'success' }}
           verbiage: Compliance
@@ -352,6 +353,7 @@ jobs:
         uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Production Compliance Scan
           status: ${{ needs.compliance-scan.result == 'failure' && 'failure' || 'success' }}
           verbiage: Compliance

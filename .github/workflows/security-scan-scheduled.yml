@@ -346,6 +346,7 @@ jobs:
         uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
           workflow_name: Scheduled Security Scan
           status: ${{ env.OVERALL }}
           verbiage: Security Scan
@@ -368,6 +369,7 @@ jobs:
         uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Scheduled Security Scan
           status: ${{ env.OVERALL }}
           verbiage: Security Scan

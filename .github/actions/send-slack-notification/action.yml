@@ -6,6 +6,10 @@ inputs:
     description: "Logical channel name — SMART_TUTOR_AI or APP_DEV_ANALYTICS"
     required: true
     type: string
+  webhook_url:
+    description: "Slack webhook URL for the target channel"
+    required: true
+    type: string
   workflow_name:
     description: "Display name shown in Slack notification header"
     required: true
@@ -145,7 +149,7 @@ runs:
       if: inputs.channel == 'SMART_TUTOR_AI'
       shell: bash
       env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+        SLACK_WEBHOOK_URL: ${{ inputs.webhook_url }}
       run: |
         set -euo pipefail
         if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
@@ -162,7 +166,7 @@ runs:
       if: inputs.channel == 'APP_DEV_ANALYTICS'
       shell: bash
       env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+        SLACK_WEBHOOK_URL: ${{ inputs.webhook_url }}
       run: |
         set -euo pipefail
         if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
