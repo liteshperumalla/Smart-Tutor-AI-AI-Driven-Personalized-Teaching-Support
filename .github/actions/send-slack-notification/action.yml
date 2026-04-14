@@ -1,0 +1,176 @@
+name: Send Slack Notification
+description: Builds a Block Kit Slack message and sends it to a channel webhook
+
+inputs:
+  channel:
+    description: "Logical channel name — SMART_TUTOR_AI or APP_DEV_ANALYTICS"
+    required: true
+    type: string
+  workflow_name:
+    description: "Display name shown in Slack notification header"
+    required: true
+    type: string
+  status:
+    description: "success | failure | warning"
+    required: true
+    type: string
+  message:
+    description: "Main notification body in Slack mrkdwn format"
+    required: true
+    type: string
+  fields:
+    description: "JSON array of {title, value, short} for two-column fields section"
+    required: false
+    type: string
+    default: "[]"
+  run_url:
+    description: "Link back to the GitHub Actions run"
+    required: false
+    type: string
+    default: ""
+  actor:
+    description: "GitHub user who triggered the workflow"
+    required: false
+    type: string
+    default: ""
+  verbiage:
+    description: "Short one-line label for the event type (e.g. Deploy, Scan, Review)"
+    required: false
+    type: string
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set status metadata
+      id: meta
+      shell: bash
+      run: |
+        case "${{ inputs.status }}" in
+          success)  echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
+                    echo "color=#2EB67D" >> "$GITHUB_OUTPUT"
+                    echo "status_label=SUCCESS" >> "$GITHUB_OUTPUT" ;;
+          failure)  echo "emoji=:x:" >> "$GITHUB_OUTPUT"
+                    echo "color=#E01E5A" >> "$GITHUB_OUTPUT"
+                    echo "status_label=FAILED" >> "$GITHUB_OUTPUT" ;;
+          warning)  echo "emoji=:warning:" >> "$GITHUB_OUTPUT"
+                    echo "color=#ECB22E" >> "$GITHUB_OUTPUT"
+                    echo "status_label=WARNING" >> "$GITHUB_OUTPUT" ;;
+        esac
+
+        run_url="${{ inputs.run_url }}"
+        if [ -z "${run_url}" ]; then
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        fi
+        echo "run_url=${run_url}" >> "$GITHUB_OUTPUT"
+
+        actor="${{ inputs.actor }}"
+        if [ -z "${actor}" ]; then
+          actor="${{ github.actor }}"
+        fi
+        echo "actor=${actor}" >> "$GITHUB_OUTPUT"
+
+        verbiage="${{ inputs.verbiage }}"
+        if [ -z "${verbiage}" ]; then
+          verbiage="${{ inputs.workflow_name }}"
+        fi
+        echo "verbiage=${verbiage}" >> "$GITHUB_OUTPUT"
+
+    - name: Build Block Kit payload
+      id: build
+      shell: bash
+      env:
+        MESSAGE: ${{ inputs.message }}
+        FIELDS_JSON: ${{ inputs.fields }}
+        STATUS: ${{ inputs.status }}
+        VERBIAGE: ${{ steps.meta.outputs.verbiage }}
+        RUN_URL: ${{ steps.meta.outputs.run_url }}
+        ACTOR: ${{ steps.meta.outputs.actor }}
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import json, os
+
+        message     = os.environ.get("MESSAGE", "")
+        fields_json = os.environ.get("FIELDS_JSON", "[]")
+        status      = os.environ.get("STATUS", "success")
+        verbiage    = os.environ.get("VERBIAGE", "Workflow")
+
+        emoji_map = {"success": ":white_check_mark:", "failure": ":x:", "warning": ":warning:"}
+        color_map = {"success": "#2EB67D",            "failure": "#E01E5A",  "warning": "#ECB22E"}
+
+        emoji = emoji_map.get(status, ":white_check_mark:")
+        color = color_map.get(status, "#2EB67D")
+
+        fields_blocks = []
+        try:
+            fields = json.loads(fields_json)
+            for f in fields:
+                title = f.get("title", "")
+                value = f.get("value", "")
+                if title or value:
+                    fields_blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
+        except Exception:
+            fields_blocks = []
+
+        run_url = os.environ.get("RUN_URL") or f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+        actor   = os.environ.get("ACTOR") or os.environ["GITHUB_ACTOR"]
+
+        payload = {
+            "username": "GitHub Actions",
+            "icon_emoji": ":github:",
+            "attachments": [{
+                "color": color,
+                "blocks": [
+                    {"type": "header", "text": {"type": "plain_text", "text": f"{verbiage} {emoji}", "emoji": True}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": message}},
+                    *([{"type": "section", "fields": fields_blocks[:10]}] if fields_blocks else []),
+                    *([{"type": "section", "fields": fields_blocks[10:20]}] if len(fields_blocks) > 10 else []),
+                    {"type": "context", "elements": [{
+                        "type": "mrkdwn",
+                        "text": f"<{run_url}|View run #{os.environ['GITHUB_RUN_NUMBER']}> | Triggered by <https://github.com/{actor}|{actor}>"
+                    }]}
+                ]
+            }]
+        }
+
+        with open("/tmp/slack_payload.json", "w") as f:
+            json.dump(payload, f)
+        print("payload_file=/tmp/slack_payload.json")
+        PY
+
+        echo "payload_file=/tmp/slack_payload.json" >> "$GITHUB_OUTPUT"
+
+    - name: Send to #smart-tutor-ai
+      if: inputs.channel == 'SMART_TUTOR_AI'
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+      run: |
+        set -euo pipefail
+        if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+          echo "::warning::SLACK_WEBHOOK_URL_SMART_TUTOR_AI is not configured — skipping."
+          exit 0
+        fi
+        if ! curl --fail -sS -X POST -H "Content-type: application/json" \
+          --data @"${{ steps.build.outputs.payload_file }}" \
+          "${SLACK_WEBHOOK_URL}"; then
+          echo "::warning::Failed to send Slack notification to #smart-tutor-ai."
+        fi
+
+    - name: Send to #app-development-analytics
+      if: inputs.channel == 'APP_DEV_ANALYTICS'
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+      run: |
+        set -euo pipefail
+        if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+          echo "::warning::SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS is not configured — skipping."
+          exit 0
+        fi
+        if ! curl --fail -sS -X POST -H "Content-type: application/json" \
+          --data @"${{ steps.build.outputs.payload_file }}" \
+          "${SLACK_WEBHOOK_URL}"; then
+          echo "::warning::Failed to send Slack notification to #app-development-analytics."
+        fi

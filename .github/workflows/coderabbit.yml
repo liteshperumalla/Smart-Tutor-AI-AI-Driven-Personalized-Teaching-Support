@@ -284,8 +284,7 @@ jobs:
     name: Notify PR Review Posted (#smart-tutor-ai)
     needs: [review]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: SMART_TUTOR_AI
       workflow_name: CodeRabbit AI Review
@@ -309,8 +308,7 @@ jobs:
     name: Notify PR Review Posted (#app-development-analytics)
     needs: [review]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: CodeRabbit AI Review

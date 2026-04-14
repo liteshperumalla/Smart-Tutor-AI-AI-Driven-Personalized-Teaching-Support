@@ -464,7 +464,7 @@ jobs:
 
       - name: Notify #smart-tutor-ai
         if: always()
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
           workflow_name: Scheduled RAG Evaluation
@@ -485,7 +485,7 @@ jobs:
 
       - name: Notify #app-development-analytics
         if: always()
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
           workflow_name: Scheduled RAG Evaluation

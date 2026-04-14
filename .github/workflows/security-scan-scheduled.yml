@@ -343,7 +343,7 @@ jobs:
       - name: Notify #smart-tutor-ai
         env:
           OVERALL: ${{ steps.status.outputs.overall }}
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
           workflow_name: Scheduled Security Scan
@@ -365,7 +365,7 @@ jobs:
       - name: Notify #app-development-analytics
         env:
           OVERALL: ${{ steps.status.outputs.overall }}
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
           workflow_name: Scheduled Security Scan

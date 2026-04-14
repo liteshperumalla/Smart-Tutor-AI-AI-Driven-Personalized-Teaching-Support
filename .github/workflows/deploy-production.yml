@@ -640,8 +640,7 @@ jobs:
     name: Notify Deploy Result (#smart-tutor-ai)
     needs: [build-and-deploy]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: SMART_TUTOR_AI
       workflow_name: Production Deploy
@@ -662,8 +661,7 @@ jobs:
     name: Notify Deploy Result (#app-development-analytics)
     needs: [build-and-deploy]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: Production Deploy

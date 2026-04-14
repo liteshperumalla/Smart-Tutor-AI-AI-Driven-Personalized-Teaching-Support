@@ -331,7 +331,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Notify #smart-tutor-ai
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
           workflow_name: Production Compliance Scan
@@ -349,7 +349,7 @@ jobs:
             ]
 
       - name: Notify #app-development-analytics
-        uses: ./.github/workflows/_slack-notify.yml
+        uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
           workflow_name: Production Compliance Scan

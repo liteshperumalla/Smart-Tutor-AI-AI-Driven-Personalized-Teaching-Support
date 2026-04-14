@@ -359,8 +359,7 @@ jobs:
     name: Notify Observability Deploy (#smart-tutor-ai)
     needs: [observability]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: SMART_TUTOR_AI
       workflow_name: Production Observability Bootstrap
@@ -381,8 +380,7 @@ jobs:
     name: Notify Observability Deploy (#app-development-analytics)
     needs: [observability]
     if: always()
-    uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    uses: ./.github/actions/send-slack-notification
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: Production Observability Bootstrap
