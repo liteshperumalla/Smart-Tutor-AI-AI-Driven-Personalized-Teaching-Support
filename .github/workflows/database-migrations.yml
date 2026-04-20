@@ -81,6 +81,8 @@ jobs:
 
       - name: Resolve migration strategy
         id: strategy
+        env:
+          SECRETS_PROVIDER: env
         run: |
           set -euo pipefail
 
@@ -102,11 +104,34 @@ jobs:
 
           echo "resolved=${resolved}" >> "$GITHUB_OUTPUT"
 
+      - name: Build database URL
+        id: db-url
+        env:
+          SECRETS_PROVIDER: env
+        run: |
+          set -euo pipefail
+          python3 -c "
+          import os
+          from urllib.parse import quote
+          host   = os.environ['POSTGRES_HOST']
+          port   = os.environ['POSTGRES_PORT']
+          db     = os.environ['POSTGRES_DB']
+          user   = os.environ['POSTGRES_USER']
+          passwd = os.environ['POSTGRES_PASSWORD']
+          sslmode = os.environ.get('POSTGRES_SSL_MODE', 'require')
+          url = 'postgresql+psycopg2://' + user + ':' + quote(passwd, safe='') + '@' + host + ':' + port + '/' + db + '?sslmode=' + sslmode
+          with open('/tmp/db_url.txt', 'w') as f:
+              f.write(url)
+          "
+          echo "db_url=$(cat /tmp/db_url.txt)" >> "$GITHUB_OUTPUT"
+
       - name: Run Alembic migrations
         if: ${{ steps.strategy.outputs.resolved == 'alembic' }}
         run: |
           set -euo pipefail
-          alembic -c alembic.ini upgrade head
+          # Pass DB URL via alembic -x to bypass ConfigParser % interpolation
+          # which corrupts passwords containing % (e.g. SmartTutor2025!SecurePass has !)
+          python -m alembic -c alembic.ini upgrade head -x db_url="${{ steps.db-url.outputs.db_url }}"
 
       - name: Run legacy schema initializer
         if: ${{ steps.strategy.outputs.resolved == 'schema-init' }}

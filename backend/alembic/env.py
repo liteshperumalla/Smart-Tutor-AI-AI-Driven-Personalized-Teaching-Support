@@ -12,7 +12,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", build_postgres_url_string())
+# Allow db_url override via alembic -x db_url=... to bypass ConfigParser %
+# interpolation that corrupts passwords containing % (e.g. ! in SmartTutor2025!SecurePass)
+_db_url = config.get_main_option("db_url")
+if _db_url:
+    config.set_main_option("sqlalchemy.url", _db_url)
+else:
+    config.set_main_option("sqlalchemy.url", build_postgres_url_string())
 target_metadata = Base.metadata
 
 
