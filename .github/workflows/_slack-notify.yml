@@ -39,6 +39,13 @@ on:
         required: false
         type: string
         default: ""
+    secrets:
+      SLACK_WEBHOOK_URL_SMART_TUTOR_AI:
+        description: "Slack webhook URL for #smart-tutor-ai"
+        required: false
+      SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS:
+        description: "Slack webhook URL for #app-development-analytics"
+        required: false
 
 jobs:
   notify:
