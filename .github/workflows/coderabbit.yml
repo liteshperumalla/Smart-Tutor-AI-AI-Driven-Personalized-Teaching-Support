@@ -205,11 +205,12 @@ jobs:
         id: post_comment
         if: ${{ steps.pr_meta.outputs.pr_number != '0' }}
         env:
+          PR_NUMBER: ${{ steps.pr_meta.outputs.pr_number }}
           REPORT_CONTENT: ${{ steps.build_report.outputs.report }}
         uses: actions/github-script@v7
         with:
           script: |
-            const prNum = context.env.PR_NUMBER;
+            const prNum = process.env.PR_NUMBER;
             const reportContent = process.env.REPORT_CONTENT;
 
             const existing = (await github.rest.issues.listComments({

@@ -341,47 +341,43 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Notify #smart-tutor-ai
-        env:
-          OVERALL: ${{ steps.status.outputs.overall }}
         uses: ./.github/actions/send-slack-notification
         with:
           channel: SMART_TUTOR_AI
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
           workflow_name: Scheduled Security Scan
-          status: ${{ env.OVERALL }}
+          status: ${{ steps.status.outputs.overall }}
           verbiage: Security Scan
           message: |
-            ${{ env.OVERALL == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || env.OVERALL == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — no critical issues' }}
+            ${{ steps.status.outputs.overall == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || steps.status.outputs.overall == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — no critical issues' }}
             Daily automated scan of codebase, containers, dependencies, and licenses.
           fields: >-
             [
-              {"title": "Trivy Scan", "value": "${{ env.SCAN_RESULT }}", "short": true},
-              {"title": "Dependency Audit", "value": "${{ env.DEP_RESULT }}", "short": true},
-              {"title": "Container Scan", "value": "${{ env.CONTAINER_RESULT }}", "short": true},
-              {"title": "License Compliance", "value": "${{ env.LICENSE_RESULT }}", "short": true},
-              {"title": "SBOM", "value": "${{ env.SBOM_RESULT }}", "short": true},
-              {"title": "Scorecard", "value": "${{ env.SCORECARD_RESULT }}", "short": true}
+              {"title": "Trivy Scan", "value": "${{ needs.trivy-scheduled-scan.result }}", "short": true},
+              {"title": "Dependency Audit", "value": "${{ needs.dependency-audit.result }}", "short": true},
+              {"title": "Container Scan", "value": "${{ needs.container-scan.result }}", "short": true},
+              {"title": "License Compliance", "value": "${{ needs.license-compliance.result }}", "short": true},
+              {"title": "SBOM", "value": "${{ needs.sbom-generation.result }}", "short": true},
+              {"title": "Scorecard", "value": "${{ needs.security-scorecard.result }}", "short": true}
             ]
 
       - name: Notify #app-development-analytics
-        env:
-          OVERALL: ${{ steps.status.outputs.overall }}
         uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Scheduled Security Scan
-          status: ${{ env.OVERALL }}
+          status: ${{ steps.status.outputs.overall }}
           verbiage: Security Scan
           message: |
-            ${{ env.OVERALL == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || env.OVERALL == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — all checks passed' }}
+            ${{ steps.status.outputs.overall == 'failure' && ':rotating_light: *Security scan FAILED* — critical issues detected' || steps.status.outputs.overall == 'warning' && ':warning: *Security scan completed with non-critical findings*' || ':white_check_mark: *Security scan PASSED* — all checks passed' }}
             Daily security scan results — Trivy, dependency audit, container image scan, license compliance, SBOM, and OpenSSF scorecard.
           fields: >-
             [
-              {"title": "Trivy Scan", "value": "${{ env.SCAN_RESULT }}", "short": true},
-              {"title": "Dependency Audit", "value": "${{ env.DEP_RESULT }}", "short": true},
-              {"title": "Container Scan", "value": "${{ env.CONTAINER_RESULT }}", "short": true},
-              {"title": "License Compliance", "value": "${{ env.LICENSE_RESULT }}", "short": true},
-              {"title": "SBOM", "value": "${{ env.SBOM_RESULT }}", "short": true},
-              {"title": "Scorecard", "value": "${{ env.SCORECARD_RESULT }}", "short": true}
+              {"title": "Trivy Scan", "value": "${{ needs.trivy-scheduled-scan.result }}", "short": true},
+              {"title": "Dependency Audit", "value": "${{ needs.dependency-audit.result }}", "short": true},
+              {"title": "Container Scan", "value": "${{ needs.container-scan.result }}", "short": true},
+              {"title": "License Compliance", "value": "${{ needs.license-compliance.result }}", "short": true},
+              {"title": "SBOM", "value": "${{ needs.sbom-generation.result }}", "short": true},
+              {"title": "Scorecard", "value": "${{ needs.security-scorecard.result }}", "short": true}
             ]

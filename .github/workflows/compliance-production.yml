@@ -343,7 +343,7 @@ jobs:
             ${{ github.event_name == 'schedule' && 'Weekly scheduled scan.' || 'Manual dispatch.' }}
           fields: >-
             [
-              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Target Host", "value": "${{ secrets.EC2_HOST }}", "short": true},
               {"title": "Pass / Fail / Info", "value": "${{ steps.vars.outputs.pass_count }} / ${{ steps.vars.outputs.fail_count }} / ${{ steps.vars.outputs.info_count }}", "short": true},
               {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
               {"title": "Result", "value": "${{ needs.compliance-scan.result }}", "short": true}
@@ -362,7 +362,7 @@ jobs:
             Weekly compliance check of EC2 instance and container configuration.
           fields: >-
             [
-              {"title": "Target Host", "value": "${EC2_HOST}", "short": true},
+              {"title": "Target Host", "value": "${{ secrets.EC2_HOST }}", "short": true},
               {"title": "Pass / Fail / Info", "value": "${{ steps.vars.outputs.pass_count }} / ${{ steps.vars.outputs.fail_count }} / ${{ steps.vars.outputs.info_count }}", "short": true},
               {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
               {"title": "Result", "value": "${{ needs.compliance-scan.result }}", "short": true}

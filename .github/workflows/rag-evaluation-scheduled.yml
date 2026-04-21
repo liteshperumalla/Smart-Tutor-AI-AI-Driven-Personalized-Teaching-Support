@@ -440,12 +440,20 @@ jobs:
           eval_result="${{ needs.run-dataset-evaluation.result }}"
           overall_status="success"
           quality_gate="PASSED"
+          avg_correctness="unknown"
+          avg_context_recall="unknown"
+          avg_drift_score="unknown"
+          total_evaluated="unknown"
 
           if [ "${eval_result}" = "failure" ]; then
             overall_status="failure"
             quality_gate="FAILED"
           elif [ -f /tmp/eval_summary.json ]; then
             avg_c="$(jq -r '.response.quality_summary.avg_correctness // "0"' /tmp/eval_summary.json 2>/dev/null || echo "0")"
+            avg_correctness="$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
+            avg_context_recall="$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
+            avg_drift_score="$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
+            total_evaluated="$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
             if [ -n "${avg_c}" ] && [ "${avg_c}" != "null" ]; then
               is_below="$(echo "${avg_c} < 0.55" | bc 2>/dev/null || echo "0")"
               if [ "${is_below}" -eq 1 ]; then
@@ -457,6 +465,10 @@ jobs:
 
           echo "status=${overall_status}" >> "$GITHUB_OUTPUT"
           echo "quality_gate=${quality_gate}" >> "$GITHUB_OUTPUT"
+          echo "avg_correctness=${avg_correctness}" >> "$GITHUB_OUTPUT"
+          echo "avg_context_recall=${avg_context_recall}" >> "$GITHUB_OUTPUT"
+          echo "avg_drift_score=${avg_drift_score}" >> "$GITHUB_OUTPUT"
+          echo "total_evaluated=${total_evaluated}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout for Slack notify
         if: always()
@@ -476,10 +488,10 @@ jobs:
             Quality gate: *${{ steps.notify-vars.outputs.quality_gate }}*
           fields: >-
             [
-              {"title": "Avg Correctness", "value": "$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Avg Context Recall", "value": "$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Avg Drift Score", "value": "$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Total Evaluated", "value": "$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Correctness", "value": "${{ steps.notify-vars.outputs.avg_correctness }}", "short": true},
+              {"title": "Avg Context Recall", "value": "${{ steps.notify-vars.outputs.avg_context_recall }}", "short": true},
+              {"title": "Avg Drift Score", "value": "${{ steps.notify-vars.outputs.avg_drift_score }}", "short": true},
+              {"title": "Total Evaluated", "value": "${{ steps.notify-vars.outputs.total_evaluated }}", "short": true},
               {"title": "Quality Gate", "value": "${{ steps.notify-vars.outputs.quality_gate }}", "short": true},
               {"title": "Trigger", "value": "${{ github.event_name }}", "short": true}
             ]
@@ -495,13 +507,13 @@ jobs:
           verbiage: RAG Eval
           message: |
             :white_check_mark: *RAG evaluation completed*
-            Quality gate: *${{ steps.notify-vars.outputs.quality_gate }}* | Evaluated: $(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown) questions
+            Quality gate: *${{ steps.notify-vars.outputs.quality_gate }}* | Evaluated: ${{ steps.notify-vars.outputs.total_evaluated }} questions
           fields: >-
             [
-              {"title": "Avg Correctness", "value": "$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Avg Context Recall", "value": "$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Avg Drift Score", "value": "$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
-              {"title": "Total Evaluated", "value": "$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo unknown)", "short": true},
+              {"title": "Avg Correctness", "value": "${{ steps.notify-vars.outputs.avg_correctness }}", "short": true},
+              {"title": "Avg Context Recall", "value": "${{ steps.notify-vars.outputs.avg_context_recall }}", "short": true},
+              {"title": "Avg Drift Score", "value": "${{ steps.notify-vars.outputs.avg_drift_score }}", "short": true},
+              {"title": "Total Evaluated", "value": "${{ steps.notify-vars.outputs.total_evaluated }}", "short": true},
               {"title": "Quality Gate", "value": "${{ steps.notify-vars.outputs.quality_gate }}", "short": true},
               {"title": "Trigger", "value": "${{ github.event_name }}", "short": true}
             ]
