@@ -285,10 +285,10 @@ jobs:
     name: Notify PR Review Posted (#smart-tutor-ai)
     needs: [review]
     if: always()
-    uses: ./.github/actions/send-slack-notification
+    uses: ./.github/workflows/_slack-notify.yml
+    secrets: inherit
     with:
       channel: SMART_TUTOR_AI
-      webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
       workflow_name: CodeRabbit AI Review
       status: ${{ needs.review.result == 'failure' && 'failure' || 'success' }}
       verbiage: AI Review
@@ -310,10 +310,10 @@ jobs:
     name: Notify PR Review Posted (#app-development-analytics)
     needs: [review]
     if: always()
-    uses: ./.github/actions/send-slack-notification
+    uses: ./.github/workflows/_slack-notify.yml
+    secrets: inherit
     with:
       channel: APP_DEV_ANALYTICS
-      webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
       workflow_name: CodeRabbit AI Review
       status: ${{ needs.review.result == 'failure' && 'failure' || 'success' }}
       verbiage: AI Review
