@@ -129,9 +129,9 @@ jobs:
         if: ${{ steps.strategy.outputs.resolved == 'alembic' }}
         run: |
           set -euo pipefail
-          # Pass DB URL via alembic -x to bypass ConfigParser % interpolation
-          # which corrupts passwords containing % (e.g. SmartTutor2025!SecurePass has !)
-          python -m alembic -c alembic.ini upgrade head -x db_url="${{ steps.db-url.outputs.db_url }}"
+          # Use direct DB URL from build step — avoids ConfigParser % interpolation
+          # which corrupts passwords containing % chars (e.g. SmartTutor2025!SecurePass has !)
+          python -m alembic -c alembic.ini upgrade head
 
       - name: Run legacy schema initializer
         if: ${{ steps.strategy.outputs.resolved == 'schema-init' }}
