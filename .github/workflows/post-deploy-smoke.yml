@@ -71,11 +71,11 @@ jobs:
             echo "=== Backend health ==="
             curl -fsS http://127.0.0.1:8010/health >/dev/null
 
-            echo "=== Backend metrics ==="
-            curl -fsS http://127.0.0.1:8010/metrics >/dev/null
-
             echo "=== In-container ready probe ==="
             docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/ready >/dev/null
+
+            echo "=== In-container metrics probe ==="
+            docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/metrics >/dev/null
 
       - name: Run external smoke tests
         id: external_smoke
@@ -117,8 +117,8 @@ jobs:
             echo "Executed checks:"
             echo "- Localhost backend `/ready`"
             echo "- Localhost backend `/health`"
-            echo "- Localhost backend `/metrics`"
             echo "- In-container backend `/ready`"
+            echo "- In-container backend `/metrics`"
             if [ -n "${PUBLIC_APP_URL}" ] || [ -n "${PUBLIC_API_URL}" ]; then
               echo "- External public URL smoke checks"
             else
