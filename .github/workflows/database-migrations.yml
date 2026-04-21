@@ -127,10 +127,13 @@ jobs:
 
       - name: Run Alembic migrations
         if: ${{ steps.strategy.outputs.resolved == 'alembic' }}
+        env:
+          ALEMBIC_DB_URL: ${{ steps.db-url.outputs.db_url }}
+          SECRETS_PROVIDER: env
         run: |
           set -euo pipefail
-          # Use direct DB URL from build step — avoids ConfigParser % interpolation
-          # which corrupts passwords containing % chars (e.g. SmartTutor2025!SecurePass has !)
+          # ALEMBIC_DB_URL is read by backend/alembic/env.py to bypass
+          # ConfigParser which corrupts passwords containing % chars
           python -m alembic -c alembic.ini upgrade head
 
       - name: Run legacy schema initializer
