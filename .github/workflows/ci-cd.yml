@@ -92,6 +92,173 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  environment-discipline:
+    name: Environment Discipline
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [secret-scanning]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Validate environment contracts
+        run: |
+          set -euo pipefail
+          python scripts/check-env-drift.py
+
+  sast:
+    name: SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    needs: [secret-scanning]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Semgrep
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep SAST scan
+        run: |
+          set -euo pipefail
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --config p/python \
+            --config p/typescript \
+            --exclude node_modules \
+            --exclude .next \
+            --exclude coverage \
+            --error \
+            --sarif \
+            --output semgrep.sarif \
+            .
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-sast
+
+      - name: Upload SAST artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 30
+
+  dast:
+    name: DAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    needs: [backend-tests]
+    env:
+      ENVIRONMENT: development
+      SECRETS_PROVIDER: env
+      STORAGE_BACKEND: filesystem
+      USE_REDIS_CACHE: "false"
+      REDIS_SSL: "false"
+      AGENT_SYSTEM_ENABLED: "false"
+      WARMUP_ENABLED: "false"
+      REPRODUCIBILITY_ENABLED: "false"
+      LANGFUSE_ENABLED: "false"
+      OTEL_ENABLED: "false"
+      CORS_ALLOW_LOCALHOST: "true"
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8010
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Start backend locally for DAST
+        run: |
+          set -euo pipefail
+          mkdir -p logs
+          nohup python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8010 > logs/dast-backend.log 2>&1 &
+          echo $! > /tmp/dast-backend.pid
+
+      - name: Wait for backend readiness
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8010/ready > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend did not become ready for DAST."
+          tail -n 200 logs/dast-backend.log || true
+          exit 1
+
+      - name: Run OWASP ZAP baseline scan
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -v "${GITHUB_WORKSPACE}:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+              -t http://127.0.0.1:8010 \
+              -r /zap/wrk/zap-report.html \
+              -J /zap/wrk/zap-report.json \
+              -w /zap/wrk/zap-warnings.md \
+              -m 3 \
+              -I
+
+      - name: Upload DAST artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-report
+          path: |
+            zap-report.html
+            zap-report.json
+            zap-warnings.md
+            logs/dast-backend.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Stop backend
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f /tmp/dast-backend.pid ]; then
+            kill "$(cat /tmp/dast-backend.pid)" || true
+          fi
+
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -223,6 +390,56 @@ jobs:
           print("- `pytest backend/tests/ -v --cov=backend --cov-report=xml --cov-report=term-missing --junitxml=backend/junit.xml --maxfail=5`")
           PY
 
+  migration-validation:
+    name: Migration Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [secret-scanning]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: migration_validation
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: migration_validation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_SSL_MODE: disable
+      SECRETS_PROVIDER: env
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Validate migrations
+        run: |
+          set -euo pipefail
+          chmod +x scripts/validate-migrations.sh
+          ./scripts/validate-migrations.sh
+
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
@@ -329,3 +546,133 @@ jobs:
           console.log('- `npm test -- --coverage --watchAll=false --passWithNoTests --maxWorkers=2`');
           console.log('- `npm run build`');
           NODE
+
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [secret-scanning]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --legacy-peer-deps
+
+      - name: Run proxy contract tests
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm test -- --runInBand --testPathPattern route-contract --watchAll=false
+
+  security-management:
+    name: Security Management
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+    needs:
+      - secret-scanning
+      - dependency-scanning
+      - sast
+      - dast
+      - backend-tests
+      - frontend-tests
+    steps:
+      - name: Publish security posture summary
+        run: |
+          set -euo pipefail
+
+          security_failed=0
+          for result in \
+            "${{ needs.secret-scanning.result }}" \
+            "${{ needs.dependency-scanning.result }}" \
+            "${{ needs.sast.result }}" \
+            "${{ needs.dast.result }}"; do
+            if [ "${result}" = "failure" ] || [ "${result}" = "cancelled" ]; then
+              security_failed=1
+            fi
+          done
+
+          {
+            echo "## Security Management Summary"
+            echo ""
+            echo "| Control | Status |"
+            echo "|---------|--------|"
+            echo "| Secret scanning | \`${{ needs.secret-scanning.result }}\` |"
+            echo "| Dependency scanning | \`${{ needs.dependency-scanning.result }}\` |"
+            echo "| SAST | \`${{ needs.sast.result }}\` |"
+            echo "| DAST | \`${{ needs.dast.result }}\` |"
+            echo "| Backend tests | \`${{ needs.backend-tests.result }}\` |"
+            echo "| Frontend tests | \`${{ needs.frontend-tests.result }}\` |"
+            echo ""
+            echo "Artifacts generated by CI security controls:"
+            echo "- Secret scan and dependency scan reports"
+            echo "- Semgrep SARIF uploaded to GitHub Security"
+            echo "- OWASP ZAP baseline HTML/JSON reports"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${security_failed}" -ne 0 ]; then
+            echo "::error::One or more security controls failed in CI."
+            exit 1
+          fi
+
+  delivery-readiness:
+    name: Delivery Readiness
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      contents: read
+    needs:
+      - backend-tests
+      - frontend-tests
+      - contract-tests
+      - migration-validation
+      - environment-discipline
+      - security-management
+    steps:
+      - name: Publish delivery summary
+        run: |
+          set -euo pipefail
+
+          delivery_failed=0
+          for result in \
+            "${{ needs.backend-tests.result }}" \
+            "${{ needs.frontend-tests.result }}" \
+            "${{ needs.contract-tests.result }}" \
+            "${{ needs.migration-validation.result }}" \
+            "${{ needs.environment-discipline.result }}" \
+            "${{ needs.security-management.result }}"; do
+            if [ "${result}" = "failure" ] || [ "${result}" = "cancelled" ]; then
+              delivery_failed=1
+            fi
+          done
+
+          {
+            echo "## Delivery Readiness Summary"
+            echo ""
+            echo "| Gate | Status |"
+            echo "|------|--------|"
+            echo "| Backend tests | \`${{ needs.backend-tests.result }}\` |"
+            echo "| Frontend tests | \`${{ needs.frontend-tests.result }}\` |"
+            echo "| Contract tests | \`${{ needs.contract-tests.result }}\` |"
+            echo "| Migration validation | \`${{ needs.migration-validation.result }}\` |"
+            echo "| Environment discipline | \`${{ needs.environment-discipline.result }}\` |"
+            echo "| Security management | \`${{ needs.security-management.result }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${delivery_failed}" -ne 0 ]; then
+            echo "::error::Delivery readiness gates did not pass."
+            exit 1
+          fi

@@ -1,0 +1,6 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Incident Runbooks
+    url: https://github.com/liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support/tree/main/docs/runbooks
+    about: Use the runbooks for live operational response before opening non-actionable incident issues.
+

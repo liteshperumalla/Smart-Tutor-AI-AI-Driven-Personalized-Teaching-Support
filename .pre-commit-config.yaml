@@ -61,3 +61,9 @@ repos:
         language: system
         pass_filenames: false
         stages: [push]
+
+      - id: env-contract-drift
+        name: Check environment contract drift
+        entry: python scripts/check-env-drift.py
+        language: system
+        pass_filenames: false
