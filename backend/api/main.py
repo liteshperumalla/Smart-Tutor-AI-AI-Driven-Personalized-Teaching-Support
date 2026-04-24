@@ -115,7 +115,8 @@ async def add_security_headers(request: Request, call_next):
 
     if request.method == "GET" and request.url.path in PUBLIC_CACHEABLE_PATHS:
         response.headers["Cache-Control"] = "public, max-age=300"
-        response.headers.pop("Pragma", None)
+        if "Pragma" in response.headers:
+            del response.headers["Pragma"]
     else:
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
