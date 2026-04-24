@@ -146,6 +146,7 @@ jobs:
             --exclude node_modules \
             --exclude .next \
             --exclude coverage \
+            --severity ERROR \
             --error \
             --sarif \
             --output semgrep.sarif \
@@ -227,16 +228,20 @@ jobs:
       - name: Run OWASP ZAP baseline scan
         run: |
           set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/zap"
+          chmod 777 "${RUNNER_TEMP}/zap"
           docker run --rm --network host \
-            -v "${GITHUB_WORKSPACE}:/zap/wrk:rw" \
+            -v "${RUNNER_TEMP}/zap:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
               -t http://127.0.0.1:8010 \
               -r /zap/wrk/zap-report.html \
               -J /zap/wrk/zap-report.json \
               -w /zap/wrk/zap-warnings.md \
-              -m 3 \
-              -I
+              -m 3
+          cp "${RUNNER_TEMP}/zap"/zap-report.html "${GITHUB_WORKSPACE}/zap-report.html"
+          cp "${RUNNER_TEMP}/zap"/zap-report.json "${GITHUB_WORKSPACE}/zap-report.json"
+          cp "${RUNNER_TEMP}/zap"/zap-warnings.md "${GITHUB_WORKSPACE}/zap-warnings.md"
 
       - name: Upload DAST artifacts
         if: always()

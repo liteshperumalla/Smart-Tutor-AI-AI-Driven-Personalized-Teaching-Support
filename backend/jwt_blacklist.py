@@ -7,6 +7,8 @@ import jwt
 import logging
 from typing import Optional
 from datetime import datetime, timedelta
+import base64
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +124,7 @@ class JWTBlacklist:
 
     def _get_jti(self, token: str) -> Optional[str]:
         """
-        Extract JTI (JWT ID) from token without verification
+        Extract JTI (JWT ID) from the token payload without using JWT decode.
 
         Args:
             token: The JWT token
@@ -131,8 +133,7 @@ class JWTBlacklist:
             Optional[str]: The JTI claim if present, None otherwise
         """
         try:
-            # Decode without verification to get the JTI
-            payload = jwt.decode(token, options={"verify_signature": False})
+            payload = _decode_unverified_payload(token)
             return payload.get("jti")
         except Exception as e:
             logger.error(f"Failed to extract JTI from token: {e}")
@@ -187,6 +188,22 @@ class JWTBlacklist:
 
 # Global blacklist instance (initialized in auth_service.py)
 _jwt_blacklist: Optional[JWTBlacklist] = None
+
+
+def _decode_unverified_payload(token: str) -> dict:
+    """Parse the JWT payload segment without trusting it for authentication."""
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT format")
+
+    payload_segment = parts[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    decoded = base64.urlsafe_b64decode(payload_segment + padding)
+    payload = json.loads(decoded.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid JWT payload")
+    return payload
 
 
 def get_jwt_blacklist() -> Optional[JWTBlacklist]:

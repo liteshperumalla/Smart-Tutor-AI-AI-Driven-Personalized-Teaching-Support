@@ -5,9 +5,15 @@ import { NextRequest } from "next/server";
 import { GET, POST } from "../[...path]/route";
 
 describe("backend proxy contract", () => {
+  let fetchSpy: jest.SpiedFunction<typeof fetch>;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn();
+    fetchSpy = jest.spyOn(global, "fetch").mockImplementation(jest.fn());
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
   });
 
   it("blocks path traversal attempts", async () => {
@@ -29,7 +35,7 @@ describe("backend proxy contract", () => {
   });
 
   it("forwards auth cookies and csrf header for mutation requests", async () => {
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
+    fetchSpy.mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: {
@@ -52,12 +58,15 @@ describe("backend proxy contract", () => {
     expect(response.status).toBe(200);
     expect(global.fetch).toHaveBeenCalledTimes(1);
 
-    const [target, init] = (global.fetch as jest.Mock).mock.calls[0] as [
+    const [target, init] = fetchSpy.mock.calls[0] as [
       string,
       RequestInit & { headers: Headers },
     ];
 
-    expect(target).toBe("http://localhost:8010/chat");
+    const expectedBackendBase =
+      process.env.BACKEND_API_BASE_URL ?? "http://localhost:8010";
+
+    expect(target).toBe(`${expectedBackendBase}/chat`);
     expect(init.method).toBe("POST");
     expect(init.headers.get("cookie")).toContain("access_token=abc");
     expect(init.headers.get("x-csrf-token")).toBe("csrf123");

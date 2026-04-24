@@ -83,10 +83,11 @@ jobs:
         id: strategy
         env:
           SECRETS_PROVIDER: env
+          REQUESTED_STRATEGY: ${{ inputs.strategy }}
         run: |
           set -euo pipefail
 
-          requested="${{ inputs.strategy }}"
+          requested="${REQUESTED_STRATEGY}"
           if [ "$requested" = "auto" ]; then
             if [ -f alembic.ini ] || [ -f backend/alembic.ini ]; then
               resolved="alembic"
@@ -146,18 +147,26 @@ jobs:
 
       - name: Migration summary
         if: always()
+        env:
+          SUMMARY_ENVIRONMENT: ${{ inputs.environment_name }}
+          SUMMARY_GIT_REF: ${{ inputs.git_ref }}
+          SUMMARY_REQUESTED_STRATEGY: ${{ inputs.strategy }}
+          SUMMARY_RESOLVED_STRATEGY: ${{ steps.strategy.outputs.resolved }}
+          SUMMARY_POSTGRES_HOST: ${{ env.POSTGRES_HOST }}
+          SUMMARY_POSTGRES_PORT: ${{ env.POSTGRES_PORT }}
+          SUMMARY_POSTGRES_DB: ${{ env.POSTGRES_DB }}
         run: |
           {
             echo "## Database Migration Summary"
             echo ""
             echo "| Item | Value |"
             echo "|------|-------|"
-            echo "| Environment | \`${{ inputs.environment_name }}\` |"
-            echo "| Git ref | \`${{ inputs.git_ref }}\` |"
-            echo "| Requested strategy | \`${{ inputs.strategy }}\` |"
-            echo "| Resolved strategy | \`${{ steps.strategy.outputs.resolved }}\` |"
-            echo "| Database host | \`${{ env.POSTGRES_HOST }}:${{ env.POSTGRES_PORT }}\` |"
-            echo "| Database name | \`${{ env.POSTGRES_DB }}\` |"
+            echo "| Environment | \`${SUMMARY_ENVIRONMENT}\` |"
+            echo "| Git ref | \`${SUMMARY_GIT_REF}\` |"
+            echo "| Requested strategy | \`${SUMMARY_REQUESTED_STRATEGY}\` |"
+            echo "| Resolved strategy | \`${SUMMARY_RESOLVED_STRATEGY}\` |"
+            echo "| Database host | \`${SUMMARY_POSTGRES_HOST}:${SUMMARY_POSTGRES_PORT}\` |"
+            echo "| Database name | \`${SUMMARY_POSTGRES_DB}\` |"
             echo ""
             echo "Notes:"
             echo "- \`alembic\` is the default and runs \`alembic -c alembic.ini upgrade head\`."

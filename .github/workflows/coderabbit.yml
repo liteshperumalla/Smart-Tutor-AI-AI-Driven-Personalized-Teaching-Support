@@ -46,10 +46,14 @@ jobs:
 
       - name: Resolve PR metadata
         id: pr_meta
+        env:
+          PR_NUMBER_INPUT: ${{ github.event.pull_request.number || inputs.pr_number || '0' }}
+          BASE_REF_INPUT: ${{ github.event.pull_request.base.ref || '' }}
+          HEAD_REF_INPUT: ${{ github.event.pull_request.head.ref || '' }}
         run: |
-          echo "pr_number=${{ github.event.pull_request.number || inputs.pr_number || '0' }}" >> "$GITHUB_OUTPUT"
-          echo "base_ref=${{ github.event.pull_request.base.ref || '' }}" >> "$GITHUB_OUTPUT"
-          echo "head_ref=${{ github.event.pull_request.head.ref || '' }}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${PR_NUMBER_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${BASE_REF_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "head_ref=${HEAD_REF_INPUT}" >> "$GITHUB_OUTPUT"
 
       - name: Get PR diff
         id: diff

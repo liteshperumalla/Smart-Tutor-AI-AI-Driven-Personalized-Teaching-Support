@@ -13,7 +13,7 @@ export SECRETS_PROVIDER="${SECRETS_PROVIDER:-env}"
 
 db_url="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?sslmode=${POSTGRES_SSL_MODE}"
 
+# Never log db_url here; it contains credentials.
 echo "Validating Alembic migrations against ${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
 ALEMBIC_DB_URL="${db_url}" python -m alembic -c alembic.ini upgrade head
 ALEMBIC_DB_URL="${db_url}" python -m alembic -c alembic.ini current
-

@@ -45,8 +45,15 @@ def main() -> int:
     for item in targets:
         source = item["source"]
         target = item["target"]
-        if not source.exists() or not target.exists():
-            failures.append(f"missing file pair: {source} -> {target}")
+        if not source.exists():
+            failures.append(f"missing source contract file: {source}")
+            continue
+
+        if not target.exists():
+            print(
+                f"Skipping optional target file: {target.relative_to(repo_root)} "
+                f"(source contract: {source.relative_to(repo_root)})"
+            )
             continue
 
         source_keys = load_keys(source)

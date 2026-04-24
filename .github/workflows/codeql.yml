@@ -42,10 +42,6 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      - name: Autobuild
-        if: ${{ matrix.build-mode == 'autobuild' }}
-        uses: github/codeql-action/autobuild@v3
-
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3
         with:

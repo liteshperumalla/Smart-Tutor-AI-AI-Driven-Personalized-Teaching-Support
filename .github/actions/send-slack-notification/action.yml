@@ -49,8 +49,17 @@ runs:
     - name: Set status metadata
       id: meta
       shell: bash
+      env:
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_RUN_URL: ${{ inputs.run_url }}
+        INPUT_ACTOR: ${{ inputs.actor }}
+        INPUT_VERBIAGE: ${{ inputs.verbiage }}
+        INPUT_WORKFLOW_NAME: ${{ inputs.workflow_name }}
+        GH_REPOSITORY: ${{ github.repository }}
+        GH_RUN_ID: ${{ github.run_id }}
+        GH_ACTOR: ${{ github.actor }}
       run: |
-        case "${{ inputs.status }}" in
+        case "${INPUT_STATUS}" in
           success)  echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
                     echo "color=#2EB67D" >> "$GITHUB_OUTPUT"
                     echo "status_label=SUCCESS" >> "$GITHUB_OUTPUT" ;;
@@ -62,21 +71,21 @@ runs:
                     echo "status_label=WARNING" >> "$GITHUB_OUTPUT" ;;
         esac
 
-        run_url="${{ inputs.run_url }}"
+        run_url="${INPUT_RUN_URL}"
         if [ -z "${run_url}" ]; then
-          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          run_url="https://github.com/${GH_REPOSITORY}/actions/runs/${GH_RUN_ID}"
         fi
         echo "run_url=${run_url}" >> "$GITHUB_OUTPUT"
 
-        actor="${{ inputs.actor }}"
+        actor="${INPUT_ACTOR}"
         if [ -z "${actor}" ]; then
-          actor="${{ github.actor }}"
+          actor="${GH_ACTOR}"
         fi
         echo "actor=${actor}" >> "$GITHUB_OUTPUT"
 
-        verbiage="${{ inputs.verbiage }}"
+        verbiage="${INPUT_VERBIAGE}"
         if [ -z "${verbiage}" ]; then
-          verbiage="${{ inputs.workflow_name }}"
+          verbiage="${INPUT_WORKFLOW_NAME}"
         fi
         echo "verbiage=${verbiage}" >> "$GITHUB_OUTPUT"
 

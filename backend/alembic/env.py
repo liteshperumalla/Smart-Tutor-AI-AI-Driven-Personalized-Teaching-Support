@@ -1,5 +1,4 @@
 from logging.config import fileConfig
-import tempfile
 import os
 
 from alembic import context
@@ -14,19 +13,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# db_url override via alembic -x db_url=... if supported (alembic >= 1.13)
-# Otherwise build URL directly bypassing ConfigParser which treats % as
-# interpolation operators — corrupting passwords like SmartTutor2025!SecurePass
 _db_url = os.environ.get("ALEMBIC_DB_URL") or config.get_main_option("db_url")
 if _db_url:
-    # Write URL to a temp ini-style file to avoid ConfigParser
-    # interpreting % chars in passwords
-    _tmp_fd, _tmp_path = tempfile.mkstemp(suffix=".ini")
-    with os.fdopen(_tmp_fd, "w") as _f:
-        _f.write(f"[alembic]\nsqlalchemy.url = {_db_url}\n")
-    # Override config file so alembic reads our clean URL file
-    config.config_file_name = _tmp_path
-    config.set_main_option = lambda _k, _v: None  # NOOP after init
+    # Alembic stores config in a ConfigParser, so `%` must be escaped before
+    # overriding sqlalchemy.url from environment-driven CI/database targets.
+    config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
 else:
     config.set_main_option("sqlalchemy.url", build_postgres_url_string())
 
