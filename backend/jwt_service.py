@@ -10,6 +10,8 @@ import jwt
 from jwt.exceptions import PyJWTError as JWTError
 from pathlib import Path
 import uuid
+import base64
+import json
 from .config import config
 from .logger import get_logger
 from .exceptions import SessionExpiredError
@@ -233,17 +235,11 @@ class JWTService:
             Expiration datetime or None if invalid
         """
         try:
-            verification_key = self._get_verification_key()
-            payload = jwt.decode(
-                token,
-                options={"verify_signature": False, "verify_exp": False},
-                algorithms=[self.algorithm],
-                key=""
-            )
+            payload = _decode_unverified_payload(token)
             exp = payload.get("exp")
             if exp:
                 return datetime.fromtimestamp(exp, tz=timezone.utc)
-        except JWTError as exc:
+        except (JWTError, ValueError, TypeError, json.JSONDecodeError) as exc:
             logger.debug(f"Failed to decode token expiry: {exc}")
         return None
 
@@ -265,6 +261,22 @@ class JWTService:
 
 # Singleton instance
 _jwt_service = None
+
+
+def _decode_unverified_payload(token: str) -> Dict[str, Any]:
+    """Parse the JWT payload segment without trusting it for authentication."""
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT format")
+
+    payload_segment = parts[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    decoded = base64.urlsafe_b64decode(payload_segment + padding)
+    payload = json.loads(decoded.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid JWT payload")
+    return payload
 
 
 def get_jwt_service() -> JWTService:

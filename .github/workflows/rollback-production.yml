@@ -43,13 +43,16 @@ jobs:
 
       - name: Resolve rollback configuration
         id: config
+        env:
+          INPUT_BACKEND_IMAGE_TAG: ${{ inputs.backend_image_tag }}
+          INPUT_UPDATE_GITOPS_MANIFEST: ${{ inputs.update_gitops_manifest }}
         run: |
           set -euo pipefail
 
-          backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ inputs.backend_image_tag }}"
-          archive_name="backend-rollback-${{ inputs.backend_image_tag }}.tar.gz"
+          backend_image="${REGISTRY}/${IMAGE_NAME}-backend:${INPUT_BACKEND_IMAGE_TAG}"
+          archive_name="backend-rollback-${INPUT_BACKEND_IMAGE_TAG}.tar.gz"
 
-          case "${{ inputs.update_gitops_manifest }}" in
+          case "${INPUT_UPDATE_GITOPS_MANIFEST}" in
             yes|YES|true|TRUE|1)
               update_gitops=true
               ;;
@@ -269,6 +272,7 @@ jobs:
         if: ${{ steps.config.outputs.update_gitops == 'true' }}
         env:
           VERSION: ${{ inputs.backend_image_tag }}
+          COMMIT_MESSAGE: "chore(gitops): roll back production backend to ${{ inputs.backend_image_tag }}"
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -300,20 +304,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add helm/smart-ai-tutor/values-production.yaml
-          git commit -m "chore(gitops): roll back production backend to ${{ inputs.backend_image_tag }}"
+          git commit -m "${COMMIT_MESSAGE}"
           git push
 
       - name: Rollback summary
         if: always()
+        env:
+          SUMMARY_BACKEND_IMAGE_TAG: ${{ inputs.backend_image_tag }}
+          SUMMARY_REASON: ${{ inputs.reason }}
+          SUMMARY_TRANSFER_OUTCOME: ${{ steps.transfer_backend_image.outcome }}
+          SUMMARY_ROLLBACK_OUTCOME: ${{ steps.rollback_backend.outcome }}
+          SUMMARY_GITOPS_UPDATE: ${{ steps.config.outputs.update_gitops }}
         run: |
           {
             echo "## Production Rollback Summary"
             echo ""
             echo "| Item | Value |"
             echo "|------|-------|"
-            echo "| Backend image tag | \`${{ inputs.backend_image_tag }}\` |"
-            echo "| Reason | \`${{ inputs.reason }}\` |"
-            echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
-            echo "| Backend rollback | \`${{ steps.rollback_backend.outcome }}\` |"
-            echo "| GitOps update | \`${{ steps.config.outputs.update_gitops }}\` |"
+            echo "| Backend image tag | \`${SUMMARY_BACKEND_IMAGE_TAG}\` |"
+            echo "| Reason | \`${SUMMARY_REASON}\` |"
+            echo "| Backend bundle transfer | \`${SUMMARY_TRANSFER_OUTCOME}\` |"
+            echo "| Backend rollback | \`${SUMMARY_ROLLBACK_OUTCOME}\` |"
+            echo "| GitOps update | \`${SUMMARY_GITOPS_UPDATE}\` |"
           } >> "$GITHUB_STEP_SUMMARY"

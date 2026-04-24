@@ -53,15 +53,20 @@ jobs:
     steps:
       - name: Resolve deployment target
         id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          INPUT_GIT_REF: ${{ inputs.git_ref }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            checkout_ref="${{ github.event.workflow_run.head_sha }}"
-            deploy_ref="${{ github.event.workflow_run.head_branch }}"
+          if [ "${EVENT_NAME}" = "workflow_run" ]; then
+            checkout_ref="${WORKFLOW_HEAD_SHA}"
+            deploy_ref="${WORKFLOW_HEAD_BRANCH}"
           else
-            checkout_ref="${{ inputs.git_ref }}"
-            deploy_ref="${{ inputs.git_ref }}"
+            checkout_ref="${INPUT_GIT_REF}"
+            deploy_ref="${INPUT_GIT_REF}"
           fi
 
           case "${deploy_ref}" in

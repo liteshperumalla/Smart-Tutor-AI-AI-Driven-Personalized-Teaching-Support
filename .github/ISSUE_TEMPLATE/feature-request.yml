@@ -1,0 +1,53 @@
+name: Feature Request
+description: Capture a new capability with business context, acceptance criteria, and release expectations.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What user or business problem are we solving?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Change
+      description: Describe the intended behavior, not just implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] User can ...
+        - [ ] System records ...
+        - [ ] Rollback path is documented ...
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and Constraints
+      description: APIs, secrets, migrations, data changes, compliance, or rollout blockers.
+  - type: dropdown
+    id: change_type
+    attributes:
+      label: Change Type
+      options:
+        - feature
+        - platform
+        - security
+        - reliability
+        - data
+    validations:
+      required: true
+  - type: input
+    id: target_release
+    attributes:
+      label: Target Release or Milestone
+      description: Sprint, release tag, or milestone.
+

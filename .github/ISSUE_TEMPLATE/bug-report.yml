@@ -1,0 +1,66 @@
+name: Bug Report
+description: Capture a production bug, defect, or regression with enough detail to reproduce and triage.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Describe the bug in one paragraph.
+      placeholder: What broke, where, and how bad is it?
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - sev1 - production outage or data risk
+        - sev2 - major user-facing regression
+        - sev3 - limited defect or workaround exists
+        - sev4 - minor issue
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: User Impact
+      description: State who is affected, how often, and what is blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Provide exact steps, data, and environment.
+      placeholder: |
+        1. Go to ...
+        2. Submit ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, traces, or failing commit range.
+  - type: input
+    id: rollback
+    attributes:
+      label: Rollback or Mitigation
+      description: Link the rollback, mitigation, or state why none exists.
+

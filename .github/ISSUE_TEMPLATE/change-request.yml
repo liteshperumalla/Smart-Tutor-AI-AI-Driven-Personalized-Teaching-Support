@@ -1,0 +1,42 @@
+name: Change Request
+description: Formal request for an architectural, operational, or production-impacting change.
+title: "[Change]: "
+labels:
+  - change-control
+body:
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Describe the exact system change.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk Assessment
+      description: State the blast radius, failure modes, and user impact if the change goes wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification Plan
+      description: Tests, dashboards, smoke checks, and success criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback Plan
+      description: Exact rollback command, workflow, or environment action.
+    validations:
+      required: true
+  - type: textarea
+    id: approvals
+    attributes:
+      label: Required Approvals
+      description: Engineering, security, product, or operations signoff needed before release.
+    validations:
+      required: true
+

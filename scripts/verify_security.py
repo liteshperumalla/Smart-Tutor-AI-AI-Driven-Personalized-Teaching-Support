@@ -6,6 +6,8 @@ Verifies all security fixes are properly applied before deployment
 
 import sys
 import os
+import base64
+import json
 from pathlib import Path
 
 # Add parent directory to path
@@ -15,6 +17,22 @@ from backend.config import config
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def decode_unverified_payload(token: str) -> dict:
+    """Parse the JWT payload segment without invoking JWT decode helpers."""
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise ValueError("Invalid JWT format")
+
+    payload_segment = parts[1]
+    padding = "=" * (-len(payload_segment) % 4)
+    decoded = base64.urlsafe_b64decode(payload_segment + padding)
+    payload = json.loads(decoded.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid JWT payload")
+    return payload
 
 
 class SecurityVerifier:
@@ -79,9 +97,7 @@ class SecurityVerifier:
             # Create a test token
             token = jwt_service.create_access_token("test_user", "test@example.com")
 
-            # Decode without verification to check JTI
-            import jwt as pyjwt
-            payload = pyjwt.decode(token, options={"verify_signature": False})
+            payload = decode_unverified_payload(token)
 
             if "jti" in payload:
                 self.passed.append("JWT tokens include JTI (revocation enabled)")

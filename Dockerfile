@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system appuser \
+    && useradd --system --gid appuser --create-home --home-dir /home/appuser appuser
+
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --upgrade pip \
     && pip install --no-cache-dir -r /tmp/requirements.txt
@@ -30,7 +33,10 @@ RUN python -m pip install --upgrade pip \
 COPY . /app
 
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && chown -R appuser:appuser /app /entrypoint.sh
+
+USER appuser
 
 EXPOSE 8000
 
