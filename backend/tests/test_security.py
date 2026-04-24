@@ -85,16 +85,29 @@ class TestInputValidation:
 class TestSecurityHeaders:
     """Security headers must be applied consistently to backend responses."""
 
-    def test_root_includes_cache_and_corp_headers(self, test_client):
+    def test_root_includes_public_cache_and_corp_headers(self, test_client):
         response = test_client.get("/")
 
         assert response.status_code == 200
         assert response.headers["cross-origin-resource-policy"] == "same-origin"
-        assert response.headers["cache-control"] == "no-store, max-age=0"
-        assert response.headers["pragma"] == "no-cache"
+        assert response.headers["cache-control"] == "public, max-age=300"
 
-    def test_not_found_includes_cache_and_corp_headers(self, test_client):
+    def test_public_discovery_routes_are_cacheable(self, test_client):
+        robots = test_client.get("/robots.txt")
+        sitemap = test_client.get("/sitemap.xml")
+
+        assert robots.status_code == 200
+        assert robots.headers["cross-origin-resource-policy"] == "same-origin"
+        assert robots.headers["cache-control"] == "public, max-age=300"
+
+        assert sitemap.status_code == 200
+        assert sitemap.headers["cross-origin-resource-policy"] == "same-origin"
+        assert sitemap.headers["cache-control"] == "public, max-age=300"
+
+    def test_dynamic_not_found_includes_no_store_headers(self, test_client):
         response = test_client.get("/robots.txt")
+
+        response = test_client.get("/missing")
 
         assert response.status_code == 404
         assert response.headers["cross-origin-resource-policy"] == "same-origin"

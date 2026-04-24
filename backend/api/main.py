@@ -16,6 +16,7 @@ from backend.metrics import PrometheusMiddleware, metrics_handler, set_app_info
 from backend.rate_limiter import limiter  # Import from rate_limiter to avoid circular imports
 
 logger = logging.getLogger(__name__)
+PUBLIC_CACHEABLE_PATHS = {"/", "/robots.txt", "/sitemap.xml"}
 
 app = FastAPI(
     title="Smart AI Tutor API",
@@ -111,8 +112,13 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-    response.headers["Cache-Control"] = "no-store, max-age=0"
-    response.headers["Pragma"] = "no-cache"
+
+    if request.method == "GET" and request.url.path in PUBLIC_CACHEABLE_PATHS:
+        response.headers["Cache-Control"] = "public, max-age=300"
+        response.headers.pop("Pragma", None)
+    else:
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
 
     # Content Security Policy - relaxed for API-only backend
     if config.ENVIRONMENT == "production":
@@ -161,6 +167,27 @@ if config.ENVIRONMENT == "production":
 @app.get("/")
 async def root():
     return {"message": "Smart AI Tutor API", "version": "1.0.0"}
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    return Response(
+        content="User-agent: *\nAllow: /\n",
+        media_type="text/plain",
+    )
+
+
+@app.get("/sitemap.xml")
+async def sitemap():
+    return Response(
+        content=(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            "<url><loc>https://smart-ai-tutor.local/</loc></url>"
+            "</urlset>"
+        ),
+        media_type="application/xml",
+    )
 
 
 @app.get("/health")
