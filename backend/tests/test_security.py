@@ -80,3 +80,23 @@ class TestInputValidation:
         """Malformed Authorization header must return 401, not 500"""
         response = test_client.get("/chat/sessions", headers={"Authorization": "NotBearer token"})
         assert response.status_code == 401
+
+
+class TestSecurityHeaders:
+    """Security headers must be applied consistently to backend responses."""
+
+    def test_root_includes_cache_and_corp_headers(self, test_client):
+        response = test_client.get("/")
+
+        assert response.status_code == 200
+        assert response.headers["cross-origin-resource-policy"] == "same-origin"
+        assert response.headers["cache-control"] == "no-store, max-age=0"
+        assert response.headers["pragma"] == "no-cache"
+
+    def test_not_found_includes_cache_and_corp_headers(self, test_client):
+        response = test_client.get("/robots.txt")
+
+        assert response.status_code == 404
+        assert response.headers["cross-origin-resource-policy"] == "same-origin"
+        assert response.headers["cache-control"] == "no-store, max-age=0"
+        assert response.headers["pragma"] == "no-cache"

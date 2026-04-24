@@ -230,19 +230,11 @@ jobs:
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/zap"
           chmod 777 "${RUNNER_TEMP}/zap"
-          cat > "${RUNNER_TEMP}/zap/baseline.conf" <<'EOF'
-          # ZAP baseline rule configuration for CI.
-          # Keep DAST blocking on FAILs while ignoring the currently accepted
-          # passive warnings below until the app hardening work lands.
-          10049  IGNORE  (Storable and Cacheable Content)
-          90004  IGNORE  (Cross-Origin-Resource-Policy Header Missing or Invalid)
-          EOF
           docker run --rm --network host \
             -v "${RUNNER_TEMP}/zap:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
               -t http://127.0.0.1:8010 \
-              -c baseline.conf \
               -r zap-report.html \
               -J zap-report.json \
               -w zap-warnings.md \
