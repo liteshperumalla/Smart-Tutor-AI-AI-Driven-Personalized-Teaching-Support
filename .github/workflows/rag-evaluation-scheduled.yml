@@ -233,7 +233,7 @@ jobs:
           response=$(cat /tmp/eval_response.json 2>/dev/null || echo "(no response body)")
 
           response_is_json=false
-          if [ -f /tmp/eval_response.json ] && jq empty /tmp/eval_response.json >/dev/null 2>&1; then
+          if [ -f /tmp/eval_response.json ] && jq empty /tmp/eval_response.json 2>/dev/null; then
             response_is_json=true
           fi
 
@@ -257,28 +257,33 @@ jobs:
           delta_context_recall=""
           delta_avg_drift=""
           if [ "${response_is_json}" = "true" ]; then
-            total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_response.json)"
-            total_dataset_questions="$(jq -r '.total_dataset_questions // empty' /tmp/eval_response.json)"
-            avg_latency="$(jq -r '.avg_latency // empty' /tmp/eval_response.json)"
-            dataset_path="$(jq -r '.dataset_path // .run_record.dataset // empty' /tmp/eval_response.json)"
-            quality_summary_type="$(jq -r 'if .quality_summary == null then "null" else (.quality_summary | type) end' /tmp/eval_response.json)"
-            drift_summary_type="$(jq -r 'if .drift_summary == null then "null" else (.drift_summary | type) end' /tmp/eval_response.json)"
-            result_message="$(jq -r '.message // empty' /tmp/eval_response.json)"
-            avg_faithfulness="$(jq -r '.quality_summary.avg_faithfulness // empty' /tmp/eval_response.json)"
-            avg_answer_relevance="$(jq -r '.quality_summary.avg_answer_relevance // empty' /tmp/eval_response.json)"
-            avg_context_recall="$(jq -r '.quality_summary.avg_context_recall // empty' /tmp/eval_response.json)"
-            avg_context_precision="$(jq -r '.quality_summary.avg_context_precision // empty' /tmp/eval_response.json)"
-            avg_correctness="$(jq -r '.quality_summary.avg_correctness // empty' /tmp/eval_response.json)"
-            avg_drift_score="$(jq -r '.drift_summary.avg_drift_score // empty' /tmp/eval_response.json)"
-            max_drift_score="$(jq -r '.drift_summary.max_drift_score // empty' /tmp/eval_response.json)"
-            high_drift_count="$(jq -r '.drift_summary.high_drift_count // empty' /tmp/eval_response.json)"
-            recommendations_json="$(jq -c '.recommendations // []' /tmp/eval_response.json)"
-            delta_correctness="$(jq -r '.run_record.summary.delta.avg_correctness // empty' /tmp/eval_response.json)"
-            delta_context_recall="$(jq -r '.run_record.summary.delta.avg_context_recall // empty' /tmp/eval_response.json)"
-            delta_avg_drift="$(jq -r '.run_record.summary.delta.avg_drift_score // empty' /tmp/eval_response.json)"
-          fi
+            # Handle NDJSON (multiple JSON objects concatenated): extract only the
+            # last object — it contains the actual evaluation result. All preceding
+            # lines are server-side log emissions written to the same file.
+            last_response=$(jq -s '.[-1]' /tmp/eval_response.json 2>/dev/null || echo "{}")
+            echo "${last_response}" > /tmp/eval_final_result.json
 
-          if [ "${response_is_json}" = "true" ]; then
+            total_evaluated="$(jq -r '.total_evaluated // empty' /tmp/eval_final_result.json)"
+            total_dataset_questions="$(jq -r '.total_dataset_questions // empty' /tmp/eval_final_result.json)"
+            avg_latency="$(jq -r '.avg_latency // empty' /tmp/eval_final_result.json)"
+            dataset_path="$(jq -r '.dataset_path // .run_record.dataset // empty' /tmp/eval_final_result.json)"
+            quality_summary_type="$(jq -r 'if .quality_summary == null then "null" else (.quality_summary | type) end' /tmp/eval_final_result.json)"
+            drift_summary_type="$(jq -r 'if .drift_summary == null then "null" else (.drift_summary | type) end' /tmp/eval_final_result.json)"
+            result_message="$(jq -r '.message // empty' /tmp/eval_final_result.json)"
+            avg_faithfulness="$(jq -r '.quality_summary.avg_faithfulness // empty' /tmp/eval_final_result.json)"
+            avg_answer_relevance="$(jq -r '.quality_summary.avg_answer_relevance // empty' /tmp/eval_final_result.json)"
+            avg_context_recall="$(jq -r '.quality_summary.avg_context_recall // empty' /tmp/eval_final_result.json)"
+            avg_context_precision="$(jq -r '.quality_summary.avg_context_precision // empty' /tmp/eval_final_result.json)"
+            avg_correctness="$(jq -r '.quality_summary.avg_correctness // empty' /tmp/eval_final_result.json)"
+            avg_drift_score="$(jq -r '.drift_summary.avg_drift_score // empty' /tmp/eval_final_result.json)"
+            max_drift_score="$(jq -r '.drift_summary.max_drift_score // empty' /tmp/eval_final_result.json)"
+            high_drift_count="$(jq -r '.drift_summary.high_drift_count // empty' /tmp/eval_final_result.json)"
+            recommendations_json="$(jq -c '.recommendations // []' /tmp/eval_final_result.json)"
+            delta_correctness="$(jq -r '.run_record.summary.delta.avg_correctness // empty' /tmp/eval_final_result.json)"
+            delta_context_recall="$(jq -r '.run_record.summary.delta.avg_context_recall // empty' /tmp/eval_final_result.json)"
+            delta_avg_drift="$(jq -r '.run_record.summary.delta.avg_drift_score // empty' /tmp/eval_final_result.json)"
+
+            # Write clean summary using the isolated final result object
             jq \
               --arg http_code "${http_code}" \
               --arg dataset_limit "${dataset_limit}" \
@@ -294,7 +299,7 @@ jobs:
                   max_avg_drift_score: ($max_avg_drift_score | tonumber)
                 },
                 response: .
-              }' /tmp/eval_response.json > /tmp/eval_summary.json
+              }' /tmp/eval_final_result.json > /tmp/eval_summary.json
           else
             printf '%s\n' "{\"http_code\":\"${http_code}\",\"dataset_limit\":\"${dataset_limit}\",\"response_is_json\":false}" > /tmp/eval_summary.json
           fi
@@ -414,6 +419,7 @@ jobs:
           name: rag-evaluation-response-${{ github.run_id }}
           path: |
             /tmp/eval_response.json
+            /tmp/eval_final_result.json
             /tmp/eval_summary.json
           if-no-files-found: ignore
 
@@ -430,7 +436,7 @@ jobs:
         with:
           name: rag-evaluation-response-${{ github.run_id }}
           path: /tmp
-          if-no-files-found: ignore
+          if-no-files-found: warning
 
       - name: Resolve quality metrics
         id: notify-vars
@@ -449,13 +455,15 @@ jobs:
             overall_status="failure"
             quality_gate="FAILED"
           elif [ -f /tmp/eval_summary.json ]; then
-            avg_c="$(jq -r '.response.quality_summary.avg_correctness // "0"' /tmp/eval_summary.json 2>/dev/null || echo "0")"
+            # Use -r to get raw strings without quotes; use || true to handle empty
+            avg_c="$(jq -r '.response.quality_summary.avg_correctness // empty' /tmp/eval_summary.json 2>/dev/null || true)"
             avg_correctness="$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
             avg_context_recall="$(jq -r '.response.quality_summary.avg_context_recall // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
             avg_drift_score="$(jq -r '.response.drift_summary.avg_drift_score // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
             total_evaluated="$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
-            if [ -n "${avg_c}" ] && [ "${avg_c}" != "null" ]; then
-              is_below="$(echo "${avg_c} < 0.55" | bc 2>/dev/null || echo "0")"
+            # Compare using awk (handles floats reliably); only compare when avg_c is a non-empty number
+            if [ -n "${avg_c}" ] && [ "${avg_c}" != "null" ] && [ "${avg_c}" != "unknown" ]; then
+              is_below="$(awk "BEGIN {print ("${avg_c}" < 0.55) ? 1 : 0}")"
               if [ "${is_below}" -eq 1 ]; then
                 overall_status="warning"
                 quality_gate="BELOW_THRESHOLD"
@@ -463,12 +471,18 @@ jobs:
             fi
           fi
 
-          echo "status=${overall_status}" >> "$GITHUB_OUTPUT"
-          echo "quality_gate=${quality_gate}" >> "$GITHUB_OUTPUT"
-          echo "avg_correctness=${avg_correctness}" >> "$GITHUB_OUTPUT"
-          echo "avg_context_recall=${avg_context_recall}" >> "$GITHUB_OUTPUT"
-          echo "avg_drift_score=${avg_drift_score}" >> "$GITHUB_OUTPUT"
-          echo "total_evaluated=${total_evaluated}" >> "$GITHUB_OUTPUT"
+          # Escape newlines in values before writing to GITHUB_OUTPUT
+          # (multiline values are not supported in workflow commands format)
+          escape() {
+            printf '%s' "$1" | tr '\n' ' ' | sed 's/  */ /g' | sed 's/ $//'
+          }
+
+          echo "status=$(escape "${overall_status}")" >> "$GITHUB_OUTPUT"
+          echo "quality_gate=$(escape "${quality_gate}")" >> "$GITHUB_OUTPUT"
+          echo "avg_correctness=$(escape "${avg_correctness}")" >> "$GITHUB_OUTPUT"
+          echo "avg_context_recall=$(escape "${avg_context_recall}")" >> "$GITHUB_OUTPUT"
+          echo "avg_drift_score=$(escape "${avg_drift_score}")" >> "$GITHUB_OUTPUT"
+          echo "total_evaluated=$(escape "${total_evaluated}")" >> "$GITHUB_OUTPUT"
 
       - name: Checkout for Slack notify
         if: always()
