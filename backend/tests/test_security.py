@@ -90,6 +90,7 @@ class TestSecurityHeaders:
 
         assert response.status_code == 200
         assert response.headers["cross-origin-resource-policy"] == "same-origin"
+        assert response.headers["cross-origin-embedder-policy"] == "require-corp"
         assert response.headers["cache-control"] == "public, max-age=300"
 
     def test_public_discovery_routes_are_cacheable(self, test_client):
@@ -98,10 +99,12 @@ class TestSecurityHeaders:
 
         assert robots.status_code == 200
         assert robots.headers["cross-origin-resource-policy"] == "same-origin"
+        assert robots.headers["cross-origin-embedder-policy"] == "require-corp"
         assert robots.headers["cache-control"] == "public, max-age=300"
 
         assert sitemap.status_code == 200
         assert sitemap.headers["cross-origin-resource-policy"] == "same-origin"
+        assert sitemap.headers["cross-origin-embedder-policy"] == "require-corp"
         assert sitemap.headers["cache-control"] == "public, max-age=300"
 
     def test_dynamic_not_found_includes_no_store_headers(self, test_client):
@@ -111,5 +114,6 @@ class TestSecurityHeaders:
 
         assert response.status_code == 404
         assert response.headers["cross-origin-resource-policy"] == "same-origin"
+        assert response.headers["cross-origin-embedder-policy"] == "require-corp"
         assert response.headers["cache-control"] == "no-store, max-age=0"
         assert response.headers["pragma"] == "no-cache"
