@@ -1,6 +1,6 @@
 """
 Enhanced Monitoring and Observability
-Provides cache statistics, Langfuse integration status, and system health checks
+Provides cache statistics, observability integration status, and system health checks
 """
 
 import logging
@@ -38,6 +38,9 @@ class MonitoringService:
 
         # Check Langfuse status
         health["components"]["langfuse"] = self._check_langfuse_health()
+
+        # Check PostHog status
+        health["components"]["posthog"] = self._check_posthog_health()
 
         # Check evaluation framework
         health["components"]["evaluation"] = self._check_evaluation_health()
@@ -185,6 +188,20 @@ class MonitoringService:
             return {
                 "status": "error",
                 "enabled": config.EVALUATION_ENABLED,
+                "error": str(e)
+            }
+
+    def _check_posthog_health(self) -> Dict[str, Any]:
+        """Check PostHog analytics health"""
+        try:
+            from .posthog_tracker import get_posthog_health
+
+            return get_posthog_health()
+        except Exception as e:
+            logger.error(f"Failed to check PostHog health: {e}")
+            return {
+                "status": "error",
+                "enabled": config.POSTHOG_ENABLED,
                 "error": str(e)
             }
 

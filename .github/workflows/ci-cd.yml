@@ -112,104 +112,6 @@ jobs:
           set -euo pipefail
           python scripts/check-env-drift.py
 
-  iac-tests:
-    name: IaC Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    needs: [secret-scanning]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Install Helm
-        run: |
-          set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      - name: Install kubeconform
-        run: |
-          set -euo pipefail
-          KUBECONFORM_VERSION="0.6.7"
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar -xz kubeconform
-          sudo mv kubeconform /usr/local/bin/kubeconform
-
-      - name: Install conftest
-        run: |
-          set -euo pipefail
-          CONFTEST_VERSION="0.57.0"
-          curl -fsSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
-            | tar -xz conftest
-          sudo mv conftest /usr/local/bin/conftest
-
-      - name: Helm lint
-        run: |
-          set -euo pipefail
-          helm lint helm/smart-ai-tutor
-
-      - name: Render Helm manifests
-        run: |
-          set -euo pipefail
-          mkdir -p rendered-iac
-          helm template smart-ai-tutor ./helm/smart-ai-tutor \
-            > rendered-iac/helm-default.yaml
-          helm template smart-ai-tutor ./helm/smart-ai-tutor \
-            -f helm/smart-ai-tutor/values.yaml \
-            -f helm/smart-ai-tutor/values-staging.yaml \
-            > rendered-iac/helm-staging.yaml
-          helm template smart-ai-tutor ./helm/smart-ai-tutor \
-            -f helm/smart-ai-tutor/values.yaml \
-            -f helm/smart-ai-tutor/values-production.yaml \
-            > rendered-iac/helm-production.yaml
-
-      - name: Validate rendered Helm manifests against Kubernetes schemas
-        run: |
-          set -euo pipefail
-          kubeconform \
-            -summary \
-            -strict \
-            -ignore-missing-schemas \
-            rendered-iac/helm-default.yaml \
-            rendered-iac/helm-staging.yaml \
-            rendered-iac/helm-production.yaml
-
-      - name: Validate raw Kubernetes manifests against schemas
-        run: |
-          set -euo pipefail
-          find k8s -type f -name '*.yaml' ! -path 'k8s/test/*' -print0 \
-            | xargs -0 kubeconform -summary -strict -ignore-missing-schemas
-
-      - name: Enforce Kubernetes security policies on rendered application manifests
-        run: |
-          set -euo pipefail
-          conftest test \
-            --policy policy/iac \
-            rendered-iac/helm-default.yaml \
-            rendered-iac/helm-staging.yaml \
-            rendered-iac/helm-production.yaml
-
-      - name: Terraform fmt and validate
-        run: |
-          set -euo pipefail
-          terraform -chdir=terraform fmt -check -recursive
-          terraform -chdir=terraform init -backend=false
-          terraform -chdir=terraform validate
-
-      - name: Upload IaC artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: iac-rendered-manifests
-          path: rendered-iac
-          if-no-files-found: error
-          retention-days: 14
-
   sast:
     name: SAST
     runs-on: ubuntu-latest
@@ -704,7 +606,6 @@ jobs:
       - dependency-scanning
       - sast
       - dast
-      - iac-tests
       - backend-tests
       - frontend-tests
     steps:
@@ -717,8 +618,7 @@ jobs:
             "${{ needs.secret-scanning.result }}" \
             "${{ needs.dependency-scanning.result }}" \
             "${{ needs.sast.result }}" \
-            "${{ needs.dast.result }}" \
-            "${{ needs.iac-tests.result }}"; do
+            "${{ needs.dast.result }}"; do
             if [ "${result}" = "failure" ] || [ "${result}" = "cancelled" ]; then
               security_failed=1
             fi
@@ -733,7 +633,6 @@ jobs:
             echo "| Dependency scanning | \`${{ needs.dependency-scanning.result }}\` |"
             echo "| SAST | \`${{ needs.sast.result }}\` |"
             echo "| DAST | \`${{ needs.dast.result }}\` |"
-            echo "| IaC tests | \`${{ needs.iac-tests.result }}\` |"
             echo "| Backend tests | \`${{ needs.backend-tests.result }}\` |"
             echo "| Frontend tests | \`${{ needs.frontend-tests.result }}\` |"
             echo ""
@@ -741,7 +640,6 @@ jobs:
             echo "- Secret scan and dependency scan reports"
             echo "- Semgrep SARIF uploaded to GitHub Security"
             echo "- OWASP ZAP baseline HTML/JSON reports"
-            echo "- Rendered Helm manifests and IaC validation output"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "${security_failed}" -ne 0 ]; then

@@ -151,6 +151,18 @@ def main():
                 "   Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in .env"
             )
 
+        posthog_info = health.get("components", {}).get("posthog", {})
+        if posthog_info.get("status") == "disabled":
+            recommendations.append(
+                "📈 Enable PostHog analytics for product telemetry and feature flags:\n"
+                "   Set POSTHOG_ENABLED=true and configure POSTHOG_API_KEY"
+            )
+        elif posthog_info.get("status") in {"misconfigured", "warning"}:
+            recommendations.append(
+                "⚠️  Configure PostHog analytics:\n"
+                "   Set POSTHOG_API_KEY and POSTHOG_HOST in .env"
+            )
+
         # Check if Redis is enabled
         cache_info = health.get("components", {}).get("cache", {})
         if cache_info.get("backend") == "in-memory" and not config.REDIS_ENABLED:

@@ -164,6 +164,16 @@ class HealthChecker:
             return {"status": "unhealthy", "error": str(e)}
 
     @staticmethod
+    def check_posthog() -> Dict[str, Any]:
+        """Check PostHog analytics connectivity"""
+        try:
+            from backend.posthog_tracker import get_posthog_health
+            return get_posthog_health()
+        except Exception as e:
+            logger.error(f"PostHog health check failed: {e}")
+            return {"status": "unhealthy", "error": str(e)}
+
+    @staticmethod
     def check_jwt_blacklist() -> Dict[str, Any]:
         """Check JWT blacklist functionality"""
         try:
@@ -208,6 +218,7 @@ class HealthChecker:
             "secrets_manager": cls.check_secrets_manager(),
             "jwt_blacklist": cls.check_jwt_blacklist(),
             "langfuse": cls.check_langfuse(),
+            "posthog": cls.check_posthog(),
         }
 
         # Determine overall health
