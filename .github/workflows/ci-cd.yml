@@ -11,7 +11,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20.9.0"
+  NODE_VERSION: "20.20.2"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -146,10 +146,18 @@ jobs:
             --exclude node_modules \
             --exclude .next \
             --exclude coverage \
-            --severity ERROR \
-            --error \
             --sarif \
             --output semgrep.sarif \
+            .
+          semgrep scan \
+            --config p/owasp-top-ten \
+            --config p/python \
+            --config p/typescript \
+            --exclude node_modules \
+            --exclude .next \
+            --exclude coverage \
+            --severity ERROR \
+            --error \
             .
 
       - name: Upload Semgrep SARIF
@@ -231,6 +239,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/zap"
           chmod 777 "${RUNNER_TEMP}/zap"
           printf '10049\tIGNORE\tAccepted informational cacheability finding for public discovery routes\n' > "${RUNNER_TEMP}/zap/baseline.conf"
+          set +e
           docker run --rm --network host \
             -v "${RUNNER_TEMP}/zap:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
@@ -241,9 +250,12 @@ jobs:
               -J zap-report.json \
               -w zap-warnings.md \
               -m 3
+          zap_exit_code=$?
+          set -e
           cp "${RUNNER_TEMP}/zap"/zap-report.html "${GITHUB_WORKSPACE}/zap-report.html"
           cp "${RUNNER_TEMP}/zap"/zap-report.json "${GITHUB_WORKSPACE}/zap-report.json"
           cp "${RUNNER_TEMP}/zap"/zap-warnings.md "${GITHUB_WORKSPACE}/zap-warnings.md"
+          exit "${zap_exit_code}"
 
       - name: Upload DAST artifacts
         if: always()

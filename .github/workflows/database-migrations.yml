@@ -152,9 +152,6 @@ jobs:
           SUMMARY_GIT_REF: ${{ inputs.git_ref }}
           SUMMARY_REQUESTED_STRATEGY: ${{ inputs.strategy }}
           SUMMARY_RESOLVED_STRATEGY: ${{ steps.strategy.outputs.resolved }}
-          SUMMARY_POSTGRES_HOST: ${{ env.POSTGRES_HOST }}
-          SUMMARY_POSTGRES_PORT: ${{ env.POSTGRES_PORT }}
-          SUMMARY_POSTGRES_DB: ${{ env.POSTGRES_DB }}
         run: |
           {
             echo "## Database Migration Summary"
@@ -165,10 +162,9 @@ jobs:
             echo "| Git ref | \`${SUMMARY_GIT_REF}\` |"
             echo "| Requested strategy | \`${SUMMARY_REQUESTED_STRATEGY}\` |"
             echo "| Resolved strategy | \`${SUMMARY_RESOLVED_STRATEGY}\` |"
-            echo "| Database host | \`${SUMMARY_POSTGRES_HOST}:${SUMMARY_POSTGRES_PORT}\` |"
-            echo "| Database name | \`${SUMMARY_POSTGRES_DB}\` |"
             echo ""
             echo "Notes:"
+            echo "- Database connection details are intentionally omitted from this summary because they come from masked environment secrets."
             echo "- \`alembic\` is the default and runs \`alembic -c alembic.ini upgrade head\`."
             echo "- \`schema-init\` is the legacy fallback and now delegates to Alembic migrations."
           } >> "$GITHUB_STEP_SUMMARY"

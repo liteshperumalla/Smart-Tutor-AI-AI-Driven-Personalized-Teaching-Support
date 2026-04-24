@@ -8,6 +8,7 @@ import logging
 from typing import Optional
 from datetime import datetime, timedelta
 import base64
+import binascii
 import json
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,7 @@ class JWTBlacklist:
         try:
             payload = _decode_unverified_payload(token)
             return payload.get("jti")
-        except Exception as e:
+        except (ValueError, json.JSONDecodeError, binascii.Error, UnicodeDecodeError) as e:
             logger.error(f"Failed to extract JTI from token: {e}")
             return None
 
