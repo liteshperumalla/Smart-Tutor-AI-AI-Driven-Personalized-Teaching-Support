@@ -38,6 +38,7 @@ def main() -> int:
             "target": repo_root / "frontend" / ".env.local",
             "ignore_prefixes": ("VERCEL_", "TURBO_", "NX_"),
             "ignore_keys": {"VERCEL", "BACKEND_API_BASE_URL", "NEXT_PUBLIC_BACKEND_URL"},
+            "optional": True,
         },
     ]
 
@@ -45,7 +46,14 @@ def main() -> int:
     for item in targets:
         source = item["source"]
         target = item["target"]
+        optional = item.get("optional", False)
         if not source.exists():
+            if optional:
+                print(
+                    f"Skipping optional contract pair: {source.relative_to(repo_root)} "
+                    f"-> {target.relative_to(repo_root)}"
+                )
+                continue
             failures.append(f"missing source contract file: {source}")
             continue
 

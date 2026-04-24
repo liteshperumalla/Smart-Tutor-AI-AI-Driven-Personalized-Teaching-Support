@@ -235,9 +235,9 @@ jobs:
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
               -t http://127.0.0.1:8010 \
-              -r /zap/wrk/zap-report.html \
-              -J /zap/wrk/zap-report.json \
-              -w /zap/wrk/zap-warnings.md \
+              -r zap-report.html \
+              -J zap-report.json \
+              -w zap-warnings.md \
               -m 3
           cp "${RUNNER_TEMP}/zap"/zap-report.html "${GITHUB_WORKSPACE}/zap-report.html"
           cp "${RUNNER_TEMP}/zap"/zap-report.json "${GITHUB_WORKSPACE}/zap-report.json"
