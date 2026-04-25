@@ -8,6 +8,7 @@ as warnings and never propagated to callers.
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from backend.logger import get_logger
 
@@ -32,6 +33,49 @@ def _init() -> bool:
     except Exception as exc:
         logger.warning("PostHog init failed: %s", exc)
         return False
+
+
+def get_posthog_health() -> Dict[str, Any]:
+    """Return a lightweight PostHog health snapshot for admin/health endpoints."""
+    try:
+        from backend.config import Config
+
+        if not Config.POSTHOG_ENABLED:
+            return {"status": "disabled", "message": "POSTHOG_ENABLED=false"}
+
+        if not Config.POSTHOG_API_KEY:
+            return {"status": "misconfigured", "message": "API key missing"}
+
+        parsed_host = urlparse(Config.POSTHOG_HOST)
+        if not parsed_host.scheme or not parsed_host.netloc:
+            return {
+                "status": "misconfigured",
+                "message": "POSTHOG_HOST must be a valid absolute URL",
+            }
+
+        try:
+            import posthog  # noqa: F401
+        except ImportError:
+            return {
+                "status": "unhealthy",
+                "message": "PostHog SDK not installed. Install with: pip install posthog",
+            }
+
+        if not _init():
+            return {
+                "status": "unhealthy",
+                "message": "PostHog SDK initialization failed",
+                "host": Config.POSTHOG_HOST,
+            }
+
+        return {
+            "status": "healthy",
+            "host": Config.POSTHOG_HOST,
+            "sdk_initialized": True,
+        }
+    except Exception as exc:
+        logger.warning("PostHog health check failed: %s", exc)
+        return {"status": "unhealthy", "message": str(exc)}
 
 
 def capture(

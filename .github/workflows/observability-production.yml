@@ -2,6 +2,9 @@ name: Production Observability Bootstrap
 
 on:
   workflow_dispatch:
+  schedule:
+    # Runs daily at 13:00 UTC (8:00 AM America/Chicago during CDT).
+    - cron: '0 13 * * *'
 
 concurrency:
   group: production-observability
@@ -294,6 +297,98 @@ jobs:
             return 1
           }
 
+          require_backend_observability_health() {
+            local expected_components_csv="$1"
+            local attempts="${2:-4}"
+            local sleep_seconds="${3:-15}"
+            local backend_port="${BACKEND_PORT_EXPOSE:-8010}"
+            local backend_health_url="http://127.0.0.1:${backend_port}/health/detailed"
+            local payload
+
+            for attempt in $(seq 1 "${attempts}"); do
+              if ! payload="$(curl -fsS "${backend_health_url}")"; then
+                echo "[WAIT] Backend detailed health not ready yet (${attempt}/${attempts}): ${backend_health_url}"
+                sleep "${sleep_seconds}"
+                continue
+              fi
+
+              if BACKEND_HEALTH_PAYLOAD="${payload}" EXPECTED_COMPONENTS="${expected_components_csv}" python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          payload = json.loads(os.environ["BACKEND_HEALTH_PAYLOAD"])
+          expected = [component for component in os.environ["EXPECTED_COMPONENTS"].split(",") if component]
+          checks = payload.get("checks", {})
+
+          missing = [component for component in expected if component not in checks]
+          invalid = {}
+          for component in expected:
+              details = checks.get(component, {})
+              status = details.get("status", "missing")
+              if status != "healthy":
+                  invalid[component] = status
+
+          if missing or invalid:
+              if missing:
+                  print(f"Missing backend observability checks: {', '.join(missing)}")
+              if invalid:
+                  details = ", ".join(f"{name}={status}" for name, status in invalid.items())
+                  print(f"Unhealthy backend observability components: {details}")
+              sys.exit(1)
+
+          statuses = ", ".join(f"{component}={checks[component].get('status')}" for component in expected)
+          print(f"Validated backend observability components: {statuses}")
+          PY
+              then
+                return 0
+              fi
+
+              echo "[WAIT] Backend observability components not healthy yet (${attempt}/${attempts})"
+              sleep "${sleep_seconds}"
+            done
+
+            return 1
+          }
+
+          validate_external_observability_hosts() {
+            local langfuse_enabled="${LANGFUSE_ENABLED:-false}"
+            local langfuse_host="${LANGFUSE_HOST:-https://cloud.langfuse.com}"
+            local posthog_enabled="${POSTHOG_ENABLED:-true}"
+            local posthog_host="${POSTHOG_HOST:-https://us.i.posthog.com}"
+            local http_code
+
+            if [ "${langfuse_enabled}" != "true" ]; then
+              echo "[FAIL] Langfuse must be enabled in ${SMART_TUTOR_ENV_FILE} for production observability"
+              return 1
+            fi
+
+            http_code="$(curl -sS -o /dev/null -I -w '%{http_code}' --max-time 10 "${langfuse_host}")" || {
+              echo "[FAIL] Langfuse host is unreachable: ${langfuse_host}"
+              return 1
+            }
+            if [ "${http_code}" = "000" ] || [ "${http_code}" -ge 500 ]; then
+              echo "[FAIL] Langfuse host returned HTTP ${http_code}: ${langfuse_host}"
+              return 1
+            fi
+            echo "[PASS] Langfuse host reachable: ${langfuse_host} (HTTP ${http_code})"
+
+            if [ "${posthog_enabled}" != "true" ]; then
+              echo "[FAIL] PostHog must be enabled in ${SMART_TUTOR_ENV_FILE} for production observability"
+              return 1
+            fi
+
+            http_code="$(curl -sS -o /dev/null -I -w '%{http_code}' --max-time 10 "${posthog_host}")" || {
+              echo "[FAIL] PostHog host is unreachable: ${posthog_host}"
+              return 1
+            }
+            if [ "${http_code}" = "000" ] || [ "${http_code}" -ge 500 ]; then
+              echo "[FAIL] PostHog host returned HTTP ${http_code}: ${posthog_host}"
+              return 1
+            fi
+            echo "[PASS] PostHog host reachable: ${posthog_host} (HTTP ${http_code})"
+          }
+
           "${compose_cmd[@]}" up -d --remove-orphans
 
           if ! wait_http "Prometheus" "http://127.0.0.1:9090/-/ready" 36 5; then
@@ -329,6 +424,14 @@ jobs:
             dump_diagnostics
             exit 1
           fi
+          if ! require_backend_observability_health "langfuse,posthog"; then
+            dump_diagnostics
+            exit 1
+          fi
+          if ! validate_external_observability_hosts; then
+            dump_diagnostics
+            exit 1
+          fi
 
           "${compose_cmd[@]}" ps
           EOF
@@ -348,11 +451,14 @@ jobs:
             echo "| Services | \`prometheus\`, \`grafana\`, \`alertmanager\`, \`postgres-exporter\`, \`redis-exporter\`, \`node-exporter\`, \`cadvisor\` |"
             echo "| Validated HTTP checks | \`9090/-/ready\`, \`3001/api/health\`, \`9093/-/healthy\`, \`9187/metrics\`, \`9121/metrics\`, \`9100/metrics\`, \`8080/metrics\` |"
             echo "| Validated Prometheus jobs | \`prometheus\`, \`backend-api\`, \`postgresql\`, \`redis\`, \`node\`, \`cadvisor\` |"
+            echo "| Validated backend observability | \`langfuse\`, \`posthog\` must be \`healthy\` via \`127.0.0.1:\${BACKEND_PORT_EXPOSE:-8010}/health/detailed\` |"
+            echo "| Validated external observability hosts | \`LANGFUSE_HOST\`, \`POSTHOG_HOST\` |"
             echo ""
             echo "Notifications:"
             echo "- Slack alerts are enabled when \`SLACK_WEBHOOK_URL\` is present in \`~/smart-tutor.env\`."
             echo "- Email alerts are enabled when \`ALERTS_EMAIL_TO\`, \`SMTP_SERVER\`, \`SMTP_USERNAME\`, and \`SMTP_PASSWORD\` are present."
             echo "- When both are configured, Alertmanager fans out to both receivers."
+            echo "- Daily runs require both Langfuse and PostHog to be enabled and healthy."
           } >> "$GITHUB_STEP_SUMMARY"
 
   notify-observability-smart-tutor-ai:
@@ -367,8 +473,8 @@ jobs:
       status: ${{ needs.observability.result == 'failure' && 'failure' || 'success' }}
       verbiage: Observability
       message: |
-        ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED* — monitoring stack not deployed.' || ':white_check_mark: *Observability bootstrap SUCCEEDED* — Prometheus, Grafana, Alertmanager, and exporters are running.' }}
-        Manual dispatch only — this workflow does not run on a schedule.
+        ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED* — monitoring stack not deployed or backend observability checks failed.' || ':white_check_mark: *Observability bootstrap SUCCEEDED* — Prometheus, Grafana, Alertmanager, exporters, and backend Langfuse/PostHog checks are validated.' }}
+        Trigger: `${{ github.event_name }}`. Scheduled daily at 13:00 UTC.
       fields: >-
         [
           {"title": "Remote Directory", "value": "${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}", "short": true},
@@ -389,8 +495,8 @@ jobs:
       status: ${{ needs.observability.result == 'failure' && 'failure' || 'success' }}
       verbiage: Observability
       message: |
-        ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED*' || ':white_check_mark: *Observability bootstrap completed* — monitoring stack deployed to EC2.' }}
-        Services: Prometheus, Grafana, Alertmanager, postgres-exporter, redis-exporter, node-exporter, cadvisor.
+        ${{ needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED*' || ':white_check_mark: *Observability bootstrap completed* — monitoring stack and backend observability checks deployed to EC2.' }}
+        Services: Prometheus, Grafana, Alertmanager, postgres-exporter, redis-exporter, node-exporter, cadvisor. Backend checks: Langfuse, PostHog.
       fields: >-
         [
           {"title": "Remote Directory", "value": "${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}", "short": true},
