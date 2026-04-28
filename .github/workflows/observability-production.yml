@@ -130,7 +130,8 @@ jobs:
           alertmanager_receivers=$'receivers:\n  - name: "null"\n'
           if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
             alertmanager_route_entries+=$'    - receiver: "slack"\n      continue: true\n'
-            alertmanager_receivers+=$(cat <<ALERTSLACK
+            alertmanager_receivers+=$'\n'
+            alertmanager_receivers+="$(cat <<ALERTSLACK
               - name: "slack"
                 slack_configs:
                   - api_url: "${SLACK_WEBHOOK_URL}"
@@ -140,7 +141,7 @@ jobs:
                     color: '{{ if eq .Status "resolved" }}good{{ else if eq .CommonLabels.severity "critical" }}danger{{ else }}warning{{ end }}'
                     title: '[{{ .CommonLabels.severity | toUpper }}] {{ .CommonLabels.alertname }}'
                     pretext: '{{ if eq .Status "resolved" }}Resolved{{ else }}Firing{{ end }} alert for Smart AI Tutor production'
-                    text: '{{ range .Alerts }}• *{{ .Annotations.summary }}*{{ if .Annotations.description }}\n{{ .Annotations.description }}{{ end }}{{ "\n" }}{{ end }}'
+                    text: '{{ range .Alerts }}- *{{ .Annotations.summary }}*{{ if .Annotations.description }}\n{{ .Annotations.description }}{{ end }}{{ "\n" }}{{ end }}'
                     fields:
                       - title: "Environment"
                         value: '{{ .CommonLabels.environment }}'
@@ -158,15 +159,16 @@ jobs:
                     mrkdwn_in:
                       - pretext
                       - text
-                    ALERTSLACK
-            )
+          ALERTSLACK
+          )"
             alertmanager_receivers+=$'\n'
           fi
 
           if [ -n "${ALERTS_EMAIL_TO:-${EMAIL_FROM:-}}" ] && [ -n "${SMTP_SERVER:-}" ] && [ -n "${SMTP_USERNAME:-}" ] && [ -n "${SMTP_PASSWORD:-}" ]; then
             alert_email_to="${ALERTS_EMAIL_TO:-${EMAIL_FROM}}"
             alertmanager_route_entries+=$'    - receiver: "email"\n      continue: true\n'
-            alertmanager_receivers+=$(cat <<ALERTEMAIL
+            alertmanager_receivers+=$'\n'
+            alertmanager_receivers+="$(cat <<ALERTEMAIL
               - name: "email"
                 email_configs:
                   - to: "${alert_email_to}"
@@ -176,8 +178,8 @@ jobs:
                     auth_password: "${SMTP_PASSWORD}"
                     require_tls: true
                     send_resolved: true
-            ALERTEMAIL
-            )
+          ALERTEMAIL
+          )"
             alertmanager_receivers+=$'\n'
           fi
 

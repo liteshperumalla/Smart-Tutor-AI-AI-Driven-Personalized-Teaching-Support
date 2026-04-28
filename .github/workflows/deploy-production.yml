@@ -29,8 +29,6 @@ jobs:
   build-and-deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
-    environment:
-      name: production
     outputs:
       version: ${{ steps.version.outputs.version }}
       deploy_ref: ${{ steps.target.outputs.deploy_ref }}
