@@ -391,6 +391,10 @@ jobs:
 
           "${compose_cmd[@]}" up -d --remove-orphans
 
+          # Prometheus and Alertmanager read bind-mounted config files only at startup.
+          # Restart them so each bootstrap run picks up the freshly rendered config.
+          "${compose_cmd[@]}" restart prometheus alertmanager
+
           if ! wait_http "Prometheus" "http://127.0.0.1:9090/-/ready" 36 5; then
             dump_diagnostics
             exit 1
