@@ -127,6 +127,7 @@ Authentication and OAuth setup.
 | Script | Purpose |
 |--------|---------|
 | `manage_services.sh` | Start/stop/restart services |
+| `resume_neo4j_aura.py` | Resume a paused Neo4j Aura instance via the Aura API |
 
 ---
 

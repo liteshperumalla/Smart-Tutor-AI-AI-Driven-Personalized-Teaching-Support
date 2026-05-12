@@ -479,8 +479,8 @@ class Config:
 
     # Neo4j Aura API (for auto-resume of paused instances)
     NEO4J_AURA_INSTANCE_ID = os.getenv("NEO4J_AURA_INSTANCE_ID", "")
-    NEO4J_AURA_API_CLIENT_ID = os.getenv("NEO4J_AURA_API_CLIENT_ID", "")
-    NEO4J_AURA_API_CLIENT_SECRET = os.getenv("NEO4J_AURA_API_CLIENT_SECRET", "")
+    NEO4J_AURA_API_CLIENT_ID = os.getenv("NEO4J_AURA_API_CLIENT_ID") or os.getenv("NEO4J_AURA_CLIENT_ID", "")
+    NEO4J_AURA_API_CLIENT_SECRET = os.getenv("NEO4J_AURA_API_CLIENT_SECRET") or os.getenv("NEO4J_AURA_CLIENT_SECRET", "")
 
     # LLM Routing (Complexity-Based Model Selection)
     LLM_ROUTING_ENABLED = os.getenv("LLM_ROUTING_ENABLED", "false").lower() == "true"

@@ -20,6 +20,10 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+      EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+      EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+      EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       EC2_APP_DIR: ${{ vars.EC2_APP_DIR || '' }}
@@ -31,11 +35,14 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+          for name in EC2_USER EC2_SSH_KEY; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
           done
+          if [ -z "${EC2_HOST:-}" ] && [ -z "${EC2_INSTANCE_ID:-}" ] && [ -z "${EC2_INSTANCE_NAME:-}" ]; then
+            missing+=("EC2_HOST or EC2_INSTANCE_ID/EC2_INSTANCE_NAME")
+          fi
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required production compliance configuration."
             for item in "${missing[@]}"; do
@@ -50,6 +57,9 @@ jobs:
       - name: Install AWS CLI
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         uses: unfor19/install-aws-cli-action@v1
+
+      - name: Resolve production EC2 target
+        run: scripts/ci/resolve_ec2_target.sh
 
       - name: Capture AWS compliance snapshot from runner
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
@@ -75,11 +85,19 @@ jobs:
 
           capture_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
             aws sts get-caller-identity
-          capture_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
-            aws ec2 describe-instances \
-              --filters "Name=ip-address,Values=${EC2_HOST}" \
-              --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
-              --output json
+          if [ -n "${EC2_RESOLVED_INSTANCE_ID:-}" ]; then
+            capture_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+              aws ec2 describe-instances \
+                --instance-ids "${EC2_RESOLVED_INSTANCE_ID}" \
+                --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
+                --output json
+          else
+            capture_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+              aws ec2 describe-instances \
+                --filters "Name=ip-address,Values=${EC2_HOST}" \
+                --query 'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}' \
+                --output json
+          fi
 
       - name: Run remote EC2 compliance checks
         run: |
@@ -90,8 +108,14 @@ jobs:
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
           chmod 600 "${key_file}"
           remote_app_dir="$(printf '%q' "${EC2_APP_DIR}")"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} bash -s" > /tmp/compliance-report/ec2-host-checks.txt <<'EOF'
+          if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+            echo "::error::Unable to reach production EC2 over SSH. Verify the resolved host, instance state, and security group ingress for GitHub-hosted runners on port 22."
+            exit 1
+          fi
+
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "EC2_APP_DIR=${remote_app_dir} bash -s" > /tmp/compliance-report/ec2-host-checks.txt <<'EOF'
           set -euo pipefail
 
           failures=0
@@ -162,7 +186,7 @@ jobs:
           if backend_health; then
             echo "[PASS] backend health endpoint responds"
           else
-            echo "[INFO] backend health endpoint is unavailable or degraded; readiness probe passed"
+            echo "[INFO] backend health endpoint is unavailable or degraded"
           fi
           check "shared logs directory exists" timed 10 sh -c "test -d \"${DATA_ROOT}/logs\""
           check "shared user data directory exists" timed 10 sh -c "test -d \"${DATA_ROOT}/user_data\""
@@ -180,7 +204,7 @@ jobs:
           timed 20 docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}' || true
           echo ""
           echo "=== Backend health status ==="
-          timed 20 backend_health_status || true
+          backend_health_status || true
 
           if [ "${failures}" -gt 0 ]; then
             exit 1
@@ -224,7 +248,7 @@ jobs:
               return 0
             fi
 
-            if ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "command -v aws >/dev/null 2>&1 && $*" > "${target}"; then
+            if ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "command -v aws >/dev/null 2>&1 && $*" > "${target}"; then
               rm -f "/tmp/compliance-report/aws-fallback-needed/${name}"
               echo "Captured ${name} from EC2 fallback."
             else
@@ -235,10 +259,19 @@ jobs:
 
           capture_remote_snapshot "aws-identity" "/tmp/compliance-report/aws-identity.json" "{}" \
             aws sts get-caller-identity
-          capture_remote_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
-            aws ec2 describe-instances --filters "Name=ip-address,Values=${EC2_HOST}" --query "'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}'" --output json
+          if [ -n "${EC2_RESOLVED_INSTANCE_ID:-}" ]; then
+            capture_remote_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+              aws ec2 describe-instances --instance-ids "${EC2_RESOLVED_INSTANCE_ID}" --query "'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}'" --output json
+          else
+            capture_remote_snapshot "ec2-instance" "/tmp/compliance-report/ec2-instance.json" "[]" \
+              aws ec2 describe-instances --filters "Name=ip-address,Values=${EC2_HOST}" --query "'Reservations[*].Instances[*].{InstanceId:InstanceId,State:State.Name,InstanceType:InstanceType,LaunchTime:LaunchTime,PublicIpAddress:PublicIpAddress,IMDSv2:MetadataOptions.HttpTokens,RootVolumeEncrypted:BlockDeviceMappings[0].Ebs.Encrypted,SecurityGroups:SecurityGroups[*].GroupId}'" --output json
+          fi
 
           rm -f "${key_file}"
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Upload compliance artifacts
         if: always()
@@ -308,7 +341,6 @@ jobs:
         with:
           name: production-compliance-report
           path: /tmp/compliance-report
-          if-no-files-found: ignore
 
       - name: Resolve status and summary
         id: vars
@@ -318,9 +350,9 @@ jobs:
           fail_count="0"
           info_count="0"
           if [ -f /tmp/compliance-report/ec2-host-checks.txt ]; then
-            pass_count="$(grep -c '^\\[PASS\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
-            fail_count="$(grep -c '^\\[FAIL\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
-            info_count="$(grep -c '^\\[INFO\\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+            pass_count="$(grep -c '^\[PASS\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+            fail_count="$(grep -c '^\[FAIL\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
+            info_count="$(grep -c '^\[INFO\]' /tmp/compliance-report/ec2-host-checks.txt || true)"
           fi
           echo "overall=${overall}" >> "$GITHUB_OUTPUT"
           echo "pass_count=${pass_count}" >> "$GITHUB_OUTPUT"

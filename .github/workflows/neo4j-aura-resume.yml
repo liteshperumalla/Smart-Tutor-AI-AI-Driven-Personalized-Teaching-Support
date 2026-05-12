@@ -1,0 +1,69 @@
+name: Neo4j Aura Resume Guard
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neo4j-aura-resume
+  cancel-in-progress: false
+
+jobs:
+  resume-aura:
+    name: Resume Neo4j Aura If Paused
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      NEO4J_AURA_INSTANCE_ID: ${{ secrets.NEO4J_AURA_INSTANCE_ID || vars.NEO4J_AURA_INSTANCE_ID || 'b0e9fb13' }}
+      NEO4J_AURA_CLIENT_ID: ${{ secrets.NEO4J_AURA_CLIENT_ID || secrets.NEO4J_AURA_API_CLIENT_ID }}
+      NEO4J_AURA_CLIENT_SECRET: ${{ secrets.NEO4J_AURA_CLIENT_SECRET || secrets.NEO4J_AURA_API_CLIENT_SECRET }}
+      NEO4J_AURA_POLL_TIMEOUT_SECONDS: ${{ vars.NEO4J_AURA_POLL_TIMEOUT_SECONDS || '420' }}
+      NEO4J_AURA_POLL_INTERVAL_SECONDS: ${{ vars.NEO4J_AURA_POLL_INTERVAL_SECONDS || '15' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Resume paused Aura instance
+        id: resume
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 scripts/resume_neo4j_aura.py
+
+      - name: Notify deployment analytics when Aura was resumed
+        if: ${{ steps.resume.outcome == 'success' && steps.resume.outputs.action == 'resumed' }}
+        uses: ./.github/actions/send-slack-notification
+        with:
+          channel: APP_DEV_ANALYTICS
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          workflow_name: Neo4j Aura Resume Guard
+          status: success
+          verbiage: Aura Resume
+          message: |
+            :white_check_mark: *Neo4j Aura instance resumed*
+            The scheduled guard resumed the paused AuraDB instance and waited until it was running.
+          fields: >-
+            [{"title":"Instance","value":"${{ steps.resume.outputs.instance_name || steps.resume.outputs.instance_id }}","short":true},{"title":"Status","value":"${{ steps.resume.outputs.status }}","short":true}]
+
+      - name: Notify deployment analytics when Aura resume failed
+        if: ${{ steps.resume.outcome != 'success' }}
+        uses: ./.github/actions/send-slack-notification
+        with:
+          channel: APP_DEV_ANALYTICS
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          workflow_name: Neo4j Aura Resume Guard
+          status: failure
+          verbiage: Aura Resume
+          message: |
+            :x: *Neo4j Aura resume guard FAILED*
+            The application may fail Neo4j-backed features until the AuraDB instance is running.
+          fields: >-
+            [{"title":"Instance","value":"${{ steps.resume.outputs.instance_id || env.NEO4J_AURA_INSTANCE_ID }}","short":true},{"title":"Last status","value":"${{ steps.resume.outputs.status || 'unknown' }}","short":true},{"title":"Action","value":"${{ steps.resume.outputs.action || 'failed' }}","short":true}]
+
+      - name: Fail workflow when resume guard failed
+        if: ${{ steps.resume.outcome != 'success' }}
+        run: exit 1
