@@ -53,6 +53,7 @@ def _get_aura_token() -> Optional[str]:
         resp = requests.post(
             f"{AURA_API_BASE}/oauth/token",
             auth=(config.NEO4J_AURA_API_CLIENT_ID, config.NEO4J_AURA_API_CLIENT_SECRET),
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             data={"grant_type": "client_credentials"},
             timeout=10,
         )
@@ -87,7 +88,8 @@ def _get_instance_status() -> Optional[str]:
         )
         resp.raise_for_status()
         data = resp.json()
-        status = data.get("data", {}).get("status", "unknown")
+        instance = data.get("data", data)
+        status = str(instance.get("status") or instance.get("state") or "unknown").lower()
         logger.info("Aura instance %s status: %s", config.NEO4J_AURA_INSTANCE_ID, status)
         return status
     except Exception as exc:
@@ -126,6 +128,7 @@ def _resume_aura_instance(max_wait: int = 120) -> bool:
                         "Authorization": f"Bearer {token}",
                         "Content-Type": "application/json",
                     },
+                    json={},
                     timeout=10,
                 )
                 resp.raise_for_status()

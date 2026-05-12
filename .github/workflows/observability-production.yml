@@ -18,10 +18,17 @@ jobs:
       contents: read
     env:
       EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+      EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+      EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+      EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
       OBSERVABILITY_DIR: ${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,11 +37,14 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY GRAFANA_ADMIN_PASSWORD; do
+          for name in EC2_USER EC2_SSH_KEY GRAFANA_ADMIN_PASSWORD; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
           done
+          if [ -z "${EC2_HOST:-}" ] && [ -z "${EC2_INSTANCE_ID:-}" ] && [ -z "${EC2_INSTANCE_NAME:-}" ]; then
+            missing+=("EC2_HOST or EC2_INSTANCE_ID/EC2_INSTANCE_NAME")
+          fi
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required production observability configuration."
             for item in "${missing[@]}"; do
@@ -42,6 +52,13 @@ jobs:
             done
             exit 1
           fi
+
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: unfor19/install-aws-cli-action@v1
+
+      - name: Resolve production EC2 target
+        run: scripts/ci/resolve_ec2_target.sh
 
       - name: Package observability files
         run: |
@@ -64,11 +81,17 @@ jobs:
           chmod 600 "${key_file}"
           remote_observability_dir="$(printf '%q' "${OBSERVABILITY_DIR}")"
           remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ${remote_observability_dir}"
-          scp -o StrictHostKeyChecking=no -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${remote_observability_dir}/observability-bundle.tgz"
+          if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+            echo "::error::Unable to reach production EC2 over SSH. Verify the resolved host, instance state, and security group ingress for GitHub-hosted runners on port 22."
+            exit 1
+          fi
 
-          ssh -o StrictHostKeyChecking=no -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "OBSERVABILITY_DIR=${remote_observability_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ${remote_observability_dir}"
+          scp "${ssh_opts[@]}" -i "${key_file}" /tmp/observability-bundle.tgz "${EC2_USER}@${EC2_HOST}:${remote_observability_dir}/observability-bundle.tgz"
+
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "OBSERVABILITY_DIR=${remote_observability_dir} GRAFANA_ADMIN_PASSWORD=${remote_grafana_password} bash -s" <<'EOF'
           set -euo pipefail
 
           OBS_DIR="${OBSERVABILITY_DIR:-/home/ubuntu/smart-tutor-observability}"
@@ -248,6 +271,24 @@ jobs:
             "${compose_cmd[@]}" logs --tail=200 || true
           }
 
+          start_heartbeat() {
+            (
+              while true; do
+                sleep 60
+                echo "[KEEPALIVE] Observability bootstrap still running at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              done
+            ) &
+            heartbeat_pid="$!"
+          }
+
+          stop_heartbeat() {
+            if [ -n "${heartbeat_pid:-}" ]; then
+              kill "${heartbeat_pid}" 2>/dev/null || true
+              wait "${heartbeat_pid}" 2>/dev/null || true
+            fi
+          }
+          trap stop_heartbeat EXIT
+
           require_prometheus_target_health() {
             local expected_jobs_csv="$1"
             local attempts="${2:-12}"
@@ -389,7 +430,9 @@ jobs:
             echo "[PASS] PostHog host reachable: ${posthog_host} (HTTP ${http_code})"
           }
 
+          start_heartbeat
           "${compose_cmd[@]}" up -d --remove-orphans
+          stop_heartbeat
 
           # Prometheus and Alertmanager read bind-mounted config files only at startup.
           # Restart them so each bootstrap run picks up the freshly rendered config.
@@ -439,6 +482,10 @@ jobs:
 
           "${compose_cmd[@]}" ps
           EOF
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Summary
         run: |
