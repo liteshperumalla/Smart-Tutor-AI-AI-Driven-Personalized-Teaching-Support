@@ -11,6 +11,7 @@ Author: Smart AI Tutor Team
 Date: December 28, 2025
 """
 
+import os
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
@@ -79,7 +80,8 @@ class CrossEncoderReranker:
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2",
         device: str = "cpu",
-        max_length: int = 512
+        max_length: int = 512,
+        use_onnx: Optional[bool] = None,
     ):
         """
         Initialize cross-encoder reranker
@@ -88,7 +90,21 @@ class CrossEncoderReranker:
             model_name: HuggingFace model name
             device: Device to run on ('cpu', 'cuda', 'mps')
             max_length: Maximum sequence length
+            use_onnx: If True, load an ONNX-quantized variant via optimum.
+                Set None to read RERANKER_USE_ONNX env var (default off).
+                ONNX gives 2-3x CPU speedup but requires `optimum[onnxruntime]`.
         """
+        self.model_name = model_name
+        self.device = device
+        self.max_length = max_length
+        self.backend = "none"  # set to "onnx" or "sentence_transformers" on success
+
+        if use_onnx is None:
+            use_onnx = os.getenv("RERANKER_USE_ONNX", "false").lower() == "true"
+
+        if use_onnx and self._try_load_onnx(model_name, max_length):
+            return
+
         if not CROSS_ENCODER_AVAILABLE:
             logger.error("sentence-transformers not installed. Cross-encoder reranking unavailable.")
             self.model = None
@@ -96,13 +112,61 @@ class CrossEncoderReranker:
 
         try:
             self.model = CrossEncoder(model_name, max_length=max_length, device=device)
+            self.backend = "sentence_transformers"
             logger.info(f"CrossEncoderReranker initialized: {model_name} on {device}")
         except Exception as e:
             logger.error(f"Failed to load cross-encoder model: {e}")
             self.model = None
 
-        self.model_name = model_name
-        self.device = device
+    def _try_load_onnx(self, model_name: str, max_length: int) -> bool:
+        """Attempt to load the ONNX-quantized variant via optimum.
+
+        Returns True on success and sets self.model / self.backend; returns
+        False to let the caller fall back to sentence_transformers.
+        """
+        try:
+            from optimum.onnxruntime import ORTModelForSequenceClassification
+            from transformers import AutoTokenizer
+        except ImportError:
+            logger.warning(
+                "RERANKER_USE_ONNX=true but `optimum[onnxruntime]` is not installed; "
+                "falling back to sentence_transformers backend."
+            )
+            return False
+
+        try:
+            # `export=True` triggers an on-the-fly ONNX export the first time
+            # the model is loaded; subsequent loads read the cached .onnx file.
+            self._ort_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self._ort_model = ORTModelForSequenceClassification.from_pretrained(
+                model_name, export=True
+            )
+            self._ort_max_length = max_length
+            self.model = self  # sentinel: predict() is dispatched on self
+            self.backend = "onnx"
+            logger.info(f"CrossEncoderReranker initialized (ONNX): {model_name}")
+            return True
+        except Exception as exc:
+            logger.warning("Failed to initialize ONNX cross-encoder (%s); using sentence_transformers.", exc)
+            return False
+
+    def _predict_onnx(self, pairs: List[List[str]]):
+        """Score query/document pairs through the ONNX model."""
+        import torch  # available transitively via sentence_transformers / transformers
+        with torch.no_grad():
+            inputs = self._ort_tokenizer(
+                [p[0] for p in pairs],
+                [p[1] for p in pairs],
+                padding=True,
+                truncation=True,
+                max_length=self._ort_max_length,
+                return_tensors="pt",
+            )
+            outputs = self._ort_model(**inputs)
+            # Cross-encoders typically emit a single logit per pair; squeeze
+            # the class dimension if present.
+            scores = outputs.logits.squeeze(-1)
+            return scores.cpu().numpy()
 
     def rerank(
         self,
@@ -131,9 +195,13 @@ class CrossEncoderReranker:
         # Prepare query-document pairs
         pairs = [[query, r.get('text', '')] for r in results]
 
-        # Score with cross-encoder
+        # Score — ONNX backend uses our own predict path; sentence_transformers
+        # backend uses the CrossEncoder model directly.
         try:
-            scores = self.model.predict(pairs)
+            if self.backend == "onnx":
+                scores = self._predict_onnx(pairs)
+            else:
+                scores = self.model.predict(pairs)
         except Exception as e:
             logger.error(f"Cross-encoder prediction failed: {e}")
             return self._convert_to_ranked_results(results, "none")
@@ -551,6 +619,110 @@ class MMRReranker:
         union = len(words1 | words2)
 
         return intersection / union if union > 0 else 0.0
+
+
+class AdvancedReranker:
+    """
+    Backward-compatible reranker facade used by RAGService.
+
+    It accepts plain document strings or search-result dictionaries and returns
+    dictionaries so downstream answer generation can consume a stable shape.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2",
+        use_mmr: bool = True,
+        lambda_diversity: float = 0.7,
+        device: str = "cpu",
+        # Adaptive skip: when the top retrieval score is comfortably above this
+        # bar AND the gap to the 2nd result is wide, we trust the initial
+        # ranking and skip the (CPU-heavy) cross-encoder. Set to None to always
+        # run the reranker.
+        confidence_skip_threshold: Optional[float] = 0.75,
+        confidence_skip_gap: float = 0.10,
+        **_: Any,
+    ):
+        self.cross_encoder = CrossEncoderReranker(
+            model_name=model_name,
+            device=device,
+        )
+        self.mmr = MMRReranker(lambda_param=lambda_diversity)
+        self.use_mmr = use_mmr
+        self.confidence_skip_threshold = confidence_skip_threshold
+        self.confidence_skip_gap = confidence_skip_gap
+
+    def _should_skip_cross_encoder(self, documents: List[Dict[str, Any]]) -> bool:
+        """Cross-encoders cost ~50–200ms on CPU for a top-k of 10. If the
+        retrieval already returned an unambiguous winner, the rerank rarely
+        changes the top-1 and the cost is wasted. Skip when top-1 is high
+        AND the gap to top-2 is wide."""
+        if self.confidence_skip_threshold is None or len(documents) < 2:
+            return False
+        scores = sorted(
+            (float(d.get("score") or 0.0) for d in documents),
+            reverse=True,
+        )
+        return (
+            scores[0] >= self.confidence_skip_threshold
+            and (scores[0] - scores[1]) >= self.confidence_skip_gap
+        )
+
+    def rerank(
+        self,
+        query: str,
+        documents: List[Any],
+        top_k: Optional[int] = None,
+        method: str = "combined",
+    ) -> List[Dict[str, Any]]:
+        if not documents:
+            return []
+
+        normalized = [self._normalize_document(doc, idx) for idx, doc in enumerate(documents)]
+
+        if method in {"cross_encoder", "combined"}:
+            if self._should_skip_cross_encoder(normalized):
+                logger.info(
+                    "Adaptive rerank: skipping cross-encoder (top score %.3f, gap %.3f)",
+                    float(normalized[0].get("score") or 0.0),
+                    float(normalized[0].get("score") or 0.0) - float(normalized[1].get("score") or 0.0),
+                )
+                ranked_docs = normalized
+            else:
+                ranked = self.cross_encoder.rerank(query, normalized, top_k=None)
+                ranked_docs = [item.to_dict() for item in ranked]
+        else:
+            ranked_docs = normalized
+
+        if method in {"mmr", "combined"} and self.use_mmr:
+            mmr_input = [self._normalize_document(doc, idx) for idx, doc in enumerate(ranked_docs)]
+            ranked = self.mmr.rerank(query, mmr_input, top_k=top_k)
+            return [item.to_dict() for item in ranked]
+
+        return ranked_docs[:top_k] if top_k else ranked_docs
+
+    def _normalize_document(self, document: Any, idx: int) -> Dict[str, Any]:
+        if isinstance(document, RankedResult):
+            return document.to_dict()
+
+        if isinstance(document, dict):
+            text = document.get("text") or document.get("document") or ""
+            score = document.get("score")
+            if score is None:
+                score = document.get("original_score", 0.0)
+            return {
+                "chunk_id": document.get("chunk_id") or document.get("id") or f"chunk_{idx}",
+                "text": text,
+                "score": float(score or 0.0),
+                "metadata": document.get("metadata", {}),
+            }
+
+        return {
+            "chunk_id": f"chunk_{idx}",
+            "text": str(document),
+            "score": 0.0,
+            "metadata": {},
+        }
 
 
 # Factory functions

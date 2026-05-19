@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Literal
 
@@ -146,7 +146,7 @@ class FeedbackService:
         return entries
 
     def _has_duplicate_feedback(self, entry: FeedbackEntry) -> bool:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         for existing in self._read_entries(entry.username, "feedback"):
             created_at = existing.get("created_at")
             try:
@@ -163,7 +163,7 @@ class FeedbackService:
         return False
 
     def _has_duplicate_bug(self, entry: BugReportEntry) -> bool:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         for existing in self._read_entries(entry.username, "bug"):
             created_at = existing.get("created_at")
             try:

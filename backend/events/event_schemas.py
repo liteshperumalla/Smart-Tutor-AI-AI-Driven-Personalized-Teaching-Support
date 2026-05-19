@@ -3,7 +3,7 @@ Event Schemas for Event-Driven Architecture
 Defines all domain events following CloudEvents specification
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -66,7 +66,7 @@ class BaseEvent(BaseModel):
     data_content_type: Optional[str] = Field(default="application/json", alias="datacontenttype")
     data_schema: Optional[str] = Field(default=None, alias="dataschema")
     subject: Optional[str] = None  # Resource the event is about
-    time: datetime = Field(default_factory=datetime.utcnow)
+    time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Custom fields
     data: Dict[str, Any] = Field(default_factory=dict)

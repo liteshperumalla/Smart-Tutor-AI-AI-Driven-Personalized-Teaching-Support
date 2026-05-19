@@ -1,5 +1,14 @@
 name: Slack Notify
 
+# Thin reusable wrapper around the .github/actions/send-slack-notification
+# composite action. The composite action is the source of truth for payload
+# formatting, retries, dedup, etc. This workflow just exists so callers can
+# `uses: ./.github/workflows/_slack-notify.yml` and pick a *named* channel
+# (instead of having to plumb the webhook secret through themselves).
+#
+# Direct callers that already have the webhook in hand should prefer the
+# composite action — it runs in the same job (no extra runner).
+
 on:
   workflow_call:
     inputs:
@@ -12,7 +21,7 @@ on:
         required: true
         type: string
       status:
-        description: "success | failure | warning"
+        description: "success | failure | warning | cancelled | skipped | timed_out | neutral"
         required: true
         type: string
       message:
@@ -20,7 +29,7 @@ on:
         required: true
         type: string
       fields:
-        description: "JSON array of {title, value, short} for two-column fields section"
+        description: "JSON array of {title, value, short} for fields sections (>20 entries are paged across multiple sections)"
         required: false
         type: string
         default: "[]"
@@ -35,10 +44,25 @@ on:
         type: string
         default: ""
       verbiage:
-        description: "Short one-line label for the event type (e.g. Deploy, Scan, Review)"
+        description: "Short label for the event type (defaults to workflow_name)"
         required: false
         type: string
         default: ""
+      dedup_key:
+        description: "Optional stable id; repeats with same (dedup_key, status) within dedup_window_minutes are suppressed"
+        required: false
+        type: string
+        default: ""
+      dedup_window_minutes:
+        description: "Suppression window in minutes when dedup_key is set"
+        required: false
+        type: number
+        default: 60
+      dry_run:
+        description: "Build the payload but skip the POST (for testing)"
+        required: false
+        type: boolean
+        default: false
     secrets:
       SLACK_WEBHOOK_URL_SMART_TUTOR_AI:
         description: "Slack webhook URL for #smart-tutor-ai"
@@ -46,147 +70,83 @@ on:
       SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS:
         description: "Slack webhook URL for #app-development-analytics"
         required: false
+    outputs:
+      sent:
+        description: "true if the notification was posted, false if skipped/deduplicated/dry-run"
+        value: ${{ jobs.notify.outputs.sent }}
+      http_status:
+        description: "Slack HTTP status code, or 'deduped' if suppressed"
+        value: ${{ jobs.notify.outputs.http_status }}
 
 jobs:
   notify:
     name: Send Slack Notification
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      sent: ${{ steps.notify.outputs.sent }}
+      http_status: ${{ steps.notify.outputs.http_status }}
     steps:
-      - name: Set status metadata
-        id: meta
+      - name: Checkout repo (for the composite action)
+        uses: actions/checkout@v4
+        with:
+          # We only need the action.yml file from this repo, not history.
+          fetch-depth: 1
+
+      - name: Resolve webhook for channel
+        id: resolve
         env:
-          INPUT_STATUS: ${{ inputs.status }}
-          INPUT_RUN_URL: ${{ inputs.run_url }}
-          INPUT_ACTOR: ${{ inputs.actor }}
-          INPUT_VERBIAGE: ${{ inputs.verbiage }}
-          INPUT_WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          GH_REPOSITORY: ${{ github.repository }}
-          GH_RUN_ID: ${{ github.run_id }}
-          GH_ACTOR: ${{ github.actor }}
+          CHANNEL: ${{ inputs.channel }}
+          WEBHOOK_SMART_TUTOR: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+          WEBHOOK_APP_DEV: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
         run: |
-          case "${INPUT_STATUS}" in
-            success)  echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
-                      echo "color=#2EB67D" >> "$GITHUB_OUTPUT"
-                      echo "status_label=SUCCESS" >> "$GITHUB_OUTPUT" ;;
-            failure)  echo "emoji=:x:" >> "$GITHUB_OUTPUT"
-                      echo "color=#E01E5A" >> "$GITHUB_OUTPUT"
-                      echo "status_label=FAILED" >> "$GITHUB_OUTPUT" ;;
-            warning)  echo "emoji=:warning:" >> "$GITHUB_OUTPUT"
-                      echo "color=#ECB22E" >> "$GITHUB_OUTPUT"
-                      echo "status_label=WARNING" >> "$GITHUB_OUTPUT" ;;
+          set -euo pipefail
+          case "${CHANNEL}" in
+            SMART_TUTOR_AI)
+              webhook="${WEBHOOK_SMART_TUTOR}" ;;
+            APP_DEV_ANALYTICS)
+              webhook="${WEBHOOK_APP_DEV}" ;;
+            *)
+              echo "::warning::Unknown channel '${CHANNEL}'; supported: SMART_TUTOR_AI, APP_DEV_ANALYTICS."
+              webhook="" ;;
           esac
-
-          run_url="${INPUT_RUN_URL}"
-          if [ -z "${run_url}" ]; then
-            run_url="https://github.com/${GH_REPOSITORY}/actions/runs/${GH_RUN_ID}"
+          # Don't echo the webhook itself; the composite action masks it.
+          if [ -n "${webhook}" ]; then
+            echo "has_webhook=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_webhook=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "run_url=${run_url}" >> "$GITHUB_OUTPUT"
+          # Pass the value through a GITHUB_OUTPUT line marked sensitive via add-mask.
+          echo "::add-mask::${webhook}"
+          {
+            echo "webhook<<__SLACK_EOF__"
+            echo "${webhook}"
+            echo "__SLACK_EOF__"
+          } >> "$GITHUB_OUTPUT"
 
-          actor="${INPUT_ACTOR}"
-          if [ -z "${actor}" ]; then
-            actor="${GH_ACTOR}"
-          fi
-          echo "actor=${actor}" >> "$GITHUB_OUTPUT"
+      - name: Send Slack notification
+        id: notify
+        if: steps.resolve.outputs.has_webhook == 'true'
+        uses: ./.github/actions/send-slack-notification
+        with:
+          webhook_url: ${{ steps.resolve.outputs.webhook }}
+          workflow_name: ${{ inputs.workflow_name }}
+          status: ${{ inputs.status }}
+          message: ${{ inputs.message }}
+          fields: ${{ inputs.fields }}
+          run_url: ${{ inputs.run_url }}
+          actor: ${{ inputs.actor }}
+          verbiage: ${{ inputs.verbiage }}
+          dedup_key: ${{ inputs.dedup_key }}
+          dedup_window_minutes: ${{ inputs.dedup_window_minutes }}
+          dry_run: ${{ inputs.dry_run }}
 
-          verbiage="${INPUT_VERBIAGE}"
-          if [ -z "${verbiage}" ]; then
-            verbiage="${INPUT_WORKFLOW_NAME}"
-          fi
-          echo "verbiage=${verbiage}" >> "$GITHUB_OUTPUT"
-
-      - name: Build Block Kit payload
-        id: build
+      - name: Note when webhook is unset
+        if: steps.resolve.outputs.has_webhook != 'true'
         env:
-          MESSAGE: ${{ inputs.message }}
-          FIELDS_JSON: ${{ inputs.fields }}
-          STATUS: ${{ inputs.status }}
-          VERBIAGE: ${{ steps.meta.outputs.verbiage }}
-          RUN_URL: ${{ steps.meta.outputs.run_url }}
-          ACTOR: ${{ steps.meta.outputs.actor }}
+          # Interpolating ${{ inputs.channel }} directly into the run script
+          # would let a caller smuggle shell via the channel string. Route it
+          # through env: so the shell sees an inert variable.
+          CHANNEL_INPUT: ${{ inputs.channel }}
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, os
-
-          message     = os.environ.get("MESSAGE", "")
-          fields_json = os.environ.get("FIELDS_JSON", "[]")
-          status      = os.environ.get("STATUS", "success")
-          verbiage    = os.environ.get("VERBIAGE", "Workflow")
-
-          emoji_map = {"success": ":white_check_mark:", "failure": ":x:", "warning": ":warning:"}
-          color_map = {"success": "#2EB67D",            "failure": "#E01E5A",  "warning": "#ECB22E"}
-
-          emoji = emoji_map.get(status, ":white_check_mark:")
-          color = color_map.get(status, "#2EB67D")
-
-          fields_blocks = []
-          try:
-              fields = json.loads(fields_json)
-              for f in fields:
-                  title = f.get("title", "")
-                  value = f.get("value", "")
-                  if title or value:
-                      fields_blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
-          except Exception:
-              fields_blocks = []
-
-          run_url = os.environ.get("RUN_URL") or f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-          actor   = os.environ.get("ACTOR") or os.environ["GITHUB_ACTOR"]
-
-          payload = {
-              "username": "GitHub Actions",
-              "icon_emoji": ":github:",
-              "attachments": [{
-                  "color": color,
-                  "blocks": [
-                      {"type": "header", "text": {"type": "plain_text", "text": f"{verbiage} {emoji}", "emoji": True}},
-                      {"type": "section", "text": {"type": "mrkdwn", "text": message}},
-                      *([{"type": "section", "fields": fields_blocks[:10]}] if fields_blocks else []),
-                      *([{"type": "section", "fields": fields_blocks[10:20]}] if len(fields_blocks) > 10 else []),
-                      {"type": "context", "elements": [{
-                          "type": "mrkdwn",
-                          "text": f"<{run_url}|View run #{os.environ['GITHUB_RUN_NUMBER']}> | Triggered by <https://github.com/{actor}|{actor}>"
-                      }]}
-                  ]
-              }]
-          }
-
-          with open("/tmp/slack_payload.json", "w") as f:
-              json.dump(payload, f)
-          print("payload_file=/tmp/slack_payload.json")
-          PY
-
-          echo "payload_file=/tmp/slack_payload.json" >> "$GITHUB_OUTPUT"
-
-      - name: Send to #smart-tutor-ai
-        if: inputs.channel == 'SMART_TUTOR_AI'
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "::warning::SLACK_WEBHOOK_URL_SMART_TUTOR_AI is not configured — skipping."
-            exit 0
-          fi
-          if ! curl --fail -sS -X POST -H "Content-type: application/json" \
-            --data @"${{ steps.build.outputs.payload_file }}" \
-            "${SLACK_WEBHOOK_URL}"; then
-            echo "::warning::Failed to send Slack notification to #smart-tutor-ai."
-          fi
-
-      - name: Send to #app-development-analytics
-        if: inputs.channel == 'APP_DEV_ANALYTICS'
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-            echo "::warning::SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS is not configured — skipping."
-            exit 0
-          fi
-          if ! curl --fail -sS -X POST -H "Content-type: application/json" \
-            --data @"${{ steps.build.outputs.payload_file }}" \
-            "${SLACK_WEBHOOK_URL}"; then
-            echo "::warning::Failed to send Slack notification to #app-development-analytics."
-          fi
+          echo "::warning::No webhook configured for channel '${CHANNEL_INPUT}'. Skipping send."

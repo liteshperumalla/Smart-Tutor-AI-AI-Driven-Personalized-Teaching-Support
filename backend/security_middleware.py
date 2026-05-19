@@ -3,15 +3,74 @@ Security Middleware for FastAPI
 Provides additional security layers for API routes
 """
 
+import ipaddress
+import os
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
-from typing import Callable
+from typing import Callable, Optional
 import time
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC now (replaces deprecated `datetime.utcnow()`)."""
+    return datetime.now(timezone.utc)
+
+
+def _parse_trusted_proxies() -> tuple:
+    """Parse TRUSTED_PROXY_CIDRS env var into ip_network objects.
+
+    Default to empty — XFF/X-Real-IP are ignored unless an operator explicitly
+    declares the reverse proxies that send them. This prevents header spoofing
+    by clients hitting the backend directly.
+    """
+    raw = os.getenv("TRUSTED_PROXY_CIDRS", "")
+    networks = []
+    for piece in raw.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(piece, strict=False))
+        except ValueError:
+            logger.warning("Ignoring invalid TRUSTED_PROXY_CIDRS entry: %s", piece)
+    return tuple(networks)
+
+
+_TRUSTED_PROXY_NETWORKS = _parse_trusted_proxies()
+
+
+def _client_ip_from_scope(scope) -> str:
+    """Return the client IP, honoring proxy headers only when the TCP peer is
+    a configured trusted proxy. Falls back to the raw TCP client IP otherwise.
+    """
+    tcp_client = (scope.get("client") or ("",))[0]
+    if not _TRUSTED_PROXY_NETWORKS or not tcp_client:
+        return tcp_client
+
+    try:
+        peer = ipaddress.ip_address(tcp_client)
+    except ValueError:
+        return tcp_client
+
+    if not any(peer in net for net in _TRUSTED_PROXY_NETWORKS):
+        return tcp_client
+
+    # Peer is a known proxy — trust the leftmost forwarded entry.
+    for header_name, header_value in scope.get("headers", []):
+        if header_name == b"x-forwarded-for":
+            forwarded = header_value.decode().split(",")[0].strip()
+            if forwarded:
+                return forwarded
+        elif header_name == b"x-real-ip":
+            forwarded = header_value.decode().strip()
+            if forwarded:
+                return forwarded
+    return tcp_client
 
 
 class SecurityHeadersMiddleware:
@@ -74,18 +133,7 @@ class IPWhitelistMiddleware:
         is_protected = any(path.startswith(p) for p in self.protected_paths)
 
         if is_protected and self.whitelist:
-            # Get client IP
-            client_ip = None
-            for header_name, header_value in scope.get("headers", []):
-                if header_name == b"x-forwarded-for":
-                    client_ip = header_value.decode().split(",")[0].strip()
-                    break
-                elif header_name == b"x-real-ip":
-                    client_ip = header_value.decode()
-                    break
-
-            if not client_ip:
-                client_ip = scope.get("client", [""])[0]
+            client_ip = _client_ip_from_scope(scope)
 
             if client_ip not in self.whitelist:
                 logger.warning(f"Blocked access to {path} from non-whitelisted IP: {client_ip}")
@@ -169,41 +217,70 @@ class SlowRequestDetectionMiddleware:
 
 class SuspiciousActivityDetectionMiddleware:
     """
-    Detect suspicious patterns in requests
+    Detect suspicious patterns in requests.
+
+    State is per-instance (not class-level) so each app instance has independent
+    counters; entries are evicted lazily on access and aggressively when the
+    tracking maps grow past `max_tracked_ips` to bound memory.
     """
 
-    # Track failed authentication attempts by IP
-    _failed_attempts = defaultdict(list)
-    _blocked_ips = {}
-
-    def __init__(self, app, max_failures: int = 10, block_duration: int = 900, enabled: bool = True):
+    def __init__(
+        self,
+        app,
+        max_failures: int = 10,
+        block_duration: int = 900,
+        enabled: bool = True,
+        max_tracked_ips: int = 10_000,
+    ):
         self.app = app
         self.max_failures = max_failures
         self.block_duration = block_duration  # seconds (15 minutes default)
         self.enabled = enabled
+        self.max_tracked_ips = max_tracked_ips
+        # Per-instance, not class-level: avoid silent state sharing across apps.
+        self._failed_attempts: defaultdict[str, list] = defaultdict(list)
+        self._blocked_ips: dict[str, datetime] = {}
+
+    def _evict_if_needed(self) -> None:
+        """Hard cap on tracked IPs to prevent unbounded memory growth under attack."""
+        if len(self._failed_attempts) > self.max_tracked_ips:
+            now = _utcnow()
+            cutoff = now - timedelta(seconds=self.block_duration)
+            self._failed_attempts = defaultdict(
+                list,
+                {
+                    ip: [t for t in times if t > cutoff]
+                    for ip, times in self._failed_attempts.items()
+                    if any(t > cutoff for t in times)
+                },
+            )
+            # If still over the cap after pruning, drop oldest IPs.
+            while len(self._failed_attempts) > self.max_tracked_ips:
+                self._failed_attempts.pop(next(iter(self._failed_attempts)), None)
+        if len(self._blocked_ips) > self.max_tracked_ips:
+            now = _utcnow()
+            # Expire any entries past their block_until first…
+            self._blocked_ips = {
+                ip: until for ip, until in self._blocked_ips.items() if until > now
+            }
+            # …then enforce the hard cap even if everything is still in window.
+            # Drop the earliest-expiring entries: under a distributed brute-force,
+            # all entries can be unexpired but we still need bounded memory.
+            while len(self._blocked_ips) > self.max_tracked_ips:
+                victim = min(self._blocked_ips, key=self._blocked_ips.get)
+                self._blocked_ips.pop(victim, None)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not self.enabled:
             await self.app(scope, receive, send)
             return
 
-        # Get client IP
-        client_ip = None
-        for header_name, header_value in scope.get("headers", []):
-            if header_name == b"x-forwarded-for":
-                client_ip = header_value.decode().split(",")[0].strip()
-                break
-            elif header_name == b"x-real-ip":
-                client_ip = header_value.decode()
-                break
-
-        if not client_ip:
-            client_ip = scope.get("client", [""])[0]
+        client_ip = _client_ip_from_scope(scope)
 
         # Check if IP is blocked
         if client_ip in self._blocked_ips:
             block_until = self._blocked_ips[client_ip]
-            if datetime.utcnow() < block_until:
+            if _utcnow() < block_until:
                 logger.warning(f"Blocked suspicious IP: {client_ip}")
 
                 response = JSONResponse(
@@ -226,22 +303,25 @@ class SuspiciousActivityDetectionMiddleware:
                 # Track 401/403 responses (authentication failures)
                 path = scope.get("path", "")
                 if status_code in [401, 403] and "/auth/" in path:
-                    self._failed_attempts[client_ip].append(datetime.utcnow())
+                    now = _utcnow()
+                    self._failed_attempts[client_ip].append(now)
 
                     # Clean old attempts (older than block duration)
-                    cutoff = datetime.utcnow() - timedelta(seconds=self.block_duration)
+                    cutoff = now - timedelta(seconds=self.block_duration)
                     self._failed_attempts[client_ip] = [
                         t for t in self._failed_attempts[client_ip] if t > cutoff
                     ]
 
                     # Check if should block
                     if len(self._failed_attempts[client_ip]) >= self.max_failures:
-                        block_until = datetime.utcnow() + timedelta(seconds=self.block_duration)
+                        block_until = now + timedelta(seconds=self.block_duration)
                         self._blocked_ips[client_ip] = block_until
                         logger.error(
                             f"Blocking IP {client_ip} due to {len(self._failed_attempts[client_ip])} "
                             f"failed authentication attempts. Blocked until {block_until}"
                         )
+
+                    self._evict_if_needed()
 
             await send(message)
 

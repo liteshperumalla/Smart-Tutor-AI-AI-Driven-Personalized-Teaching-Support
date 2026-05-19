@@ -159,6 +159,15 @@ class CircuitBreaker:
                     f"{self._failure_count} failures"
                 )
 
+    def record_success(self) -> None:
+        """Public hook for callers that drive the circuit breaker manually
+        (e.g. streaming responses that cannot be wrapped by `call`)."""
+        self._on_success()
+
+    def record_failure(self) -> None:
+        """Public hook for callers that drive the circuit breaker manually."""
+        self._on_failure()
+
     def call(self, func: Callable, *args, **kwargs) -> Any:
         """
         Execute function with circuit breaker protection

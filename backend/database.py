@@ -6,7 +6,7 @@ Provides abstraction for data storage with proper error handling and thread safe
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from contextlib import contextmanager
@@ -157,15 +157,18 @@ class UserDatabase:
                 logger.warning(f"Attempt to create existing user: {username}")
                 raise UserAlreadyExistsError(username)
 
+            normalized_hash = hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8')
             user_data = {
-                'password_hash': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
-                'hashed_password': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
+                # Only `password_hash` is canonical; the read paths still tolerate
+                # legacy users that have `hashed_password` set, so removing the
+                # duplicate write is backward-compatible.
+                'password_hash': normalized_hash,
                 'email': email or '',
                 'display_name': '',
                 'phone_number': '',
                 'role': 'User',
                 'last_login': '',
-                'created_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
                 'theme': 'light',
                 'notes': '',
                 'profile_picture_path': '',
@@ -241,16 +244,16 @@ class UserDatabase:
             if username not in users:
                 raise UserNotFoundError(username)
 
-            # Update only provided fields
+            # Update only provided fields. We intentionally no longer mirror
+            # password_hash -> hashed_password; the legacy `hashed_password`
+            # field stays readable for old users but new writes are single-keyed.
             normalized_updates = dict(updates)
-            if "password_hash" in normalized_updates and "hashed_password" not in normalized_updates:
-                normalized_updates["hashed_password"] = normalized_updates["password_hash"]
 
             for key, value in normalized_updates.items():
                 if key != 'username':  # Don't allow username change
                     users[username][key] = value
 
-            users[username]['updated_at'] = datetime.utcnow().isoformat()
+            users[username]['updated_at'] = datetime.now(timezone.utc).isoformat()
             logger.info(f"User updated: {username}, fields: {list(updates.keys())}")
 
             return users[username]
@@ -280,7 +283,7 @@ class UserDatabase:
         """Update last login timestamp"""
         try:
             self.update_user(username, {
-                'last_login': datetime.utcnow().isoformat(),
+                'last_login': datetime.now(timezone.utc).isoformat(),
                 'login_attempts': 0  # Reset login attempts on successful login
             })
         except UserNotFoundError:
@@ -326,7 +329,12 @@ class UserDatabase:
             locked_until = user.get('locked_until')
             if locked_until:
                 unlock_time = datetime.fromisoformat(locked_until)
-                if datetime.utcnow() < unlock_time:
+                # Legacy JSON rows may have naive ISO strings (written before
+                # the datetime sweep). Normalize to aware UTC so the compare
+                # below doesn't TypeError on mixed naive/aware operands.
+                if unlock_time.tzinfo is None:
+                    unlock_time = unlock_time.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) < unlock_time:
                     return True
                 else:
                     # Unlock account
@@ -382,16 +390,25 @@ class ChatSessionDatabase:
             'user_id': user_id,
             'title': title or 'New Chat',
             'messages': messages,
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
         }
 
+        # Write to a temp file then atomically rename to avoid corruption on crash
+        # mid-write. Matches the pattern used by JSONDatabase._write_data().
         try:
-            with open(chat_path, 'w', encoding='utf-8') as f:
+            tmp_path = f"{chat_path}.tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(chat_data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, chat_path)
             logger.debug(f"Chat saved: user={user_id}, chat={chat_id}")
         except Exception as e:
             logger.error(f"Failed to save chat: {e}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
             raise DataSaveError("chat", str(e))
 
     def load_chat(self, user_id: str, chat_id: str) -> Dict[str, Any]:
@@ -451,43 +468,80 @@ class ChatSessionDatabase:
 # Singleton instances
 _user_db = None
 _chat_db = None
+_user_db_lock = threading.Lock()
+_chat_db_lock = threading.Lock()
 
 
 def get_user_db():
     """
-    Get user database instance - returns appropriate backend based on config
+    Get user database instance - returns appropriate backend based on config.
 
-    Returns:
-        UserDatabase (legacy) or HybridStorageBackend (production)
+    In production:
+      - filesystem backend is REFUSED (JSON file is a multi-worker corruption
+        risk and provides no encryption at rest).
+      - if the configured backend (postgres/hybrid) fails to initialize, we
+        fail loud rather than silently dropping to filesystem.
+
+    In non-production we keep the legacy filesystem fallback so local dev
+    works without spinning up Postgres.
     """
     global _user_db
     if _user_db is None:
-        backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
-        if backend_name == "hybrid":
-            try:
-                from .services.storage.hybrid import get_hybrid_backend
-                _user_db = get_hybrid_backend()
-                logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
-            except Exception as e:
-                logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
-                _user_db = UserDatabase()
-        elif backend_name == "postgres":
-            try:
-                from .services.storage.postgres import get_postgres_backend
-                _user_db = get_postgres_backend()
-                logger.info("Using PostgreSQL storage backend for users")
-            except Exception as e:
-                logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
-                _user_db = UserDatabase()
-        else:
-            # Use legacy filesystem backend
+        with _user_db_lock:
+            if _user_db is not None:
+                return _user_db
+            return _init_user_db()
+    return _user_db
+
+
+def _init_user_db():
+    global _user_db
+    backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
+    is_production = getattr(config, "ENVIRONMENT", "").lower() == "production"
+
+    if is_production and backend_name not in ("postgres", "hybrid"):
+        raise RuntimeError(
+            f"STORAGE_BACKEND={backend_name!r} is not allowed in production. "
+            "Set STORAGE_BACKEND=postgres or hybrid."
+        )
+
+    if backend_name == "hybrid":
+        try:
+            from .services.storage.hybrid import get_hybrid_backend
+            _user_db = get_hybrid_backend()
+            logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
+        except Exception as e:
+            if is_production:
+                raise RuntimeError(
+                    "Failed to initialize hybrid storage backend in production "
+                    "(refusing to fall back to filesystem)."
+                ) from e
+            logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
             _user_db = UserDatabase()
+    elif backend_name == "postgres":
+        try:
+            from .services.storage.postgres import get_postgres_backend
+            _user_db = get_postgres_backend()
+            logger.info("Using PostgreSQL storage backend for users")
+        except Exception as e:
+            if is_production:
+                raise RuntimeError(
+                    "Failed to initialize Postgres storage backend in production "
+                    "(refusing to fall back to filesystem)."
+                ) from e
+            logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
+            _user_db = UserDatabase()
+    else:
+        # Non-production only: legacy filesystem backend
+        _user_db = UserDatabase()
     return _user_db
 
 
 def get_chat_db() -> ChatSessionDatabase:
-    """Get singleton chat database instance"""
+    """Get singleton chat database instance (double-checked locking)."""
     global _chat_db
     if _chat_db is None:
-        _chat_db = ChatSessionDatabase()
+        with _chat_db_lock:
+            if _chat_db is None:
+                _chat_db = ChatSessionDatabase()
     return _chat_db

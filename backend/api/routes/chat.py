@@ -22,6 +22,47 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger(__name__)
 
+
+def _get_tiktoken_encoder():
+    """Lazily load a tiktoken encoder for token counting.
+
+    Returns the cl100k_base encoder when tiktoken is available, otherwise None.
+    Cached at module level so we don't re-load on every chat request.
+    """
+    global _TIKTOKEN_ENCODER, _TIKTOKEN_TRIED
+    if _TIKTOKEN_TRIED:
+        return _TIKTOKEN_ENCODER
+    _TIKTOKEN_TRIED = True
+    try:
+        import tiktoken
+        _TIKTOKEN_ENCODER = tiktoken.get_encoding("cl100k_base")
+    except Exception as exc:
+        _logger.warning("tiktoken unavailable, falling back to len/4 estimate: %s", exc)
+        _TIKTOKEN_ENCODER = None
+    return _TIKTOKEN_ENCODER
+
+
+_TIKTOKEN_ENCODER = None
+_TIKTOKEN_TRIED = False
+
+
+def _estimate_token_pair(input_text: str, output_text: str) -> tuple[int, int]:
+    """Best-effort token counts for cost/telemetry.
+
+    Bedrock returns authoritative usage in the response metadata, but that's
+    not exposed through the agent/RAG layers today. tiktoken's cl100k_base
+    is within ~10% of the model-specific tokenizer for English text — vastly
+    more accurate than len/4 (which was off by 30-50% for code/JSON/non-Latin).
+    """
+    encoder = _get_tiktoken_encoder()
+    if encoder is None:
+        return max(1, len(input_text) // 4), max(1, len(output_text) // 4)
+    try:
+        return max(1, len(encoder.encode(input_text))), max(1, len(encoder.encode(output_text)))
+    except Exception:
+        return max(1, len(input_text) // 4), max(1, len(output_text) // 4)
+
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
@@ -181,7 +222,7 @@ def list_sessions(
     return {"sessions": [s.to_dict() for s in sessions]}
 
 
-@router.post("/sessions/{session_id}/messages")
+@router.post("/sessions/{session_id}/messages", dependencies=[Depends(csrf_protect)])
 async def send_message(
     session_id: str,
     payload: SendMessageRequest,
@@ -289,9 +330,9 @@ async def send_message(
 
     # Save user message only after all pre-flight checks pass — avoids orphaned
     # messages in session history when the request is rejected by rate-limiter
-    # or circuit-breaker.
-    chat_service.append_message(session, user_message)
-    chat_service.save_session(user["username"], session)
+    # or circuit-breaker. Use the locked append-and-save to serialize concurrent
+    # writers on the same session.
+    chat_service.append_and_save(user["username"], session_id, user_message)
 
     # Acquire a concurrency slot — awaited via asyncio.to_thread so the event
     # loop is not blocked while waiting for a slot (up to 5 s).
@@ -318,17 +359,16 @@ async def send_message(
             for chunk in generator:
                 collected += chunk
                 yield chunk
-            bedrock_circuit_breaker._on_success()
+            bedrock_circuit_breaker.record_success()
         except Exception:
             _stream_failed = True
-            bedrock_circuit_breaker._on_failure()
+            bedrock_circuit_breaker.record_failure()
             raise
         finally:
             sem.release()
             _latency_ms = (_time.time() - _stream_start) * 1000
             _model = resolved_model_id or "unknown"
-            _output_tokens = max(1, len(collected) // 4)
-            _input_tokens = max(1, len(query) // 4)
+            _input_tokens, _output_tokens = _estimate_token_pair(query, collected)
 
             # Approximate cost in USD based on model pricing (per 1K tokens)
             _PRICING = {
@@ -391,10 +431,11 @@ async def send_message(
                 assistant_message = ChatMessage(
                     role="assistant", content=clean_content, sources=sources
                 )
-                chat_service.append_message(session, assistant_message)
-                chat_service.save_session(user["username"], session)
+                chat_service.append_and_save(
+                    user["username"], session_id, assistant_message
+                )
 
-    return StreamingResponse(stream(), media_type="text/plain")
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @router.get("/sessions/{session_id}")

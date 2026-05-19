@@ -118,7 +118,9 @@ jobs:
 
       - name: Install AWS CLI
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
-        uses: unfor19/install-aws-cli-action@v1
+        # Pinned to v1.0.7 SHA per CodeRabbit / supply-chain hygiene. Tags are
+        # mutable; SHA pins prevent a repointed tag from injecting untrusted code.
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
 
       - name: Resolve production EC2 target
         id: ec2-target
@@ -305,12 +307,15 @@ jobs:
         env:
           BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
           BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
+          # Forward AWS_REGION so the remote awslogs driver lines below resolve
+          # to the configured region instead of falling back to us-east-1 only.
+          AWS_REGION: ${{ env.AWS_REGION }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION
           script: |
             set -euo pipefail
 
@@ -423,6 +428,12 @@ jobs:
                 --restart unless-stopped \
                 --network smart-tutor_smart-tutor-network \
                 --env-file ~/smart-tutor.env \
+                --log-driver=awslogs \
+                --log-opt awslogs-region=${AWS_REGION:-us-east-1} \
+                --log-opt awslogs-group=/smart-ai-tutor/backend \
+                --log-opt awslogs-stream=backend \
+                --log-opt awslogs-create-group=true \
+                --log-opt tag=smart-tutor-backend \
                 --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
                 --health-interval 5s \
                 --health-timeout 3s \
@@ -516,6 +527,12 @@ jobs:
               --restart unless-stopped \
               --network smart-tutor_smart-tutor-network \
               --env-file ~/smart-tutor.env \
+              --log-driver=awslogs \
+              --log-opt awslogs-region=us-east-1 \
+              --log-opt awslogs-group=/smart-ai-tutor/backend \
+              --log-opt awslogs-stream=backend-candidate \
+              --log-opt awslogs-create-group=true \
+              --log-opt tag=smart-tutor-backend-candidate \
               --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
               --health-interval 5s \
               --health-timeout 3s \
