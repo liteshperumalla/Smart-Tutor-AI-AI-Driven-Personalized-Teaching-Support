@@ -17,19 +17,15 @@ from functools import lru_cache
 from typing import Optional, List, Dict, Any, Union, Tuple
 import requests
 from urllib.parse import quote
-from youtube_transcript_api import (
-    YouTubeTranscriptApi,
-    TranscriptsDisabled,
-    NoTranscriptFound,
-)
-from bs4 import BeautifulSoup
 from backend.services.status_service import (
     get_knowledge_base_stats,
     get_system_status,
     check_ollama_status,
 )
 
-# LlamaIndex imports
+# LlamaIndex imports — needed by RAG functions used on every chat request,
+# so kept at top level. Document is also referenced as a return type, so we
+# import it eagerly.
 from llama_index.core import (
     StorageContext,
     load_index_from_storage,
@@ -45,13 +41,10 @@ from backend.s3_retriever import create_s3_retriever
 from backend.config import config
 from backend.llm_provider import get_llm
 
-# File processing imports
-from pptx import Presentation
-from docx import Document as DocxDoc
-import mammoth
-from fpdf import FPDF
-from PIL import Image
-import pytesseract
+# Heavy file-processing imports (pptx, docx, mammoth, fpdf, PIL, pytesseract,
+# bs4, youtube_transcript_api) are now deferred to the functions that use
+# them — the FastAPI backend imports utils.py for RAG only and shouldn't pay
+# the cost of loading PIL/Tesseract/OCR libs at startup.
 
 try:
     from serpapi import GoogleSearch
@@ -225,6 +218,7 @@ def _search_with_duckduckgo(query: str, max_results: int):
             timeout=10,
         )
         resp.raise_for_status()
+        from bs4 import BeautifulSoup  # deferred — only loaded for the DuckDuckGo fallback path
         soup = BeautifulSoup(resp.content, "html.parser")
         results = []
         for entry in soup.find_all("div", class_="result")[:max_results]:
@@ -1229,6 +1223,7 @@ def make_session_title(history: List) -> str:
 # --- File Conversion and Content Extraction ---
 def convert_text_to_pdf(text: str, output_path: str) -> None:
     """Convert text to PDF file"""
+    from fpdf import FPDF  # deferred — PDF generation is request-time, not startup
     pdf = FPDF()
     pdf.add_page()
 
@@ -1260,6 +1255,7 @@ def convert_text_to_pdf(text: str, output_path: str) -> None:
 def convert_docx_to_pdf(docx_file_path: str, output_pdf_path: str) -> str:
     """Convert DOCX to PDF and return extracted text"""
     try:
+        from docx import Document as DocxDoc  # deferred — DOCX parsing is upload-path only
         doc = DocxDoc(docx_file_path)
         text = "\n".join([para.text for para in doc.paragraphs])
         convert_text_to_pdf(text, output_pdf_path)
@@ -1272,6 +1268,7 @@ def convert_docx_to_pdf(docx_file_path: str, output_pdf_path: str) -> str:
 def convert_pptx_to_pdf(pptx_file_path: str, output_pdf_path: str) -> str:
     """Convert PPTX to PDF and return extracted text"""
     try:
+        from pptx import Presentation  # deferred — PPTX parsing is upload-path only
         pres = Presentation(pptx_file_path)
         text = ""
         for slide in pres.slides:
@@ -1288,6 +1285,8 @@ def convert_pptx_to_pdf(pptx_file_path: str, output_pdf_path: str) -> str:
 def image_to_document(image_file_uploader_object) -> Document:
     """Convert image to document using OCR"""
     try:
+        from PIL import Image  # deferred — Pillow is heavy and only needed on image upload
+        import pytesseract  # deferred — OCR binary wrapper, request-path only
         image = Image.open(image_file_uploader_object)
         text = pytesseract.image_to_string(image)
         return Document(text=text, metadata={"source": image_file_uploader_object.name})
@@ -1318,6 +1317,7 @@ def url_to_document(url: str) -> Document:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
 
+        from bs4 import BeautifulSoup  # deferred — only loaded when a URL upload arrives
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Extract title
@@ -1395,6 +1395,14 @@ def youtube_to_document(video_id_or_url: str) -> Document:
             text=f"Error: {error_msg}",
             metadata={"source": source_ref, "title": video_title, "error": True},
         )
+
+    # Deferred — youtube_transcript_api is only needed when the user uploads a
+    # YouTube link, not on every backend import.
+    from youtube_transcript_api import (
+        YouTubeTranscriptApi,
+        TranscriptsDisabled,
+        NoTranscriptFound,
+    )
 
     try:
         transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
