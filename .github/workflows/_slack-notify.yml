@@ -143,5 +143,10 @@ jobs:
 
       - name: Note when webhook is unset
         if: steps.resolve.outputs.has_webhook != 'true'
+        env:
+          # Interpolating ${{ inputs.channel }} directly into the run script
+          # would let a caller smuggle shell via the channel string. Route it
+          # through env: so the shell sees an inert variable.
+          CHANNEL_INPUT: ${{ inputs.channel }}
         run: |
-          echo "::warning::No webhook configured for channel '${{ inputs.channel }}'. Skipping send."
+          echo "::warning::No webhook configured for channel '${CHANNEL_INPUT}'. Skipping send."
