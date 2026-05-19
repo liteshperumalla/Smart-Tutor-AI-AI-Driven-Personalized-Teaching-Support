@@ -386,12 +386,21 @@ class ChatSessionDatabase:
             'updated_at': datetime.utcnow().isoformat()
         }
 
+        # Write to a temp file then atomically rename to avoid corruption on crash
+        # mid-write. Matches the pattern used by JSONDatabase._write_data().
         try:
-            with open(chat_path, 'w', encoding='utf-8') as f:
+            tmp_path = f"{chat_path}.tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(chat_data, f, indent=2, ensure_ascii=False)
+            os.replace(tmp_path, chat_path)
             logger.debug(f"Chat saved: user={user_id}, chat={chat_id}")
         except Exception as e:
             logger.error(f"Failed to save chat: {e}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
             raise DataSaveError("chat", str(e))
 
     def load_chat(self, user_id: str, chat_id: str) -> Dict[str, Any]:

@@ -68,7 +68,14 @@ class JWTService:
 
         except Exception as e:
             logger.error(f"Failed to load RSA keys: {e}")
-            logger.warning("Falling back to HS256 with secret key")
+            if getattr(config, "ENVIRONMENT", "").lower() == "production":
+                # Refusing to silently downgrade to symmetric signing in production —
+                # JWT_SECRET_KEY may be weak/default and forge-able. Fail loud.
+                raise RuntimeError(
+                    "RS256 keys are required in production but could not be loaded. "
+                    "Refusing to fall back to HS256."
+                ) from e
+            logger.warning("Falling back to HS256 with secret key (non-production only)")
             self.algorithm = "HS256"
             self.secret_key = config.JWT_SECRET_KEY
             self.private_key = None

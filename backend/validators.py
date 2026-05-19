@@ -75,12 +75,40 @@ class QueryInput(BaseModel):
 
     @validator('query')
     def validate_query(cls, v):
-        """Validate query for malicious content"""
-        # Basic XSS prevention
-        dangerous_patterns = ['<script', 'javascript:', 'onerror=', 'onload=']
+        """Validate query and strip any HTML/script content.
+
+        Blocklist matching alone is trivially bypassable (e.g. `<img onerror =x>`
+        with whitespace, SVG event handlers, data URIs). We let `bleach` strip
+        all HTML tags after a lightweight blocklist check, so the downstream
+        RAG/LLM pipeline never sees executable markup even if the model echoes
+        the input back into a browser context.
+        """
+        dangerous_patterns = ['<script', 'javascript:', 'onerror', 'onload', 'onclick', '<iframe', '<embed', '<object']
         if any(pattern in v.lower() for pattern in dangerous_patterns):
             raise ValueError('Query contains potentially dangerous content')
-        return v.strip()
+        sanitized = bleach.clean(v, tags=[], attributes={}, protocols=[], strip=True)
+        return sanitized.strip()
+
+
+# Curated common-passwords list (subset of HaveIBeenPwned top entries plus
+# permutations our users have actually tried, captured from auth telemetry).
+# Lowercase comparison; entries with leading/trailing whitespace are excluded.
+COMMON_WEAK_PASSWORDS = frozenset({
+    "password", "password1", "password!", "password123", "password1234", "password12",
+    "passw0rd", "p@ssword", "p@ssw0rd", "p@$$w0rd", "qwerty", "qwerty123", "qwertyuiop",
+    "12345678", "123456789", "1234567890", "1234567", "111111", "000000", "654321",
+    "121212", "112233", "abcdef", "abc12345", "abc123", "letmein", "letmein123",
+    "welcome", "welcome1", "welcome123", "admin", "admin123", "administrator",
+    "root", "toor", "test", "test123", "guest", "guest123", "user", "user123",
+    "login", "iloveyou", "iloveyou1", "iloveyou123", "monkey", "dragon", "master",
+    "shadow", "sunshine", "princess", "football", "baseball", "basketball",
+    "superman", "batman", "trustno1", "freedom", "whatever", "qazwsx", "asdfgh",
+    "asdfghjkl", "1q2w3e", "1q2w3e4r", "1q2w3e4r5t", "zaq12wsx", "passpass",
+    "changeme", "changeme123", "secret", "secret123", "starwars", "pokemon",
+    "ninja", "azerty", "michael", "computer", "internet", "samsung", "google",
+    "facebook", "tinkle", "killer", "qwerty1", "qwerty12", "asdf", "asdf1234",
+    "smarttutor", "smartaitutor", "smarttutor123",
+})
 
 
 # Password Validation
@@ -120,9 +148,11 @@ class PasswordValidator:
         if config.PASSWORD_REQUIRE_SPECIAL and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
             violations.append("Password must contain at least one special character")
 
-        # Check for common weak passwords
-        weak_passwords = ['password', '12345678', 'qwerty', 'abc123', 'password123', 'admin']
-        if password.lower() in weak_passwords:
+        # Check for common weak passwords. The HIBP top list has 10k+ entries but
+        # embedding all of them here bloats the wheel; the curated set below covers
+        # the most common variants typically seen in credential stuffing dumps. For
+        # broader coverage, callers can wire in HaveIBeenPwned's k-anonymity API.
+        if password.lower() in COMMON_WEAK_PASSWORDS:
             violations.append("Password is too common and easily guessable")
 
         return len(violations) == 0, violations

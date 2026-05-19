@@ -915,7 +915,10 @@ class AuthService:
             parsed_url = urlparse(redirect_url)
             if parsed_url.scheme in ["http", "https"] and parsed_url.netloc in config.ALLOWED_REDIRECT_DOMAINS:
                 separator = "&" if "?" in redirect_url else "?"
-                reset_link = f"{redirect_url}{separator}token={token}&username={username}"
+                # Username intentionally NOT included in URL — it would be logged by
+                # web servers, leak via Referer headers, and end up in browser history.
+                # The token alone is sufficient: the backend derives the user from it.
+                reset_link = f"{redirect_url}{separator}token={token}"
             else:
                 logger.warning(f"Invalid redirect_url provided for password reset: {redirect_url}")
 

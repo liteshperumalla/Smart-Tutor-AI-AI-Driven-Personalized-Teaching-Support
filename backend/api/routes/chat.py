@@ -181,7 +181,7 @@ def list_sessions(
     return {"sessions": [s.to_dict() for s in sessions]}
 
 
-@router.post("/sessions/{session_id}/messages")
+@router.post("/sessions/{session_id}/messages", dependencies=[Depends(csrf_protect)])
 async def send_message(
     session_id: str,
     payload: SendMessageRequest,
@@ -318,10 +318,10 @@ async def send_message(
             for chunk in generator:
                 collected += chunk
                 yield chunk
-            bedrock_circuit_breaker._on_success()
+            bedrock_circuit_breaker.record_success()
         except Exception:
             _stream_failed = True
-            bedrock_circuit_breaker._on_failure()
+            bedrock_circuit_breaker.record_failure()
             raise
         finally:
             sem.release()
@@ -394,7 +394,7 @@ async def send_message(
                 chat_service.append_message(session, assistant_message)
                 chat_service.save_session(user["username"], session)
 
-    return StreamingResponse(stream(), media_type="text/plain")
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 @router.get("/sessions/{session_id}")
