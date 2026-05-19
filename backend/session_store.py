@@ -4,7 +4,7 @@ Manages JWT refresh tokens and user sessions in Redis for scalability
 """
 
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 
 from .config import config
@@ -60,7 +60,7 @@ class RedisSessionStore:
             token_data = {
                 "token": token,
                 "username": username,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
 
             key = self._refresh_token_key(token_id)

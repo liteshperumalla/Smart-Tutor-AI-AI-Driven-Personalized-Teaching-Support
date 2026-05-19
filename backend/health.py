@@ -3,7 +3,7 @@ Enhanced Health Check System
 Provides detailed health checks for all application dependencies
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 import logging
 
@@ -234,7 +234,7 @@ class HealthChecker:
 
         return {
             "status": overall_status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "checks": checks,
             "unhealthy_components": unhealthy_components if unhealthy_components else None
         }

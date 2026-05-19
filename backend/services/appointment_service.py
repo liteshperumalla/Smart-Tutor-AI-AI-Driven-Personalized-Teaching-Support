@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -97,7 +97,7 @@ class AppointmentService:
         primary_reason: str,
         additional_details: str,
     ) -> Optional[Appointment]:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         normalized_details = additional_details.strip()
         for existing in self.list_for_user(user_id):
             if existing.requested_at < cutoff:
@@ -157,7 +157,7 @@ class AppointmentService:
     def _from_dict(self, data: dict) -> Appointment:
         requested = data.get("requested_at")
         requested_at = (
-            datetime.fromisoformat(requested) if requested else datetime.utcnow()
+            datetime.fromisoformat(requested) if requested else datetime.now(timezone.utc)
         )
         return Appointment(
             id=data.get("id", uuid.uuid4().hex),

@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -107,8 +107,8 @@ class FileSystemStorageBackend(BaseStorageBackend):
             id=session_id,
             title=title,
             messages=messages,
-            created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
-            updated_at=datetime.fromisoformat(updated) if updated else datetime.utcnow(),
+            created_at=datetime.fromisoformat(created) if created else datetime.now(timezone.utc),
+            updated_at=datetime.fromisoformat(updated) if updated else datetime.now(timezone.utc),
         )
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
@@ -138,7 +138,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
         for path in directory.glob("*.json"):
             with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-            created_at = data.get("created_at") or data.get("timestamp") or datetime.utcnow().isoformat()
+            created_at = data.get("created_at") or data.get("timestamp") or datetime.now(timezone.utc).isoformat()
             metadata = data.get("metadata") or {
                 "selected_folders": data.get("selected_folders", []),
                 "questions_data": data.get("questions_data", []),

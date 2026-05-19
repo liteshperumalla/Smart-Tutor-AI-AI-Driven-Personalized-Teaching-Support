@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -76,7 +76,7 @@ async def submit_feedback(
         email=payload.email or "",
         category=payload.category,
         message=payload.message,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     try:
         service.log_feedback(entry)
@@ -120,7 +120,7 @@ async def submit_bug(
         severity=payload.severity,
         description=payload.description,
         steps=payload.steps or "",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     try:
         service.log_bug_report(entry)

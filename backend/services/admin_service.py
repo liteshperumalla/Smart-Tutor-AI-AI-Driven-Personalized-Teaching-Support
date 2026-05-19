@@ -10,7 +10,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -208,7 +208,7 @@ class AdminService:
         statuses = self._load_feedback_statuses()
         statuses[feedback_id] = {
             "status": new_status,
-            "updated_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         self._save_feedback_statuses(statuses)
         return statuses[feedback_id]
@@ -321,8 +321,8 @@ class AdminService:
             "priority": priority,
             "author": author,
             "active": True,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         announcements = self._read_announcements()
         announcements.insert(0, announcement)
@@ -340,7 +340,7 @@ class AdminService:
                 for key in allowed:
                     if key in updates:
                         ann[key] = updates[key]
-                ann["updated_at"] = datetime.utcnow().isoformat()
+                ann["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_announcements(announcements)
                 logger.info(f"Announcement updated: {announcement_id}")
                 return ann

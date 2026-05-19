@@ -56,7 +56,7 @@ class HybridStorageBackend(BaseStorageBackend):
     def update_last_login(self, username: str) -> None:
         """Update last login timestamp"""
         from datetime import datetime
-        self.update_user(username, {'last_login': datetime.utcnow().isoformat()})
+        self.update_user(username, {'last_login': datetime.now(timezone.utc).isoformat()})
 
     def increment_login_attempts(self, username: str) -> int:
         """Increment failed login attempts"""
@@ -89,7 +89,7 @@ class HybridStorageBackend(BaseStorageBackend):
         try:
             from dateutil import parser
             unlock_time = parser.parse(locked_until) if isinstance(locked_until, str) else locked_until
-            return datetime.utcnow() < unlock_time
+            return datetime.now(timezone.utc) < unlock_time
         except:
             return False
 

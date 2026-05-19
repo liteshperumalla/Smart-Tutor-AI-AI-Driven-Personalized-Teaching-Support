@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
-    """Timezone-aware UTC now (replaces deprecated datetime.utcnow())."""
+    """Timezone-aware UTC now (replaces deprecated `datetime.utcnow()`)."""
     return datetime.now(timezone.utc)
 
 

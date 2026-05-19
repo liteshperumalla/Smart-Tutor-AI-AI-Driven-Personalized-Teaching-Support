@@ -7,7 +7,7 @@ import os
 import re
 import hashlib
 import mimetypes
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Any, Dict
 from pathlib import Path
 
@@ -182,7 +182,7 @@ class DateUtils:
     @staticmethod
     def now_iso() -> str:
         """Get current UTC time in ISO format"""
-        return datetime.utcnow().isoformat() + 'Z'
+        return datetime.now(timezone.utc).isoformat() + 'Z'
 
     @staticmethod
     def parse_iso(iso_string: str) -> datetime:
@@ -208,7 +208,7 @@ class DateUtils:
         Returns:
             String like "2 hours ago"
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         diff = now - dt
 
         seconds = diff.total_seconds()

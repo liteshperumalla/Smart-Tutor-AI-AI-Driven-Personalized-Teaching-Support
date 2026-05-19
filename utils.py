@@ -725,7 +725,7 @@ def _caching_generator(original_gen, query, sources):
                 {
                     "response": full_response,
                     "sources": sources,
-                    "cached_at": datetime.datetime.utcnow().isoformat(),
+                    "cached_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 },
             )
             logging.info(f"Answer cached for query: {query[:60]}...")

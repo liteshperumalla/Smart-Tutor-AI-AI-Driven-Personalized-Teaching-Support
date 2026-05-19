@@ -5,7 +5,7 @@ account lockout, and session management
 """
 
 import bcrypt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
 import secrets
 import hashlib
@@ -147,7 +147,7 @@ class AuthService:
 
         if attempts >= config.MAX_LOGIN_ATTEMPTS:
             # Lock account
-            unlock_time = datetime.utcnow() + timedelta(seconds=config.LOCKOUT_DURATION)
+            unlock_time = datetime.now(timezone.utc) + timedelta(seconds=config.LOCKOUT_DURATION)
             self.user_db.lock_account(username, unlock_time)
             logger.warning(f"Account locked due to failed attempts: {username}")
 
@@ -314,14 +314,14 @@ class AuthService:
 
         code = self._generate_verification_code()
         code_hash = self._hash_value(code)
-        expires_at = (datetime.utcnow() + timedelta(
+        expires_at = (datetime.now(timezone.utc) + timedelta(
             seconds=config.EMAIL_VERIFICATION_CODE_TTL_SECONDS
         )).isoformat()
 
         metadata["email_verification"] = {
             "code_hash": code_hash,
             "expires_at": expires_at,
-            "issued_at": datetime.utcnow().isoformat(),
+            "issued_at": datetime.now(timezone.utc).isoformat(),
         }
         metadata["email_verified"] = False
         self.user_db.update_user(user["username"], {"metadata": metadata})
@@ -352,7 +352,7 @@ class AuthService:
         except Exception:
             raise TokenInvalidError("Invalid verification code")
 
-        if datetime.utcnow() > expires_dt:
+        if datetime.now(timezone.utc) > expires_dt:
             raise TokenInvalidError("Verification code expired")
 
         if not secrets.compare_digest(self._hash_value(code), code_hash):
@@ -513,7 +513,7 @@ class AuthService:
 
         token = secrets.token_urlsafe(32)
         token_hash = self._hash_value(token)
-        expires_at = (datetime.utcnow() + timedelta(
+        expires_at = (datetime.now(timezone.utc) + timedelta(
             seconds=config.PASSWORD_SETUP_TOKEN_TTL_SECONDS
         )).isoformat()
 
@@ -529,7 +529,7 @@ class AuthService:
     def _find_user_by_password_setup_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Fallback lookup when provided username does not match the active setup token."""
         provided_hash = self._hash_value(token)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for user in self.user_db.list_users():
             metadata = self._normalize_metadata(user)
@@ -586,7 +586,7 @@ class AuthService:
         except Exception:
             raise TokenInvalidError("Invalid password setup token")
 
-        if datetime.utcnow() > expires_dt:
+        if datetime.now(timezone.utc) > expires_dt:
             raise TokenInvalidError("Password setup token has expired")
 
         provided_hash = self._hash_value(token)
@@ -619,8 +619,8 @@ class AuthService:
         session_token = secrets.token_urlsafe(32)
         self.sessions[session_token] = {
             'username': username,
-            'created_at': datetime.utcnow(),
-            'expires_at': datetime.utcnow() + timedelta(seconds=config.SESSION_TIMEOUT)
+            'created_at': datetime.now(timezone.utc),
+            'expires_at': datetime.now(timezone.utc) + timedelta(seconds=config.SESSION_TIMEOUT)
         }
         return session_token
 
@@ -667,7 +667,7 @@ class AuthService:
                 raise SessionExpiredError()
 
             # Check expiration
-            if datetime.utcnow() > session['expires_at']:
+            if datetime.now(timezone.utc) > session['expires_at']:
                 del self.sessions[session_token]
                 raise SessionExpiredError()
 
@@ -807,7 +807,7 @@ class AuthService:
         except Exception:
             raise TokenInvalidError("Invalid password reset token")
 
-        if datetime.utcnow() > expires_dt:
+        if datetime.now(timezone.utc) > expires_dt:
             raise TokenInvalidError("Password reset token has expired")
 
         provided_hash = hashlib.sha256(reset_token.encode("utf-8")).hexdigest()
@@ -839,7 +839,7 @@ class AuthService:
 
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        expires_at = (datetime.utcnow() + timedelta(seconds=config.PASSWORD_RESET_TOKEN_TTL_SECONDS)).isoformat()
+        expires_at = (datetime.now(timezone.utc) + timedelta(seconds=config.PASSWORD_RESET_TOKEN_TTL_SECONDS)).isoformat()
 
         metadata = user.get("metadata") or {}
         if not isinstance(metadata, dict):
@@ -1003,7 +1003,7 @@ class AuthService:
 
     def clean_expired_sessions(self) -> int:
         """Clean up expired sessions"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = [
             token for token, session in self.sessions.items()
             if session['expires_at'] < now

@@ -6,7 +6,7 @@ Provides abstraction for data storage with proper error handling and thread safe
 import json
 import os
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from contextlib import contextmanager
@@ -165,7 +165,7 @@ class UserDatabase:
                 'phone_number': '',
                 'role': 'User',
                 'last_login': '',
-                'created_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
                 'theme': 'light',
                 'notes': '',
                 'profile_picture_path': '',
@@ -250,7 +250,7 @@ class UserDatabase:
                 if key != 'username':  # Don't allow username change
                     users[username][key] = value
 
-            users[username]['updated_at'] = datetime.utcnow().isoformat()
+            users[username]['updated_at'] = datetime.now(timezone.utc).isoformat()
             logger.info(f"User updated: {username}, fields: {list(updates.keys())}")
 
             return users[username]
@@ -280,7 +280,7 @@ class UserDatabase:
         """Update last login timestamp"""
         try:
             self.update_user(username, {
-                'last_login': datetime.utcnow().isoformat(),
+                'last_login': datetime.now(timezone.utc).isoformat(),
                 'login_attempts': 0  # Reset login attempts on successful login
             })
         except UserNotFoundError:
@@ -326,7 +326,7 @@ class UserDatabase:
             locked_until = user.get('locked_until')
             if locked_until:
                 unlock_time = datetime.fromisoformat(locked_until)
-                if datetime.utcnow() < unlock_time:
+                if datetime.now(timezone.utc) < unlock_time:
                     return True
                 else:
                     # Unlock account
@@ -382,8 +382,8 @@ class ChatSessionDatabase:
             'user_id': user_id,
             'title': title or 'New Chat',
             'messages': messages,
-            'created_at': datetime.utcnow().isoformat(),
-            'updated_at': datetime.utcnow().isoformat()
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'updated_at': datetime.now(timezone.utc).isoformat()
         }
 
         # Write to a temp file then atomically rename to avoid corruption on crash
@@ -464,20 +464,39 @@ _chat_db = None
 
 def get_user_db():
     """
-    Get user database instance - returns appropriate backend based on config
+    Get user database instance - returns appropriate backend based on config.
 
-    Returns:
-        UserDatabase (legacy) or HybridStorageBackend (production)
+    In production:
+      - filesystem backend is REFUSED (JSON file is a multi-worker corruption
+        risk and provides no encryption at rest).
+      - if the configured backend (postgres/hybrid) fails to initialize, we
+        fail loud rather than silently dropping to filesystem.
+
+    In non-production we keep the legacy filesystem fallback so local dev
+    works without spinning up Postgres.
     """
     global _user_db
     if _user_db is None:
         backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
+        is_production = getattr(config, "ENVIRONMENT", "").lower() == "production"
+
+        if is_production and backend_name not in ("postgres", "hybrid"):
+            raise RuntimeError(
+                f"STORAGE_BACKEND={backend_name!r} is not allowed in production. "
+                "Set STORAGE_BACKEND=postgres or hybrid."
+            )
+
         if backend_name == "hybrid":
             try:
                 from .services.storage.hybrid import get_hybrid_backend
                 _user_db = get_hybrid_backend()
                 logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
             except Exception as e:
+                if is_production:
+                    raise RuntimeError(
+                        "Failed to initialize hybrid storage backend in production "
+                        "(refusing to fall back to filesystem)."
+                    ) from e
                 logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
                 _user_db = UserDatabase()
         elif backend_name == "postgres":
@@ -486,10 +505,15 @@ def get_user_db():
                 _user_db = get_postgres_backend()
                 logger.info("Using PostgreSQL storage backend for users")
             except Exception as e:
+                if is_production:
+                    raise RuntimeError(
+                        "Failed to initialize Postgres storage backend in production "
+                        "(refusing to fall back to filesystem)."
+                    ) from e
                 logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
                 _user_db = UserDatabase()
         else:
-            # Use legacy filesystem backend
+            # Non-production only: legacy filesystem backend
             _user_db = UserDatabase()
     return _user_db
 
