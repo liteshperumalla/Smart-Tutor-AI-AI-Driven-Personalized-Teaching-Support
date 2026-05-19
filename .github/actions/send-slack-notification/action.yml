@@ -1,93 +1,89 @@
 name: Send Slack Notification
-description: Builds a Block Kit Slack message and sends it to a channel webhook
+description: |
+  Build a Block Kit Slack message and post it to a channel webhook with
+  retry, payload-size guard, optional dedup, and structured outputs.
+
+  This is the single implementation of the Slack notify logic. The
+  `_slack-notify.yml` reusable workflow is a thin wrapper that maps a
+  logical channel name to the right webhook secret and calls this action.
 
 inputs:
-  channel:
-    description: "Logical channel name — SMART_TUTOR_AI or APP_DEV_ANALYTICS"
-    required: true
-    type: string
   webhook_url:
-    description: "Slack webhook URL for the target channel"
+    description: "Slack webhook URL. If empty the step is skipped with a warning."
     required: true
-    type: string
   workflow_name:
     description: "Display name shown in Slack notification header"
     required: true
-    type: string
   status:
-    description: "success | failure | warning"
+    description: "success | failure | warning | cancelled | skipped | timed_out | neutral"
     required: true
-    type: string
   message:
     description: "Main notification body in Slack mrkdwn format"
     required: true
-    type: string
   fields:
-    description: "JSON array of {title, value, short} for two-column fields section"
+    description: "JSON array of {title, value, short} for fields sections (>20 entries are paged across multiple sections rather than dropped)"
     required: false
-    type: string
     default: "[]"
   run_url:
-    description: "Link back to the GitHub Actions run"
+    description: "Link back to the GitHub Actions run (defaults to the current run)"
     required: false
-    type: string
     default: ""
   actor:
-    description: "GitHub user who triggered the workflow"
+    description: "GitHub user who triggered the workflow (defaults to github.actor)"
     required: false
-    type: string
     default: ""
   verbiage:
-    description: "Short one-line label for the event type (e.g. Deploy, Scan, Review)"
+    description: "Short label for the event type (defaults to workflow_name)"
     required: false
-    type: string
     default: ""
+  dedup_key:
+    description: |
+      Optional stable identifier (e.g. "deploy-prod-failure"). When set, repeat
+      sends with the same (dedup_key, status) within dedup_window_minutes are
+      suppressed via the actions/cache store. Leave empty to disable dedup.
+    required: false
+    default: ""
+  dedup_window_minutes:
+    description: "Suppression window in minutes when dedup_key is set"
+    required: false
+    default: "60"
+  max_retries:
+    description: "Retries on 5xx / network failures"
+    required: false
+    default: "3"
+  dry_run:
+    description: "If 'true', build the payload but do not POST. Useful for testing message formatting locally."
+    required: false
+    default: "false"
+
+outputs:
+  sent:
+    description: "true if the notification was posted, false if skipped/deduplicated/dry-run"
+    value: ${{ steps.send.outputs.sent }}
+  http_status:
+    description: "Final HTTP status code returned by Slack (empty if not sent)"
+    value: ${{ steps.send.outputs.http_status }}
+  attempts:
+    description: "Number of POST attempts made"
+    value: ${{ steps.send.outputs.attempts }}
+  payload_bytes:
+    description: "Size of the JSON payload that was (or would have been) sent"
+    value: ${{ steps.build.outputs.payload_bytes }}
 
 runs:
   using: composite
   steps:
-    - name: Set status metadata
-      id: meta
+    - name: Mask webhook URL
       shell: bash
       env:
-        INPUT_STATUS: ${{ inputs.status }}
-        INPUT_RUN_URL: ${{ inputs.run_url }}
-        INPUT_ACTOR: ${{ inputs.actor }}
-        INPUT_VERBIAGE: ${{ inputs.verbiage }}
-        INPUT_WORKFLOW_NAME: ${{ inputs.workflow_name }}
-        GH_REPOSITORY: ${{ github.repository }}
-        GH_RUN_ID: ${{ github.run_id }}
-        GH_ACTOR: ${{ github.actor }}
+        WEBHOOK_URL: ${{ inputs.webhook_url }}
       run: |
-        case "${INPUT_STATUS}" in
-          success)  echo "emoji=:white_check_mark:" >> "$GITHUB_OUTPUT"
-                    echo "color=#2EB67D" >> "$GITHUB_OUTPUT"
-                    echo "status_label=SUCCESS" >> "$GITHUB_OUTPUT" ;;
-          failure)  echo "emoji=:x:" >> "$GITHUB_OUTPUT"
-                    echo "color=#E01E5A" >> "$GITHUB_OUTPUT"
-                    echo "status_label=FAILED" >> "$GITHUB_OUTPUT" ;;
-          warning)  echo "emoji=:warning:" >> "$GITHUB_OUTPUT"
-                    echo "color=#ECB22E" >> "$GITHUB_OUTPUT"
-                    echo "status_label=WARNING" >> "$GITHUB_OUTPUT" ;;
-        esac
-
-        run_url="${INPUT_RUN_URL}"
-        if [ -z "${run_url}" ]; then
-          run_url="https://github.com/${GH_REPOSITORY}/actions/runs/${GH_RUN_ID}"
+        # Composite-action inputs aren't automatically masked the way `secrets:`
+        # are on reusable workflows. Mask the webhook before any later step
+        # could echo it (e.g. set -x or curl debug output).
+        if [ -n "${WEBHOOK_URL:-}" ]; then
+          echo "::add-mask::${WEBHOOK_URL}"
         fi
-        echo "run_url=${run_url}" >> "$GITHUB_OUTPUT"
-
-        actor="${INPUT_ACTOR}"
-        if [ -z "${actor}" ]; then
-          actor="${GH_ACTOR}"
-        fi
-        echo "actor=${actor}" >> "$GITHUB_OUTPUT"
-
-        verbiage="${INPUT_VERBIAGE}"
-        if [ -z "${verbiage}" ]; then
-          verbiage="${INPUT_WORKFLOW_NAME}"
-        fi
-        echo "verbiage=${verbiage}" >> "$GITHUB_OUTPUT"
 
     - name: Build Block Kit payload
       id: build
@@ -96,94 +92,259 @@ runs:
         MESSAGE: ${{ inputs.message }}
         FIELDS_JSON: ${{ inputs.fields }}
         STATUS: ${{ inputs.status }}
-        VERBIAGE: ${{ steps.meta.outputs.verbiage }}
-        RUN_URL: ${{ steps.meta.outputs.run_url }}
-        ACTOR: ${{ steps.meta.outputs.actor }}
+        VERBIAGE: ${{ inputs.verbiage }}
+        WORKFLOW_NAME: ${{ inputs.workflow_name }}
+        RUN_URL: ${{ inputs.run_url }}
+        ACTOR_OVERRIDE: ${{ inputs.actor }}
       run: |
         set -euo pipefail
         python3 - <<'PY'
-        import json, os
+        import json
+        import os
+        import sys
 
-        message     = os.environ.get("MESSAGE", "")
-        fields_json = os.environ.get("FIELDS_JSON", "[]")
-        status      = os.environ.get("STATUS", "success")
-        verbiage    = os.environ.get("VERBIAGE", "Workflow")
+        # --- Status normalisation ---------------------------------------------
+        # Accept GitHub conclusion vocabulary plus our custom "warning" status.
+        # Anything unknown gets the neutral treatment rather than silently
+        # masquerading as success (the previous behaviour).
+        STATUS_PRESETS = {
+            "success":          (":white_check_mark:", "#2EB67D", "SUCCESS"),
+            "failure":          (":x:",                "#E01E5A", "FAILED"),
+            "warning":          (":warning:",          "#ECB22E", "WARNING"),
+            "cancelled":        (":no_entry:",         "#7C7C7C", "CANCELLED"),
+            "skipped":          (":fast_forward:",     "#9C9C9C", "SKIPPED"),
+            "timed_out":        (":alarm_clock:",      "#E01E5A", "TIMED OUT"),
+            "action_required":  (":eyes:",             "#ECB22E", "ACTION REQUIRED"),
+            "neutral":          (":information_source:", "#1D9BD1", "INFO"),
+        }
+        status = (os.environ.get("STATUS") or "").strip().lower()
+        emoji, color, status_label = STATUS_PRESETS.get(
+            status, (":grey_question:", "#7C7C7C", status.upper() or "UNKNOWN")
+        )
 
-        emoji_map = {"success": ":white_check_mark:", "failure": ":x:", "warning": ":warning:"}
-        color_map = {"success": "#2EB67D",            "failure": "#E01E5A",  "warning": "#ECB22E"}
+        # --- Inputs and defaults ----------------------------------------------
+        message       = os.environ.get("MESSAGE", "")
+        workflow_name = os.environ.get("WORKFLOW_NAME", "Workflow")
+        verbiage      = os.environ.get("VERBIAGE") or workflow_name
+        actor         = os.environ.get("ACTOR_OVERRIDE") or os.environ.get("GITHUB_ACTOR", "unknown")
+        repo          = os.environ.get("GITHUB_REPOSITORY", "")
+        run_id        = os.environ.get("GITHUB_RUN_ID", "")
+        run_number    = os.environ.get("GITHUB_RUN_NUMBER", "")
+        run_url       = (
+            os.environ.get("RUN_URL")
+            or (f"https://github.com/{repo}/actions/runs/{run_id}" if repo and run_id else "")
+        )
 
-        emoji = emoji_map.get(status, ":white_check_mark:")
-        color = color_map.get(status, "#2EB67D")
-
+        # --- Field parsing ----------------------------------------------------
+        # Slack section blocks accept up to 10 fields each. Page across multiple
+        # sections so callers with >20 fields don't silently lose data.
         fields_blocks = []
+        raw = os.environ.get("FIELDS_JSON", "[]")
         try:
-            fields = json.loads(fields_json)
-            for f in fields:
-                title = f.get("title", "")
-                value = f.get("value", "")
-                if title or value:
-                    fields_blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
-        except Exception:
-            fields_blocks = []
+            parsed = json.loads(raw)
+        except Exception as exc:
+            print(f"::warning::Invalid fields JSON ({exc}); ignoring extras.", file=sys.stderr)
+            parsed = []
 
-        run_url = os.environ.get("RUN_URL") or f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
-        actor   = os.environ.get("ACTOR") or os.environ["GITHUB_ACTOR"]
+        for entry in parsed:
+            if not isinstance(entry, dict):
+                continue
+            title = str(entry.get("title", "")).strip()
+            value = str(entry.get("value", "")).strip()
+            if not (title or value):
+                continue
+            fields_blocks.append({"type": "mrkdwn", "text": f"*{title}*\n{value}"})
+
+        field_sections = []
+        for i in range(0, len(fields_blocks), 10):
+            field_sections.append({"type": "section", "fields": fields_blocks[i:i + 10]})
+        # Hard cap at 50 sections (Slack's per-message block limit is 50). Anything
+        # past that goes into a single tail note.
+        overflow_note = None
+        if len(field_sections) > 5:
+            overflow_note = f"…and {len(fields_blocks) - 50} additional fields not shown."
+            field_sections = field_sections[:5]
+
+        # --- Header ------------------------------------------------------------
+        # Header plain_text is capped at 150 chars; truncate defensively.
+        header_text = f"{verbiage} {emoji}"
+        if len(header_text) > 150:
+            header_text = header_text[:147] + "..."
+
+        # --- Context footer ----------------------------------------------------
+        actor_url = f"https://github.com/{actor}" if actor and actor != "unknown" else None
+        actor_md = f"<{actor_url}|{actor}>" if actor_url else actor
+        run_link = (
+            f"<{run_url}|View run #{run_number}>" if run_url and run_number
+            else (f"<{run_url}|View run>" if run_url else "")
+        )
+        footer_parts = [p for p in (run_link, f"Triggered by {actor_md}") if p]
+
+        blocks = [
+            {"type": "header", "text": {"type": "plain_text", "text": header_text, "emoji": True}},
+            {"type": "section", "text": {"type": "mrkdwn", "text": message[:2900] or "_(no message)_"}},
+            *field_sections,
+        ]
+        if overflow_note:
+            blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": overflow_note}]})
+        if footer_parts:
+            blocks.append({
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": " | ".join(footer_parts)}],
+            })
 
         payload = {
             "username": "GitHub Actions",
             "icon_emoji": ":github:",
-            "attachments": [{
-                "color": color,
-                "blocks": [
-                    {"type": "header", "text": {"type": "plain_text", "text": f"{verbiage} {emoji}", "emoji": True}},
-                    {"type": "section", "text": {"type": "mrkdwn", "text": message}},
-                    *([{"type": "section", "fields": fields_blocks[:10]}] if fields_blocks else []),
-                    *([{"type": "section", "fields": fields_blocks[10:20]}] if len(fields_blocks) > 10 else []),
-                    {"type": "context", "elements": [{
-                        "type": "mrkdwn",
-                        "text": f"<{run_url}|View run #{os.environ['GITHUB_RUN_NUMBER']}> | Triggered by <https://github.com/{actor}|{actor}>"
-                    }]}
-                ]
-            }]
+            "attachments": [{"color": color, "blocks": blocks}],
         }
 
+        # --- Size guard --------------------------------------------------------
+        # Slack rejects Block Kit payloads >40KB. Trim message text first if
+        # we're over budget; if still too big, swap to a minimal fallback so
+        # the alert reaches the channel rather than dropping silently.
+        serialized = json.dumps(payload)
+        if len(serialized) > 40_000:
+            print(f"::warning::Payload {len(serialized)}B exceeds Slack 40KB limit; trimming.", file=sys.stderr)
+            payload["attachments"][0]["blocks"] = [
+                {"type": "header", "text": {"type": "plain_text", "text": header_text, "emoji": True}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": message[:1500] + " …(truncated)"}},
+                *([] if not footer_parts else [{"type": "context", "elements": [{"type": "mrkdwn", "text": " | ".join(footer_parts)}]}]),
+            ]
+            serialized = json.dumps(payload)
+
         with open("/tmp/slack_payload.json", "w") as f:
-            json.dump(payload, f)
-        print("payload_file=/tmp/slack_payload.json")
+            f.write(serialized)
+        with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+            out.write(f"payload_bytes={len(serialized)}\n")
+            out.write(f"status_label={status_label}\n")
         PY
 
-        echo "payload_file=/tmp/slack_payload.json" >> "$GITHUB_OUTPUT"
+    - name: Compute dedup key
+      id: dedup
+      if: inputs.dedup_key != ''
+      shell: bash
+      env:
+        DEDUP_KEY: ${{ inputs.dedup_key }}
+        STATUS: ${{ inputs.status }}
+        WINDOW: ${{ inputs.dedup_window_minutes }}
+      run: |
+        set -euo pipefail
+        # Time-bucket so the dedup window is precise: bucket = floor(now / window).
+        # Two notifications with the same (dedup_key, status) inside the same
+        # window land on identical cache keys; the second one's restore hits and
+        # we skip the send.
+        window_seconds=$(( WINDOW * 60 ))
+        bucket=$(( $(date -u +%s) / window_seconds ))
+        fingerprint=$(printf '%s|%s|%s' "${DEDUP_KEY}" "${STATUS}" "${bucket}" | sha256sum | cut -c1-32)
+        echo "cache_key=slack-dedup-${fingerprint}" >> "$GITHUB_OUTPUT"
+        echo "bucket=${bucket}" >> "$GITHUB_OUTPUT"
 
-    - name: Send to #smart-tutor-ai
-      if: inputs.channel == 'SMART_TUTOR_AI'
+    - name: Restore dedup cache
+      id: dedup_cache
+      if: inputs.dedup_key != ''
+      uses: actions/cache/restore@v4
+      with:
+        path: .slack-dedup-marker
+        key: ${{ steps.dedup.outputs.cache_key }}
+        lookup-only: true
+
+    - name: Post to Slack
+      id: send
       shell: bash
       env:
         SLACK_WEBHOOK_URL: ${{ inputs.webhook_url }}
+        MAX_RETRIES: ${{ inputs.max_retries }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        DEDUP_HIT: ${{ steps.dedup_cache.outputs.cache-hit }}
       run: |
         set -euo pipefail
-        if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-          echo "::warning::SLACK_WEBHOOK_URL_SMART_TUTOR_AI is not configured — skipping."
+
+        if [ "${DRY_RUN}" = "true" ]; then
+          echo "::notice::Dry-run mode — payload built but not posted."
+          echo "--- payload ---"
+          cat /tmp/slack_payload.json
+          echo
+          echo "sent=false"  >> "$GITHUB_OUTPUT"
+          echo "attempts=0"  >> "$GITHUB_OUTPUT"
+          echo "http_status=" >> "$GITHUB_OUTPUT"
           exit 0
-        fi
-        if ! curl --fail -sS -X POST -H "Content-type: application/json" \
-          --data @"${{ steps.build.outputs.payload_file }}" \
-          "${SLACK_WEBHOOK_URL}"; then
-          echo "::warning::Failed to send Slack notification to #smart-tutor-ai."
         fi
 
-    - name: Send to #app-development-analytics
-      if: inputs.channel == 'APP_DEV_ANALYTICS'
-      shell: bash
-      env:
-        SLACK_WEBHOOK_URL: ${{ inputs.webhook_url }}
-      run: |
-        set -euo pipefail
-        if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
-          echo "::warning::SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS is not configured — skipping."
+        if [ "${DEDUP_HIT}" = "true" ]; then
+          echo "::notice::Suppressed by dedup window (same key+status posted recently)."
+          echo "sent=false"  >> "$GITHUB_OUTPUT"
+          echo "attempts=0"  >> "$GITHUB_OUTPUT"
+          echo "http_status=deduped" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        if ! curl --fail -sS -X POST -H "Content-type: application/json" \
-          --data @"${{ steps.build.outputs.payload_file }}" \
-          "${SLACK_WEBHOOK_URL}"; then
-          echo "::warning::Failed to send Slack notification to #app-development-analytics."
+
+        if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+          echo "::warning::Slack webhook URL is empty — skipping send."
+          echo "sent=false"  >> "$GITHUB_OUTPUT"
+          echo "attempts=0"  >> "$GITHUB_OUTPUT"
+          echo "http_status=" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
+
+        attempt=0
+        http_status=""
+        while :; do
+          attempt=$(( attempt + 1 ))
+          http_status="$(
+            curl -sS -o /tmp/slack_response.txt -w '%{http_code}' \
+              -X POST -H 'Content-Type: application/json' \
+              --max-time 15 \
+              --data @/tmp/slack_payload.json \
+              "${SLACK_WEBHOOK_URL}" || true
+          )"
+          if [ "${http_status}" = "200" ]; then
+            echo "Slack accepted notification (attempt ${attempt})."
+            break
+          fi
+
+          # 4xx (other than 429) is non-retryable — payload is malformed or the
+          # webhook is invalid. Fail loudly so callers actually notice.
+          if [ -n "${http_status}" ] && [ "${http_status}" != "429" ] \
+              && [ "${http_status}" -ge 400 ] 2>/dev/null && [ "${http_status}" -lt 500 ] 2>/dev/null; then
+            echo "::error::Slack rejected payload (HTTP ${http_status}). Body:"
+            cat /tmp/slack_response.txt || true
+            echo "sent=false" >> "$GITHUB_OUTPUT"
+            echo "attempts=${attempt}" >> "$GITHUB_OUTPUT"
+            echo "http_status=${http_status}" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if [ "${attempt}" -ge "${MAX_RETRIES}" ]; then
+            echo "::warning::Slack send failed after ${attempt} attempts (last HTTP=${http_status:-network})."
+            echo "sent=false" >> "$GITHUB_OUTPUT"
+            echo "attempts=${attempt}" >> "$GITHUB_OUTPUT"
+            echo "http_status=${http_status}" >> "$GITHUB_OUTPUT"
+            # Don't fail the workflow — alerting failure shouldn't gate the
+            # business work that produced the alert.
+            exit 0
+          fi
+
+          # Exponential backoff: 2s, 4s, 8s ...
+          sleep_for=$(( 2 ** attempt ))
+          echo "Slack returned ${http_status:-no-response}; retrying in ${sleep_for}s..."
+          sleep "${sleep_for}"
+        done
+
+        echo "sent=true"               >> "$GITHUB_OUTPUT"
+        echo "attempts=${attempt}"     >> "$GITHUB_OUTPUT"
+        echo "http_status=${http_status}" >> "$GITHUB_OUTPUT"
+
+    - name: Write dedup marker
+      if: inputs.dedup_key != '' && steps.send.outputs.sent == 'true'
+      shell: bash
+      run: |
+        # An empty file is enough — the cache hit/miss is what we read.
+        : > .slack-dedup-marker
+
+    - name: Save dedup cache
+      if: inputs.dedup_key != '' && steps.send.outputs.sent == 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: .slack-dedup-marker
+        key: ${{ steps.dedup.outputs.cache_key }}

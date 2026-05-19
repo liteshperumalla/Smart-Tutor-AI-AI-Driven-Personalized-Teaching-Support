@@ -47,7 +47,6 @@ jobs:
         if: ${{ steps.resume.outcome == 'success' && steps.resume.outputs.action == 'resumed' }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Neo4j Aura Resume Guard
           status: success
@@ -62,7 +61,6 @@ jobs:
         if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action != 'configuration_missing' }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Neo4j Aura Resume Guard
           status: failure
@@ -72,6 +70,11 @@ jobs:
             The application may fail Neo4j-backed features until the AuraDB instance is running.
           fields: >-
             [{"title":"Instance","value":"${{ steps.resume.outputs.instance_id || env.NEO4J_AURA_INSTANCE_ID }}","short":true},{"title":"Last status","value":"${{ steps.resume.outputs.status || 'unknown' }}","short":true},{"title":"Action","value":"${{ steps.resume.outputs.action || 'failed' }}","short":true}]
+          # Aura Resume Guard runs every 30 minutes. Suppress duplicate failure
+          # pages for the same instance+status within 4 hours so a multi-hour
+          # incident produces ~6 alerts, not ~8 per hour.
+          dedup_key: neo4j-aura-resume-${{ env.NEO4J_AURA_INSTANCE_ID }}
+          dedup_window_minutes: 240
 
       - name: Fail workflow when resume guard failed
         if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action != 'configuration_missing' }}
