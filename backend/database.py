@@ -329,6 +329,11 @@ class UserDatabase:
             locked_until = user.get('locked_until')
             if locked_until:
                 unlock_time = datetime.fromisoformat(locked_until)
+                # Legacy JSON rows may have naive ISO strings (written before
+                # the datetime sweep). Normalize to aware UTC so the compare
+                # below doesn't TypeError on mixed naive/aware operands.
+                if unlock_time.tzinfo is None:
+                    unlock_time = unlock_time.replace(tzinfo=timezone.utc)
                 if datetime.now(timezone.utc) < unlock_time:
                     return True
                 else:

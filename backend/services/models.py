@@ -28,7 +28,21 @@ class ChatMessage:
     @classmethod
     def from_dict(cls, data: dict) -> "ChatMessage":
         timestamp = data.get("timestamp")
-        ts = datetime.fromisoformat(timestamp) if timestamp else datetime.now(timezone.utc)
+        # Defensive parse — legacy/DynamoDB rows can carry naive ISO strings
+        # or unexpected types. Normalise to aware UTC; fall back to "now" on
+        # any parse failure so a single bad row doesn't break the session.
+        ts: datetime
+        if isinstance(timestamp, datetime):
+            ts = timestamp
+        elif isinstance(timestamp, str) and timestamp:
+            try:
+                ts = datetime.fromisoformat(timestamp)
+            except ValueError:
+                ts = datetime.now(timezone.utc)
+        else:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
         return cls(
             role=data.get("role", "assistant"),
             content=data.get("content", ""),

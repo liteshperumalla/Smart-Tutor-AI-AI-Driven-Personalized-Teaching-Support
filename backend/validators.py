@@ -86,8 +86,12 @@ class QueryInput(BaseModel):
         dangerous_patterns = ['<script', 'javascript:', 'onerror', 'onload', 'onclick', '<iframe', '<embed', '<object']
         if any(pattern in v.lower() for pattern in dangerous_patterns):
             raise ValueError('Query contains potentially dangerous content')
-        sanitized = bleach.clean(v, tags=[], attributes={}, protocols=[], strip=True)
-        return sanitized.strip()
+        sanitized = bleach.clean(v, tags=[], attributes={}, protocols=[], strip=True).strip()
+        # Reject input that was entirely HTML — bleach strips it to '' and the
+        # downstream LLM/RAG path can't do anything useful with an empty query.
+        if not sanitized:
+            raise ValueError('Query must not be empty')
+        return sanitized
 
 
 # Curated common-passwords list (subset of HaveIBeenPwned top entries plus

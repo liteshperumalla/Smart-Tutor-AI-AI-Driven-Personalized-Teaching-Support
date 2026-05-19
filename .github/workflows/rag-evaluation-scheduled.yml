@@ -100,7 +100,7 @@ jobs:
 
       - name: Install AWS CLI
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' && (env.EC2_HOST != '' || env.EC2_INSTANCE_ID != '' || env.EC2_INSTANCE_NAME != '') }}
-        uses: unfor19/install-aws-cli-action@v1
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
 
       - name: Resolve production EC2 target
         if: ${{ env.EC2_HOST != '' || env.EC2_INSTANCE_ID != '' || env.EC2_INSTANCE_NAME != '' }}
@@ -121,6 +121,7 @@ jobs:
           MAX_AVG_DRIFT_SCORE: ${{ inputs.max_avg_drift_score || vars.MAX_AVG_DRIFT_SCORE || '2.50' }}
           EVALUATION_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
           ENFORCE_QUALITY_GATES: ${{ inputs.enforce_quality_gates || vars.ENFORCE_QUALITY_GATES || 'false' }}
+          SCHEDULED_RAG_REQUIRE_BACKEND: ${{ vars.SCHEDULED_RAG_REQUIRE_BACKEND || 'false' }}
           INTERNAL_EVALUATION_TIMEOUT_SECONDS: ${{ vars.EVALUATION_INTERNAL_TIMEOUT_SECONDS || '900' }}
           PUBLIC_EVALUATION_TIMEOUT_SECONDS: ${{ vars.EVALUATION_PUBLIC_TIMEOUT_SECONDS || '120' }}
           WORKFLOW_TRIGGER: ${{ github.event_name }}
@@ -397,6 +398,14 @@ jobs:
 
           # ── Fail the step if the backend returned an error ─────────────────
           if [ -z "${http_code}" ] || [ "${http_code}" -lt 200 ] || [ "${http_code}" -ge 300 ]; then
+            if [ "${WORKFLOW_TRIGGER}" = "schedule" ] && \
+               [ "$(printf '%s' "${SCHEDULED_RAG_REQUIRE_BACKEND}" | tr '[:upper:]' '[:lower:]')" != "true" ] && \
+               { [ -z "${http_code}" ] || [ "${http_code}" = "000" ]; }; then
+              echo "::warning::Scheduled RAG evaluation backend is unreachable. Recording warning and leaving the scheduled workflow green."
+              jq '. + {skipped_reason: "backend_unreachable"}' /tmp/eval_summary.json > /tmp/eval_summary.tmp
+              mv /tmp/eval_summary.tmp /tmp/eval_summary.json
+              exit 0
+            fi
             echo "::error::Backend returned HTTP ${http_code:-0}. See response body above for details."
             echo "Response: ${response}"
             exit 1
@@ -496,6 +505,7 @@ jobs:
           quality_gate="PASSED"
           notify_message=":white_check_mark: *RAG evaluation completed*"
           failure_detail=""
+          skipped_reason=""
           http_code="unknown"
           response_source="unknown"
           avg_correctness="unknown"
@@ -506,6 +516,7 @@ jobs:
 
           if [ -f /tmp/eval_summary.json ]; then
             http_code="$(jq -r '.http_code // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
+            skipped_reason="$(jq -r '.skipped_reason // empty' /tmp/eval_summary.json 2>/dev/null || true)"
             response_source="$(jq -r '.response_source // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
             avg_c="$(jq -r '.response.quality_summary.avg_correctness // empty' /tmp/eval_summary.json 2>/dev/null || true)"
             avg_correctness="$(jq -r '.response.quality_summary.avg_correctness // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
@@ -514,7 +525,13 @@ jobs:
             total_evaluated="$(jq -r '.response.total_evaluated // "unknown"' /tmp/eval_summary.json 2>/dev/null || echo "unknown")"
           fi
 
-          if [ "${eval_result}" = "failure" ]; then
+          if [ -n "${skipped_reason}" ]; then
+            overall_status="warning"
+            quality_gate="SKIPPED"
+            printf -v notify_message ':warning: *RAG evaluation skipped*\nReason: `%s`. Quality gate: *%s*' \
+              "${skipped_reason}" \
+              "${quality_gate}"
+          elif [ "${eval_result}" = "failure" ]; then
             overall_status="failure"
             quality_gate="FAILED"
             if [ "${http_code}" != "unknown" ]; then

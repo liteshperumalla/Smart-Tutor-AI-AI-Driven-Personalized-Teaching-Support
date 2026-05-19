@@ -259,9 +259,16 @@ class SuspiciousActivityDetectionMiddleware:
                 self._failed_attempts.pop(next(iter(self._failed_attempts)), None)
         if len(self._blocked_ips) > self.max_tracked_ips:
             now = _utcnow()
+            # Expire any entries past their block_until first…
             self._blocked_ips = {
                 ip: until for ip, until in self._blocked_ips.items() if until > now
             }
+            # …then enforce the hard cap even if everything is still in window.
+            # Drop the earliest-expiring entries: under a distributed brute-force,
+            # all entries can be unexpired but we still need bounded memory.
+            while len(self._blocked_ips) > self.max_tracked_ips:
+                victim = min(self._blocked_ips, key=self._blocked_ips.get)
+                self._blocked_ips.pop(victim, None)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not self.enabled:

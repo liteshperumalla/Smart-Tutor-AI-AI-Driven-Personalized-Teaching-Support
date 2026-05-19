@@ -30,7 +30,8 @@ class SecurityLogFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            # Aware ISO is `+00:00`; replace with `Z` for RFC 3339 conformance.
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "event_type": getattr(record, "event_type", "unknown"),
             "message": record.getMessage(),

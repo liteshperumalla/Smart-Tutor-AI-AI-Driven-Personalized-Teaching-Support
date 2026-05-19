@@ -18,7 +18,9 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            # Aware ISO with `+00:00`; replace with `Z` for RFC 3339 conformance
+            # (appending `Z` to an aware isoformat produces invalid `+00:00Z`).
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),

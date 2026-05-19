@@ -14,6 +14,23 @@ from backend.services.models import ChatMessage, ChatSession, QuizResult
 from .base import BaseStorageBackend
 
 
+def _parse_utc_or_now(value: Optional[str]) -> datetime:
+    """Parse an ISO timestamp coercing naive values to aware UTC.
+
+    Legacy persisted sessions may have naive ISO strings; sorting a mix of
+    naive and aware datetimes raises TypeError. Returns `now` if the value
+    is missing or malformed."""
+    if not value:
+        return datetime.now(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
 class FileSystemStorageBackend(BaseStorageBackend):
     """Storage backend that mirrors the current JSON/FS layout."""
 
@@ -119,8 +136,11 @@ class FileSystemStorageBackend(BaseStorageBackend):
             id=session_id,
             title=title,
             messages=messages,
-            created_at=datetime.fromisoformat(created) if created else datetime.now(timezone.utc),
-            updated_at=datetime.fromisoformat(updated) if updated else datetime.now(timezone.utc),
+            # Legacy JSON rows may have naive ISO strings; normalise to aware
+            # UTC so downstream sorting of `updated_at` doesn't TypeError on
+            # mixed naive/aware values.
+            created_at=_parse_utc_or_now(created),
+            updated_at=_parse_utc_or_now(updated),
         )
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
