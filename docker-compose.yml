@@ -116,6 +116,17 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: smart-tutor-backend
+    # Defaults to json-file so local dev works without AWS credentials.
+    # Set BACKEND_LOG_DRIVER=awslogs in the EC2 .env to ship to CloudWatch;
+    # the smart-tutor-ec2-cwagent-profile instance role supplies the credentials.
+    logging:
+      driver: "${BACKEND_LOG_DRIVER:-json-file}"
+      options:
+        awslogs-region: "${AWS_REGION:-us-east-1}"
+        awslogs-group: "${BACKEND_LOG_GROUP:-/smart-ai-tutor/backend}"
+        awslogs-stream: "backend"
+        awslogs-create-group: "true"
+        tag: "smart-tutor-backend"
     ports:
       - "127.0.0.1:${BACKEND_PORT_EXPOSE:-8010}:8000"
     env_file:

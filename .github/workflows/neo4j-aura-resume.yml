@@ -31,8 +31,17 @@ jobs:
         id: resume
         continue-on-error: true
         run: |
-          set -euo pipefail
+          set +e
           python3 scripts/resume_neo4j_aura.py
+          rc=$?
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          # Exit code 2 means the script ran but credentials are not configured
+          # yet. Treat that as a clean skip so the schedule does not page Slack.
+          if [ "${rc}" -eq 2 ]; then
+            echo "::warning::Neo4j Aura credentials not configured; skipping resume guard."
+            exit 0
+          fi
+          exit "${rc}"
 
       - name: Notify deployment analytics when Aura was resumed
         if: ${{ steps.resume.outcome == 'success' && steps.resume.outputs.action == 'resumed' }}
@@ -50,7 +59,7 @@ jobs:
             [{"title":"Instance","value":"${{ steps.resume.outputs.instance_name || steps.resume.outputs.instance_id }}","short":true},{"title":"Status","value":"${{ steps.resume.outputs.status }}","short":true}]
 
       - name: Notify deployment analytics when Aura resume failed
-        if: ${{ steps.resume.outcome != 'success' }}
+        if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action != 'configuration_missing' }}
         uses: ./.github/actions/send-slack-notification
         with:
           channel: APP_DEV_ANALYTICS
@@ -65,5 +74,5 @@ jobs:
             [{"title":"Instance","value":"${{ steps.resume.outputs.instance_id || env.NEO4J_AURA_INSTANCE_ID }}","short":true},{"title":"Last status","value":"${{ steps.resume.outputs.status || 'unknown' }}","short":true},{"title":"Action","value":"${{ steps.resume.outputs.action || 'failed' }}","short":true}]
 
       - name: Fail workflow when resume guard failed
-        if: ${{ steps.resume.outcome != 'success' }}
+        if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action != 'configuration_missing' }}
         run: exit 1

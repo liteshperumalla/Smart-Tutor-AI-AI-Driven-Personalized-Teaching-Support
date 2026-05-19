@@ -423,6 +423,12 @@ jobs:
                 --restart unless-stopped \
                 --network smart-tutor_smart-tutor-network \
                 --env-file ~/smart-tutor.env \
+                --log-driver=awslogs \
+                --log-opt awslogs-region=us-east-1 \
+                --log-opt awslogs-group=/smart-ai-tutor/backend \
+                --log-opt awslogs-stream=backend \
+                --log-opt awslogs-create-group=true \
+                --log-opt tag=smart-tutor-backend \
                 --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
                 --health-interval 5s \
                 --health-timeout 3s \
@@ -516,6 +522,12 @@ jobs:
               --restart unless-stopped \
               --network smart-tutor_smart-tutor-network \
               --env-file ~/smart-tutor.env \
+              --log-driver=awslogs \
+              --log-opt awslogs-region=us-east-1 \
+              --log-opt awslogs-group=/smart-ai-tutor/backend \
+              --log-opt awslogs-stream=backend-candidate \
+              --log-opt awslogs-create-group=true \
+              --log-opt tag=smart-tutor-backend-candidate \
               --health-cmd 'curl -sf http://127.0.0.1:8000/ready >/dev/null || exit 1' \
               --health-interval 5s \
               --health-timeout 3s \
