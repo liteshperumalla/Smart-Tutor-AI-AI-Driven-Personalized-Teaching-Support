@@ -16,12 +16,15 @@ jobs:
   resume-aura:
     name: Resume Neo4j Aura If Paused
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     env:
       NEO4J_AURA_INSTANCE_ID: ${{ secrets.NEO4J_AURA_INSTANCE_ID || vars.NEO4J_AURA_INSTANCE_ID || 'b0e9fb13' }}
       NEO4J_AURA_CLIENT_ID: ${{ secrets.NEO4J_AURA_CLIENT_ID || secrets.NEO4J_AURA_API_CLIENT_ID }}
       NEO4J_AURA_CLIENT_SECRET: ${{ secrets.NEO4J_AURA_CLIENT_SECRET || secrets.NEO4J_AURA_API_CLIENT_SECRET }}
-      NEO4J_AURA_POLL_TIMEOUT_SECONDS: ${{ vars.NEO4J_AURA_POLL_TIMEOUT_SECONDS || '420' }}
+      # Aura free-tier instances routinely take 7-12 minutes to resume from
+      # a paused state. The previous 7-minute timeout was right at the edge
+      # and tripped on cold starts. 15 minutes leaves headroom.
+      NEO4J_AURA_POLL_TIMEOUT_SECONDS: ${{ vars.NEO4J_AURA_POLL_TIMEOUT_SECONDS || '900' }}
       NEO4J_AURA_POLL_INTERVAL_SECONDS: ${{ vars.NEO4J_AURA_POLL_INTERVAL_SECONDS || '15' }}
     steps:
       - name: Checkout code

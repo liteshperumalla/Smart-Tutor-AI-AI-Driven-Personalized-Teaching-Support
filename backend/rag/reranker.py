@@ -11,6 +11,7 @@ Author: Smart AI Tutor Team
 Date: December 28, 2025
 """
 
+import os
 import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
@@ -79,7 +80,8 @@ class CrossEncoderReranker:
         self,
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2",
         device: str = "cpu",
-        max_length: int = 512
+        max_length: int = 512,
+        use_onnx: Optional[bool] = None,
     ):
         """
         Initialize cross-encoder reranker
@@ -88,7 +90,21 @@ class CrossEncoderReranker:
             model_name: HuggingFace model name
             device: Device to run on ('cpu', 'cuda', 'mps')
             max_length: Maximum sequence length
+            use_onnx: If True, load an ONNX-quantized variant via optimum.
+                Set None to read RERANKER_USE_ONNX env var (default off).
+                ONNX gives 2-3x CPU speedup but requires `optimum[onnxruntime]`.
         """
+        self.model_name = model_name
+        self.device = device
+        self.max_length = max_length
+        self.backend = "none"  # set to "onnx" or "sentence_transformers" on success
+
+        if use_onnx is None:
+            use_onnx = os.getenv("RERANKER_USE_ONNX", "false").lower() == "true"
+
+        if use_onnx and self._try_load_onnx(model_name, max_length):
+            return
+
         if not CROSS_ENCODER_AVAILABLE:
             logger.error("sentence-transformers not installed. Cross-encoder reranking unavailable.")
             self.model = None
@@ -96,13 +112,61 @@ class CrossEncoderReranker:
 
         try:
             self.model = CrossEncoder(model_name, max_length=max_length, device=device)
+            self.backend = "sentence_transformers"
             logger.info(f"CrossEncoderReranker initialized: {model_name} on {device}")
         except Exception as e:
             logger.error(f"Failed to load cross-encoder model: {e}")
             self.model = None
 
-        self.model_name = model_name
-        self.device = device
+    def _try_load_onnx(self, model_name: str, max_length: int) -> bool:
+        """Attempt to load the ONNX-quantized variant via optimum.
+
+        Returns True on success and sets self.model / self.backend; returns
+        False to let the caller fall back to sentence_transformers.
+        """
+        try:
+            from optimum.onnxruntime import ORTModelForSequenceClassification
+            from transformers import AutoTokenizer
+        except ImportError:
+            logger.warning(
+                "RERANKER_USE_ONNX=true but `optimum[onnxruntime]` is not installed; "
+                "falling back to sentence_transformers backend."
+            )
+            return False
+
+        try:
+            # `export=True` triggers an on-the-fly ONNX export the first time
+            # the model is loaded; subsequent loads read the cached .onnx file.
+            self._ort_tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self._ort_model = ORTModelForSequenceClassification.from_pretrained(
+                model_name, export=True
+            )
+            self._ort_max_length = max_length
+            self.model = self  # sentinel: predict() is dispatched on self
+            self.backend = "onnx"
+            logger.info(f"CrossEncoderReranker initialized (ONNX): {model_name}")
+            return True
+        except Exception as exc:
+            logger.warning("Failed to initialize ONNX cross-encoder (%s); using sentence_transformers.", exc)
+            return False
+
+    def _predict_onnx(self, pairs: List[List[str]]):
+        """Score query/document pairs through the ONNX model."""
+        import torch  # available transitively via sentence_transformers / transformers
+        with torch.no_grad():
+            inputs = self._ort_tokenizer(
+                [p[0] for p in pairs],
+                [p[1] for p in pairs],
+                padding=True,
+                truncation=True,
+                max_length=self._ort_max_length,
+                return_tensors="pt",
+            )
+            outputs = self._ort_model(**inputs)
+            # Cross-encoders typically emit a single logit per pair; squeeze
+            # the class dimension if present.
+            scores = outputs.logits.squeeze(-1)
+            return scores.cpu().numpy()
 
     def rerank(
         self,
@@ -131,9 +195,13 @@ class CrossEncoderReranker:
         # Prepare query-document pairs
         pairs = [[query, r.get('text', '')] for r in results]
 
-        # Score with cross-encoder
+        # Score — ONNX backend uses our own predict path; sentence_transformers
+        # backend uses the CrossEncoder model directly.
         try:
-            scores = self.model.predict(pairs)
+            if self.backend == "onnx":
+                scores = self._predict_onnx(pairs)
+            else:
+                scores = self.model.predict(pairs)
         except Exception as e:
             logger.error(f"Cross-encoder prediction failed: {e}")
             return self._convert_to_ranked_results(results, "none")
