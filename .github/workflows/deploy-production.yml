@@ -20,6 +20,14 @@ env:
   VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+  EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+  EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+  EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+  EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+  EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
 
 concurrency:
   group: production-deploy
@@ -88,23 +96,33 @@ jobs:
 
       - name: Validate required deployment secrets
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           set -euo pipefail
 
           missing_backend=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+          for name in EC2_USER EC2_SSH_KEY; do
             if [ -z "${!name:-}" ]; then
               missing_backend+=("$name")
             fi
           done
+          if [ -z "${EC2_HOST:-}" ] && [ -z "${EC2_INSTANCE_ID:-}" ] && [ -z "${EC2_INSTANCE_NAME:-}" ]; then
+            missing_backend+=("EC2_HOST or EC2_INSTANCE_ID/EC2_INSTANCE_NAME")
+          fi
 
           if [ "${#missing_backend[@]}" -gt 0 ]; then
             echo "::error::Missing required backend deploy secrets: ${missing_backend[*]}"
             exit 1
           fi
+
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: unfor19/install-aws-cli-action@v1
+
+      - name: Resolve production EC2 target
+        id: ec2-target
+        run: scripts/ci/resolve_ec2_target.sh
 
       - name: Validate optional Vercel configuration
         run: |
@@ -243,7 +261,7 @@ jobs:
       - name: Transfer backend image bundle to EC2
         id: transfer_backend_image
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           ARCHIVE_PATH: ${{ steps.export_backend_image.outputs.archive_path }}
@@ -256,9 +274,14 @@ jobs:
           chmod 600 "${key_file}"
 
           remote_archive="/tmp/${ARCHIVE_NAME}"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+          if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+            echo "::error::Unable to reach production EC2 over SSH. Verify the resolved host, instance state, and security group ingress for GitHub-hosted runners on port 22."
+            exit 1
+          fi
+
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
             "set -euo pipefail;
              rm -f /tmp/backend-image-*.tar.gz /tmp/backend-image-*.tar /tmp/drone-scp-* /tmp/*.tmp 2>/dev/null || true;
              docker image prune -af >/dev/null 2>&1 || true;
@@ -266,11 +289,9 @@ jobs:
              docker builder prune -af >/dev/null 2>&1 || true;
              df -h / /tmp || true"
 
-          scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
+          scp "${ssh_opts[@]}" -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
             "set -euo pipefail;
              test -f '${remote_archive}';
              ls -lh '${remote_archive}';
@@ -285,7 +306,7 @@ jobs:
           BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
           BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
@@ -535,6 +556,10 @@ jobs:
 
             echo "=== Pruning all unused images/layers ==="
             docker_with_timeout 10m docker image prune -af || true
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Deployment summary
         if: always()
