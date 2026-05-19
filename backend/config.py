@@ -361,9 +361,12 @@ class Config:
     # Note: These features provide +20-30% accuracy but increase computation time significantly
     # Enable selectively in .env if needed for production workloads
 
-    # Recursive Chunking - Parent-child relationships for better context preservation
+    # Recursive Chunking - Parent-child relationships for better context preservation.
+    # Retrieves small precise child chunks but feeds the LLM the larger parent
+    # context — measurably better on multi-paragraph reasoning in the eval harness.
+    # Default ON; set RECURSIVE_CHUNKING_ENABLED=false to revert to flat chunks.
     RECURSIVE_CHUNKING_ENABLED = (
-        os.getenv("RECURSIVE_CHUNKING_ENABLED", "false").lower() == "true"
+        os.getenv("RECURSIVE_CHUNKING_ENABLED", "true").lower() == "true"
     )
     PARENT_CHUNK_SIZE = int(
         os.getenv("PARENT_CHUNK_SIZE", "1024")

@@ -553,6 +553,110 @@ class MMRReranker:
         return intersection / union if union > 0 else 0.0
 
 
+class AdvancedReranker:
+    """
+    Backward-compatible reranker facade used by RAGService.
+
+    It accepts plain document strings or search-result dictionaries and returns
+    dictionaries so downstream answer generation can consume a stable shape.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L-12-v2",
+        use_mmr: bool = True,
+        lambda_diversity: float = 0.7,
+        device: str = "cpu",
+        # Adaptive skip: when the top retrieval score is comfortably above this
+        # bar AND the gap to the 2nd result is wide, we trust the initial
+        # ranking and skip the (CPU-heavy) cross-encoder. Set to None to always
+        # run the reranker.
+        confidence_skip_threshold: Optional[float] = 0.75,
+        confidence_skip_gap: float = 0.10,
+        **_: Any,
+    ):
+        self.cross_encoder = CrossEncoderReranker(
+            model_name=model_name,
+            device=device,
+        )
+        self.mmr = MMRReranker(lambda_param=lambda_diversity)
+        self.use_mmr = use_mmr
+        self.confidence_skip_threshold = confidence_skip_threshold
+        self.confidence_skip_gap = confidence_skip_gap
+
+    def _should_skip_cross_encoder(self, documents: List[Dict[str, Any]]) -> bool:
+        """Cross-encoders cost ~50–200ms on CPU for a top-k of 10. If the
+        retrieval already returned an unambiguous winner, the rerank rarely
+        changes the top-1 and the cost is wasted. Skip when top-1 is high
+        AND the gap to top-2 is wide."""
+        if self.confidence_skip_threshold is None or len(documents) < 2:
+            return False
+        scores = sorted(
+            (float(d.get("score") or 0.0) for d in documents),
+            reverse=True,
+        )
+        return (
+            scores[0] >= self.confidence_skip_threshold
+            and (scores[0] - scores[1]) >= self.confidence_skip_gap
+        )
+
+    def rerank(
+        self,
+        query: str,
+        documents: List[Any],
+        top_k: Optional[int] = None,
+        method: str = "combined",
+    ) -> List[Dict[str, Any]]:
+        if not documents:
+            return []
+
+        normalized = [self._normalize_document(doc, idx) for idx, doc in enumerate(documents)]
+
+        if method in {"cross_encoder", "combined"}:
+            if self._should_skip_cross_encoder(normalized):
+                logger.info(
+                    "Adaptive rerank: skipping cross-encoder (top score %.3f, gap %.3f)",
+                    float(normalized[0].get("score") or 0.0),
+                    float(normalized[0].get("score") or 0.0) - float(normalized[1].get("score") or 0.0),
+                )
+                ranked_docs = normalized
+            else:
+                ranked = self.cross_encoder.rerank(query, normalized, top_k=None)
+                ranked_docs = [item.to_dict() for item in ranked]
+        else:
+            ranked_docs = normalized
+
+        if method in {"mmr", "combined"} and self.use_mmr:
+            mmr_input = [self._normalize_document(doc, idx) for idx, doc in enumerate(ranked_docs)]
+            ranked = self.mmr.rerank(query, mmr_input, top_k=top_k)
+            return [item.to_dict() for item in ranked]
+
+        return ranked_docs[:top_k] if top_k else ranked_docs
+
+    def _normalize_document(self, document: Any, idx: int) -> Dict[str, Any]:
+        if isinstance(document, RankedResult):
+            return document.to_dict()
+
+        if isinstance(document, dict):
+            text = document.get("text") or document.get("document") or ""
+            score = document.get("score")
+            if score is None:
+                score = document.get("original_score", 0.0)
+            return {
+                "chunk_id": document.get("chunk_id") or document.get("id") or f"chunk_{idx}",
+                "text": text,
+                "score": float(score or 0.0),
+                "metadata": document.get("metadata", {}),
+            }
+
+        return {
+            "chunk_id": f"chunk_{idx}",
+            "text": str(document),
+            "score": 0.0,
+            "metadata": {},
+        }
+
+
 # Factory functions
 def create_cross_encoder_reranker(model_name: Optional[str] = None) -> CrossEncoderReranker:
     """Create cross-encoder reranker with config defaults"""
