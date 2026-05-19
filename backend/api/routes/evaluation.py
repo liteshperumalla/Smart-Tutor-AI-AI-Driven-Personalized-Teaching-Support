@@ -1058,6 +1058,55 @@ def run_scheduled_dataset_quality_evaluation(
     return {**result, "run_record": record}
 
 
+class ProductionSampleRequest(BaseModel):
+    # Sampling knobs
+    sample_size: Optional[int] = Field(
+        default=None, ge=1, le=200,
+        description="Number of production query/answer pairs to evaluate. Defaults to EVAL_PRODUCTION_SAMPLE_SIZE.",
+    )
+    lookback_hours: Optional[int] = Field(
+        default=None, ge=1, le=720,
+        description="Only sample sessions updated within this many hours. Defaults to EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS.",
+    )
+    # Reproducibility
+    seed: Optional[int] = Field(
+        default=None,
+        description="Optional RNG seed for repeatable samples (omit for true random).",
+    )
+    # Judge config
+    judge_mode: Optional[str] = Field(
+        default=None,
+        description="`combined` (1 LLM call/query) or `split` (4 calls/query, anti-halo). Defaults to EVAL_JUDGE_MODE.",
+    )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional Bedrock model ID for the judge.",
+    )
+
+
+@router.post("/sample-production")
+def sample_production_evaluation(
+    payload: ProductionSampleRequest,
+    token=Depends(get_evaluation_cron_token),
+):
+    """Monte Carlo sample of real production traffic, then LLM-judge it.
+
+    Unlike `/run-dataset-quality` which evaluates against the static
+    `test_dataset.json`, this samples N random user-question / assistant-
+    answer pairs from the live chat store and scores them with the same
+    judge. Designed for continuous quality auditing: spot drift, sudden
+    regression in real conditions, etc.
+    """
+    from backend.services.production_sampler import run_production_sample_evaluation
+    return run_production_sample_evaluation(
+        n=payload.sample_size,
+        since_hours=payload.lookback_hours,
+        judge_mode=payload.judge_mode,
+        model_id=payload.model_id,
+        rng_seed=payload.seed,
+    )
+
+
 @router.get("/runs")
 def list_evaluation_runs(
     limit: int = Query(default=20, ge=1, le=100),

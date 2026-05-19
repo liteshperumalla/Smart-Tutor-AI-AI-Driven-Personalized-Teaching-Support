@@ -112,27 +112,101 @@ def _compute_retrieval_metrics(
     }
 
 
+def _semantic_topic_coverage(
+    topics: List[str],
+    sentences: List[str],
+    sim_threshold: float,
+) -> Optional[Dict[str, List[str]]]:
+    """Cosine-similarity topic coverage using Bedrock Titan embeddings.
+
+    Returns {"covered": [...], "missing": [...]} on success, or None if the
+    embedding service is unavailable. Falling back to substring matching is
+    handled by the caller — we only handle the success path here so the
+    fallback stays a single code path.
+    """
+    if not topics or not sentences:
+        return None
+    try:
+        from backend.bedrock_embeddings import get_bedrock_embeddings
+        import numpy as np
+    except ImportError:
+        return None
+
+    try:
+        embedder = get_bedrock_embeddings()
+        topic_vecs = np.array(embedder.embed_documents(list(topics)))
+        sent_vecs = np.array(embedder.embed_documents(list(sentences)))
+    except Exception as exc:
+        # Embedding can fail (Bedrock outage, throttling, malformed input);
+        # the caller treats None as "fall back to substring".
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Semantic topic-coverage embed failed (%s); falling back to substring.", exc
+        )
+        return None
+
+    # Normalize and compute pairwise cosine similarity.
+    def _norm(m: "np.ndarray") -> "np.ndarray":
+        n = np.linalg.norm(m, axis=1, keepdims=True)
+        n[n == 0] = 1.0
+        return m / n
+
+    sims = _norm(topic_vecs) @ _norm(sent_vecs).T  # shape (topics, sentences)
+    best_per_topic = sims.max(axis=1)
+    covered = [topics[i] for i, s in enumerate(best_per_topic) if s >= sim_threshold]
+    missing = [topics[i] for i, s in enumerate(best_per_topic) if s < sim_threshold]
+    return {"covered": covered, "missing": missing}
+
+
 def _compute_generation_metrics(
     response_text: str, expected_topics: List[str]
 ) -> Dict[str, Any]:
     response_lower = response_text.lower()
     normalized_topics = [(topic, topic.lower()) for topic in expected_topics]
-    covered_topics = [
+    # Substring metric — kept on the response object even when semantic mode
+    # is enabled, so existing dashboards / quality gates don't break.
+    substring_covered = [
         topic for topic, token in normalized_topics if token in response_lower
     ]
+    substring_coverage = (
+        len(substring_covered) / len(expected_topics) if expected_topics else 0.0
+    )
+
+    sentences_text = [s.strip() for s in re.split(r"[.!?]+", response_text) if s.strip()]
+
+    # Semantic coverage path — embeds topics + sentences and counts a topic
+    # as covered when any sentence has cosine similarity >= threshold.
+    # Catches synonyms like "ML" vs "machine learning" that substring misses.
+    use_semantic = getattr(config, "EVAL_TOPIC_COVERAGE_MODE", "substring") == "semantic"
+    semantic_result = None
+    if use_semantic and expected_topics and sentences_text:
+        semantic_result = _semantic_topic_coverage(
+            expected_topics,
+            sentences_text,
+            sim_threshold=getattr(config, "EVAL_TOPIC_COVERAGE_SIM_THRESHOLD", 0.55),
+        )
+
+    if semantic_result is not None:
+        covered_topics = semantic_result["covered"]
+        missing_topics = semantic_result["missing"]
+        coverage_method = "semantic"
+    else:
+        covered_topics = substring_covered
+        missing_topics = [topic for topic, token in normalized_topics if token not in response_lower]
+        coverage_method = "substring"
+
     coverage = len(covered_topics) / len(expected_topics) if expected_topics else 0.0
 
     words = [word for word in response_text.split() if word]
-    sentences = [s for s in re.split(r"[.!?]+", response_text) if s.strip()]
-    avg_sentence_length = len(words) / max(1, len(sentences))
+    avg_sentence_length = len(words) / max(1, len(sentences_text))
     clarity_score = max(1.0, min(5.0, round(5.5 - 0.1 * avg_sentence_length, 2)))
 
     return {
         "topic_coverage": round(coverage, 3),
+        "topic_coverage_method": coverage_method,
+        "topic_coverage_substring": round(substring_coverage, 3),
         "covered_topics": covered_topics,
-        "missing_topics": [
-            topic for topic, token in normalized_topics if token not in response_lower
-        ],
+        "missing_topics": missing_topics,
         "relevance_score": round(min(5.0, max(1.0, coverage * 5)), 2),
         "completeness": coverage >= 0.75,
         "hallucination_flag": coverage < 0.6,
