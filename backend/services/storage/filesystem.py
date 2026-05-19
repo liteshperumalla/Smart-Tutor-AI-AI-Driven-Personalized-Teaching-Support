@@ -38,6 +38,18 @@ class FileSystemStorageBackend(BaseStorageBackend):
     def _sanitize(self, value: str) -> str:
         return "".join(c if c.isalnum() or c in "-_." else "_" for c in value)
 
+    def _sanitize_session_id(self, session_id: str) -> str:
+        """Strip any path separators or control chars from session ids before
+        they touch disk. Defense-in-depth against path traversal: a crafted
+        session_id like `../../etc/passwd` would otherwise escape the chat dir.
+        """
+        if not session_id or not isinstance(session_id, str):
+            raise ValueError("session_id must be a non-empty string")
+        cleaned = self._sanitize(session_id).strip(".")
+        if not cleaned:
+            raise ValueError(f"session_id is invalid: {session_id!r}")
+        return cleaned
+
     def _user_dir(self, username: str) -> Path:
         base = self.root / self._sanitize(username)
         needs_migration = False
@@ -88,7 +100,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
         return sessions
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
-        path = self._chat_dir(username) / f"{session_id}.json"
+        path = self._chat_dir(username) / f"{self._sanitize_session_id(session_id)}.json"
         if not path.exists():
             return None
         with path.open("r", encoding="utf-8") as f:
@@ -118,7 +130,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
             json.dump(payload, f, indent=2, ensure_ascii=False)
 
     def delete_chat_session(self, username: str, session_id: str) -> bool:
-        path = self._chat_dir(username) / f"{session_id}.json"
+        path = self._chat_dir(username) / f"{self._sanitize_session_id(session_id)}.json"
         if path.exists():
             path.unlink()
             return True

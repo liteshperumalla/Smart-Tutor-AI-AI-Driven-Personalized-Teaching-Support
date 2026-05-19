@@ -1,11 +1,29 @@
 from __future__ import annotations
 
 import threading
+import weakref
 from datetime import datetime, timezone
 from typing import Iterable, Optional
 
 from backend.services import get_storage_backend
 from backend.services.models import ChatMessage, ChatSession
+
+
+# Per-(user, session) lock registry. Two concurrent requests on the same
+# session would otherwise load → append → save in parallel and lose one
+# side's messages. WeakValueDictionary lets idle locks GC away.
+_SESSION_LOCKS: "weakref.WeakValueDictionary[tuple[str, str], threading.RLock]" = weakref.WeakValueDictionary()
+_SESSION_LOCKS_GUARD = threading.Lock()
+
+
+def _get_session_lock(username: str, session_id: str) -> threading.RLock:
+    key = (username, session_id)
+    with _SESSION_LOCKS_GUARD:
+        lock = _SESSION_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _SESSION_LOCKS[key] = lock
+    return lock
 
 
 def generate_response_stream_and_sources(*args, **kwargs):
@@ -64,6 +82,19 @@ class ChatService:
     def save_session(self, username: str, session: ChatSession) -> None:
         session.updated_at = datetime.now(timezone.utc)
         self.storage.save_chat_session(username, session)
+
+    def append_and_save(
+        self, username: str, session_id: str, message: ChatMessage
+    ) -> Optional[ChatSession]:
+        """Atomically append a message and persist, serializing concurrent
+        writers on the same session so neither side's message is lost."""
+        with _get_session_lock(username, session_id):
+            session = self.load_session(username, session_id)
+            if session is None:
+                return None
+            self.append_message(session, message)
+            self.save_session(username, session)
+            return session
 
     def create_session(self, username: str, title: Optional[str] = None) -> ChatSession:
         session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")

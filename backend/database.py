@@ -157,9 +157,12 @@ class UserDatabase:
                 logger.warning(f"Attempt to create existing user: {username}")
                 raise UserAlreadyExistsError(username)
 
+            normalized_hash = hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8')
             user_data = {
-                'password_hash': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
-                'hashed_password': hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8'),
+                # Only `password_hash` is canonical; the read paths still tolerate
+                # legacy users that have `hashed_password` set, so removing the
+                # duplicate write is backward-compatible.
+                'password_hash': normalized_hash,
                 'email': email or '',
                 'display_name': '',
                 'phone_number': '',
@@ -241,10 +244,10 @@ class UserDatabase:
             if username not in users:
                 raise UserNotFoundError(username)
 
-            # Update only provided fields
+            # Update only provided fields. We intentionally no longer mirror
+            # password_hash -> hashed_password; the legacy `hashed_password`
+            # field stays readable for old users but new writes are single-keyed.
             normalized_updates = dict(updates)
-            if "password_hash" in normalized_updates and "hashed_password" not in normalized_updates:
-                normalized_updates["hashed_password"] = normalized_updates["password_hash"]
 
             for key, value in normalized_updates.items():
                 if key != 'username':  # Don't allow username change
@@ -460,6 +463,8 @@ class ChatSessionDatabase:
 # Singleton instances
 _user_db = None
 _chat_db = None
+_user_db_lock = threading.Lock()
+_chat_db_lock = threading.Lock()
 
 
 def get_user_db():
@@ -477,50 +482,61 @@ def get_user_db():
     """
     global _user_db
     if _user_db is None:
-        backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
-        is_production = getattr(config, "ENVIRONMENT", "").lower() == "production"
+        with _user_db_lock:
+            if _user_db is not None:
+                return _user_db
+            return _init_user_db()
+    return _user_db
 
-        if is_production and backend_name not in ("postgres", "hybrid"):
-            raise RuntimeError(
-                f"STORAGE_BACKEND={backend_name!r} is not allowed in production. "
-                "Set STORAGE_BACKEND=postgres or hybrid."
-            )
 
-        if backend_name == "hybrid":
-            try:
-                from .services.storage.hybrid import get_hybrid_backend
-                _user_db = get_hybrid_backend()
-                logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
-            except Exception as e:
-                if is_production:
-                    raise RuntimeError(
-                        "Failed to initialize hybrid storage backend in production "
-                        "(refusing to fall back to filesystem)."
-                    ) from e
-                logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
-                _user_db = UserDatabase()
-        elif backend_name == "postgres":
-            try:
-                from .services.storage.postgres import get_postgres_backend
-                _user_db = get_postgres_backend()
-                logger.info("Using PostgreSQL storage backend for users")
-            except Exception as e:
-                if is_production:
-                    raise RuntimeError(
-                        "Failed to initialize Postgres storage backend in production "
-                        "(refusing to fall back to filesystem)."
-                    ) from e
-                logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
-                _user_db = UserDatabase()
-        else:
-            # Non-production only: legacy filesystem backend
+def _init_user_db():
+    global _user_db
+    backend_name = getattr(config, "STORAGE_BACKEND", "filesystem").lower()
+    is_production = getattr(config, "ENVIRONMENT", "").lower() == "production"
+
+    if is_production and backend_name not in ("postgres", "hybrid"):
+        raise RuntimeError(
+            f"STORAGE_BACKEND={backend_name!r} is not allowed in production. "
+            "Set STORAGE_BACKEND=postgres or hybrid."
+        )
+
+    if backend_name == "hybrid":
+        try:
+            from .services.storage.hybrid import get_hybrid_backend
+            _user_db = get_hybrid_backend()
+            logger.info("Using hybrid storage backend (PostgreSQL + DynamoDB)")
+        except Exception as e:
+            if is_production:
+                raise RuntimeError(
+                    "Failed to initialize hybrid storage backend in production "
+                    "(refusing to fall back to filesystem)."
+                ) from e
+            logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
             _user_db = UserDatabase()
+    elif backend_name == "postgres":
+        try:
+            from .services.storage.postgres import get_postgres_backend
+            _user_db = get_postgres_backend()
+            logger.info("Using PostgreSQL storage backend for users")
+        except Exception as e:
+            if is_production:
+                raise RuntimeError(
+                    "Failed to initialize Postgres storage backend in production "
+                    "(refusing to fall back to filesystem)."
+                ) from e
+            logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
+            _user_db = UserDatabase()
+    else:
+        # Non-production only: legacy filesystem backend
+        _user_db = UserDatabase()
     return _user_db
 
 
 def get_chat_db() -> ChatSessionDatabase:
-    """Get singleton chat database instance"""
+    """Get singleton chat database instance (double-checked locking)."""
     global _chat_db
     if _chat_db is None:
-        _chat_db = ChatSessionDatabase()
+        with _chat_db_lock:
+            if _chat_db is None:
+                _chat_db = ChatSessionDatabase()
     return _chat_db

@@ -267,7 +267,9 @@ class JWTService:
 
 
 # Singleton instance
+import threading as _threading
 _jwt_service = None
+_jwt_service_lock = _threading.Lock()
 
 
 def _decode_unverified_payload(token: str) -> Dict[str, Any]:
@@ -287,8 +289,10 @@ def _decode_unverified_payload(token: str) -> Dict[str, Any]:
 
 
 def get_jwt_service() -> JWTService:
-    """Get singleton JWT service instance"""
+    """Get singleton JWT service instance (double-checked locking)."""
     global _jwt_service
     if _jwt_service is None:
-        _jwt_service = JWTService()
+        with _jwt_service_lock:
+            if _jwt_service is None:
+                _jwt_service = JWTService()
     return _jwt_service

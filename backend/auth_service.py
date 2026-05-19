@@ -5,6 +5,7 @@ account lockout, and session management
 """
 
 import bcrypt
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, Tuple
 import secrets
@@ -35,7 +36,11 @@ class AuthService:
     def __init__(self):
         self.user_db = get_user_db()
         self.sessions: Dict[str, Dict[str, Any]] = {}  # Keep for backward compatibility during migration
-        self._rate_limiter: Dict[str, list] = {}
+        # In-memory fallback used only when Redis is unavailable. Each worker keeps
+        # its own copy, so an attacker effectively gets N × RATE_LIMIT_REQUESTS
+        # attempts across N workers. Redis-backed path below is the real defense.
+        self._rate_limiter_local: Dict[str, list] = {}
+        self._redis_client = None  # set below if Redis is available
         self.jwt_service = get_jwt_service()
 
         # Initialize JWT blacklist with Redis if available
@@ -44,7 +49,10 @@ class AuthService:
                 from .redis_cache import RedisCache
                 redis_cache = RedisCache()
                 self.jwt_blacklist = init_jwt_blacklist(redis_cache=redis_cache)
-                logger.info("JWT Blacklist initialized with Redis support")
+                # Reuse the same client for rate limiting — atomic INCR + EXPIRE
+                # gives us a per-worker-safe sliding-window counter.
+                self._redis_client = redis_cache.client
+                logger.info("JWT Blacklist + auth rate limiter initialized with Redis support")
             else:
                 self.jwt_blacklist = init_jwt_blacklist(redis_cache=None)
                 logger.warning("JWT Blacklist initialized without Redis (in-memory fallback)")
@@ -53,39 +61,54 @@ class AuthService:
             self.jwt_blacklist = init_jwt_blacklist(redis_cache=None)
             logger.warning("JWT Blacklist initialized with in-memory fallback")
 
+    def _check_rate_limit_redis(self, identifier: str) -> None:
+        """Atomic Redis-backed fixed-window rate limiter.
+
+        Uses INCR + EXPIRE (set only on first hit) so concurrent workers
+        share state and a restart does not reset attacker counters."""
+        key = f"auth:ratelimit:{identifier}"
+        period = config.RATE_LIMIT_PERIOD
+        try:
+            pipe = self._redis_client.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, period, nx=True)  # only set TTL on the first hit
+            count, _ = pipe.execute()
+        except Exception as exc:
+            # If Redis hiccups, fall through to the in-memory limiter rather
+            # than letting auth requests fail entirely.
+            logger.warning("Redis rate-limit check failed (%s); using in-memory fallback", exc)
+            self._check_rate_limit_local(identifier)
+            return
+
+        if count > config.RATE_LIMIT_REQUESTS:
+            logger.warning(f"Rate limit exceeded for: {identifier}")
+            raise RateLimitError(period)
+
+    def _check_rate_limit_local(self, identifier: str) -> None:
+        """In-memory fallback. Per-worker, not safe for multi-process deploys."""
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=config.RATE_LIMIT_PERIOD)
+        bucket = self._rate_limiter_local.setdefault(identifier, [])
+        bucket[:] = [t for t in bucket if t > cutoff]
+        if len(bucket) >= config.RATE_LIMIT_REQUESTS:
+            logger.warning(f"Rate limit exceeded for: {identifier} (in-memory)")
+            raise RateLimitError(config.RATE_LIMIT_PERIOD)
+        bucket.append(now)
+
     def _check_rate_limit(self, identifier: str) -> None:
         """
-        Check rate limit for login attempts
+        Check rate limit for login attempts.
 
-        Args:
-            identifier: User identifier (username or IP)
-
-        Raises:
-            RateLimitError: If rate limit exceeded
+        Prefers the Redis-backed limiter when available (shared across workers,
+        survives restarts). Falls back to a per-instance in-memory bucket
+        otherwise — useful for local dev but not multi-worker safe.
         """
         if not config.RATE_LIMIT_ENABLED:
             return
-
-        now = datetime.now()
-        cutoff = now - timedelta(seconds=config.RATE_LIMIT_PERIOD)
-
-        # Initialize or clean old attempts
-        if identifier not in self._rate_limiter:
-            self._rate_limiter[identifier] = []
-
-        self._rate_limiter[identifier] = [
-            attempt for attempt in self._rate_limiter[identifier]
-            if attempt > cutoff
-        ]
-
-        # Check limit
-        if len(self._rate_limiter[identifier]) >= config.RATE_LIMIT_REQUESTS:
-            retry_after = config.RATE_LIMIT_PERIOD
-            logger.warning(f"Rate limit exceeded for: {identifier}")
-            raise RateLimitError(retry_after)
-
-        # Record attempt
-        self._rate_limiter[identifier].append(now)
+        if self._redis_client is not None:
+            self._check_rate_limit_redis(identifier)
+        else:
+            self._check_rate_limit_local(identifier)
 
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt"""
@@ -506,6 +529,37 @@ class AuthService:
 
         return tokens, safe_user, None
 
+    def _set_token_index(self, kind: str, token_hash: str, username: str, ttl_seconds: int) -> None:
+        """Maintain a Redis hash-keyed reverse index: token_hash -> username.
+
+        Lets `_find_user_by_*_token` skip the O(N) user scan. Best-effort: if
+        Redis is unavailable we silently no-op and fall through to the scan."""
+        if self._redis_client is None:
+            return
+        try:
+            self._redis_client.setex(f"auth:{kind}:{token_hash}", ttl_seconds, username)
+        except Exception as exc:
+            logger.debug("Token index set failed (%s); will rely on scan fallback", exc)
+
+    def _lookup_token_index(self, kind: str, token_hash: str) -> Optional[str]:
+        if self._redis_client is None:
+            return None
+        try:
+            value = self._redis_client.get(f"auth:{kind}:{token_hash}")
+            if not value:
+                return None
+            return value.decode("utf-8") if isinstance(value, (bytes, bytearray)) else str(value)
+        except Exception:
+            return None
+
+    def _clear_token_index(self, kind: str, token_hash: str) -> None:
+        if self._redis_client is None:
+            return
+        try:
+            self._redis_client.delete(f"auth:{kind}:{token_hash}")
+        except Exception:
+            pass
+
     def create_password_setup_token(self, username: str) -> str:
         user = self.user_db.get_user_safe(username)
         if not user:
@@ -524,13 +578,22 @@ class AuthService:
         }
         metadata["password_set"] = False
         self.user_db.update_user(username, {"metadata": metadata})
+        self._set_token_index("pwsetup", token_hash, username, config.PASSWORD_SETUP_TOKEN_TTL_SECONDS)
         return token
 
     def _find_user_by_password_setup_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Fallback lookup when provided username does not match the active setup token."""
+        """Lookup by token hash. Uses the Redis index first (O(1)); falls back
+        to an O(N) user scan only when the index is missing — e.g. dev mode
+        without Redis, or after a Redis restart."""
         provided_hash = self._hash_value(token)
-        now = datetime.now(timezone.utc)
 
+        indexed_username = self._lookup_token_index("pwsetup", provided_hash)
+        if indexed_username:
+            user = self.user_db.get_user_safe(indexed_username)
+            if user:
+                return user
+
+        now = datetime.now(timezone.utc)
         for user in self.user_db.list_users():
             metadata = self._normalize_metadata(user)
             token_info = metadata.get("password_setup") if isinstance(metadata, dict) else None
@@ -850,6 +913,7 @@ class AuthService:
         }
 
         self.user_db.update_user(username, {"metadata": metadata})
+        self._set_token_index("pwreset", token_hash, username, config.PASSWORD_RESET_TOKEN_TTL_SECONDS)
         return token
 
     def request_password_reset(
@@ -1020,11 +1084,14 @@ class AuthService:
 
 # Singleton instance
 _auth_service = None
+_auth_service_lock = threading.Lock()
 
 
 def get_auth_service() -> AuthService:
-    """Get singleton auth service instance"""
+    """Get singleton auth service instance (double-checked locking)."""
     global _auth_service
     if _auth_service is None:
-        _auth_service = AuthService()
+        with _auth_service_lock:
+            if _auth_service is None:
+                _auth_service = AuthService()
     return _auth_service
