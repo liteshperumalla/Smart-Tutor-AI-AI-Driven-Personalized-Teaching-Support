@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      skipped_reason: ${{ steps.remote-checks.outputs.skipped_reason }}
     env:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -27,6 +29,7 @@ jobs:
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       EC2_APP_DIR: ${{ vars.EC2_APP_DIR || '' }}
+      COMPLIANCE_REQUIRE_EC2_SSH: ${{ vars.COMPLIANCE_REQUIRE_EC2_SSH || 'false' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -100,6 +103,7 @@ jobs:
           fi
 
       - name: Run remote EC2 compliance checks
+        id: remote-checks
         run: |
           set -euo pipefail
 
@@ -111,6 +115,14 @@ jobs:
           ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
           if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+            if [ "${{ github.event_name }}" = "schedule" ] && [ "$(printf '%s' "${COMPLIANCE_REQUIRE_EC2_SSH}" | tr '[:upper:]' '[:lower:]')" != "true" ]; then
+              echo "::warning::Production EC2 is not reachable over SSH from the GitHub runner. Skipping scheduled host compliance checks without failing the workflow."
+              echo "[INFO] Production EC2 SSH unavailable from GitHub runner; scheduled host checks skipped." > /tmp/compliance-report/ec2-host-checks.txt
+              echo "skipped_reason=ec2_ssh_unreachable" >> "$GITHUB_OUTPUT"
+              echo "EC2_SSH_REACHABLE=false" >> "$GITHUB_ENV"
+              rm -f "${key_file}"
+              exit 0
+            fi
             echo "::error::Unable to reach production EC2 over SSH. Verify the resolved host, instance state, and security group ingress for GitHub-hosted runners on port 22."
             exit 1
           fi
@@ -216,6 +228,11 @@ jobs:
       - name: Capture AWS compliance snapshot from EC2 fallback
         run: |
           set -uo pipefail
+
+          if [ "${EC2_SSH_REACHABLE:-true}" = "false" ]; then
+            echo "::warning::Skipping EC2 fallback snapshot because SSH was not reachable."
+            exit 0
+          fi
 
           mkdir -p /tmp/compliance-report
           mkdir -p /tmp/compliance-report/aws-fallback-needed
@@ -368,10 +385,10 @@ jobs:
           channel: SMART_TUTOR_AI
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
           workflow_name: Production Compliance Scan
-          status: ${{ needs.compliance-scan.result == 'failure' && 'failure' || 'success' }}
+          status: ${{ needs.compliance-scan.outputs.skipped_reason != '' && 'warning' || (needs.compliance-scan.result == 'failure' && 'failure' || 'success') }}
           verbiage: Compliance
           message: |
-            ${{ needs.compliance-scan.result == 'failure' && ':x: *Compliance scan FAILED* — failed checks detected on production host.' || ':white_check_mark: *Compliance scan PASSED* — all host checks successful.' }}
+            ${{ needs.compliance-scan.outputs.skipped_reason != '' && ':warning: *Compliance scan skipped* — production EC2 was not reachable over SSH from the scheduled runner.' || (needs.compliance-scan.result == 'failure' && ':x: *Compliance scan FAILED* — failed checks detected on production host.' || ':white_check_mark: *Compliance scan completed* — host checks finished successfully.') }}
             ${{ github.event_name == 'schedule' && 'Weekly scheduled scan.' || 'Manual dispatch.' }}
           fields: >-
             [
