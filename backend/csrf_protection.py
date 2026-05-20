@@ -76,14 +76,17 @@ class CSRFProtection:
         from backend.config import config
         is_production = config.ENVIRONMENT == "production"
 
-        # Set CSRF token in regular cookie (NOT HttpOnly, so JavaScript can read it)
+        # Set CSRF token in regular cookie (NOT HttpOnly, so JavaScript can read it).
+        # 15-minute TTL — short enough that a stolen token has a tight expiry
+        # window, long enough that the frontend doesn't need to refetch on every
+        # request. Token is rotated on each `/csrf-token` GET (see get_csrf_token).
         response.set_cookie(
             key=CSRF_COOKIE_NAME,
             value=token,
             httponly=False,  # JavaScript needs to read this to send in header
             secure=is_production,  # HTTPS only in production (matches auth cookie behaviour)
             samesite="lax",  # CSRF protection
-            max_age=3600,  # 1 hour
+            max_age=900,  # 15 minutes
             path="/",
         )
 
@@ -174,9 +177,11 @@ class CSRFProtection:
 # Convenience function for getting CSRF token
 def get_csrf_token(request: Request, response: Response) -> str:
     """
-    Get or generate CSRF token for a request.
+    Get or rotate the CSRF token for a request.
 
-    This should be called on initial page load to set the CSRF token.
+    Every call to /csrf-token issues a fresh token so a stolen token has a
+    bounded usable lifetime — at most until the client re-fetches. The 15-minute
+    cookie TTL above is the upper bound for clients that never re-fetch.
 
     Args:
         request: FastAPI Request object
@@ -185,15 +190,11 @@ def get_csrf_token(request: Request, response: Response) -> str:
     Returns:
         str: CSRF token
     """
-    # Try to get existing token from cookie
-    existing_token = CSRFProtection.get_token_from_cookie(request)
-
-    if existing_token:
-        return existing_token
-
-    # Generate new token and set cookie
-    new_token = CSRFProtection.set_csrf_cookie(response)
-    return new_token
+    # Always issue a new token. The frontend BFF re-fetches /csrf-token on
+    # cold start; for live sessions the rotation gives stolen tokens a short
+    # half-life. The existing cookie remains valid until its TTL expires —
+    # mid-flight requests using the old cookie+header pair still succeed.
+    return CSRFProtection.set_csrf_cookie(response)
 
 
 # FastAPI dependency for CSRF protection

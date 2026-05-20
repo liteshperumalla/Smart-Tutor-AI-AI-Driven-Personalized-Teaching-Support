@@ -8,7 +8,7 @@ using JSONL files for persistent storage.
 import json
 import os
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 from pathlib import Path
 
@@ -29,7 +29,7 @@ class MessageFeedback:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow().isoformat()
+            self.created_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
         return asdict(self)

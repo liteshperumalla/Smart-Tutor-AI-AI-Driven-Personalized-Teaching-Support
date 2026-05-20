@@ -58,7 +58,7 @@ jobs:
 
       - name: Install AWS CLI
         if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
-        uses: unfor19/install-aws-cli-action@v1
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
 
       - name: Resolve production EC2 target
         run: scripts/ci/resolve_ec2_target.sh

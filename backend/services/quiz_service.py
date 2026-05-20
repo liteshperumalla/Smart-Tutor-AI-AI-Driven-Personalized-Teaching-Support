@@ -7,7 +7,7 @@ import re
 import uuid
 from ast import literal_eval
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -756,7 +756,7 @@ class QuizService:
 
         return {
             "quiz_id": quiz_id,
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "questions": safe_questions,
             "selected_folders": selected_folders,
         }

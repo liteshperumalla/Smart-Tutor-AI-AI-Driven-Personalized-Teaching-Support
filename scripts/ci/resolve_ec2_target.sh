@@ -135,11 +135,13 @@ private_ip="${private_ip/None/}"
 public_dns="${public_dns/None/}"
 security_group_ids="${security_group_ids/None/}"
 
+cold_start=false
 if [ "${resolved_state}" = "stopped" ]; then
   if [ "${EC2_AUTO_START}" = "true" ]; then
     echo "Production EC2 instance is stopped; starting it before workflow SSH."
     aws ec2 start-instances --region "${AWS_REGION}" --instance-ids "${resolved_instance_id}" >/dev/null
     aws ec2 wait instance-running --region "${AWS_REGION}" --instance-ids "${resolved_instance_id}"
+    cold_start=true
     instance_row="$(EC2_INSTANCE_ID="${resolved_instance_id}" describe_instance)"
     read -r resolved_instance_id resolved_state public_ip private_ip public_dns security_group_ids <<< "${instance_row}"
     public_ip="${public_ip/None/}"
@@ -207,5 +209,43 @@ if [ "${EC2_TEMPORARY_SSH_INGRESS}" = "true" ] && [ -n "${security_group_ids}" ]
     echo "::warning::Could not determine GitHub runner public IP for temporary SSH ingress."
   fi
 fi
+
+# Wait for SSH daemon to actually accept TCP connections.
+# `aws ec2 wait instance-running` only confirms the lifecycle state; the OS
+# still needs time to boot and start sshd. On cold starts this is typically
+# 30–90s, and stale ARP/route entries on shared GitHub runners can extend it.
+SSH_READY_TIMEOUT_SECONDS="${SSH_READY_TIMEOUT_SECONDS:-240}"
+SSH_READY_INTERVAL_SECONDS="${SSH_READY_INTERVAL_SECONDS:-5}"
+if [ "${cold_start}" = "true" ]; then
+  SSH_READY_TIMEOUT_SECONDS="${SSH_READY_COLD_TIMEOUT_SECONDS:-360}"
+fi
+
+probe_ssh_port() {
+  local host="$1"
+  local port="${2:-22}"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 5 "${host}" "${port}" >/dev/null 2>&1
+    return $?
+  fi
+  (exec 3<>"/dev/tcp/${host}/${port}") >/dev/null 2>&1 && {
+    exec 3<&-
+    exec 3>&-
+    return 0
+  }
+  return 1
+}
+
+echo "Waiting for SSH on ${resolved_host}:22 (timeout ${SSH_READY_TIMEOUT_SECONDS}s)..."
+deadline=$(( $(date +%s) + SSH_READY_TIMEOUT_SECONDS ))
+attempt=0
+until probe_ssh_port "${resolved_host}" 22; do
+  attempt=$((attempt + 1))
+  if [ "$(date +%s)" -ge "${deadline}" ]; then
+    echo "::error::SSH port 22 on ${resolved_host} did not become ready within ${SSH_READY_TIMEOUT_SECONDS}s after ${attempt} probes."
+    exit 1
+  fi
+  sleep "${SSH_READY_INTERVAL_SECONDS}"
+done
+echo "SSH port 22 is accepting connections on ${resolved_host} (after ${attempt} probes)."
 
 echo "Resolved production EC2 target from AWS metadata."

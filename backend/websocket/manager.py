@@ -7,7 +7,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List, Optional
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class ConnectionManager:
         await self.send_personal_message(
             json.dumps({
                 "type": "connected",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "message": "WebSocket connection established"
             }),
             user_id

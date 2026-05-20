@@ -4,6 +4,7 @@ Combines PostgreSQL (users, quiz results) with DynamoDB (chat sessions)
 for optimal performance and scalability
 """
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from backend.logger import get_logger
@@ -55,8 +56,7 @@ class HybridStorageBackend(BaseStorageBackend):
 
     def update_last_login(self, username: str) -> None:
         """Update last login timestamp"""
-        from datetime import datetime
-        self.update_user(username, {'last_login': datetime.utcnow().isoformat()})
+        self.update_user(username, {'last_login': datetime.now(timezone.utc).isoformat()})
 
     def increment_login_attempts(self, username: str) -> int:
         """Increment failed login attempts"""
@@ -77,7 +77,6 @@ class HybridStorageBackend(BaseStorageBackend):
 
     def is_account_locked(self, username: str) -> bool:
         """Check if account is locked"""
-        from datetime import datetime
         user = self.get_user(username)
         if not user:
             return False
@@ -89,8 +88,12 @@ class HybridStorageBackend(BaseStorageBackend):
         try:
             from dateutil import parser
             unlock_time = parser.parse(locked_until) if isinstance(locked_until, str) else locked_until
-            return datetime.utcnow() < unlock_time
-        except:
+            # Legacy rows can have naive ISO strings (pre-datetime sweep).
+            # Normalize to aware UTC so the comparison below doesn't TypeError.
+            if hasattr(unlock_time, "tzinfo") and unlock_time.tzinfo is None:
+                unlock_time = unlock_time.replace(tzinfo=timezone.utc)
+            return datetime.now(timezone.utc) < unlock_time
+        except Exception:
             return False
 
     def list_users(self) -> list:

@@ -13,7 +13,7 @@ import logging
 import json
 from enum import Enum
 from typing import Callable, List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import uuid
 
@@ -62,13 +62,13 @@ class SagaStep:
         """Execute the forward action"""
         try:
             self.status = StepStatus.RUNNING
-            self.started_at = datetime.utcnow()
+            self.started_at = datetime.now(timezone.utc)
 
             logger.info(f"Executing saga step: {self.name}")
             self.result = self.action(context)
 
             self.status = StepStatus.COMPLETED
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
 
             logger.info(f"Saga step completed: {self.name}")
             return self.result
@@ -76,7 +76,7 @@ class SagaStep:
         except Exception as e:
             self.status = StepStatus.FAILED
             self.error = str(e)
-            self.completed_at = datetime.utcnow()
+            self.completed_at = datetime.now(timezone.utc)
 
             logger.error(f"Saga step failed: {self.name} - {e}", exc_info=True)
             raise
@@ -108,8 +108,8 @@ class SagaState:
     steps: List[SagaStep]
     context: Dict[str, Any]
     current_step_index: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
 
@@ -243,7 +243,7 @@ class SagaOrchestrator:
             # Execute steps sequentially
             for i, step in enumerate(self.steps):
                 state.current_step_index = i
-                state.updated_at = datetime.utcnow()
+                state.updated_at = datetime.now(timezone.utc)
 
                 # Execute step
                 result = step.execute(context)
@@ -259,7 +259,7 @@ class SagaOrchestrator:
 
             # All steps completed successfully
             state.status = SagaStatus.COMPLETED
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
 
             if self.state_store:
                 self.state_store.save_state(state)
@@ -278,7 +278,7 @@ class SagaOrchestrator:
 
             state.status = SagaStatus.COMPENSATING
             state.error = str(e)
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(timezone.utc)
 
             if self.state_store:
                 self.state_store.save_state(state)
@@ -287,7 +287,7 @@ class SagaOrchestrator:
             self._compensate(completed_steps, context, state)
 
             state.status = SagaStatus.COMPENSATED
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
 
             if self.state_store:
                 self.state_store.save_state(state)

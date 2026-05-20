@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -22,7 +22,7 @@ def test_feedback_service_rejects_recent_duplicate_feedback(monkeypatch, tmp_pat
         email="alice@example.com",
         category="general",
         message="This dashboard flow is very helpful and clear.",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
     service.log_feedback(entry)
@@ -35,7 +35,7 @@ def test_feedback_service_rejects_recent_duplicate_feedback(monkeypatch, tmp_pat
                 email="alice@example.com",
                 category="general",
                 message="This dashboard flow is very helpful and clear.",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
         )
 
@@ -53,7 +53,7 @@ def test_feedback_service_rejects_recent_duplicate_bug(monkeypatch, tmp_path):
         severity="high",
         description="Quiz generation fails after selecting a module.",
         steps="Open quiz, select topic, click generate.",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
 
     service.log_bug_report(entry)
@@ -68,6 +68,6 @@ def test_feedback_service_rejects_recent_duplicate_bug(monkeypatch, tmp_path):
                 severity="high",
                 description="Quiz generation fails after selecting a module.",
                 steps="Open quiz, select topic, click generate.",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             )
         )

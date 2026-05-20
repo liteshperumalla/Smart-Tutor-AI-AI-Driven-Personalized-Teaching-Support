@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -18,11 +20,23 @@ from backend.rate_limiter import limiter  # Import from rate_limiter to avoid ci
 logger = logging.getLogger(__name__)
 PUBLIC_CACHEABLE_PATHS = {"/", "/robots.txt", "/sitemap.xml"}
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Delegates to the existing startup/shutdown handlers defined further down.
+    # Python resolves the names at call time, so forward references are fine.
+    await startup_event()
+    try:
+        yield
+    finally:
+        await shutdown_event()
+
+
 app = FastAPI(
     title="Smart AI Tutor API",
     version="1.0.0",
     docs_url="/docs" if config.ENVIRONMENT != "production" else None,  # Disable docs in production
-    redoc_url="/redoc" if config.ENVIRONMENT != "production" else None
+    redoc_url="/redoc" if config.ENVIRONMENT != "production" else None,
+    lifespan=lifespan,
 )
 
 # Add rate limiting state and error handler
@@ -31,8 +45,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS Configuration - CRITICAL SECURITY FIX
 # In production, this should be restricted to your actual frontend domain(s)
-import os
-
 # Get production domains from environment variable (comma-separated)
 production_domains = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
 production_domains = [d.strip() for d in production_domains if d.strip()]
@@ -174,19 +186,22 @@ async def root():
 
 @app.get("/robots.txt")
 async def robots_txt():
+    # API backend should not be indexed — `/docs`, `/metrics`, etc. are not for crawlers.
     return Response(
-        content="User-agent: *\nAllow: /\n",
+        content="User-agent: *\nDisallow: /\n",
         media_type="text/plain",
     )
 
 
 @app.get("/sitemap.xml")
 async def sitemap():
+    # Site root is configurable so production doesn't ship the `.local` placeholder.
+    site_url = os.getenv("PUBLIC_SITE_URL", "https://smartaitutor.com").rstrip("/")
     return Response(
         content=(
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-            "<url><loc>https://smart-ai-tutor.local/</loc></url>"
+            f"<url><loc>{site_url}/</loc></url>"
             "</urlset>"
         ),
         media_type="application/xml",
@@ -395,8 +410,7 @@ async def _seed_admin_user_background() -> None:
     await asyncio.to_thread(_seed_admin_user)
 
 
-# Startup event - validate configuration
-@app.on_event("startup")
+# Lifespan-invoked startup handler (see `lifespan()` near the top of this module).
 async def startup_event():
     """Validate configuration and initialize resources on startup"""
     logger.info("=" * 60)
@@ -472,8 +486,7 @@ async def startup_event():
     logger.info("=" * 60)
 
 
-# Shutdown event - cleanup resources
-@app.on_event("shutdown")
+# Lifespan-invoked shutdown handler (see `lifespan()` near the top of this module).
 async def shutdown_event():
     """Cleanup resources on shutdown"""
     logger.info("=" * 60)

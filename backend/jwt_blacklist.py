@@ -6,7 +6,7 @@ Implements token revocation using Redis for secure logout
 import jwt
 import logging
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import base64
 import binascii
 import json
@@ -68,7 +68,7 @@ class JWTBlacklist:
                     logger.error(f"Redis blacklist failed, using in-memory fallback: {e}")
 
             # Fallback to in-memory
-            expiry_time = datetime.utcnow() + timedelta(seconds=expiry_seconds)
+            expiry_time = datetime.now(timezone.utc) + timedelta(seconds=expiry_seconds)
             self._in_memory_blacklist[jti] = expiry_time
             logger.warning(f"Token blacklisted in-memory: {jti[:8]}... (not distributed)")
             return True
@@ -108,7 +108,7 @@ class JWTBlacklist:
             # Fallback to in-memory
             if jti in self._in_memory_blacklist:
                 # Check if still valid
-                if datetime.utcnow() < self._in_memory_blacklist[jti]:
+                if datetime.now(timezone.utc) < self._in_memory_blacklist[jti]:
                     logger.warning(f"Token blacklisted (in-memory): {jti[:8]}...")
                     return True
                 else:
@@ -151,7 +151,7 @@ class JWTBlacklist:
         if not self._in_memory_blacklist:
             return 0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expired = [jti for jti, expiry in self._in_memory_blacklist.items() if now >= expiry]
 
         for jti in expired:

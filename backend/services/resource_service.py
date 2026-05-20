@@ -10,7 +10,7 @@ import json
 import os
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
@@ -154,8 +154,8 @@ class ResourceService:
             "order": order,
             "active": True,
             "created_by": created_by,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         resources = self._read_resources()
         resources.append(resource)
@@ -196,8 +196,8 @@ class ResourceService:
             "order": order,
             "active": True,
             "created_by": created_by,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         resources = self._read_resources()
         resources.append(resource)
@@ -215,7 +215,7 @@ class ResourceService:
                 for key in allowed:
                     if key in updates:
                         res[key] = updates[key]
-                res["updated_at"] = datetime.utcnow().isoformat()
+                res["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_resources(resources)
                 logger.info("Updated resource: %s", resource_id)
                 return res
@@ -287,8 +287,8 @@ class ResourceService:
                     "order": idx,
                     "active": True,
                     "created_by": "migration",
-                    "created_at": datetime.utcnow().isoformat(),
-                    "updated_at": datetime.utcnow().isoformat(),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                 }
                 existing.append(resource)
                 existing_urls.add(url)

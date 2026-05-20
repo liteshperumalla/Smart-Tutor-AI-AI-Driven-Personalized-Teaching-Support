@@ -16,12 +16,16 @@ jobs:
   resume-aura:
     name: Resume Neo4j Aura If Paused
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     env:
       NEO4J_AURA_INSTANCE_ID: ${{ secrets.NEO4J_AURA_INSTANCE_ID || vars.NEO4J_AURA_INSTANCE_ID || 'b0e9fb13' }}
       NEO4J_AURA_CLIENT_ID: ${{ secrets.NEO4J_AURA_CLIENT_ID || secrets.NEO4J_AURA_API_CLIENT_ID || secrets.AURA_CLIENT_ID || vars.NEO4J_AURA_CLIENT_ID || vars.NEO4J_AURA_API_CLIENT_ID || vars.AURA_CLIENT_ID || '' }}
       NEO4J_AURA_CLIENT_SECRET: ${{ secrets.NEO4J_AURA_CLIENT_SECRET || secrets.NEO4J_AURA_API_CLIENT_SECRET || secrets.AURA_CLIENT_SECRET || '' }}
-      NEO4J_AURA_POLL_TIMEOUT_SECONDS: ${{ vars.NEO4J_AURA_POLL_TIMEOUT_SECONDS || '420' }}
+      # Aura free-tier instances routinely take 7-12 minutes to resume from a
+      # paused state. Verified by PR #29: a real run timed out at 420s while
+      # the instance was still in `resuming`. 900s leaves headroom for cold
+      # starts; main's 420 was the old default.
+      NEO4J_AURA_POLL_TIMEOUT_SECONDS: ${{ vars.NEO4J_AURA_POLL_TIMEOUT_SECONDS || '900' }}
       NEO4J_AURA_POLL_INTERVAL_SECONDS: ${{ vars.NEO4J_AURA_POLL_INTERVAL_SECONDS || '15' }}
     steps:
       - name: Checkout code
@@ -31,14 +35,22 @@ jobs:
         id: resume
         continue-on-error: true
         run: |
-          set -euo pipefail
+          set +e
           python3 scripts/resume_neo4j_aura.py
+          rc=$?
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          # Exit code 2 means the script ran but credentials are not configured
+          # yet. Treat that as a clean skip so the schedule does not page Slack.
+          if [ "${rc}" -eq 2 ]; then
+            echo "::warning::Neo4j Aura credentials not configured; skipping resume guard."
+            exit 0
+          fi
+          exit "${rc}"
 
       - name: Notify deployment analytics when Aura was resumed
         if: ${{ steps.resume.outcome == 'success' && steps.resume.outputs.action == 'resumed' }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Neo4j Aura Resume Guard
           status: success
@@ -53,7 +65,6 @@ jobs:
         if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action != 'configuration_missing' }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Neo4j Aura Resume Guard
           status: failure
@@ -63,6 +74,11 @@ jobs:
             The application may fail Neo4j-backed features until the AuraDB instance is running.
           fields: >-
             [{"title":"Instance","value":"${{ steps.resume.outputs.instance_id || env.NEO4J_AURA_INSTANCE_ID }}","short":true},{"title":"Last status","value":"${{ steps.resume.outputs.status || 'unknown' }}","short":true},{"title":"Action","value":"${{ steps.resume.outputs.action || 'failed' }}","short":true}]
+          # Aura Resume Guard runs every 30 minutes. Suppress duplicate failure
+          # pages for the same instance+status within 4 hours so a multi-hour
+          # incident produces ~6 alerts, not ~8 per hour.
+          dedup_key: neo4j-aura-resume-${{ env.NEO4J_AURA_INSTANCE_ID }}
+          dedup_window_minutes: 240
 
       - name: Notify deployment analytics when Aura credentials are missing
         if: ${{ steps.resume.outcome != 'success' && steps.resume.outputs.action == 'configuration_missing' }}
@@ -80,5 +96,8 @@ jobs:
             [{"title":"Instance","value":"${{ steps.resume.outputs.instance_id || env.NEO4J_AURA_INSTANCE_ID }}","short":true},{"title":"Action","value":"configuration_missing","short":true}]
 
       - name: Fail workflow when resume guard failed
+        # Schedules: missing credentials are a soft skip (warning only). Manual
+        # dispatch: missing credentials surface as a hard failure so the
+        # operator sees the misconfiguration immediately.
         if: ${{ steps.resume.outcome != 'success' && (steps.resume.outputs.action != 'configuration_missing' || github.event_name == 'workflow_dispatch') }}
         run: exit 1

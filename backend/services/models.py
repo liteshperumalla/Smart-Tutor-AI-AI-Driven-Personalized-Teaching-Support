@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 
@@ -10,7 +10,7 @@ RoleType = Literal["user", "assistant", "system"]
 class ChatMessage:
     role: RoleType
     content: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sources: Optional[List[dict]] = None
     attachments: Optional[List[dict]] = None
 
@@ -28,7 +28,21 @@ class ChatMessage:
     @classmethod
     def from_dict(cls, data: dict) -> "ChatMessage":
         timestamp = data.get("timestamp")
-        ts = datetime.fromisoformat(timestamp) if timestamp else datetime.utcnow()
+        # Defensive parse — legacy/DynamoDB rows can carry naive ISO strings
+        # or unexpected types. Normalise to aware UTC; fall back to "now" on
+        # any parse failure so a single bad row doesn't break the session.
+        ts: datetime
+        if isinstance(timestamp, datetime):
+            ts = timestamp
+        elif isinstance(timestamp, str) and timestamp:
+            try:
+                ts = datetime.fromisoformat(timestamp)
+            except ValueError:
+                ts = datetime.now(timezone.utc)
+        else:
+            ts = datetime.now(timezone.utc)
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
         return cls(
             role=data.get("role", "assistant"),
             content=data.get("content", ""),
@@ -43,8 +57,8 @@ class ChatSession:
     id: str
     title: str
     messages: List[ChatMessage] = field(default_factory=list)
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_pinned: bool = False
     is_archived: bool = False
 
@@ -94,7 +108,7 @@ class ChatSession:
                     return datetime.fromisoformat(value.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
                     pass
-            return datetime.utcnow()
+            return datetime.now(timezone.utc)
 
         return cls(
             id=data.get("id", ""),
@@ -114,7 +128,7 @@ class QuizResult:
     score: int
     total_questions: int
     percentage: float
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -141,7 +155,7 @@ class Appointment:
     primary_reason: str
     additional_details: str
     status: str = "pending"
-    requested_at: datetime = field(default_factory=datetime.utcnow)
+    requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         return {

@@ -7,7 +7,7 @@ import os
 import re
 import hashlib
 import mimetypes
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Any, Dict
 from pathlib import Path
 
@@ -181,8 +181,8 @@ class DateUtils:
 
     @staticmethod
     def now_iso() -> str:
-        """Get current UTC time in ISO format"""
-        return datetime.utcnow().isoformat() + 'Z'
+        """Get current UTC time in ISO format (RFC 3339 with `Z` designator)."""
+        return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     @staticmethod
     def parse_iso(iso_string: str) -> datetime:
@@ -203,12 +203,16 @@ class DateUtils:
         Get human-readable time ago string
 
         Args:
-            dt: Datetime object
+            dt: Datetime object (naive datetimes are interpreted as UTC)
 
         Returns:
             String like "2 hours ago"
         """
-        now = datetime.utcnow()
+        # Legacy callers may pass naive datetimes; normalize to aware UTC so
+        # the subtraction below doesn't raise on mixed naive/aware operands.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
         diff = now - dt
 
         seconds = diff.total_seconds()

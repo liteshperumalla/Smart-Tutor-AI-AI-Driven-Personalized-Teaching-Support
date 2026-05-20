@@ -19,7 +19,7 @@ import re
 import threading
 import time
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -112,7 +112,7 @@ class IndexingService:
                 "chunks_created": 0,
                 "total_chunks": None,
                 "error": None,
-                "started_at": datetime.utcnow().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "completed_at": None,
             },
         )
@@ -126,7 +126,7 @@ class IndexingService:
     # ── Background worker ──────────────────────────────────────────────────────
 
     def _run(self, resource_id: str, s3_key: str, filename: str, mime_type: str):
-        started = datetime.utcnow().isoformat()
+        started = datetime.now(timezone.utc).isoformat()
 
         def _prog(status, pct, created=0, total=None, error=None):
             self._set_progress(
@@ -138,7 +138,7 @@ class IndexingService:
                     "total_chunks": total,
                     "error": error,
                     "started_at": started,
-                    "completed_at": datetime.utcnow().isoformat() if status in (STATUS_COMPLETE, STATUS_ERROR) else None,
+                    "completed_at": datetime.now(timezone.utc).isoformat() if status in (STATUS_COMPLETE, STATUS_ERROR) else None,
                 },
             )
 

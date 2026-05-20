@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 import json
@@ -14,7 +14,19 @@ logger = get_logger(__name__)
 
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
+
+
+def _parse_utc(value: str) -> datetime:
+    """Parse an ISO timestamp and normalise to aware UTC.
+
+    Shares written before the datetime sweep have naive ISO strings; comparing
+    them with `_utcnow()` raises TypeError. Treat naive timestamps as UTC.
+    """
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 class ShareService:
     def __init__(self):
@@ -109,7 +121,7 @@ class ShareService:
         if share_data is None:
             return None
 
-        expires_at = datetime.fromisoformat(share_data["expires_at"])
+        expires_at = _parse_utc(share_data["expires_at"])
         if expires_at < _utcnow():
             self._delete_share(share_id)
             return None
@@ -163,7 +175,7 @@ class ShareService:
         expired_ids = [
             sid
             for sid, data in self._share_cache.items()
-            if datetime.fromisoformat(data["expires_at"]) < _utcnow()
+            if _parse_utc(data["expires_at"]) < _utcnow()
         ]
         for sid in expired_ids:
             self._delete_share(sid)

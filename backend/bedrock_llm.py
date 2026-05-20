@@ -21,13 +21,28 @@ class BedrockLLM:
     # Pricing per 1K tokens (as of December 2025)
     # Includes both direct model IDs and cross-region inference profile IDs (us./eu./ap. prefix)
     PRICING = {
-        "anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 0.003, "output": 0.015},
-        "us.anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 0.003, "output": 0.015},
-        "anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},
-        "us.anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},
-        "meta.llama3-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
-        "meta.llama3-1-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
-        "us.meta.llama3-1-70b-instruct-v1:0": {"input": 0.00099, "output": 0.00099},
+        # Legacy Claude / Llama (still supported, moving to retirement in Bedrock)
+        "anthropic.claude-3-5-sonnet-20241022-v2:0":      {"input": 0.0030,  "output": 0.0150},
+        "us.anthropic.claude-3-5-sonnet-20241022-v2:0":   {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-3-haiku-20240307-v1:0":         {"input": 0.00025, "output": 0.00125},
+        "us.anthropic.claude-3-haiku-20240307-v1:0":      {"input": 0.00025, "output": 0.00125},
+        "meta.llama3-70b-instruct-v1:0":                  {"input": 0.00099, "output": 0.00099},
+        "meta.llama3-1-70b-instruct-v1:0":                {"input": 0.00099, "output": 0.00099},
+        "us.meta.llama3-1-70b-instruct-v1:0":             {"input": 0.00099, "output": 0.00099},
+        # Current-generation Claude 4.x family (Active in Bedrock as of 2025)
+        "anthropic.claude-haiku-4-5-20251001-v1:0":       {"input": 0.0010,  "output": 0.0050},
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0":    {"input": 0.0010,  "output": 0.0050},
+        "anthropic.claude-sonnet-4-5-20250929-v1:0":      {"input": 0.0030,  "output": 0.0150},
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0":   {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-sonnet-4-6":                    {"input": 0.0030,  "output": 0.0150},
+        "us.anthropic.claude-sonnet-4-6":                 {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-opus-4-7":                      {"input": 0.0150,  "output": 0.0750},
+        "us.anthropic.claude-opus-4-7":                   {"input": 0.0150,  "output": 0.0750},
+        # Active Llama replacements for the legacy 3.x line
+        "meta.llama3-3-70b-instruct-v1:0":                {"input": 0.00072, "output": 0.00072},
+        "us.meta.llama3-3-70b-instruct-v1:0":             {"input": 0.00072, "output": 0.00072},
+        "meta.llama4-scout-17b-instruct-v1:0":            {"input": 0.00018, "output": 0.00072},
+        "us.meta.llama4-scout-17b-instruct-v1:0":         {"input": 0.00018, "output": 0.00072},
     }
 
     def __init__(

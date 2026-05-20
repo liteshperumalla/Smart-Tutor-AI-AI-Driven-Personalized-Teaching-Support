@@ -12,7 +12,7 @@ import re
 import tempfile
 import urllib.parse
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
@@ -404,7 +404,7 @@ class ResearchService:
                 "chunks_prefix": s3_chunks_prefix,
                 "chunk_count": len(chunks),
                 "preview_type": parsed["preview_type"],
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
             }
 
             metadata_key = f"{UPLOADS_PREFIX}metadata/{safe_id}.json"
@@ -478,7 +478,7 @@ class ResearchService:
                 "chunks_prefix": s3_chunks_prefix,
                 "chunk_count": len(chunks),
                 "preview_type": "webpage",
-                "uploaded_at": datetime.utcnow().isoformat(),
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
             }
 
             metadata_key = f"{UPLOADS_PREFIX}metadata/{safe_url_id}.json"
@@ -550,7 +550,7 @@ class ResearchService:
             "chunks_prefix": s3_chunks_prefix,
             "chunk_count": len(chunks),
             "preview_type": "youtube",
-            "uploaded_at": datetime.utcnow().isoformat(),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
         }
 
         metadata_key = f"{UPLOADS_PREFIX}metadata/{safe_yt_id}.json"
@@ -821,7 +821,7 @@ class ResearchService:
                 "query": query,
                 "web_results": results,
                 "count": len(results),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Web search failed: {e}")
@@ -830,7 +830,7 @@ class ResearchService:
                 "web_results": [],
                 "count": 0,
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     def search_academic_papers(
@@ -867,7 +867,7 @@ class ResearchService:
             "sources_searched": sources,
             "count": len(papers[:max_results]),
             "errors": errors if errors else None,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     def _search_arxiv(self, query: str, max_results: int) -> List[Dict[str, Any]]:
@@ -1053,7 +1053,7 @@ Sources analyzed: {len(comparisons)}
                 "agreements": agreements,
                 "contradictions": contradictions,
                 "summary": response,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Compare sources error: {e}")
@@ -1064,7 +1064,7 @@ Sources analyzed: {len(comparisons)}
                 "agreements": [],
                 "contradictions": [],
                 "summary": f"Error: {str(e)}",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     def extract_citations(
@@ -1089,7 +1089,7 @@ Sources analyzed: {len(comparisons)}
                 "format": format_style,
                 "count": len(formatted),
                 "exportable_bibliography": bibliography,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Extract citations error: {e}")
@@ -1099,7 +1099,7 @@ Sources analyzed: {len(comparisons)}
                 "count": 0,
                 "exportable_bibliography": "",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     def _detect_citations(self, content: str) -> List[Dict[str, Any]]:
@@ -1165,7 +1165,7 @@ Sources analyzed: {len(comparisons)}
                 "mode": mode,
                 "summary": summary,
                 "word_count": len(summary.split()),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Generate summary error: {e}")
@@ -1173,7 +1173,7 @@ Sources analyzed: {len(comparisons)}
                 "mode": mode,
                 "summary": f"Error: {str(e)}",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     def generate_questions(
@@ -1227,7 +1227,7 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
                 "difficulty": difficulty,
                 "types": question_types,
                 "count": len(questions),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Generate questions error: {e}")
@@ -1237,7 +1237,7 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
                 "types": question_types,
                 "count": 0,
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
     def fact_check(
@@ -1297,7 +1297,7 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
                 "supporting_sources": supporting,
                 "contradicting_sources": contradicting,
                 "evidence": evidence,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         except Exception as e:
             logger.error(f"Fact check error: {e}")
@@ -1309,7 +1309,7 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
                 "contradicting_sources": [],
                 "evidence": [],
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
 

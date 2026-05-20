@@ -1,7 +1,7 @@
 """
 Query Router Agent
-Classifies user intent via keyword matching and routes to the correct
-specialist agent. Logs the classified query to Neo4j.
+Classifies user intent via weighted keyword scoring and routes to the
+correct specialist agent. Logs the classified query to Neo4j.
 """
 
 from __future__ import annotations
@@ -15,35 +15,60 @@ from backend.agents import graph_ops
 
 logger = logging.getLogger(__name__)
 
-# ── Keyword rules (order matters: first match wins) ──────────────
+# ── Weighted intent signals ──────────────────────────────────────
+# Each rule lists (agent, reason, [(pattern, weight), ...]). The router scores
+# every agent against the query and picks the highest scorer above MIN_SCORE.
+# Strong, intent-specific phrases get high weight; common verbs like "explain"
+# or polite sign-offs like "thank you" get low weight so they no longer
+# dominate the classification on their own.
 
-_RULES: list[Tuple[str, str, str]] = [
-    # (agent_name, route_reason_template, regex_pattern)
+MIN_SCORE = 2  # below this the query is treated as general tutoring
+
+_SIGNALS: list[tuple[str, str, list[tuple[str, int]]]] = [
     (
         "feedback_agent",
         "Detected feedback or opinion",
-        r"\b(feedback|suggestion|great app|love this|hate|improve|satisfied|disappointed|"
-        r"awesome|terrible|issue with|complaint|compliment|this app|the platform|thank you|thanks)\b",
+        [
+            (r"\b(feedback|suggestion|complaint|compliment)\b", 4),
+            (r"\b(love this|hate this|terrible|awesome|amazing)\b", 4),
+            (r"\b(issue with the (app|platform|product)|the platform|this app)\b", 3),
+            (r"\b(satisfied|disappointed|improve)\b", 2),
+            # Polite sign-offs alone are NOT enough — weight 1 so they only
+            # tip the scale when combined with a stronger signal.
+            (r"\b(thanks?( you)?)\b", 1),
+        ],
     ),
     (
         "quiz_helper_agent",
         "Detected quiz-related query",
-        r"\b(quiz|score|weak topic|strong topic|study plan|review|performance|"
-        r"test result|what should i study|my results|my grades|how did i do|exam|assessment)\b",
+        [
+            (r"\b(quiz|exam|assessment|test result|my results|my grades)\b", 5),
+            (r"\b(weak topic|strong topic|study plan|how did i do)\b", 4),
+            (r"\b(my (score|performance)|review (my )?(quiz|results))\b", 4),
+            (r"\bwhat should i study\b", 3),
+        ],
     ),
     (
         "doubts_agent",
         "Detected confusion or doubt",
-        r"\b(confused|don'?t understand|doubt|unclear|"
-        r"can you clarify|explain again|stuck on|struggling with|help me understand|"
-        r"i'?m lost|makes no sense|difference between|what does .+ mean)\b",
+        [
+            (r"\b(don'?t understand|doubt|unclear|i'?m lost|makes no sense)\b", 4),
+            (r"\b(can you clarify|stuck on|struggling with|help me understand)\b", 3),
+            (r"\bdifference between\b|\bwhat does\b.+\bmean\b", 3),
+            (r"\bconfused\b", 2),
+        ],
     ),
     (
         "personalised_agent",
         "Detected request for personalised explanation",
-        r"\b(explain|break down|in simple terms|eli5|analogy|like i'?m|"
-        r"relate to|connect to what i know|tailor|my level|beginner|"
-        r"step by step|walk me through|teach me)\b",
+        [
+            (r"\b(in simple terms|eli5|like i'?m (five|5)|step by step)\b", 4),
+            (r"\b(analogy|relate to|connect to what i know|tailor|my level)\b", 3),
+            (r"\b(walk me through|teach me|break (it|this) down)\b", 3),
+            # "explain" is the single most common verb in tutoring; on its own
+            # it shouldn't beat a clearer signal.
+            (r"\bexplain\b", 1),
+        ],
     ),
 ]
 
@@ -62,14 +87,32 @@ def _extract_user_question(text: str) -> str:
     return text
 
 
+def _score_agent(text: str, patterns: list[tuple[str, int]]) -> int:
+    return sum(weight for pattern, weight in patterns if re.search(pattern, text))
+
+
 def classify_query(text: str) -> Tuple[str, str]:
-    """Return (agent_name, route_reason) for the given query text."""
+    """Return (agent_name, route_reason) for the given query text.
+
+    Uses weighted scoring across all agents and picks the highest scorer above
+    `MIN_SCORE`. Falls back to the general tutor when no agent crosses the bar.
+    """
     user_q = _extract_user_question(text)
     lower = user_q.lower()
-    for agent, reason, pattern in _RULES:
-        if re.search(pattern, lower):
-            return agent, reason
-    return "tutor_agent", "General tutoring query (default)"
+
+    best_agent = "tutor_agent"
+    best_reason = "General tutoring query (default)"
+    best_score = MIN_SCORE - 1
+
+    for agent, reason, patterns in _SIGNALS:
+        score = _score_agent(lower, patterns)
+        if score > best_score:
+            best_agent = agent
+            best_reason = reason
+            best_score = score
+
+    logger.debug("Router scoring: query=%r winner=%s score=%d", lower[:80], best_agent, best_score)
+    return best_agent, best_reason
 
 
 # ── LangGraph node ───────────────────────────────────────────────

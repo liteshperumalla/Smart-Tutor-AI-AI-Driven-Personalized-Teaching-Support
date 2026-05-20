@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -12,6 +12,23 @@ from backend.config import config
 from backend.database import UserDatabase
 from backend.services.models import ChatMessage, ChatSession, QuizResult
 from .base import BaseStorageBackend
+
+
+def _parse_utc_or_now(value: Optional[str]) -> datetime:
+    """Parse an ISO timestamp coercing naive values to aware UTC.
+
+    Legacy persisted sessions may have naive ISO strings; sorting a mix of
+    naive and aware datetimes raises TypeError. Returns `now` if the value
+    is missing or malformed."""
+    if not value:
+        return datetime.now(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 class FileSystemStorageBackend(BaseStorageBackend):
@@ -37,6 +54,18 @@ class FileSystemStorageBackend(BaseStorageBackend):
     # -- Chat helpers ----------------------------------------------------
     def _sanitize(self, value: str) -> str:
         return "".join(c if c.isalnum() or c in "-_." else "_" for c in value)
+
+    def _sanitize_session_id(self, session_id: str) -> str:
+        """Strip any path separators or control chars from session ids before
+        they touch disk. Defense-in-depth against path traversal: a crafted
+        session_id like `../../etc/passwd` would otherwise escape the chat dir.
+        """
+        if not session_id or not isinstance(session_id, str):
+            raise ValueError("session_id must be a non-empty string")
+        cleaned = self._sanitize(session_id).strip(".")
+        if not cleaned:
+            raise ValueError(f"session_id is invalid: {session_id!r}")
+        return cleaned
 
     def _user_dir(self, username: str) -> Path:
         base = self.root / self._sanitize(username)
@@ -88,7 +117,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
         return sessions
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
-        path = self._chat_dir(username) / f"{session_id}.json"
+        path = self._chat_dir(username) / f"{self._sanitize_session_id(session_id)}.json"
         if not path.exists():
             return None
         with path.open("r", encoding="utf-8") as f:
@@ -107,8 +136,11 @@ class FileSystemStorageBackend(BaseStorageBackend):
             id=session_id,
             title=title,
             messages=messages,
-            created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
-            updated_at=datetime.fromisoformat(updated) if updated else datetime.utcnow(),
+            # Legacy JSON rows may have naive ISO strings; normalise to aware
+            # UTC so downstream sorting of `updated_at` doesn't TypeError on
+            # mixed naive/aware values.
+            created_at=_parse_utc_or_now(created),
+            updated_at=_parse_utc_or_now(updated),
         )
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
@@ -118,7 +150,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
             json.dump(payload, f, indent=2, ensure_ascii=False)
 
     def delete_chat_session(self, username: str, session_id: str) -> bool:
-        path = self._chat_dir(username) / f"{session_id}.json"
+        path = self._chat_dir(username) / f"{self._sanitize_session_id(session_id)}.json"
         if path.exists():
             path.unlink()
             return True
@@ -138,7 +170,7 @@ class FileSystemStorageBackend(BaseStorageBackend):
         for path in directory.glob("*.json"):
             with path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-            created_at = data.get("created_at") or data.get("timestamp") or datetime.utcnow().isoformat()
+            created_at = data.get("created_at") or data.get("timestamp") or datetime.now(timezone.utc).isoformat()
             metadata = data.get("metadata") or {
                 "selected_folders": data.get("selected_folders", []),
                 "questions_data": data.get("questions_data", []),
