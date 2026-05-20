@@ -154,11 +154,14 @@ def sample_production_queries(
                 logger.warning("production_sampler: list_users failed (%s); returning empty sample", exc)
                 usernames = []
         else:
-            logger.warning(
-                "production_sampler: storage backend has no list_users(); pass usernames= "
-                "explicitly to sample from this backend."
+            # Hard fail so the scheduled workflow surfaces this via its Slack
+            # failure path instead of ticking with an empty sample forever.
+            raise RuntimeError(
+                f"production_sampler: storage backend {type(storage).__name__} "
+                "does not implement list_users(); either add it to the backend "
+                "or call /evaluation/sample-production with an explicit "
+                "usernames= list."
             )
-            usernames = []
 
     pool = _iter_user_query_pairs(storage, usernames, cutoff)
     if not pool:
@@ -187,6 +190,7 @@ def run_production_sample_evaluation(
     """
     from backend.services.rag_quality_evaluator import evaluate_batch
 
+    mode = judge_mode or getattr(config, "EVAL_JUDGE_MODE", "combined")
     samples = sample_production_queries(n=n, since_hours=since_hours, rng_seed=rng_seed)
     if not samples:
         return {
@@ -195,9 +199,9 @@ def run_production_sample_evaluation(
             "individual_results": [],
             "sampled_pairs": 0,
             "lookback_hours": since_hours or config.EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS,
+            "judge_mode": mode,
         }
 
-    mode = judge_mode or getattr(config, "EVAL_JUDGE_MODE", "combined")
     result = evaluate_batch(samples, model_id=model_id, judge_mode=mode)
     result["sampled_pairs"] = len(samples)
     result["lookback_hours"] = since_hours or config.EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS

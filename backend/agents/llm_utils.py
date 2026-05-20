@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Generator, Optional
 
 from backend.config import config
 
@@ -11,6 +11,70 @@ def extract_completion_text(llm_response: object) -> str:
     if isinstance(text, str) and text.strip():
         return text.strip()
     return str(llm_response).strip()
+
+
+def _extract_delta(resp: object) -> str:
+    """Pull the incremental delta from a llama-index style CompletionResponse.
+
+    ``BedrockLLM.stream_complete`` yields objects whose ``.delta`` is the new
+    chunk. Some providers omit ``.delta`` and only update ``.text`` cumulatively
+    — handle both shapes defensively.
+    """
+    delta = getattr(resp, "delta", None)
+    if isinstance(delta, str):
+        return delta
+    text = getattr(resp, "text", None)
+    if isinstance(text, str):
+        return text
+    return ""
+
+
+def stream_complete_with_model_fallback(
+    *,
+    prompt: str,
+    logger: logging.Logger,
+    model_id: Optional[str] = None,
+) -> Generator[str, None, None]:
+    """Stream LLM tokens with a one-shot fallback to the default model.
+
+    The fallback only kicks in if the primary model raises *before* yielding
+    any tokens. Once even a single delta has been emitted the partial response
+    has already reached the user, so a mid-stream failure is re-raised rather
+    than silently swapping models mid-flight.
+    """
+    from backend.llm_provider import get_llm
+
+    def _stream(target_model_id: Optional[str]) -> Generator[str, None, None]:
+        llm_kwargs = {}
+        if target_model_id:
+            llm_kwargs["model_id"] = target_model_id
+        llm = get_llm(**llm_kwargs)
+        for resp in llm.stream_complete(prompt):
+            chunk = _extract_delta(resp)
+            if chunk:
+                yield chunk
+
+    yielded_any = False
+    primary_exc: Optional[Exception] = None
+    try:
+        for chunk in _stream(model_id):
+            yielded_any = True
+            yield chunk
+    except Exception as exc:
+        primary_exc = exc
+
+    if not yielded_any:
+        fallback_model_id = config.BEDROCK_MODEL_ID
+        if model_id and model_id != fallback_model_id:
+            logger.warning(
+                "Primary streaming model %s failed (%s). Falling back to %s.",
+                model_id,
+                primary_exc,
+                fallback_model_id,
+            )
+            yield from _stream(fallback_model_id)
+        elif primary_exc is not None:
+            raise primary_exc
 
 
 def complete_with_model_fallback(

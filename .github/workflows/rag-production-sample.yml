@@ -57,7 +57,13 @@ jobs:
       judge_mode: ${{ steps.invoke.outputs.judge_mode }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        # Pinned to the v4.2.2 commit SHA so a compromised tag can't swap the
+        # action under us. ``persist-credentials: false`` keeps the GITHUB_TOKEN
+        # out of ``.git/config`` for any later step (we only need a read-only
+        # checkout of the workflow + action sources).
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       # ---------------------------------------------------------------------
       # Step 1 — Validate required configuration before any network work

@@ -4,10 +4,10 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Literal, Optional, TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import (
@@ -1074,7 +1074,7 @@ class ProductionSampleRequest(BaseModel):
         description="Optional RNG seed for repeatable samples (omit for true random).",
     )
     # Judge config
-    judge_mode: Optional[str] = Field(
+    judge_mode: Optional[Literal["combined", "split"]] = Field(
         default=None,
         description="`combined` (1 LLM call/query) or `split` (4 calls/query, anti-halo). Defaults to EVAL_JUDGE_MODE.",
     )
@@ -1098,13 +1098,19 @@ def sample_production_evaluation(
     regression in real conditions, etc.
     """
     from backend.services.production_sampler import run_production_sample_evaluation
-    return run_production_sample_evaluation(
-        n=payload.sample_size,
-        since_hours=payload.lookback_hours,
-        judge_mode=payload.judge_mode,
-        model_id=payload.model_id,
-        rng_seed=payload.seed,
-    )
+    try:
+        return run_production_sample_evaluation(
+            n=payload.sample_size,
+            since_hours=payload.lookback_hours,
+            judge_mode=payload.judge_mode,
+            model_id=payload.model_id,
+            rng_seed=payload.seed,
+        )
+    except RuntimeError as exc:
+        # Misconfiguration (e.g. storage backend without list_users()): surface
+        # the message verbatim so the scheduled workflow's Slack alert shows
+        # the operator exactly what to fix.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/runs")

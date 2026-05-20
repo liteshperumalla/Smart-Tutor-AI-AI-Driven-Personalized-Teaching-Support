@@ -196,10 +196,11 @@ _SPLIT_PROMPT_TEMPLATES: Dict[str, str] = {
         "You are a strict RAG quality evaluator scoring ONE dimension: correctness.\n"
         "Correctness: when a reference answer is provided, compare the generated\n"
         "answer to that reference and score factual correctness and completeness.\n"
-        "Without a reference, estimate correctness from the question, context, and\n"
-        "answer. Score 0 for materially incorrect answers; near 1 only when\n"
-        "substantially correct.\n\n"
+        "Without a reference, estimate correctness from the question, retrieved\n"
+        "context, and answer. Score 0 for materially incorrect answers; near 1\n"
+        "only when substantially correct.\n\n"
         "**Question:** {question}\n\n"
+        "**Retrieved Context:**\n{context}\n\n"
         "**Reference Answer:** {reference_answer}\n\n"
         "**Generated Answer:**\n{answer}\n\n"
         "Respond with ONLY a JSON object (no markdown):\n"
@@ -291,6 +292,13 @@ def evaluate_quality(
 
     if judge_mode == "split":
         return _evaluate_split(question, context_str, answer, ref, model_id)
+    if judge_mode != "combined":
+        # Fail loud on typos rather than silently coercing to combined — a
+        # misspelled `splitt` was previously indistinguishable from the
+        # default path and would mask broken eval runs.
+        raise ValueError(
+            f"Unknown judge_mode {judge_mode!r}. Expected 'combined' or 'split'."
+        )
 
     # Combined-prompt path (legacy default)
     prompt = JUDGE_PROMPT.format(

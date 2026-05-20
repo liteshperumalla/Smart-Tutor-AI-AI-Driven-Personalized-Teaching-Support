@@ -1,29 +1,83 @@
 """
 Neo4j Graph Write Operations
 Each agent calls these helpers to log interactions into the knowledge graph.
-All operations are non-blocking fire-and-forget to avoid slowing responses.
+All operations are dispatched to a background thread pool so a slow Neo4j
+connection never blocks the user-facing response path.
 """
 
 from __future__ import annotations
 
+import atexit
 import logging
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 
+# ── Background executor ──────────────────────────────────────────
+# A single shared pool drains writes off the request thread. Threads are
+# daemonised via ``atexit`` and a sensible default worker count keeps the
+# Neo4j driver's own pool from being overwhelmed.
+
+_EXECUTOR: Optional[ThreadPoolExecutor] = None
+_EXECUTOR_LOCK = threading.Lock()
+_DEFAULT_WORKERS = int(os.environ.get("GRAPH_OPS_WORKERS", "4"))
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _EXECUTOR
+    if _EXECUTOR is None:
+        with _EXECUTOR_LOCK:
+            if _EXECUTOR is None:
+                _EXECUTOR = ThreadPoolExecutor(
+                    max_workers=_DEFAULT_WORKERS,
+                    thread_name_prefix="graph-ops",
+                )
+                atexit.register(_shutdown_executor)
+    return _EXECUTOR
+
+
+def _shutdown_executor() -> None:
+    global _EXECUTOR
+    if _EXECUTOR is not None:
+        # ``wait=False`` lets the process exit promptly; outstanding writes
+        # are best-effort and the data they carry is also persisted in
+        # PostgreSQL via ``interaction_log``, so dropping them is acceptable.
+        _EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        _EXECUTOR = None
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _safe_write(query: str, params: dict) -> None:
-    """Execute a write query; swallow errors so agent responses are never blocked."""
+def _do_write(query: str, params: dict) -> None:
+    """Actual Neo4j call. Runs on a worker thread; errors are swallowed."""
     try:
         from backend.agents.neo4j_client import get_neo4j_client
         get_neo4j_client().execute_write(query, params)
     except Exception as exc:
         logger.warning("Neo4j write failed: %s", exc)
+
+
+def _safe_write(query: str, params: dict) -> None:
+    """Submit a write to the background pool without blocking the caller.
+
+    If the pool is saturated or shutting down we fall back to a synchronous
+    write so we never silently lose data on shutdown.
+    """
+    try:
+        _get_executor().submit(_do_write, query, params)
+    except RuntimeError:
+        # Pool is shutting down — execute inline as a last-resort fallback.
+        _do_write(query, params)
+    except Exception as exc:
+        logger.warning("graph_ops dispatch failed, running inline: %s", exc)
+        _do_write(query, params)
 
 
 # ── Student node (upsert) ───────────────────────────────────────

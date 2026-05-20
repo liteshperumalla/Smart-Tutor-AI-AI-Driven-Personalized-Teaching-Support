@@ -40,6 +40,44 @@ Student's request: {query}
 """
 
 
+def _build_personalised_prompt(state: AgentState) -> str:
+    top_topics = state.get("top_topics", []) or []
+    weak_topics = state.get("weak_topics", []) or []
+    recently_studied = state.get("recently_studied", []) or []
+    example_topic = top_topics[0] if top_topics else "a familiar concept"
+    top_inline = ", ".join(top_topics) if top_topics else "their existing knowledge"
+
+    return _PERSONALISED_PROMPT.format(
+        student_name=state.get("student_name", "Student"),
+        student_level=state.get("student_level", "intermediate"),
+        top_topics=", ".join(top_topics) if top_topics else "not yet determined",
+        weak_topics=", ".join(weak_topics) if weak_topics else "not yet determined",
+        recently_studied=", ".join(recently_studied) if recently_studied else "none yet",
+        context=state.get("context_str", "No additional context available."),
+        query=state["input"],
+        top_topics_inline=top_inline,
+        example_topic=example_topic,
+    )
+
+
+def prepare_personalised(state: AgentState) -> Dict:
+    """Streaming-pipeline hook."""
+    return {
+        "prompt": _build_personalised_prompt(state),
+        "model_id": state.get("model_id"),
+        "agent": "personalised_agent",
+    }
+
+
+def finalize_personalised(state: AgentState, response_text: str) -> None:
+    graph_ops.log_explanation(
+        username=state.get("user_id", ""),
+        query=state["input"],
+        explanation=response_text[:500],
+        level=state.get("student_level", "intermediate"),
+    )
+
+
 def personalised_agent(state: AgentState) -> Dict:
     """LangGraph node: personalised explanation."""
     query = state["input"]

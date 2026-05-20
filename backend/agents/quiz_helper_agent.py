@@ -83,6 +83,45 @@ def _build_quiz_summary(username: str) -> str:
         return "Quiz data could not be retrieved."
 
 
+def _build_quiz_prompt(state: AgentState) -> str:
+    user_id = state.get("user_id", "")
+    from backend.agents.profile import load_student_profile
+    profile = load_student_profile(user_id)
+    total_quizzes = profile.get("total_quizzes", 0)
+    recent_avg = profile.get("recent_avg_score", 0)
+    quiz_summary = _build_quiz_summary(user_id)
+
+    top_topics = state.get("top_topics", []) or []
+    weak_topics = state.get("weak_topics", []) or []
+    struggled = state.get("struggled_concepts", []) or []
+
+    return _QUIZ_PROMPT.format(
+        student_name=state.get("student_name", "Student"),
+        student_level=state.get("student_level", "intermediate"),
+        total_quizzes=total_quizzes,
+        recent_avg_score=recent_avg,
+        top_topics=", ".join(top_topics) if top_topics else "not determined",
+        weak_topics=", ".join(weak_topics) if weak_topics else "not determined",
+        struggled_concepts=", ".join(struggled) if struggled else "none recorded",
+        quiz_summary=quiz_summary,
+        query=state["input"],
+    )
+
+
+def prepare_quiz_helper(state: AgentState) -> Dict:
+    """Streaming-pipeline hook."""
+    return {
+        "prompt": _build_quiz_prompt(state),
+        "model_id": state.get("model_id"),
+        "agent": "quiz_helper_agent",
+    }
+
+
+def finalize_quiz_helper(state: AgentState, response_text: str) -> None:
+    """No-op: quiz_helper does not persist sessions to Neo4j here."""
+    return None
+
+
 def quiz_helper_agent(state: AgentState) -> Dict:
     """LangGraph node: quiz-based study advice."""
     query = state["input"]

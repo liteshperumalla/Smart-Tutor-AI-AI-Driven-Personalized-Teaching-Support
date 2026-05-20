@@ -46,6 +46,40 @@ def _extract_topics(query: str) -> list[str]:
     return [w for w in words if w not in stop and len(w) > 2][:5]
 
 
+def _build_tutor_prompt(state: AgentState) -> str:
+    return _TUTOR_PROMPT.format(
+        student_name=state.get("student_name", "Student"),
+        student_level=state.get("student_level", "intermediate"),
+        recently_studied=(
+            ", ".join(state.get("recently_studied") or []) or "none yet"
+        ),
+        context=state.get("context_str", "No additional context available."),
+        query=state["input"],
+    )
+
+
+def prepare_tutor(state: AgentState) -> Dict:
+    """Streaming-pipeline hook: returns the prompt + LLM model for this agent."""
+    return {
+        "prompt": _build_tutor_prompt(state),
+        "model_id": state.get("model_id"),
+        "agent": "tutor_agent",
+    }
+
+
+def finalize_tutor(state: AgentState, response_text: str) -> None:
+    """Streaming-pipeline hook: post-stream side effects (graph logging)."""
+    topics = _extract_topics(state["input"])
+    graph_ops.log_tutoring_session(
+        username=state.get("user_id", ""),
+        query=state["input"],
+        response=response_text[:500],
+        session_type="general",
+        student_level=state.get("student_level", "intermediate"),
+        topics=topics,
+    )
+
+
 def tutor_agent(state: AgentState) -> Dict:
     """LangGraph node: general tutoring with RAG."""
     query = state["input"]

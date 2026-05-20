@@ -547,6 +547,8 @@ class Config:
             return {}
         try:
             parsed = _json.loads(raw)
+            if not isinstance(parsed, dict):
+                return {}
             return {str(k).lower(): float(v) for k, v in parsed.items()}
         except (ValueError, TypeError):
             return {}
