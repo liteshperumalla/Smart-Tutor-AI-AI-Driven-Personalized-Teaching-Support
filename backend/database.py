@@ -22,6 +22,28 @@ from .validators import PathValidator
 logger = get_logger(__name__)
 
 
+def _atomic_write_json(path: str, data: Any, *, indent: int = 4) -> None:
+    """Crash-durable JSON write.
+
+    os.replace() is atomic but not durable: on a power loss the rename can
+    survive while the file's contents (and the parent dir's new dentry)
+    haven't hit disk yet — leaving a zero-byte file behind. We fsync the
+    temp file before rename and fsync the directory after rename to close
+    that window.
+    """
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=indent, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
+    dir_fd = os.open(os.path.dirname(path) or ".", os.O_DIRECTORY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
 class JSONDatabase:
     """Thread-safe JSON file database with proper error handling"""
 
@@ -56,15 +78,9 @@ class JSONDatabase:
             raise DataLoadError(self.file_path, str(e))
 
     def _write_data(self, data: Dict[str, Any]) -> None:
-        """Write data to JSON file"""
+        """Write data to JSON file (durable; see _atomic_write_json)."""
         try:
-            # Write to temporary file first
-            temp_file = f"{self.file_path}.tmp"
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-
-            # Atomic rename
-            os.replace(temp_file, self.file_path)
+            _atomic_write_json(self.file_path, data, indent=4)
         except Exception as e:
             logger.error(f"Error writing to {self.file_path}: {e}")
             raise DataSaveError(self.file_path, str(e))
@@ -398,21 +414,17 @@ class ChatSessionDatabase:
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
 
-        # Write to a temp file then atomically rename to avoid corruption on crash
-        # mid-write. Matches the pattern used by JSONDatabase._write_data().
         try:
-            tmp_path = f"{chat_path}.tmp"
-            with open(tmp_path, 'w', encoding='utf-8') as f:
-                json.dump(chat_data, f, indent=2, ensure_ascii=False)
-            os.replace(tmp_path, chat_path)
+            _atomic_write_json(chat_path, chat_data, indent=2)
             logger.debug(f"Chat saved: user={user_id}, chat={chat_id}")
         except Exception as e:
             logger.error(f"Failed to save chat: {e}")
-            try:
-                if os.path.exists(tmp_path):
+            tmp_path = f"{chat_path}.tmp"
+            if os.path.exists(tmp_path):
+                try:
                     os.remove(tmp_path)
-            except Exception:
-                pass
+                except Exception:
+                    pass
             raise DataSaveError("chat", str(e))
 
     def load_chat(self, user_id: str, chat_id: str) -> Dict[str, Any]:
