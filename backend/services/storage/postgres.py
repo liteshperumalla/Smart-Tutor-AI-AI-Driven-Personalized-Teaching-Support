@@ -15,7 +15,6 @@ import re
 from backend.config import config
 from backend.logger import get_logger
 from backend.services.storage.base import BaseStorageBackend
-from backend.services.storage.filesystem import FileSystemStorageBackend
 from backend.services.models import ChatSession, QuizResult  # Fixed import path
 
 logger = get_logger(__name__)
@@ -57,9 +56,20 @@ class PostgresStorageBackend(BaseStorageBackend):
             max_connections,
             **self.connection_params
         )
-        self.chat_storage = FileSystemStorageBackend()
+        # Chat sessions live in DynamoDB, lazily resolved so that environments
+        # without AWS configured (unit tests, local-only dev) don't pay the
+        # boto3 cost or trip credential lookups at backend-init time.
+        self._chat_backend = None
 
         logger.info(f"PostgreSQL storage backend initialized (pool: {min_connections}-{max_connections})")
+
+    @property
+    def chat_storage(self):
+        """Lazy DynamoDB chat backend; raised exceptions surface on first use."""
+        if self._chat_backend is None:
+            from backend.services.storage.dynamodb import get_dynamodb_backend
+            self._chat_backend = get_dynamodb_backend()
+        return self._chat_backend
 
     @contextmanager
     def _get_connection(self):
@@ -323,21 +333,6 @@ class PostgresStorageBackend(BaseStorageBackend):
             "login_attempts": 0
         })
 
-    def increment_login_attempts(self, username: str) -> int:
-        """Increment failed login attempts atomically using a single SQL statement."""
-        with self._get_cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE users
-                SET login_attempts = COALESCE(login_attempts, 0) + 1
-                WHERE username = %s
-                RETURNING login_attempts
-                """,
-                (username,),
-            )
-            row = cursor.fetchone()
-            return int(row["login_attempts"]) if row else 0
-
     def reset_login_attempts(self, username: str) -> None:
         """Reset failed login attempts"""
         self.update_user(username, {"login_attempts": 0})
@@ -366,29 +361,20 @@ class PostgresStorageBackend(BaseStorageBackend):
             return False
 
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
-        """
-        List chat sessions for a user
-        Note: Chat sessions are stored in DynamoDB, not PostgreSQL
-        This is a placeholder that will be handled by DynamoDBStorageBackend
-        """
-        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        """List chat sessions for a user (routed to DynamoDB)."""
         return self.chat_storage.list_chat_sessions(username)
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
-        """
-        Load a specific chat session
-        Note: Chat sessions are stored in DynamoDB, not PostgreSQL
-        """
-        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        """Load a chat session (routed to DynamoDB)."""
         return self.chat_storage.load_chat_session(username, session_id)
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
-        """
-        Save a chat session
-        Note: Chat sessions are stored in DynamoDB, not PostgreSQL
-        """
-        logger.warning("Chat sessions are stored in filesystem for postgres backend")
+        """Persist a chat session (routed to DynamoDB)."""
         self.chat_storage.save_chat_session(username, session)
+
+    def delete_chat_session(self, username: str, session_id: str) -> bool:
+        """Delete a chat session (routed to DynamoDB)."""
+        return self.chat_storage.delete_chat_session(username, session_id)
 
     def save_quiz_result(self, result: QuizResult) -> None:
         """Save quiz result to PostgreSQL"""
