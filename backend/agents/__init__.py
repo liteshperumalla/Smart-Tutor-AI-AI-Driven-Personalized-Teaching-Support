@@ -23,23 +23,36 @@ logger = logging.getLogger(__name__)
 _CACHEABLE_AGENTS = frozenset({"tutor_agent", "doubts_agent", "quiz_helper_agent"})
 
 
-def _chat_cache_key(user_id: str, agent_name: str, query: str) -> str:
+def _chat_cache_key(
+    user_id: str, agent_name: str, query: str, model_id: Optional[str]
+) -> str:
+    # model_id is in the key because two users on different models would
+    # otherwise share a slot and one could see the other's model's response.
     q_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
-    return f"chat:v1:{user_id}:{agent_name}:{q_hash}"
+    m = (model_id or "default")[:32]
+    return f"chat:v2:{user_id}:{agent_name}:{m}:{q_hash}"
 
 
-def _chat_cache_get(user_id: str, agent_name: str, query: str) -> Optional[str]:
+def _chat_cache_get(
+    user_id: str, agent_name: str, query: str, model_id: Optional[str]
+) -> Optional[str]:
     if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
         return None
     try:
         from backend.redis_cache import get_cache
-        return get_cache().get(_chat_cache_key(user_id, agent_name, query))
+        return get_cache().get(_chat_cache_key(user_id, agent_name, query, model_id))
     except Exception as exc:
         logger.debug("Chat cache lookup skipped: %s", exc)
         return None
 
 
-def _chat_cache_put(user_id: str, agent_name: str, query: str, response: str) -> None:
+def _chat_cache_put(
+    user_id: str,
+    agent_name: str,
+    query: str,
+    model_id: Optional[str],
+    response: str,
+) -> None:
     if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
         return
     if not response or len(response) < 16:
@@ -48,7 +61,7 @@ def _chat_cache_put(user_id: str, agent_name: str, query: str, response: str) ->
     try:
         from backend.redis_cache import get_cache
         get_cache().set(
-            _chat_cache_key(user_id, agent_name, query),
+            _chat_cache_key(user_id, agent_name, query, model_id),
             response,
             ttl=config.ANSWER_CACHE_TTL,
         )
@@ -141,21 +154,12 @@ def run_agent_pipeline(
     from backend.agents.streaming import stream_agent_response, stream_agent_tokens
     from backend.agents.llm_utils import stream_complete_with_model_fallback
 
-    # ── 4.0 Answer cache: skip the LLM entirely on identical recent queries
-    cached_response = _chat_cache_get(user_id, agent_name, query)
-    if cached_response:
-        elapsed_ms = int((time.time() - start_time) * 1000)
-        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_id, agent_name)
-        generator = stream_agent_response(
-            response_text=cached_response,
-            agent_name=agent_name,
-            route_reason=route_reason,
-            extra_meta={"response_time_ms": elapsed_ms, "from_cache": True},
-        )
-        return generator, sources
-
-    # Mapping of agent -> (prepare_fn, finalize_fn). Feedback handled separately
-    # because it doesn't call an LLM.
+    # Resolve the specialist's prepare/finalize FIRST so that cache hits still
+    # run finalize (graph_ops logging) and _log_post_stream (interaction log,
+    # Langfuse update). Prompt-building is cheap — string formatting, not an
+    # LLM call — so doing it before the cache check is fine even on hits.
+    prep = None
+    finalize = None
     if agent_name == "tutor_agent":
         from backend.agents.tutor_agent import prepare_tutor, finalize_tutor
         prep = prepare_tutor(initial_state)
@@ -173,9 +177,44 @@ def run_agent_pipeline(
         from backend.agents.quiz_helper_agent import prepare_quiz_helper, finalize_quiz_helper
         prep = prepare_quiz_helper(initial_state)
         finalize = lambda txt: finalize_quiz_helper(initial_state, txt)
-    else:
-        prep = None
-        finalize = None
+
+    # ── 4.0 Answer cache: skip the LLM entirely on identical recent queries.
+    # On a hit we still must run finalize + _log_post_stream so the knowledge
+    # graph, interaction log, and Langfuse stay coherent with what the user
+    # actually saw.
+    cached_response = _chat_cache_get(user_id, agent_name, query, model_id)
+    if cached_response:
+        if finalize is not None:
+            try:
+                finalize(cached_response)
+            except Exception as exc:
+                logger.warning("Agent finalize hook failed on cache hit: %s", exc)
+        generation_elapsed = time.time() - generation_started_at
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        _log_post_stream(
+            main_trace=main_trace,
+            user_id=user_id,
+            session_id=session_id,
+            query=query,
+            response_text=cached_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            query_type=query_type,
+            sentiment=None,
+            model_id=model_id,
+            elapsed_ms=elapsed_ms,
+            retrieval_elapsed=retrieval_elapsed,
+            generation_elapsed=generation_elapsed,
+            sources=sources,
+        )
+        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_id, agent_name)
+        generator = stream_agent_response(
+            response_text=cached_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            extra_meta={"response_time_ms": elapsed_ms, "from_cache": True},
+        )
+        return generator, sources
 
     # ── 4a. Feedback agent: no LLM stream — use canned-text chunking ─
     if agent_name == "feedback_agent":
@@ -224,7 +263,7 @@ def run_agent_pipeline(
                 finalize(full_response)
             except Exception as exc:
                 logger.warning("Agent finalize hook failed: %s", exc)
-        _chat_cache_put(user_id, agent_name, query, full_response)
+        _chat_cache_put(user_id, agent_name, query, model_id, full_response)
         generation_elapsed_local = time.time() - generation_started_at
         elapsed_ms_local = int((time.time() - start_time) * 1000)
         _log_post_stream(
