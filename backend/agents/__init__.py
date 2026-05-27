@@ -6,6 +6,7 @@ LangGraph invocation, interaction logging, and streaming.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,44 @@ from backend.config import config
 from backend.langfuse_setup import create_trace, update_trace, traced_span
 
 logger = logging.getLogger(__name__)
+
+# Agents whose responses are safe to cache across identical (user, query) pairs.
+# Skip personalised_agent (response is tailored to user tone/level by design)
+# and feedback_agent (no LLM call — already canned).
+_CACHEABLE_AGENTS = frozenset({"tutor_agent", "doubts_agent", "quiz_helper_agent"})
+
+
+def _chat_cache_key(user_id: str, agent_name: str, query: str) -> str:
+    q_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+    return f"chat:v1:{user_id}:{agent_name}:{q_hash}"
+
+
+def _chat_cache_get(user_id: str, agent_name: str, query: str) -> Optional[str]:
+    if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
+        return None
+    try:
+        from backend.redis_cache import get_cache
+        return get_cache().get(_chat_cache_key(user_id, agent_name, query))
+    except Exception as exc:
+        logger.debug("Chat cache lookup skipped: %s", exc)
+        return None
+
+
+def _chat_cache_put(user_id: str, agent_name: str, query: str, response: str) -> None:
+    if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
+        return
+    if not response or len(response) < 16:
+        # Don't cache empty or trivially short responses — likely errors.
+        return
+    try:
+        from backend.redis_cache import get_cache
+        get_cache().set(
+            _chat_cache_key(user_id, agent_name, query),
+            response,
+            ttl=config.ANSWER_CACHE_TTL,
+        )
+    except Exception as exc:
+        logger.debug("Chat cache write skipped: %s", exc)
 
 
 def run_agent_pipeline(
@@ -102,6 +141,19 @@ def run_agent_pipeline(
     from backend.agents.streaming import stream_agent_response, stream_agent_tokens
     from backend.agents.llm_utils import stream_complete_with_model_fallback
 
+    # ── 4.0 Answer cache: skip the LLM entirely on identical recent queries
+    cached_response = _chat_cache_get(user_id, agent_name, query)
+    if cached_response:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_id, agent_name)
+        generator = stream_agent_response(
+            response_text=cached_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            extra_meta={"response_time_ms": elapsed_ms, "from_cache": True},
+        )
+        return generator, sources
+
     # Mapping of agent -> (prepare_fn, finalize_fn). Feedback handled separately
     # because it doesn't call an LLM.
     if agent_name == "tutor_agent":
@@ -172,6 +224,7 @@ def run_agent_pipeline(
                 finalize(full_response)
             except Exception as exc:
                 logger.warning("Agent finalize hook failed: %s", exc)
+        _chat_cache_put(user_id, agent_name, query, full_response)
         generation_elapsed_local = time.time() - generation_started_at
         elapsed_ms_local = int((time.time() - start_time) * 1000)
         _log_post_stream(
