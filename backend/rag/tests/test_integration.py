@@ -12,7 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch
 import numpy as np
 
 from backend.rag.semantic_chunker import SemanticChunker
-from backend.rag.hybrid_search import HybridSearcher, BM25Retriever, SemanticRetriever
+from backend.rag.hybrid_search import HybridSearcher, BM25Retriever
 from backend.rag.reranker import AdvancedReranker
 from backend.rag.hyde import HyDERetriever
 from backend.rag.query_enhancement import QueryEnhancer, EnhancedQuery
@@ -112,9 +112,10 @@ async def rag_pipeline(mock_llm, mock_embeddings, mock_redis, mock_s3, sample_do
     # Initialize components
     chunker = SemanticChunker(target_chunk_size=256)
 
-    # Create mock retrievers
+    # Create mock retrievers. SemanticRetriever isn't a real class — the
+    # hybrid searcher duck-types its semantic_retriever arg — so spec=None.
     bm25_retriever = Mock(spec=BM25Retriever)
-    semantic_retriever = Mock(spec=SemanticRetriever)
+    semantic_retriever = Mock()
 
     # Configure mock retrieval results
     mock_results = [
