@@ -78,12 +78,29 @@ async def get_current_session(
     token = _resolve_token(request, authorization)
     try:
         user = auth_service.validate_session(token)
-        return token, user
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session",
         )
+
+    # SECURITY: Re-check the user's active status on every request.
+    # JWTs survive admin-driven account disables otherwise; this closes that
+    # window. Lookup failures are treated as "user removed" → 401.
+    username = user.get("username") or user.get("sub")
+    if username:
+        try:
+            from backend.database import get_user_db
+            db_record = get_user_db().get_user(username)
+        except Exception:
+            db_record = None
+        if db_record is None or db_record.get("disabled") is True:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Account is disabled or no longer exists",
+            )
+
+    return token, user
 
 
 async def get_current_user(session=Depends(get_current_session)):
