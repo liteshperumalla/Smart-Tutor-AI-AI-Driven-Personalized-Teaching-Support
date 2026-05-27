@@ -75,7 +75,25 @@ _INTENT_PROTOTYPES: Dict[str, List[str]] = {
 # Cosine threshold the winner must clear to *override* the keyword default.
 # Tuned conservatively: below this we stay with tutor_agent rather than
 # misroute a generic question. Configurable via env for ops tuning.
-_SIM_THRESHOLD = float(os.environ.get("SEMANTIC_ROUTER_THRESHOLD", "0.45"))
+def _parse_threshold() -> float:
+    raw = os.environ.get("SEMANTIC_ROUTER_THRESHOLD")
+    if raw is None or raw.strip() == "":
+        return 0.45
+    try:
+        v = float(raw)
+    except ValueError:
+        logger.warning("Invalid SEMANTIC_ROUTER_THRESHOLD=%r, using 0.45", raw)
+        return 0.45
+    # Cosine similarity is in [-1, 1]; clamp to a sensible operational range.
+    if not 0.0 <= v <= 1.0:
+        logger.warning(
+            "SEMANTIC_ROUTER_THRESHOLD=%s out of [0,1], using 0.45", raw
+        )
+        return 0.45
+    return v
+
+
+_SIM_THRESHOLD = _parse_threshold()
 _MODEL_NAME = os.environ.get("SEMANTIC_ROUTER_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 

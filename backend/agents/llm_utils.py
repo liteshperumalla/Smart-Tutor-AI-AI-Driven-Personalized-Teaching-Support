@@ -13,18 +13,22 @@ def extract_completion_text(llm_response: object) -> str:
     return str(llm_response).strip()
 
 
-def _extract_delta(resp: object) -> str:
+def _extract_delta(resp: object, previous_text: str = "") -> str:
     """Pull the incremental delta from a llama-index style CompletionResponse.
 
     ``BedrockLLM.stream_complete`` yields objects whose ``.delta`` is the new
-    chunk. Some providers omit ``.delta`` and only update ``.text`` cumulatively
-    — handle both shapes defensively.
+    chunk. Some providers omit ``.delta`` and only update ``.text`` cumulatively.
+    In the cumulative-text shape, returning the full ``.text`` every iteration
+    would emit the whole response repeatedly; slice off the previously-seen
+    prefix so callers only see the new suffix.
     """
     delta = getattr(resp, "delta", None)
     if isinstance(delta, str):
         return delta
     text = getattr(resp, "text", None)
     if isinstance(text, str):
+        if previous_text and text.startswith(previous_text):
+            return text[len(previous_text):]
         return text
     return ""
 
@@ -49,9 +53,13 @@ def stream_complete_with_model_fallback(
         if target_model_id:
             llm_kwargs["model_id"] = target_model_id
         llm = get_llm(**llm_kwargs)
+        # Track previously-emitted text so providers that send cumulative
+        # .text instead of .delta don't replay the whole response each tick.
+        seen = ""
         for resp in llm.stream_complete(prompt):
-            chunk = _extract_delta(resp)
+            chunk = _extract_delta(resp, seen)
             if chunk:
+                seen += chunk
                 yield chunk
 
     yielded_any = False

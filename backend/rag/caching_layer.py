@@ -590,6 +590,13 @@ class QueryCache:
             if key in self.exact_cache.cache:
                 del self.exact_cache.cache[key]
 
+            # Also clear the fuzzy cache + its vector index, or a later
+            # semantic match could return the supposedly-invalidated entry.
+            if key in self.fuzzy_cache.cache:
+                del self.fuzzy_cache.cache[key]
+            if self._fuzzy_index is not None:
+                self._fuzzy_index.remove(key)
+
             if self.redis_client:
                 try:
                     self.redis_client.delete(f"query:{key}")

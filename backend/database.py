@@ -5,6 +5,7 @@ Provides abstraction for data storage with proper error handling and thread safe
 
 import json
 import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -30,14 +31,32 @@ def _atomic_write_json(path: str, data: Any, *, indent: int = 4) -> None:
     haven't hit disk yet — leaving a zero-byte file behind. We fsync the
     temp file before rename and fsync the directory after rename to close
     that window.
+
+    Uses tempfile.mkstemp so each writer gets its own unique temp file in
+    the destination directory; the previous f"{path}.tmp" was shared and
+    two concurrent writers (different processes, or different threads
+    bypassing the file-level lock) would corrupt each other's output.
     """
-    tmp_path = f"{path}.tmp"
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=indent, ensure_ascii=False)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp_path, path)
-    dir_fd = os.open(os.path.dirname(path) or ".", os.O_DIRECTORY)
+    dest_dir = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".", suffix=".tmp", dir=dest_dir
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=indent, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        # Best-effort cleanup of the unique temp file on failure so we don't
+        # leak <basename>.<rand>.tmp files into the data directory.
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        raise
+    dir_fd = os.open(dest_dir, os.O_DIRECTORY)
     try:
         os.fsync(dir_fd)
     finally:

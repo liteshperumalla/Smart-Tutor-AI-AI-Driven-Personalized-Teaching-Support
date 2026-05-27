@@ -1107,10 +1107,11 @@ def sample_production_evaluation(
             rng_seed=payload.seed,
         )
     except RuntimeError as exc:
-        # Misconfiguration (e.g. storage backend without list_users()): surface
-        # the message verbatim so the scheduled workflow's Slack alert shows
-        # the operator exactly what to fix.
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        # Misconfiguration (e.g. storage backend without list_users()): this
+        # is a server-side condition, so 500 is more accurate than 422. The
+        # message is surfaced verbatim so the scheduled workflow's Slack alert
+        # shows the operator exactly what to fix.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/runs")
