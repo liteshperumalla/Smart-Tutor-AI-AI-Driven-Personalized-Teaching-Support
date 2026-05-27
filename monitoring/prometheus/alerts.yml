@@ -119,15 +119,20 @@ groups:
           description: "P95 latency is above 5s (current value: {{ $value }}s)"
 
       # Backend service down
+      #
+      # Bumped from 1m to 3m so a single missed scrape (often caused by
+      # CPU starvation on the t3a.micro, not a real outage) doesn't fire.
+      # Real outages stay down for minutes; transient scrape blips resolve
+      # in <60s. 3m is the smallest window that absorbs the blips.
       - alert: BackendServiceDown
         expr: up{job="backend-api"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
           component: backend
         annotations:
           summary: "Backend API service is down"
-          description: "Backend API has been down for more than 1 minute"
+          description: "Backend API has been down for more than 3 minutes"
 
   # Database Alerts (PostgreSQL)
   - name: database
@@ -156,15 +161,17 @@ groups:
           description: "Database connection usage is above 95% (current value: {{ $value }}%)"
 
       # Database down
+      # Same rationale as BackendServiceDown — 3m absorbs CPU-induced
+      # scrape blips while still catching real outages.
       - alert: DatabaseDown
         expr: up{job="postgresql"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
           component: database
         annotations:
           summary: "PostgreSQL database is down"
-          description: "PostgreSQL has been unreachable for more than 1 minute"
+          description: "PostgreSQL has been unreachable for more than 3 minutes"
 
       # High database lock wait time
       - alert: HighDatabaseLockWaitTime
@@ -193,8 +200,24 @@ groups:
     interval: 30s
     rules:
       # Low cache hit rate
+      #
+      # The old expression divided the lifetime _total counters with a
+      # clamp_min(_, 1) safety divisor. At low traffic the divisor clamp
+      # collapsed the ratio toward ~0, so the alert fired constantly with a
+      # value like "0.01%" regardless of actual hit performance. Two fixes:
+      #   (1) compare 10-min rates instead of lifetime totals, so a slow
+      #       start doesn't permanently poison the lifetime average;
+      #   (2) only evaluate the ratio when there's meaningful traffic
+      #       (>0.1 cache ops/sec). Below that, "hit rate" has no statistical
+      #       meaning and we shouldn't page on it.
       - alert: LowCacheHitRate
-        expr: (redis_keyspace_hits_total / clamp_min((redis_keyspace_hits_total + redis_keyspace_misses_total), 1)) * 100 < 70
+        expr: |
+          (
+            rate(redis_keyspace_hits_total[10m])
+            / (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m]))
+          ) * 100 < 70
+          and on()
+          (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m])) > 0.1
         for: 10m
         labels:
           severity: warning
@@ -205,7 +228,13 @@ groups:
 
       # Critical cache hit rate
       - alert: CriticalCacheHitRate
-        expr: (redis_keyspace_hits_total / clamp_min((redis_keyspace_hits_total + redis_keyspace_misses_total), 1)) * 100 < 50
+        expr: |
+          (
+            rate(redis_keyspace_hits_total[10m])
+            / (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m]))
+          ) * 100 < 50
+          and on()
+          (rate(redis_keyspace_hits_total[10m]) + rate(redis_keyspace_misses_total[10m])) > 0.1
         for: 5m
         labels:
           severity: critical
@@ -237,15 +266,17 @@ groups:
           description: "Redis memory usage is above 95% (current value: {{ $value }}%)"
 
       # Redis down
+      # Same rationale as BackendServiceDown — 3m absorbs CPU-induced
+      # scrape blips while still catching real outages.
       - alert: RedisDown
         expr: up{job="redis"} == 0
-        for: 1m
+        for: 3m
         labels:
           severity: critical
           component: cache
         annotations:
           summary: "Redis cache is down"
-          description: "Redis has been unreachable for more than 1 minute"
+          description: "Redis has been unreachable for more than 3 minutes"
 
       # High Redis eviction rate
       - alert: HighRedisEvictionRate
@@ -337,15 +368,22 @@ groups:
     interval: 30s
     rules:
       # RPS spike: current 1-min rate > 2x rolling 1-hour average
+      #
+      # Added an absolute floor (>5 RPS) so a quiet system with 0.05 RPS
+      # baseline doesn't trip a "DDoS" alert when a single user opens the
+      # homepage. The relative threshold catches sudden growth; the absolute
+      # threshold ensures we're talking about meaningful volume.
       - alert: RPSSpikeDetected
-        expr: sum(rate(http_requests_total[1m])) > 2 * sum(rate(http_requests_total[1h]))
+        expr: |
+          sum(rate(http_requests_total[1m])) > 2 * sum(rate(http_requests_total[1h]))
+          and sum(rate(http_requests_total[1m])) > 5
         for: 2m
         labels:
           severity: warning
           component: ddos
         annotations:
           summary: "RPS spike detected — possible DDoS"
-          description: "Current RPS ({{ $value | printf \"%.1f\" }}) is >2x the 1-hour average"
+          description: "Current RPS ({{ $value | printf \"%.1f\" }}) is >2x the 1-hour average and >5 req/s"
 
       # 4xx burst: probing, credential stuffing, 404 scanning
       - alert: FourxxBurstDetected
