@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, Header, HTTPException, Query, Request, status
+from fastapi.concurrency import run_in_threadpool
 
 from backend.config import config
 
@@ -87,18 +88,29 @@ async def get_current_session(
     # SECURITY: Re-check the user's active status on every request.
     # JWTs survive admin-driven account disables otherwise; this closes that
     # window. Lookup failures are treated as "user removed" → 401.
+    #
+    # Fail closed on a token with no principal — the old code skipped the
+    # active-status check entirely when both `username` and `sub` were
+    # absent, letting a malformed-but-validly-signed token bypass it.
     username = user.get("username") or user.get("sub")
-    if username:
-        try:
-            from backend.database import get_user_db
-            db_record = get_user_db().get_user(username)
-        except Exception:
-            db_record = None
-        if db_record is None or db_record.get("disabled") is True:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account is disabled or no longer exists",
-            )
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing principal identifier in session",
+        )
+
+    # The user_db.get_user lookup is sync psycopg2 / file I/O; offload it to
+    # the threadpool so the event loop isn't blocked once per request.
+    try:
+        from backend.database import get_user_db
+        db_record = await run_in_threadpool(get_user_db().get_user, username)
+    except Exception:
+        db_record = None
+    if db_record is None or db_record.get("disabled") is True:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is disabled or no longer exists",
+        )
 
     return token, user
 

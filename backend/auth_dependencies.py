@@ -18,6 +18,9 @@ from it.
 from __future__ import annotations
 
 import warnings
+from typing import Any, Optional
+
+from fastapi import Depends, Header, Request
 
 from backend.api.dependencies import (  # noqa: F401 — re-export for back-compat
     get_admin_session,
@@ -32,15 +35,39 @@ warnings.warn(
 )
 
 
-async def get_current_active_user(current_user=None):
-    """Back-compat shim. Real disabled-user check lives in get_current_session now."""
-    if current_user is None:
-        # If someone calls without the dependency, fall through to the consolidated path.
-        from backend.api.dependencies import get_current_user as _gcu
-        return await _gcu()
+# get_current_user is itself a FastAPI dependency (declares session via
+# Depends(get_current_session)); it can't be called bare. The shim accepts
+# the resolved user as a sub-dependency so FastAPI does the injection.
+async def get_current_active_user(
+    current_user: Any = Depends(get_current_user),
+) -> Any:
+    """Back-compat shim. Real disabled-user check lives in get_current_session."""
     return current_user
 
 
-async def get_optional_user(*args, **kwargs):
-    """Back-compat shim. Cookie-aware optional auth lives in api.dependencies."""
-    return None
+async def get_optional_user(
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> Optional[Any]:
+    """Cookie- and Bearer-aware optional auth.
+
+    Returns the user dict if a valid session exists, otherwise None.
+    The prior shim unconditionally returned None, silently breaking any
+    optional-auth route that depended on it.
+    """
+    try:
+        from backend.api.dependencies import (
+            get_auth_service_dep,
+            get_rate_limiter_dep,
+            get_current_session,
+        )
+        token_and_user = await get_current_session(
+            request=request,
+            authorization=authorization,
+            auth_service=get_auth_service_dep(),
+            rate_limiter=get_rate_limiter_dep(),
+        )
+        _, user = token_and_user
+        return user
+    except Exception:
+        return None
