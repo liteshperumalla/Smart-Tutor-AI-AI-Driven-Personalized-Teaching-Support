@@ -291,18 +291,22 @@ class UserDatabase:
 
     def increment_login_attempts(self, username: str) -> int:
         """
-        Increment failed login attempts
+        Atomically increment failed login attempts and return the new count.
+
+        The bump happens inside a single transaction so concurrent failed
+        logins for the same user can't read-then-overwrite each other's
+        increments (which would silently defeat the lockout).
 
         Returns:
-            Current number of attempts
+            Current number of attempts (0 if user does not exist)
         """
-        try:
-            user = self.get_user(username)
-            attempts = user.get('login_attempts', 0) + 1
-            self.update_user(username, {'login_attempts': attempts})
+        with self.db.transaction() as users:
+            if username not in users:
+                return 0
+            attempts = int(users[username].get('login_attempts') or 0) + 1
+            users[username]['login_attempts'] = attempts
+            users[username]['updated_at'] = datetime.now(timezone.utc).isoformat()
             return attempts
-        except UserNotFoundError:
-            return 0
 
     def reset_login_attempts(self, username: str) -> None:
         """Reset failed login attempts to zero"""

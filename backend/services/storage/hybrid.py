@@ -59,13 +59,12 @@ class HybridStorageBackend(BaseStorageBackend):
         self.update_user(username, {'last_login': datetime.now(timezone.utc).isoformat()})
 
     def increment_login_attempts(self, username: str) -> int:
-        """Increment failed login attempts"""
-        user = self.get_user(username)
-        if user:
-            attempts = user.get('login_attempts', 0) + 1
-            self.update_user(username, {'login_attempts': attempts})
-            return attempts
-        return 0
+        """Atomically bump failed-login counter (delegates to PostgreSQL).
+
+        The prior read-modify-write here lost increments under parallel
+        failed logins, defeating brute-force lockouts.
+        """
+        return self.postgres.increment_login_attempts(username)
 
     def reset_login_attempts(self, username: str) -> None:
         """Reset failed login attempts"""

@@ -21,6 +21,23 @@ class BaseStorageBackend(ABC):
     def update_user(self, username: str, updates: dict) -> dict:
         ...
 
+    def increment_login_attempts(self, username: str) -> int:
+        """
+        Atomically increment the user's ``login_attempts`` counter and return
+        the new value. The default implementation is a non-atomic
+        read-modify-write fallback so existing tests keep passing; backends
+        that can do this in one statement (Postgres ``UPDATE … RETURNING``,
+        DynamoDB ``UpdateItem ADD``) MUST override this — under concurrent
+        failed logins for the same account the fallback under-counts and
+        breaks brute-force lockouts.
+        """
+        user = self.get_user(username)
+        if not user:
+            return 0
+        attempts = (user.get("login_attempts") or 0) + 1
+        self.update_user(username, {"login_attempts": attempts})
+        return attempts
+
     @abstractmethod
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         ...

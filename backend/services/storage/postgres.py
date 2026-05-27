@@ -208,6 +208,32 @@ class PostgresStorageBackend(BaseStorageBackend):
             logger.error(f"Error creating user {username}: {e}")
             raise
 
+    def increment_login_attempts(self, username: str) -> int:
+        """
+        Atomic counter bump via ``UPDATE … RETURNING``. Two concurrent failed
+        logins for the same account each see their own pre-incremented value,
+        so brute-force lockouts can't be defeated by parallel requests.
+        Returns 0 when the user does not exist.
+        """
+        try:
+            with self._get_cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE users
+                    SET login_attempts = COALESCE(login_attempts, 0) + 1
+                    WHERE username = %s
+                    RETURNING login_attempts
+                    """,
+                    (username,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return 0
+                return int(row["login_attempts"])
+        except Exception as e:
+            logger.error(f"Error incrementing login attempts for {username}: {e}")
+            raise
+
     def update_user(self, username: str, updates: dict) -> dict:
         """Update user fields"""
         if not updates:
