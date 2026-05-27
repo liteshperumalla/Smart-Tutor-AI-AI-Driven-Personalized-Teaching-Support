@@ -253,7 +253,6 @@ jobs:
         if: ${{ success() }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Scheduled Production Sample Evaluation
           status: success
@@ -268,7 +267,6 @@ jobs:
         if: ${{ failure() }}
         uses: ./.github/actions/send-slack-notification
         with:
-          channel: APP_DEV_ANALYTICS
           webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           workflow_name: Scheduled Production Sample Evaluation
           status: failure
