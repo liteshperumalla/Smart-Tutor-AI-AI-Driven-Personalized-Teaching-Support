@@ -72,6 +72,10 @@ export async function apiRequest<T>(
   while (attempt <= (options.maxRetries || 0)) {
     try {
       const response = await fetch(input, {
+        // Default to cookie-bearing requests so auth works for callers that
+        // don't manually pass an Authorization header. Callers can still
+        // override by passing credentials: "omit" in init.
+        credentials: "include",
         ...fetchInit,
         headers: {
           "Content-Type": "application/json",
