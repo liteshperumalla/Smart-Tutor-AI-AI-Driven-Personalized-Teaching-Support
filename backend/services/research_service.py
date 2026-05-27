@@ -11,7 +11,9 @@ import logging
 import re
 import tempfile
 import urllib.parse
-import xml.etree.ElementTree as ET
+# SECURITY: defusedxml prevents XXE / XML-bomb attacks when parsing untrusted
+# external XML (arxiv, etc.). API-compatible with xml.etree.ElementTree.
+import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional

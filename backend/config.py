@@ -531,6 +531,51 @@ class Config:
     # Max concurrent LLM synthesis calls — backpressure for streaming chat
     LLM_MAX_CONCURRENT = int(os.getenv("LLM_MAX_CONCURRENT", "10"))
 
+    # ──────────────────────────────────────────────────────────────────
+    # RAG evaluation tuning
+    # ──────────────────────────────────────────────────────────────────
+    # Per-subject context-precision thresholds. JSON object keyed by subject
+    # slug (lowercase). Use `default` for the fallback when no subject is
+    # provided. Empty / unset falls back to the builtin map in
+    # `backend.services.rag_quality_evaluator`.
+    #     CONTEXT_PRECISION_THRESHOLDS={"math":0.22,"history":0.45,"default":0.30}
+    @staticmethod
+    def _parse_precision_thresholds() -> Dict[str, float]:
+        import json as _json
+        raw = os.getenv("CONTEXT_PRECISION_THRESHOLDS", "")
+        if not raw.strip():
+            return {}
+        try:
+            parsed = _json.loads(raw)
+            if not isinstance(parsed, dict):
+                return {}
+            return {str(k).lower(): float(v) for k, v in parsed.items()}
+        except (ValueError, TypeError):
+            return {}
+
+    CONTEXT_PRECISION_THRESHOLDS: Dict[str, float] = _parse_precision_thresholds()
+
+    # LLM-judge mode: `combined` (1 LLM call/query, default) or `split`
+    # (4 calls/query — reduces position/halo bias for critical evals).
+    EVAL_JUDGE_MODE: str = os.getenv("EVAL_JUDGE_MODE", "combined").lower()
+
+    # Topic coverage scoring: `substring` (default, fast, brittle to synonyms)
+    # or `semantic` (Bedrock embedding cosine similarity per sentence,
+    # robust to paraphrase). Both modes also emit the substring metric for
+    # backwards compatibility with existing dashboards.
+    EVAL_TOPIC_COVERAGE_MODE: str = os.getenv("EVAL_TOPIC_COVERAGE_MODE", "substring").lower()
+    EVAL_TOPIC_COVERAGE_SIM_THRESHOLD: float = float(
+        os.getenv("EVAL_TOPIC_COVERAGE_SIM_THRESHOLD", "0.55")
+    )
+
+    # Monte Carlo production sampling — pull N random user queries from the
+    # chat store, replay them against the live pipeline, and emit quality
+    # metrics. Enabled by the scheduled workflow; runtime can opt out.
+    EVAL_PRODUCTION_SAMPLE_SIZE: int = int(os.getenv("EVAL_PRODUCTION_SAMPLE_SIZE", "20"))
+    EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS: int = int(
+        os.getenv("EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS", "168")  # 7 days
+    )
+
     # Code Execution Feature Flag — off by default, must be explicitly enabled
     # Set ENABLE_CODE_EXECUTION=true only in environments where sandboxed execution
     # is intentionally exposed (e.g. a dedicated code-assistant deployment).

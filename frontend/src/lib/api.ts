@@ -69,6 +69,22 @@ function joinApiUrl(baseUrl: string, path: string): string {
   return `${normalizedBase}${normalizedPath}`;
 }
 
+const CSRF_MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// The csrf_token cookie is set with HttpOnly=false (backend/csrf_protection.py)
+// precisely so the browser can echo it back as X-CSRF-Token for the
+// double-submit check. The Next.js proxy forwards this header automatically;
+// callers that bypass the proxy (adminRequest fallback, uploadResourceFile)
+// must set it themselves or the backend's csrf_protect dependency will 403.
+function readCsrfTokenCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie
+    .split("; ")
+    .find((c) => c.startsWith("csrf_token="));
+  if (!match) return null;
+  return decodeURIComponent(match.slice("csrf_token=".length)) || null;
+}
+
 function getAdminRequestTargets(path: string): string[] {
   const targets: string[] = [];
 
@@ -117,6 +133,18 @@ async function adminRequest<T>(
   // Support both cookie-only auth ("authenticated" pseudo-token) and real JWT
   if (authToken && authToken !== "authenticated") {
     headers.set("Authorization", `Bearer ${authToken}`);
+  }
+
+  // CSRF double-submit for direct-backend fallback. The proxy already adds
+  // this header (api/backend/[...path]/route.ts:147), but if the proxy fails
+  // and we fall through to getDirectBackendUrl(), the backend's csrf_protect
+  // dependency would 403 without it.
+  const method = (rest.method ?? "GET").toUpperCase();
+  if (CSRF_MUTATION_METHODS.has(method) && !headers.has("X-CSRF-Token")) {
+    const csrfToken = readCsrfTokenCookie();
+    if (csrfToken) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
   }
 
   const targets = getAdminRequestTargets(path);
@@ -978,11 +1006,23 @@ export async function uploadResourceFile({
 
   let lastError: Error | null = null;
 
+  const uploadHeaders: Record<string, string> = {};
+  if (token && token !== "authenticated") {
+    uploadHeaders.Authorization = `Bearer ${token}`;
+  }
+  // CSRF for direct-backend fallback (proxy adds it on its own; see adminRequest).
+  const csrfToken = readCsrfTokenCookie();
+  if (csrfToken) {
+    uploadHeaders["X-CSRF-Token"] = csrfToken;
+  }
+  // Do NOT set Content-Type for multipart/form-data — the browser must
+  // generate the boundary parameter or the backend will fail to parse.
+
   for (const url of getAdminRequestTargets("/admin/resources/upload")) {
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: token && token !== "authenticated" ? { Authorization: `Bearer ${token}` } : {},
+        headers: uploadHeaders,
         body: formData,
         credentials: "include",
       });

@@ -1,12 +1,24 @@
 """
 Query Router Agent
-Classifies user intent via weighted keyword scoring and routes to the
-correct specialist agent. Logs the classified query to Neo4j.
+Hybrid intent classifier:
+
+  1. **Weighted keyword scoring** (fast path). Each agent owns a list of
+     ``(pattern, weight)`` rules; the highest scorer above ``MIN_SCORE``
+     wins. Strong intent-specific phrases get high weight; common verbs
+     like "explain" or polite sign-offs like "thank you" get low weight
+     so they no longer dominate the classification on their own.
+  2. **Semantic fallback** (slow path). When no agent crosses
+     ``MIN_SCORE`` we ask the embedding-based ``semantic_router`` so
+     paraphrased queries that share no vocabulary with the keyword rules
+     still route correctly. Disabled with ``SEMANTIC_ROUTER_ENABLED=0``.
+
+Routing decisions are logged to Neo4j via ``graph_ops.log_query``.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Dict, Tuple
 
@@ -14,6 +26,9 @@ from backend.agents.state import AgentState
 from backend.agents import graph_ops
 
 logger = logging.getLogger(__name__)
+
+# Allow ops to toggle semantic routing off entirely without a redeploy.
+_SEMANTIC_ROUTER_ENABLED = os.environ.get("SEMANTIC_ROUTER_ENABLED", "1") != "0"
 
 # ── Weighted intent signals ──────────────────────────────────────
 # Each rule lists (agent, reason, [(pattern, weight), ...]). The router scores
@@ -92,10 +107,14 @@ def _score_agent(text: str, patterns: list[tuple[str, int]]) -> int:
 
 
 def classify_query(text: str) -> Tuple[str, str]:
-    """Return (agent_name, route_reason) for the given query text.
+    """Return ``(agent_name, route_reason)`` for the given query text.
 
-    Uses weighted scoring across all agents and picks the highest scorer above
-    `MIN_SCORE`. Falls back to the general tutor when no agent crosses the bar.
+    Two-stage classification:
+      1. Weighted keyword scoring across all agents — winner must beat
+         ``MIN_SCORE`` to be selected.
+      2. If no agent crosses ``MIN_SCORE``, consult the embedding-based
+         semantic router so queries that mix vocabularies (or paraphrase
+         away from the keyword rules entirely) still route well.
     """
     user_q = _extract_user_question(text)
     lower = user_q.lower()
@@ -111,7 +130,24 @@ def classify_query(text: str) -> Tuple[str, str]:
             best_reason = reason
             best_score = score
 
-    logger.debug("Router scoring: query=%r winner=%s score=%d", lower[:80], best_agent, best_score)
+    logger.debug(
+        "Router scoring: query=%r winner=%s score=%d", lower[:80], best_agent, best_score
+    )
+
+    # Keyword scoring was inconclusive — try semantic fallback before
+    # settling on the generic tutor.
+    if best_score < MIN_SCORE and _SEMANTIC_ROUTER_ENABLED:
+        try:
+            from backend.agents import semantic_router
+
+            result = semantic_router.classify(user_q)
+            if result is not None:
+                agent, _sim, reason = result
+                return agent, reason
+        except Exception as exc:
+            # Never let routing fail the request — keyword default is fine.
+            logger.debug("Semantic router fallback skipped: %s", exc)
+
     return best_agent, best_reason
 
 

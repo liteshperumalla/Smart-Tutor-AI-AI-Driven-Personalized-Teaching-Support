@@ -22,7 +22,178 @@ from dataclasses import dataclass
 from functools import lru_cache
 from collections import OrderedDict
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
+
+try:
+    import hnswlib  # type: ignore
+    _HNSW_AVAILABLE = True
+except Exception:
+    _HNSW_AVAILABLE = False
+
+
+class _VectorIndex:
+    """Approximate-nearest-neighbour index for the fuzzy cache.
+
+    Replaces the linear Python loop with either:
+      * a normalised numpy matrix + single BLAS dot-product (O(N) but ~100x
+        faster in practice — keeps things small and dependency-free), OR
+      * an HNSW index if ``hnswlib`` is installed (O(log N), good past 10K
+        entries).
+
+    The index stays in lockstep with the LRU dict that owns the cache entries:
+    when an entry is evicted, ``remove(key)`` clears the corresponding row.
+    """
+
+    def __init__(self, dim: int, max_size: int, use_hnsw: bool = True):
+        self.dim = dim
+        self.max_size = max_size
+        self.use_hnsw = use_hnsw and _HNSW_AVAILABLE
+        self._lock_ready = False
+
+        if self.use_hnsw:
+            self._hnsw = hnswlib.Index(space="cosine", dim=dim)
+            self._hnsw.init_index(max_elements=max(max_size, 16), ef_construction=100, M=16)
+            self._hnsw.set_ef(32)
+            self._labels: Dict[int, str] = {}
+            self._reverse_labels: Dict[str, int] = {}
+            self._next_label = 0
+        else:
+            # Pre-allocated row matrix; rows are L2-normalised so cosine == dot.
+            self._matrix = np.zeros((max_size, dim), dtype=np.float32)
+            self._row_to_key: List[Optional[str]] = [None] * max_size
+            self._key_to_row: Dict[str, int] = {}
+            self._free_rows: List[int] = list(range(max_size))
+            self._used_rows: int = 0
+
+    # ── helpers ──────────────────────────────────────────────────
+    @staticmethod
+    def _normalise(vec: np.ndarray) -> np.ndarray:
+        norm = np.linalg.norm(vec)
+        if norm == 0:
+            return vec
+        return vec / norm
+
+    # ── HNSW path ────────────────────────────────────────────────
+    def _hnsw_add(self, key: str, vec: np.ndarray) -> None:
+        if key in self._reverse_labels:
+            label = self._reverse_labels[key]
+            self._hnsw.mark_deleted(label)
+        label = self._next_label
+        self._next_label += 1
+        # Resize if needed
+        if label >= self._hnsw.get_max_elements():
+            self._hnsw.resize_index(label * 2 + 1)
+        self._hnsw.add_items(vec.reshape(1, -1).astype(np.float32), [label])
+        self._labels[label] = key
+        self._reverse_labels[key] = label
+
+    def _hnsw_remove(self, key: str) -> None:
+        label = self._reverse_labels.pop(key, None)
+        if label is not None:
+            try:
+                self._hnsw.mark_deleted(label)
+            except Exception:
+                pass
+            self._labels.pop(label, None)
+
+    def _hnsw_search(self, vec: np.ndarray) -> Tuple[Optional[str], float]:
+        try:
+            count = self._hnsw.get_current_count()
+            if count == 0:
+                return None, 0.0
+            labels, distances = self._hnsw.knn_query(
+                vec.reshape(1, -1).astype(np.float32),
+                k=min(1, count),
+            )
+            label = int(labels[0][0])
+            key = self._labels.get(label)
+            if key is None:
+                return None, 0.0
+            # hnswlib returns cosine *distance* (1 - similarity)
+            similarity = float(1.0 - distances[0][0])
+            return key, similarity
+        except RuntimeError:
+            # Raised when all visited items are deleted — treat as miss.
+            return None, 0.0
+
+    # ── numpy matrix path ────────────────────────────────────────
+    def _matrix_add(self, key: str, vec: np.ndarray) -> None:
+        if key in self._key_to_row:
+            row = self._key_to_row[key]
+            self._matrix[row] = vec
+            return
+        if not self._free_rows:
+            # Caller (LRU) should evict first; defensive guard.
+            return
+        row = self._free_rows.pop(0)
+        self._matrix[row] = vec
+        self._row_to_key[row] = key
+        self._key_to_row[key] = row
+        self._used_rows += 1
+
+    def _matrix_remove(self, key: str) -> None:
+        row = self._key_to_row.pop(key, None)
+        if row is None:
+            return
+        self._matrix[row] = 0.0
+        self._row_to_key[row] = None
+        self._free_rows.append(row)
+        self._used_rows -= 1
+
+    def _matrix_search(self, vec: np.ndarray) -> Tuple[Optional[str], float]:
+        if self._used_rows == 0:
+            return None, 0.0
+        # Single matmul across the whole index.
+        sims = self._matrix @ vec
+        best_row = int(np.argmax(sims))
+        best_key = self._row_to_key[best_row]
+        if best_key is None:
+            return None, 0.0
+        return best_key, float(sims[best_row])
+
+    # ── public API ───────────────────────────────────────────────
+    def add(self, key: str, embedding: List[float]) -> None:
+        vec = self._normalise(np.asarray(embedding, dtype=np.float32))
+        if vec.shape[0] != self.dim:
+            # Dimension mismatch — the cache key embeddings must all share a model.
+            # Reset the index to the new dimension rather than silently corrupting it.
+            self.dim = vec.shape[0]
+            self.__init__(self.dim, self.max_size, use_hnsw=self.use_hnsw)
+        if self.use_hnsw:
+            self._hnsw_add(key, vec)
+        else:
+            self._matrix_add(key, vec)
+
+    def remove(self, key: str) -> None:
+        if self.use_hnsw:
+            self._hnsw_remove(key)
+        else:
+            self._matrix_remove(key)
+
+    def search(self, embedding: List[float]) -> Tuple[Optional[str], float]:
+        vec = self._normalise(np.asarray(embedding, dtype=np.float32))
+        if vec.shape[0] != self.dim:
+            return None, 0.0
+        if self.use_hnsw:
+            return self._hnsw_search(vec)
+        return self._matrix_search(vec)
+
+    def clear(self) -> None:
+        if self.use_hnsw:
+            self._hnsw = hnswlib.Index(space="cosine", dim=self.dim)
+            self._hnsw.init_index(max_elements=max(self.max_size, 16), ef_construction=100, M=16)
+            self._hnsw.set_ef(32)
+            self._labels.clear()
+            self._reverse_labels.clear()
+            self._next_label = 0
+        else:
+            self._matrix.fill(0.0)
+            self._row_to_key = [None] * self.max_size
+            self._key_to_row.clear()
+            self._free_rows = list(range(self.max_size))
+            self._used_rows = 0
 
 
 class LRUCache:
@@ -254,7 +425,10 @@ class QueryCache:
         use_fuzzy_matching: bool = True,
         fuzzy_threshold: float = 0.95,
         redis_client: Optional[Any] = None,
-        ttl: int = 3600  # 1 hour
+        ttl: int = 3600,  # 1 hour
+        fuzzy_cache_size: int = 1000,
+        fuzzy_embedding_dim: int = 1024,
+        use_hnsw: bool = True,
     ):
         self.use_exact_matching = use_exact_matching
         self.use_fuzzy_matching = use_fuzzy_matching
@@ -264,7 +438,13 @@ class QueryCache:
 
         # In-memory caches
         self.exact_cache = LRUCache(max_size=500)
-        self.fuzzy_cache = LRUCache(max_size=100)  # Smaller, stores (query, embedding) pairs
+        self.fuzzy_cache = LRUCache(max_size=fuzzy_cache_size)  # Stores (query, embedding, result) entries
+
+        # Vector index sits next to ``fuzzy_cache`` and is kept in sync.
+        # The dim is set on first ``add`` if the assumed dim is wrong.
+        self._fuzzy_index: Optional[_VectorIndex] = None
+        self._fuzzy_dim = fuzzy_embedding_dim
+        self._use_hnsw = use_hnsw
 
     def _generate_key(self, query: str) -> str:
         """Generate cache key from query"""
@@ -324,28 +504,29 @@ class QueryCache:
         query: str,
         query_embedding: List[float]
     ) -> Optional[Dict[str, Any]]:
-        """Get cached result for similar query (fuzzy match)"""
-        if not self.use_fuzzy_matching:
+        """Get cached result for similar query (fuzzy match).
+
+        Uses an HNSW (when available) or vectorised numpy index for $O(\\log N)$
+        or BLAS-accelerated similarity lookup. Falls back to a miss on any
+        index inconsistency rather than a Python loop scan.
+        """
+        if not self.use_fuzzy_matching or self._fuzzy_index is None:
             return None
 
-        # Check fuzzy cache for similar queries
-        best_match = None
-        best_similarity = 0.0
+        best_key, best_similarity = self._fuzzy_index.search(query_embedding)
+        if best_key is None or best_similarity < self.fuzzy_threshold:
+            return None
 
-        for cached_query, cached_data in self.fuzzy_cache.cache.items():
-            cached_embedding = cached_data.get("embedding")
-            if cached_embedding:
-                similarity = self._calculate_similarity(query_embedding, cached_embedding)
+        cached_data = self.fuzzy_cache.get(best_key)
+        if not cached_data:
+            # Index/LRU drifted (rare race) — clean it up.
+            self._fuzzy_index.remove(best_key)
+            return None
 
-                if similarity >= self.fuzzy_threshold and similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match = cached_data.get("result")
-
-        if best_match:
-            logger.debug(f"Query cache HIT (fuzzy, similarity={best_similarity:.3f}): {query[:50]}")
-            return best_match
-
-        return None
+        logger.debug(
+            f"Query cache HIT (fuzzy, similarity={best_similarity:.3f}): {query[:50]}"
+        )
+        return cached_data.get("result")
 
     def put(
         self,
@@ -371,13 +552,35 @@ class QueryCache:
                 except Exception as e:
                     logger.error(f"Redis query cache write error: {e}")
 
-        # Store in fuzzy cache
+        # Store in fuzzy cache + vector index
         if self.use_fuzzy_matching and query_embedding:
+            # Lazy-init the index once we know the real embedding dim.
+            if self._fuzzy_index is None:
+                dim = len(query_embedding) or self._fuzzy_dim
+                self._fuzzy_index = _VectorIndex(
+                    dim=dim,
+                    max_size=self.fuzzy_cache.max_size,
+                    use_hnsw=self._use_hnsw,
+                )
+
+            # If LRU is at capacity, the oldest key will be evicted on ``put``;
+            # peek at it so we can drop it from the index too.
+            evicted_key: Optional[str] = None
+            if (
+                key not in self.fuzzy_cache.cache
+                and len(self.fuzzy_cache.cache) >= self.fuzzy_cache.max_size
+                and self.fuzzy_cache.cache
+            ):
+                evicted_key = next(iter(self.fuzzy_cache.cache))
+
             self.fuzzy_cache.put(key, {
                 "query": query,
                 "embedding": query_embedding,
-                "result": result
+                "result": result,
             })
+            if evicted_key:
+                self._fuzzy_index.remove(evicted_key)
+            self._fuzzy_index.add(key, query_embedding)
 
     def invalidate(self, query: Optional[str] = None):
         """Invalidate cache entries"""
@@ -386,6 +589,13 @@ class QueryCache:
             key = self._generate_key(query)
             if key in self.exact_cache.cache:
                 del self.exact_cache.cache[key]
+
+            # Also clear the fuzzy cache + its vector index, or a later
+            # semantic match could return the supposedly-invalidated entry.
+            if key in self.fuzzy_cache.cache:
+                del self.fuzzy_cache.cache[key]
+            if self._fuzzy_index is not None:
+                self._fuzzy_index.remove(key)
 
             if self.redis_client:
                 try:
@@ -396,12 +606,18 @@ class QueryCache:
             # Invalidate all
             self.exact_cache.clear()
             self.fuzzy_cache.clear()
+            if self._fuzzy_index is not None:
+                self._fuzzy_index.clear()
 
     def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
         return {
             "exact_cache": self.exact_cache.get_stats(),
-            "fuzzy_cache": self.fuzzy_cache.get_stats()
+            "fuzzy_cache": self.fuzzy_cache.get_stats(),
+            "fuzzy_index": {
+                "backend": "hnsw" if (self._fuzzy_index and self._fuzzy_index.use_hnsw) else "numpy",
+                "dim": self._fuzzy_index.dim if self._fuzzy_index else None,
+            },
         }
 
 

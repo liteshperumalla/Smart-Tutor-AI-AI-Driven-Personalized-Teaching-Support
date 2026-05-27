@@ -10,9 +10,15 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 from backend.api.dependencies import get_admin_session
+from backend.csrf_protection import csrf_protect
 
 # File extensions that the indexing pipeline can process
 _INDEXABLE_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md", ".ipynb"}
+
+# Every state-changing admin route applies the CSRF double-submit check in
+# addition to the existing SameSite=Lax cookies — defense-in-depth against
+# state-changing actions like update_user_role / delete_user.
+_CSRF = [Depends(csrf_protect)]
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -103,7 +109,7 @@ def list_users(session=Depends(get_admin_session)):
     return {"users": svc.list_users()}
 
 
-@router.put("/users/{username}/role")
+@router.put("/users/{username}/role", dependencies=_CSRF)
 def update_user_role(
     username: str,
     payload: UpdateRoleRequest,
@@ -125,7 +131,7 @@ def update_user_role(
     return {"success": True, "username": username, "role": payload.role}
 
 
-@router.delete("/users/{username}")
+@router.delete("/users/{username}", dependencies=_CSRF)
 def delete_user(
     username: str,
     session=Depends(get_admin_session),
@@ -159,7 +165,7 @@ def list_all_appointments(
     return {"appointments": entries, "total": len(entries)}
 
 
-@router.put("/appointments/{appointment_id}")
+@router.put("/appointments/{appointment_id}", dependencies=_CSRF)
 def update_appointment_status(
     appointment_id: str,
     payload: UpdateAppointmentStatusRequest,
@@ -196,7 +202,7 @@ def list_all_feedback(
     return {"feedback": entries, "total": len(entries)}
 
 
-@router.put("/feedback/{feedback_id}")
+@router.put("/feedback/{feedback_id}", dependencies=_CSRF)
 def update_feedback_status(
     feedback_id: str,
     payload: UpdateFeedbackStatusRequest,
@@ -220,7 +226,7 @@ def list_announcements(session=Depends(get_admin_session)):
     return {"announcements": svc.list_announcements()}
 
 
-@router.post("/announcements")
+@router.post("/announcements", dependencies=_CSRF)
 def create_announcement(
     payload: CreateAnnouncementRequest,
     session=Depends(get_admin_session),
@@ -236,7 +242,7 @@ def create_announcement(
     return {"announcement": announcement}
 
 
-@router.put("/announcements/{announcement_id}")
+@router.put("/announcements/{announcement_id}", dependencies=_CSRF)
 def update_announcement(
     announcement_id: str,
     payload: UpdateAnnouncementRequest,
@@ -258,7 +264,7 @@ def update_announcement(
     return {"announcement": result}
 
 
-@router.delete("/announcements/{announcement_id}")
+@router.delete("/announcements/{announcement_id}", dependencies=_CSRF)
 def delete_announcement(
     announcement_id: str,
     session=Depends(get_admin_session),
@@ -332,7 +338,7 @@ def get_prompt_versions(
     return {"name": name, "versions": versions}
 
 
-@router.post("/prompts/{name}", status_code=201)
+@router.post("/prompts/{name}", status_code=201, dependencies=_CSRF)
 def register_prompt(
     name: str,
     payload: RegisterPromptRequest,
@@ -349,7 +355,7 @@ def register_prompt(
     return entry
 
 
-@router.delete("/prompts/{name}", status_code=200)
+@router.delete("/prompts/{name}", status_code=200, dependencies=_CSRF)
 def delete_prompt(name: str, session=Depends(get_admin_session)):
     """Delete all versions of a prompt (irreversible)."""
     from backend.prompt_registry import get_prompt_registry
@@ -368,7 +374,7 @@ def list_admin_resources(session=Depends(get_admin_session)):
     return {"resources": resources, "total": len(resources)}
 
 
-@router.post("/resources")
+@router.post("/resources", dependencies=_CSRF)
 def create_resource_link(
     payload: CreateResourceLinkRequest,
     session=Depends(get_admin_session),
@@ -386,7 +392,7 @@ def create_resource_link(
     return {"resource": resource}
 
 
-@router.post("/resources/upload")
+@router.post("/resources/upload", dependencies=_CSRF)
 async def upload_resource_file(
     file: UploadFile = File(...),
     category: str = Form(...),
@@ -437,7 +443,7 @@ async def upload_resource_file(
     return {"resource": resource}
 
 
-@router.put("/resources/{resource_id}")
+@router.put("/resources/{resource_id}", dependencies=_CSRF)
 def update_resource(
     resource_id: str,
     payload: UpdateResourceRequest,
@@ -459,7 +465,7 @@ def update_resource(
     return {"resource": result}
 
 
-@router.delete("/resources/{resource_id}")
+@router.delete("/resources/{resource_id}", dependencies=_CSRF)
 def delete_resource(
     resource_id: str,
     session=Depends(get_admin_session),
@@ -479,7 +485,7 @@ def list_resource_categories(session=Depends(get_admin_session)):
     return {"categories": svc.get_categories()}
 
 
-@router.post("/resources/migrate")
+@router.post("/resources/migrate", dependencies=_CSRF)
 def migrate_static_resources(session=Depends(get_admin_session)):
     svc = get_resource_service()
     result = svc.migrate_from_catalog()
@@ -488,7 +494,7 @@ def migrate_static_resources(session=Depends(get_admin_session)):
 
 # ── Indexing ──────────────────────────────────────────────────────
 
-@router.post("/resources/{resource_id}/reindex")
+@router.post("/resources/{resource_id}/reindex", dependencies=_CSRF)
 def reindex_resource(
     resource_id: str,
     session=Depends(get_admin_session),

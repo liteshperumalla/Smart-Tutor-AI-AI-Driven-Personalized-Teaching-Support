@@ -6,6 +6,7 @@ LangGraph invocation, interaction logging, and streaming.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -15,6 +16,57 @@ from backend.config import config
 from backend.langfuse_setup import create_trace, update_trace, traced_span
 
 logger = logging.getLogger(__name__)
+
+# Agents whose responses are safe to cache across identical (user, query) pairs.
+# Skip personalised_agent (response is tailored to user tone/level by design)
+# and feedback_agent (no LLM call — already canned).
+_CACHEABLE_AGENTS = frozenset({"tutor_agent", "doubts_agent", "quiz_helper_agent"})
+
+
+def _chat_cache_key(
+    user_id: str, agent_name: str, query: str, model_id: Optional[str]
+) -> str:
+    # model_id is in the key because two users on different models would
+    # otherwise share a slot and one could see the other's model's response.
+    q_hash = hashlib.sha256(query.encode("utf-8")).hexdigest()[:16]
+    m = (model_id or "default")[:32]
+    return f"chat:v2:{user_id}:{agent_name}:{m}:{q_hash}"
+
+
+def _chat_cache_get(
+    user_id: str, agent_name: str, query: str, model_id: Optional[str]
+) -> Optional[str]:
+    if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
+        return None
+    try:
+        from backend.redis_cache import get_cache
+        return get_cache().get(_chat_cache_key(user_id, agent_name, query, model_id))
+    except Exception as exc:
+        logger.debug("Chat cache lookup skipped: %s", exc)
+        return None
+
+
+def _chat_cache_put(
+    user_id: str,
+    agent_name: str,
+    query: str,
+    model_id: Optional[str],
+    response: str,
+) -> None:
+    if not config.USE_REDIS_CACHE or agent_name not in _CACHEABLE_AGENTS:
+        return
+    if not response or len(response) < 16:
+        # Don't cache empty or trivially short responses — likely errors.
+        return
+    try:
+        from backend.redis_cache import get_cache
+        get_cache().set(
+            _chat_cache_key(user_id, agent_name, query, model_id),
+            response,
+            ttl=config.ANSWER_CACHE_TTL,
+        )
+    except Exception as exc:
+        logger.debug("Chat cache write skipped: %s", exc)
 
 
 def run_agent_pipeline(
@@ -55,9 +107,9 @@ def run_agent_pipeline(
         context_str, sources = _retrieve_rag_context(query)
     retrieval_elapsed = time.time() - retrieval_started_at
 
-    # ── 3. Build state + invoke graph ─────────────────────────────
-    from backend.agents.graph import get_compiled_graph
+    # ── 3. Build state + classify intent ─────────────────────────
     from backend.agents.state import AgentState
+    from backend.agents.router import classify_query
 
     initial_state: AgentState = {
         "input": query,
@@ -80,26 +132,197 @@ def run_agent_pipeline(
         "agent": "",
     }
 
+    # Run router synchronously — it's cheap (regex + optional embed) and
+    # gives us the route before we start streaming.
+    agent_name, route_reason = classify_query(query)
+    # The router also logs to Neo4j as a side effect, but that's the LangGraph
+    # node's responsibility; replicate it here since we're bypassing the graph.
+    from backend.agents import graph_ops as _graph_ops
+    _query_type_map = {
+        "tutor_agent": "general_tutoring",
+        "doubts_agent": "doubt_resolution",
+        "personalised_agent": "personalised_explanation",
+        "quiz_helper_agent": "quiz_help",
+        "feedback_agent": "feedback",
+    }
+    query_type = _query_type_map.get(agent_name, "general_tutoring")
+    _graph_ops.log_query(user_id, query, query_type)
+
     generation_started_at = time.time()
-    with traced_span(main_trace, "langgraph-invoke", input={"query": query}) as graph_span:
-        compiled_graph = get_compiled_graph()
-        result = compiled_graph.invoke(
-            initial_state,
-            {"recursion_limit": config.AGENT_GRAPH_RECURSION_LIMIT},
+
+    # ── 4. Stream the chosen specialist's LLM tokens ─────────────
+    from backend.agents.streaming import stream_agent_response, stream_agent_tokens
+    from backend.agents.llm_utils import stream_complete_with_model_fallback
+
+    # Resolve the specialist's prepare/finalize FIRST so that cache hits still
+    # run finalize (graph_ops logging) and _log_post_stream (interaction log,
+    # Langfuse update). Prompt-building is cheap — string formatting, not an
+    # LLM call — so doing it before the cache check is fine even on hits.
+    prep = None
+    finalize = None
+    if agent_name == "tutor_agent":
+        from backend.agents.tutor_agent import prepare_tutor, finalize_tutor
+        prep = prepare_tutor(initial_state)
+        finalize = lambda txt: finalize_tutor(initial_state, txt)
+    elif agent_name == "doubts_agent":
+        from backend.agents.doubts_agent import prepare_doubts, finalize_doubts
+        prep = prepare_doubts(initial_state)
+        _concept = prep.pop("_concept")
+        finalize = lambda txt: finalize_doubts(initial_state, txt, concept=_concept)
+    elif agent_name == "personalised_agent":
+        from backend.agents.personalised_agent import prepare_personalised, finalize_personalised
+        prep = prepare_personalised(initial_state)
+        finalize = lambda txt: finalize_personalised(initial_state, txt)
+    elif agent_name == "quiz_helper_agent":
+        from backend.agents.quiz_helper_agent import prepare_quiz_helper, finalize_quiz_helper
+        prep = prepare_quiz_helper(initial_state)
+        finalize = lambda txt: finalize_quiz_helper(initial_state, txt)
+
+    # ── 4.0 Answer cache: skip the LLM entirely on identical recent queries.
+    # On a hit we still must run finalize + _log_post_stream so the knowledge
+    # graph, interaction log, and Langfuse stay coherent with what the user
+    # actually saw.
+    cached_response = _chat_cache_get(user_id, agent_name, query, model_id)
+    if cached_response:
+        if finalize is not None:
+            try:
+                finalize(cached_response)
+            except Exception as exc:
+                logger.warning("Agent finalize hook failed on cache hit: %s", exc)
+        generation_elapsed = time.time() - generation_started_at
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        _log_post_stream(
+            main_trace=main_trace,
+            user_id=user_id,
+            session_id=session_id,
+            query=query,
+            response_text=cached_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            query_type=query_type,
+            sentiment=None,
+            model_id=model_id,
+            elapsed_ms=elapsed_ms,
+            retrieval_elapsed=retrieval_elapsed,
+            generation_elapsed=generation_elapsed,
+            sources=sources,
         )
-    generation_elapsed = time.time() - generation_started_at
+        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_id, agent_name)
+        generator = stream_agent_response(
+            response_text=cached_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            extra_meta={"response_time_ms": elapsed_ms, "from_cache": True},
+        )
+        return generator, sources
 
-    response_text = result.get("response", "I couldn't generate a response.")
-    agent_name = result.get("agent", "tutor_agent")
-    route_reason = result.get("route_reason", "")
-    sentiment = result.get("sentiment")
+    # ── 4a. Feedback agent: no LLM stream — use canned-text chunking ─
+    if agent_name == "feedback_agent":
+        from backend.agents.feedback_agent import feedback_agent as _feedback_node
+        result = _feedback_node(initial_state)
+        response_text = result.get("response", "")
+        sentiment = result.get("sentiment")
+        generation_elapsed = time.time() - generation_started_at
+        elapsed_ms = int((time.time() - start_time) * 1000)
 
-    elapsed_ms = int((time.time() - start_time) * 1000)
+        _log_post_stream(
+            main_trace=main_trace,
+            user_id=user_id,
+            session_id=session_id,
+            query=query,
+            response_text=response_text,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            query_type=query_type,
+            sentiment=sentiment,
+            model_id=model_id,
+            elapsed_ms=elapsed_ms,
+            retrieval_elapsed=retrieval_elapsed,
+            generation_elapsed=generation_elapsed,
+            sources=sources,
+        )
 
-    # ── 4. Log to PostgreSQL ──────────────────────────────────────
+        generator = stream_agent_response(
+            response_text=response_text,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            extra_meta={"response_time_ms": elapsed_ms},
+        )
+        return generator, sources
+
+    # ── 4b. LLM-backed agents: true token streaming ───────────────
+    token_gen = stream_complete_with_model_fallback(
+        prompt=prep["prompt"],
+        logger=logger,
+        model_id=prep["model_id"],
+    )
+
+    def _on_complete(full_response: str) -> None:
+        if finalize is not None:
+            try:
+                finalize(full_response)
+            except Exception as exc:
+                logger.warning("Agent finalize hook failed: %s", exc)
+        _chat_cache_put(user_id, agent_name, query, model_id, full_response)
+        generation_elapsed_local = time.time() - generation_started_at
+        elapsed_ms_local = int((time.time() - start_time) * 1000)
+        _log_post_stream(
+            main_trace=main_trace,
+            user_id=user_id,
+            session_id=session_id,
+            query=query,
+            response_text=full_response,
+            agent_name=agent_name,
+            route_reason=route_reason,
+            query_type=query_type,
+            sentiment=None,
+            model_id=model_id,
+            elapsed_ms=elapsed_ms_local,
+            retrieval_elapsed=retrieval_elapsed,
+            generation_elapsed=generation_elapsed_local,
+            sources=sources,
+        )
+
+    def _on_error(exc: Exception) -> str:
+        logger.error("LLM stream failed for %s: %s", agent_name, exc)
+        return (
+            "I'm sorry, I encountered an issue generating a response. "
+            "Could you try rephrasing your question?"
+        )
+
+    generator = stream_agent_tokens(
+        token_iter=token_gen,
+        agent_name=agent_name,
+        route_reason=route_reason,
+        extra_meta={"streaming": True},
+        on_complete=_on_complete,
+        on_error=_on_error,
+    )
+
+    return generator, sources
+
+
+def _log_post_stream(
+    *,
+    main_trace,
+    user_id: str,
+    session_id: Optional[str],
+    query: str,
+    response_text: str,
+    agent_name: str,
+    route_reason: str,
+    query_type: str,
+    sentiment: Optional[str],
+    model_id: Optional[str],
+    elapsed_ms: int,
+    retrieval_elapsed: float,
+    generation_elapsed: float,
+    sources: List[Dict[str, Any]],
+) -> None:
+    """Run all the post-stream logging that used to live inline."""
     from backend.agents.interaction_log import log_agent_interaction
 
-    with traced_span(main_trace, "log-interaction", input={"agent": agent_name}) as log_span:
+    with traced_span(main_trace, "log-interaction", input={"agent": agent_name}):
         log_agent_interaction(
             username=user_id,
             session_id=session_id or "",
@@ -107,7 +330,7 @@ def run_agent_pipeline(
             response=response_text[:2000],
             agent=agent_name,
             route_reason=route_reason,
-            query_type=result.get("next", "general_tutoring"),
+            query_type=query_type,
             sentiment=sentiment,
             response_time_ms=elapsed_ms,
             model_id=model_id,
@@ -127,7 +350,7 @@ def run_agent_pipeline(
                 "session_id": session_id,
                 "agent": agent_name,
                 "route_reason": route_reason,
-                "query_type": result.get("next", "general_tutoring"),
+                "query_type": query_type,
                 "sentiment": sentiment,
                 "model_id": model_id,
                 "web_search_used": False,
@@ -142,7 +365,6 @@ def run_agent_pipeline(
     except Exception as exc:
         logger.warning("Failed to log agent runtime metrics: %s", exc)
 
-    # Update root trace with final output
     update_trace(
         main_trace,
         output={"response_length": len(response_text), "agent": agent_name},
@@ -153,18 +375,6 @@ def run_agent_pipeline(
             "num_sources": len(sources),
         },
     )
-
-    # ── 5. Stream with metadata prefix ────────────────────────────
-    from backend.agents.streaming import stream_agent_response
-
-    generator = stream_agent_response(
-        response_text=response_text,
-        agent_name=agent_name,
-        route_reason=route_reason,
-        extra_meta={"response_time_ms": elapsed_ms},
-    )
-
-    return generator, sources
 
 
 # ── RAG context helper ───────────────────────────────────────────

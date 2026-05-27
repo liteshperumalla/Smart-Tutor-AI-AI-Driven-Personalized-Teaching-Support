@@ -8,7 +8,9 @@ from typing import Optional, List, Dict, Any
 import logging
 
 from backend.rag.service import RAGService, RAGVariant
-from backend.auth_dependencies import get_current_user
+# Consolidated auth: supports both HttpOnly cookie (web clients) and Bearer
+# header (server-to-server). Also enforces disabled-user check.
+from backend.api.dependencies import get_current_user
 
 
 logger = logging.getLogger(__name__)

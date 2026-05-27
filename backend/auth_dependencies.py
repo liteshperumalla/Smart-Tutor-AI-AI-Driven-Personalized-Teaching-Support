@@ -1,130 +1,73 @@
 """
-Authentication Dependencies for FastAPI
-Provides dependency injection for JWT token validation with blacklist checking
+DEPRECATED — use ``backend.api.dependencies`` instead.
+
+This module previously declared Bearer-only auth dependencies that did not
+support HttpOnly cookies, did not check the user's active status against the
+database (TODO comment that was never resolved), and duplicated logic that
+already lived in ``backend.api.dependencies``.
+
+For any new code, import from ``backend.api.dependencies``:
+
+    from backend.api.dependencies import get_current_user, get_current_session
+
+The names below are kept as thin re-exports so any in-flight imports keep
+working. A future cleanup can remove this file entirely once nothing imports
+from it.
 """
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, Any
+from __future__ import annotations
 
-from .jwt_service import get_jwt_service
-from .jwt_blacklist import get_jwt_blacklist
-from .logger import get_logger
-from .exceptions import SessionExpiredError
+import warnings
+from typing import Any, Optional
 
-logger = get_logger(__name__)
+from fastapi import Depends, Header, Request
 
-# HTTP Bearer token scheme for FastAPI
-security = HTTPBearer()
+from backend.api.dependencies import (  # noqa: F401 — re-export for back-compat
+    get_admin_session,
+    get_current_session,
+    get_current_user,
+)
 
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> Dict[str, Any]:
-    """
-    FastAPI dependency to get the current authenticated user.
-    Validates JWT token and checks if it's blacklisted.
-
-    Args:
-        credentials: HTTP Bearer credentials from request header
-
-    Returns:
-        Dict containing user information from JWT payload
-
-    Raises:
-        HTTPException: If token is invalid, expired, or blacklisted
-    """
-    token = credentials.credentials
-
-    try:
-        # Check if token is blacklisted (logged out)
-        jwt_blacklist = get_jwt_blacklist()
-        if jwt_blacklist and jwt_blacklist.is_blacklisted(token):
-            logger.warning("Attempt to use blacklisted (logged out) token")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked. Please log in again.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        # Verify token signature and expiration
-        jwt_service = get_jwt_service()
-        payload = jwt_service.verify_token(token, token_type="access")
-
-        # Extract user information
-        username = payload.get("sub")
-        if not username:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing username",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        return {
-            "username": username,
-            "email": payload.get("email", ""),
-            "token": token,
-            "payload": payload
-        }
-
-    except SessionExpiredError:
-        logger.warning("Expired token used")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired. Please log in again.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        logger.error(f"Token validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+warnings.warn(
+    "backend.auth_dependencies is deprecated; import from backend.api.dependencies instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
+# get_current_user is itself a FastAPI dependency (declares session via
+# Depends(get_current_session)); it can't be called bare. The shim accepts
+# the resolved user as a sub-dependency so FastAPI does the injection.
 async def get_current_active_user(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
-    """
-    Get current active user (can be extended to check if user is active/enabled)
-
-    Args:
-        current_user: Current user from get_current_user dependency
-
-    Returns:
-        Dict containing user information
-    """
-    # TODO: Add database check to verify user is still active
-    # from .database import get_user_db
-    # user_db = get_user_db()
-    # user = user_db.get_user(current_user["username"])
-    # if user.get("disabled"):
-    #     raise HTTPException(status_code=400, detail="Inactive user")
-
+    current_user: Any = Depends(get_current_user),
+) -> Any:
+    """Back-compat shim. Real disabled-user check lives in get_current_session."""
     return current_user
 
 
 async def get_optional_user(
-    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False))
-) -> Dict[str, Any] | None:
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> Optional[Any]:
+    """Cookie- and Bearer-aware optional auth.
+
+    Returns the user dict if a valid session exists, otherwise None.
+    The prior shim unconditionally returned None, silently breaking any
+    optional-auth route that depended on it.
     """
-    Optional authentication - returns user if token is valid, None otherwise.
-    Useful for endpoints that work both authenticated and unauthenticated.
-
-    Args:
-        credentials: Optional HTTP Bearer credentials
-
-    Returns:
-        Dict containing user information if authenticated, None otherwise
-    """
-    if not credentials:
-        return None
-
     try:
-        return await get_current_user(credentials)
-    except HTTPException:
+        from backend.api.dependencies import (
+            get_auth_service_dep,
+            get_rate_limiter_dep,
+            get_current_session,
+        )
+        token_and_user = await get_current_session(
+            request=request,
+            authorization=authorization,
+            auth_service=get_auth_service_dep(),
+            rate_limiter=get_rate_limiter_dep(),
+        )
+        _, user = token_and_user
+        return user
+    except Exception:
         return None

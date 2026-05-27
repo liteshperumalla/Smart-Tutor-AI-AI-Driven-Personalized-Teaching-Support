@@ -16,8 +16,22 @@ type Options = {
 };
 
 /**
- * Hook for managing authentication state with HttpOnly cookies
- * Returns a pseudo-token ("authenticated") when user is logged in
+ * Hook for managing authentication state with HttpOnly cookies.
+ *
+ * The returned `token` is NOT a credential — it's a render flag with two
+ * possible values:
+ *   - "authenticated"  → backend confirmed a valid session via /auth/me
+ *   - null             → no session (or expired / disabled)
+ *
+ * The real auth boundary lives server-side: every authenticated request
+ * carries the HttpOnly access_token cookie, which the backend validates and
+ * cross-checks against the database (backend/api/dependencies.py:
+ * get_current_session). An XSS attacker who managed to flip this state to
+ * "authenticated" would only see the admin UI render — every API call still
+ * 401s because the attacker can't synthesize the HttpOnly cookie.
+ *
+ * Treat the value as "should we render gated UI?", never as "is this caller
+ * authorized?". For the latter, just make the API call and handle 401.
  */
 export function useAuthToken(options: Options = { redirectTo: "/login" }) {
   const router = useRouter();

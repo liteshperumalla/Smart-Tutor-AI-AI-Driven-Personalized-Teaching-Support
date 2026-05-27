@@ -1,0 +1,278 @@
+name: Scheduled Production Sample Evaluation
+
+on:
+  schedule:
+    # Daily at 07:00 UTC, 1 hour after the static-dataset eval at 06:00.
+    # Staggered so a slow production sampler can't compete with the dataset
+    # eval for the same Bedrock quota window.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        type: string
+        description: "Number of production query/answer pairs to evaluate (1-200). Defaults to EVAL_PRODUCTION_SAMPLE_SIZE on the backend."
+        required: false
+        default: ""
+      lookback_hours:
+        type: string
+        description: "Only sample sessions updated within this many hours (1-720). Defaults to EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS."
+        required: false
+        default: ""
+      judge_mode:
+        type: choice
+        description: "LLM judge prompting strategy"
+        required: false
+        default: "combined"
+        options:
+          - combined
+          - split
+      seed:
+        type: string
+        description: "Optional RNG seed for reproducible sampling. Leave blank for true random."
+        required: false
+        default: ""
+      model_id:
+        type: string
+        description: "Optional Bedrock model ID for the judge (overrides EVALUATION_MODEL_ID)."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rag-production-sample-${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  sample-production:
+    name: Sample Production Traffic
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      sampled_pairs: ${{ steps.invoke.outputs.sampled_pairs }}
+      avg_correctness: ${{ steps.invoke.outputs.avg_correctness }}
+      avg_faithfulness: ${{ steps.invoke.outputs.avg_faithfulness }}
+      avg_context_recall: ${{ steps.invoke.outputs.avg_context_recall }}
+      judge_mode: ${{ steps.invoke.outputs.judge_mode }}
+    steps:
+      - name: Checkout code
+        # Pinned to the v4.2.2 commit SHA so a compromised tag can't swap the
+        # action under us. ``persist-credentials: false`` keeps the GITHUB_TOKEN
+        # out of ``.git/config`` for any later step (we only need a read-only
+        # checkout of the workflow + action sources).
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      # ---------------------------------------------------------------------
+      # Step 1 — Validate required configuration before any network work
+      # ---------------------------------------------------------------------
+      - name: Validate required secrets
+        env:
+          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL || vars.EVALUATION_BACKEND_URL_PROD }}
+          EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          if [ -z "${EVALUATION_BACKEND_URL}" ]; then
+            missing+=("EVALUATION_BACKEND_URL (secret) — base URL of your FastAPI backend, e.g. https://api.yourapp.com")
+          fi
+          if [ -z "${EVALUATION_CRON_TOKEN}" ]; then
+            missing+=("EVALUATION_CRON_TOKEN (secret) — shared token validated by POST /evaluation/sample-production")
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::One or more required secrets are not configured."
+            for item in "${missing[@]}"; do
+              echo "  ✗ ${item}"
+            done
+            echo ""
+            echo "Fix: Settings → Secrets and variables → Actions → New repository secret."
+            exit 1
+          fi
+          echo "✓ Required secrets present."
+
+      # ---------------------------------------------------------------------
+      # Step 2 — Compose payload, call /evaluation/sample-production, extract
+      #         summary metrics for the job summary and Slack notification
+      # ---------------------------------------------------------------------
+      - name: Invoke production sampler
+        id: invoke
+        env:
+          EVALUATION_BACKEND_URL: ${{ secrets.EVALUATION_BACKEND_URL || vars.EVALUATION_BACKEND_URL_PROD }}
+          EVALUATION_CRON_TOKEN: ${{ secrets.EVALUATION_CRON_TOKEN }}
+          REQUESTED_SAMPLE_SIZE: ${{ inputs.sample_size || vars.EVAL_PRODUCTION_SAMPLE_SIZE || '' }}
+          SCHEDULED_SAMPLE_SIZE: ${{ vars.EVAL_PRODUCTION_SCHEDULED_SAMPLE_SIZE || '20' }}
+          REQUESTED_LOOKBACK_HOURS: ${{ inputs.lookback_hours || '' }}
+          SCHEDULED_LOOKBACK_HOURS: ${{ vars.EVAL_PRODUCTION_SCHEDULED_LOOKBACK_HOURS || '24' }}
+          JUDGE_MODE: ${{ inputs.judge_mode || vars.EVAL_PRODUCTION_JUDGE_MODE || 'combined' }}
+          REQUESTED_SEED: ${{ inputs.seed || '' }}
+          REQUESTED_MODEL_ID: ${{ inputs.model_id || vars.EVALUATION_MODEL_ID || '' }}
+          PUBLIC_EVALUATION_TIMEOUT_SECONDS: ${{ vars.EVALUATION_PUBLIC_TIMEOUT_SECONDS || '180' }}
+          WORKFLOW_TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          base_url="${EVALUATION_BACKEND_URL%/}"
+          if [[ ! "${base_url}" =~ ^https?:// ]]; then
+            echo "::error::EVALUATION_BACKEND_URL must start with http:// or https://"
+            exit 1
+          fi
+
+          # Sample size: explicit input wins, then scheduled default
+          if [ "${WORKFLOW_TRIGGER}" = "workflow_dispatch" ] && [ -n "${REQUESTED_SAMPLE_SIZE}" ]; then
+            sample_size="${REQUESTED_SAMPLE_SIZE}"
+          else
+            sample_size="${SCHEDULED_SAMPLE_SIZE}"
+          fi
+          if [[ ! "${sample_size}" =~ ^[0-9]+$ ]] || [ "${sample_size}" -lt 1 ] || [ "${sample_size}" -gt 200 ]; then
+            echo "::error::sample_size must be an integer between 1 and 200. Received: ${sample_size}"
+            exit 1
+          fi
+
+          # Lookback hours: explicit input wins, then scheduled default (24h)
+          if [ "${WORKFLOW_TRIGGER}" = "workflow_dispatch" ] && [ -n "${REQUESTED_LOOKBACK_HOURS}" ]; then
+            lookback_hours="${REQUESTED_LOOKBACK_HOURS}"
+          else
+            lookback_hours="${SCHEDULED_LOOKBACK_HOURS}"
+          fi
+          if [[ ! "${lookback_hours}" =~ ^[0-9]+$ ]] || [ "${lookback_hours}" -lt 1 ] || [ "${lookback_hours}" -gt 720 ]; then
+            echo "::error::lookback_hours must be an integer between 1 and 720. Received: ${lookback_hours}"
+            exit 1
+          fi
+
+          # Judge mode must be one of the two known modes
+          case "${JUDGE_MODE}" in
+            combined|split) ;;
+            *) echo "::error::judge_mode must be combined or split. Received: ${JUDGE_MODE}"; exit 1 ;;
+          esac
+
+          # Build payload — only emit optional keys when actually set
+          payload="{\"sample_size\": ${sample_size}, \"lookback_hours\": ${lookback_hours}, \"judge_mode\": \"${JUDGE_MODE}\""
+          if [ -n "${REQUESTED_SEED}" ]; then
+            if [[ ! "${REQUESTED_SEED}" =~ ^-?[0-9]+$ ]]; then
+              echo "::error::seed must be an integer. Received: ${REQUESTED_SEED}"
+              exit 1
+            fi
+            payload+=", \"seed\": ${REQUESTED_SEED}"
+          fi
+          if [ -n "${REQUESTED_MODEL_ID}" ]; then
+            payload+=", \"model_id\": \"${REQUESTED_MODEL_ID}\""
+          fi
+          payload+="}"
+
+          echo "Endpoint : ${base_url}/evaluation/sample-production"
+          echo "Payload  : ${payload}"
+          echo ""
+
+          http_code="$(
+            curl -sS \
+              --max-time "${PUBLIC_EVALUATION_TIMEOUT_SECONDS}" \
+              --retry 1 \
+              --retry-delay 5 \
+              --retry-all-errors \
+              -X POST "${base_url}/evaluation/sample-production" \
+              -H 'Content-Type: application/json' \
+              -H "X-Evaluation-Token: ${EVALUATION_CRON_TOKEN}" \
+              -d "${payload}" \
+              --output /tmp/sample_response.json \
+              --write-out '%{http_code}' \
+              || true
+          )"
+
+          echo "HTTP status: ${http_code}"
+          if [ -f /tmp/sample_response.json ]; then
+            echo "--- response body ---"
+            cat /tmp/sample_response.json
+            echo
+          fi
+
+          if [ "${http_code}" != "200" ]; then
+            echo "::error::Production sampler call failed (HTTP ${http_code})."
+            echo "sampled_pairs=0" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          # Extract summary fields with python (jq isn't guaranteed on the runner)
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          with open("/tmp/sample_response.json", "r") as f:
+              data = json.load(f) or {}
+          summary = data.get("quality_summary") or {}
+          out = {
+              "sampled_pairs":      data.get("sampled_pairs", 0),
+              "total_evaluated":    data.get("total_evaluated", 0),
+              "lookback_hours":     data.get("lookback_hours", ""),
+              "judge_mode":         data.get("judge_mode", ""),
+              "avg_correctness":    summary.get("avg_correctness", ""),
+              "avg_faithfulness":   summary.get("avg_faithfulness", ""),
+              "avg_context_recall": summary.get("avg_context_recall", ""),
+              "avg_context_precision": summary.get("avg_context_precision", ""),
+          }
+          for k, v in out.items():
+              print(f"{k}={v}")
+          PY
+
+      # ---------------------------------------------------------------------
+      # Step 3 — Write a human-readable job summary so PR & run pages show
+      #         the metrics at a glance
+      # ---------------------------------------------------------------------
+      - name: Write job summary
+        if: always()
+        env:
+          SAMPLED_PAIRS:      ${{ steps.invoke.outputs.sampled_pairs }}
+          TOTAL_EVALUATED:    ${{ steps.invoke.outputs.total_evaluated }}
+          LOOKBACK_HOURS:     ${{ steps.invoke.outputs.lookback_hours }}
+          JUDGE_MODE:         ${{ steps.invoke.outputs.judge_mode }}
+          AVG_CORRECTNESS:    ${{ steps.invoke.outputs.avg_correctness }}
+          AVG_FAITHFULNESS:   ${{ steps.invoke.outputs.avg_faithfulness }}
+          AVG_CONTEXT_RECALL: ${{ steps.invoke.outputs.avg_context_recall }}
+          AVG_CONTEXT_PRECISION: ${{ steps.invoke.outputs.avg_context_precision }}
+        run: |
+          {
+            echo "## Production sample evaluation"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Sampled pairs | \`${SAMPLED_PAIRS:-0}\` |"
+            echo "| Evaluated | \`${TOTAL_EVALUATED:-0}\` |"
+            echo "| Lookback window (hrs) | \`${LOOKBACK_HOURS:-?}\` |"
+            echo "| Judge mode | \`${JUDGE_MODE:-?}\` |"
+            echo "| Avg correctness | \`${AVG_CORRECTNESS:-—}\` |"
+            echo "| Avg faithfulness | \`${AVG_FAITHFULNESS:-—}\` |"
+            echo "| Avg context recall | \`${AVG_CONTEXT_RECALL:-—}\` |"
+            echo "| Avg context precision | \`${AVG_CONTEXT_PRECISION:-—}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------------
+      # Step 4 — Slack notification (success path). Failure path follows.
+      # ---------------------------------------------------------------------
+      - name: Notify #app-development-analytics — success
+        if: ${{ success() }}
+        uses: ./.github/actions/send-slack-notification
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          workflow_name: Scheduled Production Sample Evaluation
+          status: success
+          verbiage: Prod Sample
+          message: |
+            :white_check_mark: *Production sample evaluation succeeded*
+            Replayed live traffic through the LLM judge — see the run summary for averages.
+          fields: >-
+            [{"title":"Sampled","value":"${{ steps.invoke.outputs.sampled_pairs }}","short":true},{"title":"Evaluated","value":"${{ steps.invoke.outputs.total_evaluated }}","short":true},{"title":"Avg correctness","value":"${{ steps.invoke.outputs.avg_correctness }}","short":true},{"title":"Avg context recall","value":"${{ steps.invoke.outputs.avg_context_recall }}","short":true},{"title":"Judge mode","value":"${{ steps.invoke.outputs.judge_mode }}","short":true},{"title":"Trigger","value":"${{ github.event_name }}","short":true}]
+
+      - name: Notify #app-development-analytics — failure
+        if: ${{ failure() }}
+        uses: ./.github/actions/send-slack-notification
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          workflow_name: Scheduled Production Sample Evaluation
+          status: failure
+          verbiage: Prod Sample
+          message: |
+            :x: *Production sample evaluation FAILED*
+            Check the workflow logs for details (missing secrets, HTTP error, or backend exception).
+          fields: >-
+            [{"title":"Trigger","value":"${{ github.event_name }}","short":true},{"title":"Judge mode","value":"${{ steps.invoke.outputs.judge_mode || 'unknown' }}","short":true}]

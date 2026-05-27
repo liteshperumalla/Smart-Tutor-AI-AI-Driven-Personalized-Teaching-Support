@@ -156,18 +156,21 @@ class CodeChatResponse(BaseModel):
 
 
 def _get_code_llm():
-    """Get the code LLM instance using AWS Bedrock (Llama 3.1 70B).
+    """Get the code LLM instance using AWS Bedrock.
 
-    Returns:
-        BedrockLLM: Configured LLM instance or None if initialization fails.
+    Uses Claude Sonnet 4.5 by default — best code model on Bedrock.
+    Override with CODE_LLM_MODEL_ID env var to pin a different model
+    (e.g. fall back to Llama for cost-sensitive workloads).
     """
     try:
         from backend.bedrock_llm import BedrockLLM
         from backend.config import config
 
-        return BedrockLLM(
-            model_id="us.meta.llama3-1-70b-instruct-v1:0", region=config.AWS_REGION
+        model_id = os.environ.get(
+            "CODE_LLM_MODEL_ID",
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
         )
+        return BedrockLLM(model_id=model_id, region=config.AWS_REGION)
     except (ImportError, ValueError, RuntimeError):
         logger.exception("Failed to initialize Bedrock LLM")
         return None

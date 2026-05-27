@@ -219,10 +219,20 @@ class SuspiciousActivityDetectionMiddleware:
     """
     Detect suspicious patterns in requests.
 
-    State is per-instance (not class-level) so each app instance has independent
-    counters; entries are evicted lazily on access and aggressively when the
-    tracking maps grow past `max_tracked_ips` to bound memory.
+    State is kept in Redis when available so all uvicorn workers see the same
+    failed-attempt counter and blocklist (the previous per-process dicts let an
+    attacker round-robin across workers and multiply allowed failures by the
+    worker count). The in-memory dicts remain as a fallback for environments
+    without Redis (dev, tests) and as a soft cushion if Redis is temporarily
+    unreachable; in that fallback path each worker tracks state independently.
     """
+
+    # Redis key prefixes. Sorted-set ``sec:fail:{ip}`` stores failure timestamps
+    # (score = unix epoch, member = "<ts>:<incr>" to keep members unique). Plain
+    # key ``sec:block:{ip}`` exists with a TTL when the IP is in the penalty
+    # box; presence is the block signal.
+    _FAIL_KEY = "sec:fail:{ip}"
+    _BLOCK_KEY = "sec:block:{ip}"
 
     def __init__(
         self,
@@ -237,9 +247,105 @@ class SuspiciousActivityDetectionMiddleware:
         self.block_duration = block_duration  # seconds (15 minutes default)
         self.enabled = enabled
         self.max_tracked_ips = max_tracked_ips
-        # Per-instance, not class-level: avoid silent state sharing across apps.
+        # In-memory fallback when Redis is unavailable. Per-instance.
         self._failed_attempts: defaultdict[str, list] = defaultdict(list)
         self._blocked_ips: dict[str, datetime] = {}
+        # Monotonic counter so concurrent failures in the same second yield
+        # distinct ZSET members (the score is enough for ordering but ZADD
+        # would otherwise overwrite same-score same-member entries).
+        self._fail_seq = 0
+
+    def _get_redis(self):
+        """Return the shared Redis client, or None if Redis isn't configured.
+
+        Resolved lazily so the middleware can be constructed before the cache
+        singleton is built; cached on the instance after the first hit.
+        """
+        cached = getattr(self, "_redis_client", "__unset__")
+        if cached != "__unset__":
+            return cached
+        client = None
+        try:
+            from backend.config import config as _cfg
+            if getattr(_cfg, "USE_REDIS_CACHE", False):
+                from backend.redis_cache import get_cache
+                cache = get_cache()
+                client = getattr(cache, "client", None)
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.debug("Redis unavailable for SuspiciousActivity middleware: %s", exc)
+            client = None
+        self._redis_client = client
+        return client
+
+    def _is_blocked_redis(self, client, ip: str) -> bool:
+        try:
+            return bool(client.exists(self._BLOCK_KEY.format(ip=ip)))
+        except Exception as exc:
+            logger.debug("Redis EXISTS failed; falling back to in-memory: %s", exc)
+            return self._is_blocked_local(ip)
+
+    def _is_blocked_local(self, ip: str) -> bool:
+        block_until = self._blocked_ips.get(ip)
+        if not block_until:
+            return False
+        if _utcnow() < block_until:
+            return True
+        # Lazy expire
+        self._blocked_ips.pop(ip, None)
+        self._failed_attempts.pop(ip, None)
+        return False
+
+    def _record_failure(self, client, ip: str) -> None:
+        """Bump the failed-attempt window for ``ip``; block if over threshold.
+
+        Uses a Redis pipeline so add+trim+count is one round-trip. We do NOT
+        attempt to make this atomic with the block-set — losing a single
+        increment under contention is acceptable; the next failure will trip
+        the block.
+        """
+        now = _utcnow()
+        self._fail_seq = (self._fail_seq + 1) % 1_000_000
+        if client is not None:
+            try:
+                fail_key = self._FAIL_KEY.format(ip=ip)
+                block_key = self._BLOCK_KEY.format(ip=ip)
+                score = now.timestamp()
+                member = f"{score:.6f}:{self._fail_seq}"
+                cutoff = score - self.block_duration
+                pipe = client.pipeline()
+                pipe.zadd(fail_key, {member: score})
+                pipe.zremrangebyscore(fail_key, "-inf", cutoff)
+                pipe.expire(fail_key, self.block_duration)
+                pipe.zcard(fail_key)
+                results = pipe.execute()
+                count = int(results[-1] or 0)
+                if count >= self.max_failures:
+                    # NX so an existing block isn't extended on every late hit.
+                    client.set(block_key, "1", ex=self.block_duration, nx=True)
+                    logger.error(
+                        "Blocking IP %s after %d failed auth attempts (Redis-backed); "
+                        "block expires in %ds",
+                        ip, count, self.block_duration,
+                    )
+                return
+            except Exception as exc:
+                logger.debug("Redis pipeline failed; falling back to in-memory: %s", exc)
+                # fall through to local path
+        self._record_failure_local(ip, now)
+
+    def _record_failure_local(self, ip: str, now: datetime) -> None:
+        self._failed_attempts[ip].append(now)
+        cutoff = now - timedelta(seconds=self.block_duration)
+        self._failed_attempts[ip] = [t for t in self._failed_attempts[ip] if t > cutoff]
+        if len(self._failed_attempts[ip]) >= self.max_failures:
+            block_until = now + timedelta(seconds=self.block_duration)
+            self._blocked_ips[ip] = block_until
+            logger.error(
+                "Blocking IP %s after %d failed auth attempts (in-memory fallback); "
+                "blocked until %s",
+                ip, len(self._failed_attempts[ip]), block_until,
+            )
+        self._evict_if_needed()
 
     def _evict_if_needed(self) -> None:
         """Hard cap on tracked IPs to prevent unbounded memory growth under attack."""
@@ -254,18 +360,13 @@ class SuspiciousActivityDetectionMiddleware:
                     if any(t > cutoff for t in times)
                 },
             )
-            # If still over the cap after pruning, drop oldest IPs.
             while len(self._failed_attempts) > self.max_tracked_ips:
                 self._failed_attempts.pop(next(iter(self._failed_attempts)), None)
         if len(self._blocked_ips) > self.max_tracked_ips:
             now = _utcnow()
-            # Expire any entries past their block_until first…
             self._blocked_ips = {
                 ip: until for ip, until in self._blocked_ips.items() if until > now
             }
-            # …then enforce the hard cap even if everything is still in window.
-            # Drop the earliest-expiring entries: under a distributed brute-force,
-            # all entries can be unexpired but we still need bounded memory.
             while len(self._blocked_ips) > self.max_tracked_ips:
                 victim = min(self._blocked_ips, key=self._blocked_ips.get)
                 self._blocked_ips.pop(victim, None)
@@ -276,53 +377,30 @@ class SuspiciousActivityDetectionMiddleware:
             return
 
         client_ip = _client_ip_from_scope(scope)
+        redis_client = self._get_redis()
 
-        # Check if IP is blocked
-        if client_ip in self._blocked_ips:
-            block_until = self._blocked_ips[client_ip]
-            if _utcnow() < block_until:
-                logger.warning(f"Blocked suspicious IP: {client_ip}")
-
-                response = JSONResponse(
-                    status_code=429,
-                    content={"detail": "Too many failed attempts. Please try again later."}
-                )
-                await response(scope, receive, send)
-                return
-            else:
-                # Unblock expired blocks
-                del self._blocked_ips[client_ip]
-                if client_ip in self._failed_attempts:
-                    del self._failed_attempts[client_ip]
+        # Check block list (Redis if available, in-memory otherwise).
+        blocked = (
+            self._is_blocked_redis(redis_client, client_ip)
+            if redis_client is not None
+            else self._is_blocked_local(client_ip)
+        )
+        if blocked:
+            logger.warning(f"Blocked suspicious IP: {client_ip}")
+            response = JSONResponse(
+                status_code=429,
+                content={"detail": "Too many failed attempts. Please try again later."},
+            )
+            await response(scope, receive, send)
+            return
 
         # Track suspicious patterns in response
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
                 status_code = message.get("status", 200)
-
-                # Track 401/403 responses (authentication failures)
                 path = scope.get("path", "")
                 if status_code in [401, 403] and "/auth/" in path:
-                    now = _utcnow()
-                    self._failed_attempts[client_ip].append(now)
-
-                    # Clean old attempts (older than block duration)
-                    cutoff = now - timedelta(seconds=self.block_duration)
-                    self._failed_attempts[client_ip] = [
-                        t for t in self._failed_attempts[client_ip] if t > cutoff
-                    ]
-
-                    # Check if should block
-                    if len(self._failed_attempts[client_ip]) >= self.max_failures:
-                        block_until = now + timedelta(seconds=self.block_duration)
-                        self._blocked_ips[client_ip] = block_until
-                        logger.error(
-                            f"Blocking IP {client_ip} due to {len(self._failed_attempts[client_ip])} "
-                            f"failed authentication attempts. Blocked until {block_until}"
-                        )
-
-                    self._evict_if_needed()
-
+                    self._record_failure(redis_client, client_ip)
             await send(message)
 
         await self.app(scope, receive, send_wrapper)

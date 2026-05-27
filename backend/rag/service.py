@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List
 from enum import Enum
 
 from backend.rag.semantic_chunker import SemanticChunker
-from backend.rag.hybrid_search import HybridSearcher, BM25Retriever, SemanticRetriever
+from backend.rag.hybrid_search import HybridSearcher, BM25Retriever
 from backend.rag.reranker import AdvancedReranker
 from backend.rag.hyde import HyDERetriever
 from backend.rag.query_enhancement import QueryEnhancer

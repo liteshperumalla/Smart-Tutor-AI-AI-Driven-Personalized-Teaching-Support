@@ -4,10 +4,10 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Literal, Optional, TYPE_CHECKING
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import (
@@ -1056,6 +1056,62 @@ def run_scheduled_dataset_quality_evaluation(
     result = _run_dataset_quality(payload.limit, payload.model_id)
     record = _store_dataset_run(result, payload.limit, payload.model_id, source="scheduled")
     return {**result, "run_record": record}
+
+
+class ProductionSampleRequest(BaseModel):
+    # Sampling knobs
+    sample_size: Optional[int] = Field(
+        default=None, ge=1, le=200,
+        description="Number of production query/answer pairs to evaluate. Defaults to EVAL_PRODUCTION_SAMPLE_SIZE.",
+    )
+    lookback_hours: Optional[int] = Field(
+        default=None, ge=1, le=720,
+        description="Only sample sessions updated within this many hours. Defaults to EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS.",
+    )
+    # Reproducibility
+    seed: Optional[int] = Field(
+        default=None,
+        description="Optional RNG seed for repeatable samples (omit for true random).",
+    )
+    # Judge config
+    judge_mode: Optional[Literal["combined", "split"]] = Field(
+        default=None,
+        description="`combined` (1 LLM call/query) or `split` (4 calls/query, anti-halo). Defaults to EVAL_JUDGE_MODE.",
+    )
+    model_id: Optional[str] = Field(
+        default=None,
+        description="Optional Bedrock model ID for the judge.",
+    )
+
+
+@router.post("/sample-production")
+def sample_production_evaluation(
+    payload: ProductionSampleRequest,
+    token=Depends(get_evaluation_cron_token),
+):
+    """Monte Carlo sample of real production traffic, then LLM-judge it.
+
+    Unlike `/run-dataset-quality` which evaluates against the static
+    `test_dataset.json`, this samples N random user-question / assistant-
+    answer pairs from the live chat store and scores them with the same
+    judge. Designed for continuous quality auditing: spot drift, sudden
+    regression in real conditions, etc.
+    """
+    from backend.services.production_sampler import run_production_sample_evaluation
+    try:
+        return run_production_sample_evaluation(
+            n=payload.sample_size,
+            since_hours=payload.lookback_hours,
+            judge_mode=payload.judge_mode,
+            model_id=payload.model_id,
+            rng_seed=payload.seed,
+        )
+    except RuntimeError as exc:
+        # Misconfiguration (e.g. storage backend without list_users()): this
+        # is a server-side condition, so 500 is more accurate than 422. The
+        # message is surfaced verbatim so the scheduled workflow's Slack alert
+        # shows the operator exactly what to fix.
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/runs")

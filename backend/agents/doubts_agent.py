@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict
+from typing import Dict, Tuple
 
 from backend.agents.state import AgentState
 from backend.agents import graph_ops
@@ -53,6 +53,52 @@ def _extract_concept(query: str) -> str:
     # Take first meaningful phrase (up to 4 words)
     words = cleaned.split()[:4]
     return " ".join(words).strip("?.!, ") or "the topic"
+
+
+def _build_doubt_prompt(state: AgentState) -> Tuple[str, str]:
+    """Return (prompt, concept). Concept is needed for finalize_doubt()."""
+    query = state["input"]
+    struggled = state.get("struggled_concepts", []) or []
+    concept = _extract_concept(query)
+
+    prior_note = ""
+    if any(concept.lower() in s.lower() for s in struggled):
+        prior_note = (
+            f"Note: The student has struggled with '{concept}' before. "
+            "Build on what they might already partially understand, and try "
+            "a different angle of explanation this time."
+        )
+
+    prompt = _DOUBT_PROMPT.format(
+        student_name=state.get("student_name", "Student"),
+        student_level=state.get("student_level", "intermediate"),
+        struggled_concepts=", ".join(struggled) if struggled else "none recorded",
+        context=state.get("context_str", "No additional context available."),
+        prior_note=prior_note,
+        query=query,
+    )
+    return prompt, concept
+
+
+def prepare_doubts(state: AgentState) -> Dict:
+    """Streaming-pipeline hook."""
+    prompt, concept = _build_doubt_prompt(state)
+    return {
+        "prompt": prompt,
+        "model_id": state.get("model_id"),
+        "agent": "doubts_agent",
+        # Stash so finalize doesn't have to recompute it.
+        "_concept": concept,
+    }
+
+
+def finalize_doubts(state: AgentState, response_text: str, *, concept: str) -> None:
+    graph_ops.log_doubt(
+        username=state.get("user_id", ""),
+        concept=concept,
+        response=response_text[:500],
+        student_level=state.get("student_level", "intermediate"),
+    )
 
 
 def doubts_agent(state: AgentState) -> Dict:
