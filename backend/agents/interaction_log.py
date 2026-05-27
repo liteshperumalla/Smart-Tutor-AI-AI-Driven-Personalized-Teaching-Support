@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from backend.agents.graph_ops import _safe_write, _now_iso, ensure_student
+from backend.agents.graph_ops import _safe_write, _now_iso, _STUDENT_MERGE
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,8 @@ def log_agent_interaction(
     model_id: Optional[str] = None,
 ) -> None:
     """Create an AgentInteraction node linked to the Student. Fire-and-forget."""
-    ensure_student(username)
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (ai:AgentInteraction {"
         "  session_id: $session_id,"
         "  query: $query,"

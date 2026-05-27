@@ -25,7 +25,45 @@ logger = logging.getLogger(__name__)
 
 _EXECUTOR: Optional[ThreadPoolExecutor] = None
 _EXECUTOR_LOCK = threading.Lock()
-_DEFAULT_WORKERS = int(os.environ.get("GRAPH_OPS_WORKERS", "4"))
+
+
+def _parse_workers() -> int:
+    """Read GRAPH_OPS_WORKERS, falling back to 4 on bad/missing values.
+
+    Parsing at import time used to crash startup if anyone set the env var
+    to a non-integer (e.g. "" from a bad helm chart). We now log a warning
+    and use the safe default instead of letting the whole process refuse
+    to start over a logging worker count.
+    """
+    raw = os.environ.get("GRAPH_OPS_WORKERS")
+    if raw is None or raw.strip() == "":
+        return 4
+    try:
+        value = int(raw)
+        return value if value > 0 else 4
+    except ValueError:
+        logger.warning(
+            "Invalid GRAPH_OPS_WORKERS=%r, falling back to 4", raw
+        )
+        return 4
+
+
+_DEFAULT_WORKERS = _parse_workers()
+
+
+# Idempotent Student-node upsert used by every log_* helper. Embedding the
+# MERGE inline (instead of relying on a separately-dispatched ensure_student
+# call) closes a race: writes are queued on a shared ThreadPoolExecutor, so
+# ensure_student and the follow-on MATCH had no ordering guarantee — a MATCH
+# that landed first would return zero rows and silently drop the log.
+# Uses $ts since every caller already binds it.
+_STUDENT_MERGE = (
+    "MERGE (s:Student {username: $username}) "
+    "ON CREATE SET s.display_name = $username, s.created_at = $ts, "
+    "s.total_queries = 0, s.total_tutoring_sessions = 0, "
+    "s.total_doubts = 0, s.total_feedback = 0 "
+    "SET s.last_active = $ts "
+)
 
 
 def _get_executor() -> ThreadPoolExecutor:
@@ -96,9 +134,8 @@ def ensure_student(username: str, display_name: Optional[str] = None) -> None:
 # ── Query logging (used by router) ──────────────────────────────
 
 def log_query(username: str, text: str, query_type: str) -> None:
-    ensure_student(username)
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (q:Query {text: $text, query_type: $query_type, timestamp: $ts}) "
         "CREATE (s)-[:ASKED]->(q) "
         "SET s.total_queries = COALESCE(s.total_queries, 0) + 1",
@@ -111,10 +148,9 @@ def log_query(username: str, text: str, query_type: str) -> None:
 def log_tutoring_session(
     username: str, query: str, response: str, session_type: str, student_level: str, topics: List[str]
 ) -> None:
-    ensure_student(username)
     ts = _now_iso()
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (sess:TutoringSession {query: $query, response: $response, "
         "session_type: $session_type, student_level: $student_level, timestamp: $ts}) "
         "CREATE (s)-[:HAD_TUTORING_SESSION]->(sess) "
@@ -126,7 +162,7 @@ def log_tutoring_session(
     )
     for topic in topics:
         _safe_write(
-            "MATCH (s:Student {username: $username}) "
+            _STUDENT_MERGE +
             "MERGE (t:Topic {name: $topic}) "
             "ON CREATE SET t.last_tutored = $ts "
             "SET t.last_tutored = $ts "
@@ -140,10 +176,9 @@ def log_tutoring_session(
 # ── Doubts agent ─────────────────────────────────────────────────
 
 def log_doubt(username: str, concept: str, response: str, student_level: str) -> None:
-    ensure_student(username)
     ts = _now_iso()
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "MERGE (c:Concept {name: $concept}) "
         "ON CREATE SET c.last_questioned = $ts "
         "SET c.last_questioned = $ts "
@@ -162,9 +197,8 @@ def log_doubt(username: str, concept: str, response: str, student_level: str) ->
 # ── Personalised agent ──────────────────────────────────────────
 
 def log_explanation(username: str, query: str, explanation: str, level: str) -> None:
-    ensure_student(username)
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (e:Explanation {query: $query, explanation: $explanation, "
         "level: $level, timestamp: $ts}) "
         "CREATE (s)-[:RECEIVED_EXPLANATION]->(e)",
@@ -177,9 +211,8 @@ def log_explanation(username: str, query: str, explanation: str, level: str) -> 
 def log_quiz_attempt(
     username: str, quiz_id: str, score: float, percentage: float, folders: List[str]
 ) -> None:
-    ensure_student(username)
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (qa:QuizAttempt {quiz_id: $quiz_id, score: $score, "
         "percentage: $percentage, folders: $folders, timestamp: $ts}) "
         "CREATE (s)-[:ATTEMPTED_QUIZ]->(qa)",
@@ -191,9 +224,8 @@ def log_quiz_attempt(
 # ── Feedback agent ───────────────────────────────────────────────
 
 def log_feedback(username: str, text: str, sentiment: str, category: str) -> None:
-    ensure_student(username)
     _safe_write(
-        "MATCH (s:Student {username: $username}) "
+        _STUDENT_MERGE +
         "CREATE (f:Feedback {text: $text, sentiment: $sentiment, "
         "category: $category, timestamp: $ts}) "
         "CREATE (s)-[:GAVE_FEEDBACK]->(f) "
