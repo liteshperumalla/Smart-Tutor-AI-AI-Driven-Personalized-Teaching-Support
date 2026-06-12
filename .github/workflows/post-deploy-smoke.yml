@@ -25,32 +25,67 @@ jobs:
     env:
       PUBLIC_APP_URL: ${{ vars.PRODUCTION_APP_URL }}
       PUBLIC_API_URL: ${{ vars.PRODUCTION_API_URL }}
+      # AWS / EC2 resolution. The EC2 security group only allows SSH from a
+      # fixed allowlist, so a GitHub-hosted runner cannot connect on port 22
+      # out of the box. resolve_ec2_target.sh discovers this runner's public
+      # IP and temporarily authorizes it (revoked in the always() teardown),
+      # mirroring the Production Deploy workflow. Without this, the internal
+      # SSH smoke step fails with "dial tcp …:22: i/o timeout".
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+      EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+      EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+      EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Validate required smoke-test secrets
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           set -euo pipefail
 
           missing=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+          for name in EC2_USER EC2_SSH_KEY; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
           done
+
+          # A host is reachable via a static EC2_HOST or by resolving an
+          # instance id / name through the AWS API in resolve_ec2_target.sh.
+          if [ -z "${EC2_HOST:-}" ] && [ -z "${EC2_INSTANCE_ID:-}" ] && [ -z "${EC2_INSTANCE_NAME:-}" ]; then
+            missing+=("EC2_HOST or EC2_INSTANCE_ID/EC2_INSTANCE_NAME")
+          fi
 
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "::error::Missing required production smoke-test secrets: ${missing[*]}"
             exit 1
           fi
 
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        # Pinned to v1.0.7 SHA per supply-chain hygiene. Tags are mutable; SHA
+        # pins prevent a repointed tag from injecting untrusted code.
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
+
+      - name: Resolve production EC2 target
+        id: ec2-target
+        # Resolves the host, temporarily authorizes this runner's IP on SSH,
+        # and waits for port 22 to accept connections. Records the temp ingress
+        # CIDR in GITHUB_ENV so the always() revoke step can tear it down.
+        run: scripts/ci/resolve_ec2_target.sh
+
       - name: Run internal EC2 smoke tests
         id: internal_smoke
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.ec2-target.outputs.host || secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 20m
@@ -74,6 +109,10 @@ jobs:
 
             echo "=== In-container metrics probe ==="
             docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/metrics >/dev/null
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Run external smoke tests
         id: external_smoke
