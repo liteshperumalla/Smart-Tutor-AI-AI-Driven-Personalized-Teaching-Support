@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { fetchHomeOverview, type HomeOverview } from "@/lib/api";
-import { HomeHeroActions } from "@/components/home-hero-actions";
 import { PageShell } from "@/components/page-shell";
 import { KnowledgeBaseWidget } from "@/components/knowledge-base-widget";
 import { Bell, GraduationCap, FolderOpen, ExternalLink } from "lucide-react";
@@ -72,23 +71,26 @@ export default async function Home() {
   const professor = overview?.professor;
   return (
     <PageShell contentClassName="gap-10 pb-6" noCard>
-        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
+        <header className="relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10 animate-fade-in-down dark:border-zinc-800 bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)] dark:bg-[linear-gradient(160deg,#04201d_0%,#0f172a_55%,#1a193f_100%)]">
+          {/* Dotted texture */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20"
+            style={{ backgroundImage: "radial-gradient(rgba(15,23,42,0.06) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+          />
           {/* Decorative blobs */}
-          <div className="absolute top-0 right-0 h-64 w-64 bg-indigo-400/20 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-48 w-48 bg-amber-400/20 rounded-full blur-3xl" style={{animationDelay: '1s'}}></div>
+          <div className="pointer-events-none absolute -top-20 -right-16 h-60 w-60 rounded-full blur-3xl animate-float" style={{ background: "rgba(16,185,129,0.18)" }}></div>
+          <div className="pointer-events-none absolute -bottom-20 -left-10 h-52 w-52 rounded-full blur-3xl" style={{ background: "rgba(99,102,241,0.16)", animationDelay: "1s" }}></div>
 
           <div className="relative z-10">
-            <h1 className="font-display mt-4 text-3xl font-bold text-zinc-900 leading-tight dark:text-white sm:text-4xl lg:mt-6 lg:text-6xl">
-              Advanced Computational<br className="hidden sm:block" /> Methods
+            <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-zinc-900 dark:text-white sm:text-5xl lg:text-6xl">
+              Advanced Computational{" "}
+              <span style={{ backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+                Methods
+              </span>
             </h1>
-
-            <p className="mt-3 text-base text-zinc-600 max-w-2xl dark:text-zinc-400 sm:mt-4 sm:text-lg">
-              Master AI-powered learning with intelligent tutoring, dynamic quizzes, and research tools
+            <p className="mt-3 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-300 sm:text-lg">
+              An AI tutor that cites every answer in your INFO 5731 corpus. Ask, quiz, and study — without the hallucinations.
             </p>
-
-            <div className="mt-8 flex flex-wrap gap-4">
-              <HomeHeroActions />
-            </div>
           </div>
         </header>
 
@@ -96,27 +98,34 @@ export default async function Home() {
           <section className="animate-fade-in-up">
             <h2 className="font-display text-2xl font-bold mb-6">Quick Actions</h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {quickActions.map((action, i) => (
-                <Link
-                  key={action.title}
-                  href={action.href}
-                  className="group relative overflow-hidden rounded-3xl p-5 sm:p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up bg-white hover:bg-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-                  style={{animationDelay: `${i * 0.05}s`}}>
-                  
-                  <div className="mb-4">
-                    <h3 className="font-display text-xl font-bold text-zinc-900 dark:text-white">
-                      {action.title}
-                    </h3>
-                    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                      {action.description}
-                    </p>
-                  </div>
+              {quickActions.map((action, i) => {
+                const featured = action.href === "/code";
+                return (
+                  <Link
+                    key={action.title}
+                    href={action.href}
+                    className={`group relative overflow-hidden rounded-3xl p-5 sm:p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up ${
+                      featured
+                        ? "card-gradient border-0"
+                        : "border-2 border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                    }`}
+                    style={{ animationDelay: `${i * 0.05}s` }}>
 
-                  <div className={`mt-4 inline-flex items-center gap-2 font-medium text-sm ${i < 2 ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'}`}>
-                    Get started <span className="transition-transform group-hover:translate-x-1">→</span>
-                  </div>
-                </Link>
-              ))}
+                    <div className="mb-4">
+                      <h3 className={`font-display text-xl font-bold ${featured ? "text-white" : "text-zinc-900 dark:text-white"}`}>
+                        {action.title}
+                      </h3>
+                      <p className={`mt-2 text-sm ${featured ? "text-white/85" : "text-zinc-600 dark:text-zinc-400"}`}>
+                        {action.description}
+                      </p>
+                    </div>
+
+                    <div className={`mt-4 inline-flex items-center gap-2 font-medium text-sm ${featured ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`}>
+                      Get started <span className="transition-transform group-hover:translate-x-1">→</span>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </section>
         )}

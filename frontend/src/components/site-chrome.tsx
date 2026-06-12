@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
+import { LogoMark } from "@/components/logo-mark";
 import {
   listChatSessions,
   ChatSessionDTO,
@@ -344,7 +345,8 @@ export function SiteChrome({
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <Link href="/" className="text-base font-semibold text-zinc-900 dark:text-white">
+        <Link href="/" className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-white">
+          <LogoMark size={26} />
           Smart AI Tutor
         </Link>
         {/* Quick action: new chat */}
@@ -387,8 +389,9 @@ export function SiteChrome({
           <Link
             href="/"
             onClick={() => setMobileNavOpen(false)}
-            className="text-lg font-semibold text-zinc-900 dark:text-white whitespace-nowrap"
+            className="flex items-center gap-2.5 text-lg font-semibold text-zinc-900 dark:text-white whitespace-nowrap"
           >
+            <LogoMark size={30} />
             Smart AI Tutor
           </Link>
           {/* Desktop: collapse button; Mobile: close drawer button */}

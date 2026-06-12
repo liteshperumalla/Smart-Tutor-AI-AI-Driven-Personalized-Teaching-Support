@@ -23,7 +23,8 @@ import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/
 import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
-  Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert
+  Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert,
+  Sparkles, BookOpen, Code2, Lightbulb, Activity, GitCompare, Gauge, ShieldCheck
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -1268,11 +1269,25 @@ function ChatWorkspaceContent() {
         {/* Welcome screen when no messages */}
         {isLoggedIn && (!activeSession || !hasMessages) && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
-            <h1 className="text-2xl sm:text-4xl font-semibold text-zinc-900 dark:text-white mb-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+              <span className="h-[5px] w-[5px] rounded-full bg-emerald-500" style={{ boxShadow: "0 0 6px #10b981" }}></span>
+              Grounded in INFO 5731 corpus
+            </span>
+            <h1 className="font-display mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white mb-3">
               {`Hi, ${getFriendlyUserName(user)}`}
             </h1>
             <p className="text-base sm:text-xl text-zinc-500 dark:text-zinc-400">
-              {isAdmin ? "What would you like to test or explore?" : "What would you like to learn today?"}
+              {isAdmin ? (
+                "What would you like to test or explore?"
+              ) : (
+                <>
+                  What would you like to{" "}
+                  <span style={{ backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+                    learn
+                  </span>{" "}
+                  today?
+                </>
+              )}
             </p>
           </div>
         )}
@@ -1641,77 +1656,59 @@ function ChatWorkspaceContent() {
             </form>
           )}
 
-          {/* AI disclaimer */}
-          <p className="mt-2 text-center text-xs text-zinc-400 dark:text-zinc-500 select-none">
-            AI is experimental and can make mistakes. Please double-check responses.
-          </p>
+          {/* Grounded note + AI disclaimer */}
+          <div className="mt-2 flex flex-col items-center gap-1 select-none">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              Every answer is grounded in your INFO 5731 corpus
+            </span>
+            <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
+              AI is experimental and can make mistakes. Please double-check responses.
+            </p>
+          </div>
 
-          {/* Suggestion chips - only show when no messages */}
+          {/* Suggested prompts - only show when no messages */}
           {isLoggedIn && (!activeSession || !hasMessages) && (
-            <div className="flex flex-wrap justify-center gap-2 mt-4">
-              {isAdmin ? (
-                <>
+            <div className="mx-auto mt-6 grid w-full max-w-xl grid-cols-1 gap-2.5 text-left sm:grid-cols-2">
+              {(isAdmin
+                ? [
+                    { Icon: Activity, label: "Run a system health check on the RAG pipeline", hint: "Diagnostics" },
+                    { Icon: GitCompare, label: "Test multi-model response comparison for a complex query", hint: "Models" },
+                    { Icon: Gauge, label: "What are the current system metrics and performance stats?", hint: "Metrics" },
+                    { Icon: ShieldCheck, label: "Evaluate the quality of responses for edge-case queries", hint: "Evaluation" },
+                  ]
+                : [
+                    { Icon: Sparkles, label: "Explain TF-IDF using the Module 3 reading", hint: "Module 3" },
+                    { Icon: BookOpen, label: "Summarize Lecture 8 in three bullet points", hint: "Lecture 8" },
+                    { Icon: Code2, label: "Walk me through the embeddings code demo", hint: "Code · Module 4" },
+                    { Icon: Lightbulb, label: "Quiz me on RAG vs fine-tuning", hint: "Practice" },
+                  ]
+              ).map(({ Icon: SuggestionIcon, label, hint }) => {
+                const accent = isAdmin
+                  ? "hover:border-amber-500 hover:bg-amber-500/[0.05] dark:hover:border-amber-500"
+                  : "hover:border-emerald-500 hover:bg-emerald-500/[0.04] dark:hover:border-emerald-500";
+                const tile = isAdmin
+                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+                return (
                   <button
+                    key={label}
                     type="button"
-                    onClick={() => setComposerText("Run a system health check on the RAG pipeline")}
-                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
+                    onClick={() => setComposerText(label)}
+                    className={`flex items-start gap-2.5 rounded-2xl border border-zinc-200 bg-white p-3 text-left text-[13px] font-medium text-zinc-800 transition dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 ${accent}`}
                   >
-                    RAG health check
+                    <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${tile}`}>
+                      <SuggestionIcon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="flex-1 leading-snug">
+                      {label}
+                      <span className="mt-1 block font-mono text-[10.5px] tracking-wide text-zinc-400 dark:text-zinc-500">
+                        {hint}
+                      </span>
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("Test multi-model response comparison for a complex query")}
-                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
-                  >
-                    Model comparison
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("What are the current system metrics and performance stats?")}
-                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
-                  >
-                    System metrics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("Evaluate the quality of responses for edge-case queries")}
-                    className="px-4 py-2 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
-                  >
-                    Edge-case testing
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("What is the main topic of this course?")}
-                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                  >
-                    Course overview
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("Help me understand machine learning basics")}
-                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                  >
-                    ML basics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("How do I use the research mode?")}
-                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                  >
-                    Research mode
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setComposerText("Explain a complex concept simply")}
-                    className="px-4 py-2 rounded-full border border-zinc-200 bg-white text-sm text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition-colors"
-                  >
-                    Explain concepts
-                  </button>
-                </>
-              )}
+                );
+              })}
             </div>
           )}
       </div>
