@@ -72,21 +72,37 @@ PERSIST_DIR = "./persisted_index"
 os.makedirs(PERSIST_DIR, exist_ok=True)
 CHROMA_DB_PATH = os.getenv("CHROMA_DB_PATH", "./chroma_db")
 
+_response_llm_initialized = False
+
+
 def _ensure_response_llm_initialized() -> None:
-    """Initialize the default LlamaIndex LLM lazily.
+    """Initialize the default LlamaIndex LLM lazily with the project's provider.
 
     Import-time initialization blocks FastAPI startup in production because it can
     trigger remote Bedrock setup before the app starts serving `/ready`.
+
+    Crucially, we must NOT probe ``Settings.llm`` to decide whether init is
+    needed: that property triggers LlamaIndex's lazy ``resolve_llm("default")``,
+    which defaults to OpenAI and raises ``ValueError: No API key found for
+    OpenAI`` when ``OPENAI_API_KEY`` is unset. That exception fired before
+    ``get_llm()`` (our configured provider) was ever reached, so the initializer
+    could never succeed on a fresh process — surfacing as the
+    "⚠️ Error processing your query" fallback (e.g. in session-title generation).
+    Track init with our own flag and assign the provider directly instead.
     """
-    if Settings.llm is not None:
+    global _response_llm_initialized
+    if _response_llm_initialized:
         return
 
     try:
         Settings.llm = get_llm()
+        _response_llm_initialized = True
         logging.info(f"LLM initialized for response generation: {config.LLM_PROVIDER}")
     except Exception as e:
+        # Leave the flag unset so a later call can retry once the provider is
+        # reachable. Do not assign Settings.llm = None: the getter re-resolves a
+        # None backing field to the OpenAI default, re-raising on next access.
         logging.error(f"Failed to initialize LLM: {e}")
-        Settings.llm = None
 
 WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY", "").strip()
@@ -1142,12 +1158,20 @@ def _clean_generated_session_title(raw_title: str) -> str:
     title = (raw_title or "").strip()
     title = re.sub(r'^["\'\-\*\s]+|["\'\-\*\s]+$', "", title)
     title = re.sub(r"^(title|session title)\s*:\s*", "", title, flags=re.IGNORECASE)
+    # Drop any leading symbols/emoji (e.g. the "⚠️" the RAG error path prepends)
+    # so they neither pollute a real title nor mask the error-prefix guard below.
+    title = re.sub(r"^[^\w]+", "", title, flags=re.UNICODE)
     title = re.sub(r"\s+", " ", title).strip()
     return title
 
 
 def _is_invalid_generated_session_title(title: str) -> bool:
     normalized = re.sub(r"\s+", " ", (title or "").strip()).lower()
+    # Strip leading non-alphanumerics (emoji/punctuation/symbols) before the
+    # prefix checks. The RAG fallback returns "⚠️ Error processing your query: …"
+    # without raising, and a bare startswith("error") is defeated by the leading
+    # "⚠️ " glyph — letting an error message leak through as the session title.
+    normalized = re.sub(r"^[^a-z0-9]+", "", normalized)
     if not normalized:
         return True
     if normalized in _INVALID_SESSION_TITLES:

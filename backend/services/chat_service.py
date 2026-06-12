@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import weakref
 from datetime import datetime, timezone
@@ -66,7 +67,15 @@ def _normalize_session_title(title: Optional[str], default: str = "New chat") ->
 
 def _is_auto_title_placeholder(title: str) -> bool:
     normalized = " ".join((title or "").split()).strip().lower()
-    return not normalized or normalized in _AUTO_TITLE_PLACEHOLDERS
+    if not normalized or normalized in _AUTO_TITLE_PLACEHOLDERS:
+        return True
+    # Self-heal titles corrupted by the leaked RAG error string
+    # ("⚠️ Error processing your query: …"). Strip any leading symbol/emoji so
+    # the match isn't defeated by the "⚠️ " glyph, then check the exact phrase
+    # rather than a bare "error" prefix (which would clobber a legitimately
+    # named chat such as "Error Handling in Python").
+    stripped = re.sub(r"^[^a-z0-9]+", "", normalized)
+    return stripped.startswith("error processing your query")
 
 
 class ChatService:

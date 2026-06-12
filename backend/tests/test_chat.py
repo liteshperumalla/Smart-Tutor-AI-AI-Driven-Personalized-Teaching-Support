@@ -177,6 +177,47 @@ class TestChatSessionTitleLogic:
 
         assert title == "What Is The Main Topic"
 
+    def test_make_session_title_rejects_leaked_rag_error_string(self, monkeypatch):
+        # The RAG fallback returns "⚠️ Error processing your query: …" without
+        # raising. The leading "⚠️ " glyph must not defeat the error-prefix
+        # guard and leak through as the session title (see the production bug
+        # where a chat was titled "⚠️ Error Processing Your Query:").
+        monkeypatch.setattr(
+            utils,
+            "generate_response_with_sources",
+            lambda prompt: ("⚠️ Error processing your query: boom", []),
+        )
+
+        title = utils.make_session_title(
+            [
+                ["user", "What is Redis Cache"],
+                ["assistant", "Redis is an in-memory data store."],
+            ]
+        )
+
+        assert title == "What Is Redis Cache"
+
+    def test_corrupted_error_title_is_regenerated(self, monkeypatch):
+        # A session already poisoned with the leaked error string should
+        # self-heal on the next assistant message rather than stay corrupted.
+        session = ChatSession(
+            id="session-3",
+            title="⚠️ Error Processing Your Query:",
+            messages=[ChatMessage(role="user", content="What is Redis Cache")],
+        )
+
+        monkeypatch.setattr(
+            "backend.services.chat_service.make_session_title",
+            lambda history: "Redis Cache Basics",
+        )
+
+        ChatService().append_message(
+            session,
+            ChatMessage(role="assistant", content="Redis is an in-memory data store."),
+        )
+
+        assert session.title == "Redis Cache Basics"
+
 
 class TestChatDisplayNameResolution:
     def test_email_username_prefers_full_name(self, auth_service):
