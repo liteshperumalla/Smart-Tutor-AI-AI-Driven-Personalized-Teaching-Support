@@ -129,7 +129,7 @@ export default function AdminFeedbackPage() {
                   {isFeedback ? (
                     <MessageSquare className="h-4 w-4 flex-shrink-0 text-blue-500" />
                   ) : isReport ? (
-                    <Flag className="h-4 w-4 flex-shrink-0 text-orange-500" />
+                    <Flag className="h-4 w-4 flex-shrink-0 text-amber-500" />
                   ) : (
                     <Bug className="h-4 w-4 flex-shrink-0 text-red-500" />
                   )}

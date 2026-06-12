@@ -96,9 +96,9 @@ export default function AdminDashboard() {
       label: "Message Reports",
       value: stats?.total_message_reports ?? 0,
       icon: Flag,
-      color: "text-orange-600 dark:text-orange-400",
-      bg: "bg-orange-50 dark:bg-orange-950/30",
-      border: "border-orange-200 dark:border-orange-900",
+      color: "text-amber-600 dark:text-amber-400",
+      bg: "bg-amber-50 dark:bg-amber-950/30",
+      border: "border-amber-200 dark:border-amber-900",
     },
     {
       label: "Share Activity",

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { GoogleAuthButton } from "@/components/google-auth-button";
+import { LogoMark } from "@/components/logo-mark";
 import { User, Lock, LogIn, ArrowLeft } from "lucide-react";
 
 type LoginResponse = {
@@ -107,49 +108,37 @@ function LoginPageContent() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Left: Visual side with atmosphere */}
-      <div className="relative hidden lg:flex flex-col justify-center bg-zinc-900 overflow-hidden p-16">
-        {/* Decorative background */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 h-96 w-96 bg-indigo-500 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-64 w-64 bg-purple-500 rounded-full blur-3xl" style={{animationDelay: '1.5s'}}></div>
+      {/* Left: modern split — brand bar + gradient headline */}
+      <div className="relative hidden lg:flex flex-col gap-6 overflow-hidden p-12 text-white" style={{ background: "#0a0e1a" }}>
+        {/* Ambient brand glows */}
+        <div className="pointer-events-none absolute top-28 -right-20 h-80 w-80 rounded-full blur-[100px] animate-float" style={{ background: "rgba(16,185,129,0.18)" }}></div>
+        <div className="pointer-events-none absolute bottom-16 -left-24 h-72 w-72 rounded-full blur-[100px]" style={{ background: "rgba(99,102,241,0.16)", animationDelay: "1.5s" }}></div>
+
+        {/* Brand bar */}
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <LogoMark size={34} />
+            <span className="font-display text-[17px] font-bold tracking-tight">Smart AI Tutor</span>
+          </div>
         </div>
 
-        <div className="relative z-10 text-white">
-          <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
-            Learn Advanced<br />Computational Methods
+        {/* Headline */}
+        <div className="relative z-10 flex flex-1 flex-col justify-center">
+          <h2 className="font-display text-5xl font-bold leading-[1.04] tracking-tight animate-fade-in-up">
+            Learn what your{" "}
+            <span style={{ backgroundImage: "linear-gradient(90deg, #6ee7b7, #818cf8)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+              course actually
+            </span>{" "}
+            taught.
           </h2>
-
-          <p className="mt-6 text-xl text-white/80 max-w-xl animate-fade-in-up stagger-1">
-            AI-powered tutoring that adapts to your learning style. Get instant help, generate quizzes, and ace your courses.
+          <p className="mt-4 max-w-md text-base leading-relaxed text-white/65 animate-fade-in-up stagger-1">
+            INFO 5731 · Computational Methods. Grounded answers, cited to the lecture.
           </p>
+        </div>
 
-          <div className="mt-12 space-y-4 animate-fade-in-up stagger-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-lg">24/7 AI tutor assistance</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-lg">Smart quiz generation</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-lg">Document research mode</span>
-            </div>
-          </div>
+        {/* Footer note */}
+        <div className="relative z-10 text-[11px] tracking-wide text-white/40">
+          Built for INFO 5731 · Computational Methods for Information Systems
         </div>
       </div>
 
@@ -157,7 +146,7 @@ function LoginPageContent() {
       <div className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
         <div className="w-full max-w-md animate-scale-in">
           <div className="mb-10 text-center lg:text-left">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:gap-3 transition-all">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400 hover:gap-3 transition-all">
               <span>←</span> Back to home
             </Link>
             <h1 className="font-display mt-6 text-4xl font-bold text-zinc-900 dark:text-white">
@@ -290,13 +279,13 @@ function LoginPageContent() {
         <div className="mt-8 space-y-3 text-center text-sm">
           <p className="text-zinc-600 dark:text-zinc-400">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+            <Link href="/signup" className="font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
               Create one →
             </Link>
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
             Forgot your password?{" "}
-            <Link href="/password-reset/request" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+            <Link href="/password-reset/request" className="font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
               Reset it
             </Link>
           </p>
