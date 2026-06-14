@@ -1269,11 +1269,7 @@ function ChatWorkspaceContent() {
         {/* Welcome screen when no messages */}
         {isLoggedIn && (!activeSession || !hasMessages) && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
-              <span className="h-[5px] w-[5px] rounded-full bg-emerald-500" style={{ boxShadow: "0 0 6px #10b981" }}></span>
-              Grounded in INFO 5731 corpus
-            </span>
-            <h1 className="font-display mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white mb-3">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white mb-3">
               {`Hi, ${getFriendlyUserName(user)}`}
             </h1>
             <p className="text-base sm:text-xl text-zinc-500 dark:text-zinc-400">

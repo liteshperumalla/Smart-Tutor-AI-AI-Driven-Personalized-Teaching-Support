@@ -57,7 +57,7 @@
   --color-bright: #34d399;       /* Brighter Emerald - pops on dark background */
   --color-success: #10b981;      /* Matches primary */
   --color-subtle: #c4b5fd;       /* Lighter Lavender - visible on dark */
-  --background: #0f172a;   /* Slate Foundation - sophisticated dark */
+  --background: #000000;   /* True Black - OLED dark */
   --foreground: #f8fafc;   /* Cloud White - crisp text */
 }
 
@@ -84,20 +84,20 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
 }
 
-/* Dark theme overrides */
+/* Dark theme overrides — neutral near-black palette ("truly black" dark mode) */
 .theme-dark body {
-  background: #0F172A;
+  background: #000000;
   color: #F8FAFC;
 }
 
 body.theme-dark {
-  background: #0F172A;
+  background: #000000;
   color: #F8FAFC;
 }
 
 .theme-dark .bg-zinc-50,
 body.theme-dark .bg-zinc-50 {
-  background-color: #0F172A !important;
+  background-color: #0a0a0a !important;
   color: #F8FAFC;
 }
 
@@ -105,7 +105,7 @@ body.theme-dark .bg-zinc-50 {
 body.theme-dark .bg-white,
 .theme-dark .bg-white\/90,
 body.theme-dark .bg-white\/90 {
-  background-color: rgba(30, 41, 59, 0.9) !important;
+  background-color: #141414 !important;
   color: #F8FAFC;
 }
 
@@ -116,22 +116,22 @@ body.theme-dark .text-zinc-900 {
 
 .theme-dark .text-zinc-600,
 body.theme-dark .text-zinc-600 {
-  color: #CBD5E1 !important;
+  color: #d4d4d4 !important;
 }
 
 .theme-dark .border-zinc-200,
 body.theme-dark .border-zinc-200 {
-  border-color: #475569 !important;
+  border-color: #262626 !important;
 }
 
 .theme-dark .text-zinc-500,
 body.theme-dark .text-zinc-500 {
-  color: #94A3B8 !important;
+  color: #a3a3a3 !important;
 }
 
 .theme-dark .text-zinc-700,
 body.theme-dark .text-zinc-700 {
-  color: #E2E8F0 !important;
+  color: #e5e5e5 !important;
 }
 
 .theme-dark .text-zinc-950,
@@ -159,9 +159,9 @@ body.theme-dark .text-zinc-950 {
 
 .theme-dark .input,
 body.theme-dark .input {
-  background-color: rgba(30, 41, 59, 0.85);
+  background-color: #141414;
   color: #F8FAFC;
-  border-color: #475569;
+  border-color: #262626;
 }
 
 .theme-dark .input:focus,
@@ -219,7 +219,7 @@ body.theme-dark .btn-secondary {
 .theme-dark .btn-secondary:hover,
 body.theme-dark .btn-secondary:hover {
   background-color: #F8FAFC;
-  color: #0F172A;
+  color: #000000;
 }
 
 .btn-ghost {
@@ -259,8 +259,8 @@ body.theme-dark .btn-ghost:hover {
 
 .theme-dark .card,
 body.theme-dark .card {
-  border-color: #475569;
-  background-color: rgba(30, 41, 59, 0.9);
+  border-color: #262626;
+  background-color: #141414;
 }
 
 .card-hover {
