@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { postJSON } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { MessageSquare, Bug, User, Mail, Tag, FileText, Send, CheckCircle, AlertTriangle, Sparkles, ThumbsUp, Zap, ShieldAlert } from "lucide-react";
+import { PageHero } from "@/components/page-hero";
 import { useUser } from "@/hooks/useUser";
 import { toast } from "sonner";
 
@@ -83,13 +84,13 @@ export default function FeedbackPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 animate-fade-in-up">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white mb-4">
-          <MessageSquare className="h-8 w-8" />
-        </div>
-        <h1 className="text-3xl font-bold text-zinc-900 dark:text-white mb-2">Feedback & Support</h1>
-        <p className="text-zinc-500 dark:text-zinc-400">Help us improve by sharing your thoughts or reporting issues</p>
-      </div>
+      <PageHero
+        className="mb-8"
+        icon={MessageSquare}
+        title="Feedback &"
+        accent="Support"
+        subtitle="Help us improve by sharing your thoughts or reporting issues."
+      />
 
       {/* Admin Notice */}
       {isAdmin && (

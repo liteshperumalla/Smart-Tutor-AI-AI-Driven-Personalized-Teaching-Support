@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createAppointment, fetchAppointments, AppointmentRecord } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { Calendar, User, Mail, Clock, MessageSquare, Send, CheckCircle, CalendarDays, Users, FileText } from "lucide-react";
+import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
 
 const REASONS = [
@@ -78,15 +79,12 @@ export default function AppointmentsPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 animate-fade-in-up">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-            <CalendarDays className="h-6 w-6" />
-          </div>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Appointments</h1>
-        </div>
-        <p className="text-zinc-500 dark:text-zinc-400 ml-14">Schedule meetings with professors and teaching assistants</p>
-      </div>
+      <PageHero
+        className="mb-8"
+        icon={CalendarDays}
+        title="Appointments"
+        subtitle="Schedule meetings with professors and teaching assistants."
+      />
 
       <div className="grid gap-8 lg:grid-cols-5">
         {/* Request Form */}

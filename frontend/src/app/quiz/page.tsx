@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
+import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
 
 export default function QuizPage() {
@@ -184,15 +185,13 @@ export default function QuizPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 animate-fade-in-up">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2.5 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white">
-            <Brain className="h-6 w-6" />
-          </div>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Knowledge Quiz</h1>
-        </div>
-        <p className="text-zinc-500 dark:text-zinc-400 ml-14">Test your understanding of course materials</p>
-      </div>
+      <PageHero
+        className="mb-8"
+        icon={Brain}
+        title="Knowledge"
+        accent="Quiz"
+        subtitle="Test your understanding of course materials."
+      />
 
       <div className="grid gap-6 lg:grid-cols-4">
         {/* Quiz Setup */}

@@ -44,8 +44,16 @@ export default function RootLayout({
   ];
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
+            an OS-dark or previously-chosen-dark user doesn't flash a light screen.
+            Mirrors theme-context.tsx (same storage key + initial logic). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k="smart-ai-tutor-theme",s=localStorage.getItem(k);var d=s==="dark"||(s!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d){document.documentElement.classList.add("dark","theme-dark");}}catch(e){}})();`,
+          }}
+        />
         <PostHogProvider>
           <ErrorBoundary>
             <ThemeProvider>

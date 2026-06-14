@@ -21,6 +21,7 @@ import {
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import { PageShell } from "@/components/page-shell";
+import { PageHero } from "@/components/page-hero";
 import {
   User, Camera, Mail, Phone, Calendar, Trophy, Clock,
   MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote, ShieldAlert, BarChart3, Users, Settings
@@ -329,16 +330,12 @@ export default function ProfilePage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
-      <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-fade-in-down">
-        <div className="relative z-10">
-          <h1 className="font-display text-3xl sm:text-5xl font-bold text-zinc-900 dark:text-white">
-            Manage your account
-          </h1>
-          <p className="mt-3 text-base sm:mt-4 sm:text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            Update your profile, track your progress, and manage your settings
-          </p>
-        </div>
-      </header>
+      <PageHero
+        icon={User}
+        title="Manage your"
+        accent="account"
+        subtitle="Update your profile, track your progress, and manage your settings."
+      />
 
       {profile.user.role === "Admin" && (
         <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-6 shadow-sm dark:border-amber-800/50 dark:bg-amber-950/20">

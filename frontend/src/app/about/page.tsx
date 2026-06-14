@@ -1,6 +1,8 @@
 "use client";
 
 import { PageShell } from "@/components/page-shell";
+import { PageHero } from "@/components/page-hero";
+import { Info } from "lucide-react";
 
 const keyFeatures = [
   {
@@ -41,6 +43,12 @@ const developerLinks = [
 export default function AboutPage() {
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-10" noCard>
+        <PageHero
+          icon={Info}
+          title="About"
+          accent="Smart AI Tutor"
+          subtitle="A grounded, citation-first study companion for INFO 5731 — built to teach, quiz, and guide without the hallucinations."
+        />
         <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 animate-fade-in-up">
            <div className="flex items-center gap-3 mb-4">
              <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Purpose</h2>
