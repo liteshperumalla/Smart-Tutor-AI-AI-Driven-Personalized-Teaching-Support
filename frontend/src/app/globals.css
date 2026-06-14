@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import url('https://api.fontshare.com/v2/css?f[]=clash-display@600,700&f[]=cabinet-grotesk@400,500,700&display=swap');
 
+/* Tailwind v4 defaults the `dark:` variant to the `prefers-color-scheme`
+   media query. This app toggles theme explicitly via a `.dark` class on
+   <html> (see theme-context.tsx), so we override the variant to key off
+   that class. Without this, clicking "Switch to Light" on an OS that is in
+   dark mode leaves every `dark:` utility firing off the OS preference,
+   producing a half-broken light theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Typography */
   --font-display: 'Clash Display', 'Space Grotesk', sans-serif;
@@ -34,19 +42,23 @@
   --color-success: #059669;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-primary: #10b981;      /* Brighter Emerald - vibrant for dark mode */
-    --color-secondary: #6366f1;    /* Brighter Indigo - better contrast */
-    --color-accent: #fbbf24;       /* Lighter Amber - energetic in dark */
-    --color-achieve: #fbbf24;      /* Lighter Amber - achievements (alias) */
-    --color-highlight: #fb7185;    /* Lighter Rose - highlights in dark */
-    --color-bright: #34d399;       /* Brighter Emerald - pops on dark background */
-    --color-success: #10b981;      /* Matches primary */
-    --color-subtle: #c4b5fd;       /* Lighter Lavender - visible on dark */
-    --background: #0f172a;   /* Slate Foundation - sophisticated dark */
-    --foreground: #f8fafc;   /* Cloud White - crisp text */
-  }
+/* Dark-mode color tokens. Gated on the `.dark`/`.theme-dark` class (set by
+   theme-context.tsx) rather than `@media (prefers-color-scheme: dark)`, so an
+   explicit "Switch to Light" choice always wins even when the OS is dark.
+   First-load OS preference is still honored: theme-context reads
+   prefers-color-scheme on mount and applies the class when no choice is stored. */
+.dark,
+.theme-dark {
+  --color-primary: #10b981;      /* Brighter Emerald - vibrant for dark mode */
+  --color-secondary: #6366f1;    /* Brighter Indigo - better contrast */
+  --color-accent: #fbbf24;       /* Lighter Amber - energetic in dark */
+  --color-achieve: #fbbf24;      /* Lighter Amber - achievements (alias) */
+  --color-highlight: #fb7185;    /* Lighter Rose - highlights in dark */
+  --color-bright: #34d399;       /* Brighter Emerald - pops on dark background */
+  --color-success: #10b981;      /* Matches primary */
+  --color-subtle: #c4b5fd;       /* Lighter Lavender - visible on dark */
+  --background: #0f172a;   /* Slate Foundation - sophisticated dark */
+  --foreground: #f8fafc;   /* Cloud White - crisp text */
 }
 
 body {

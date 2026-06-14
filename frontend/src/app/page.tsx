@@ -99,7 +99,7 @@ export default async function Home() {
             <h2 className="font-display text-2xl font-bold mb-6">Quick Actions</h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {quickActions.map((action, i) => {
-                const featured = action.href === "/code";
+                const featured = action.href === "/code" || action.href === "/chat";
                 return (
                   <Link
                     key={action.title}

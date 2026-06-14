@@ -24,7 +24,7 @@ import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
   Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert,
-  Sparkles, BookOpen, Code2, Lightbulb, Activity, GitCompare, Gauge, ShieldCheck
+  ShieldCheck
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -1667,50 +1667,6 @@ function ChatWorkspaceContent() {
             </p>
           </div>
 
-          {/* Suggested prompts - only show when no messages */}
-          {isLoggedIn && (!activeSession || !hasMessages) && (
-            <div className="mx-auto mt-6 grid w-full max-w-xl grid-cols-1 gap-2.5 text-left sm:grid-cols-2">
-              {(isAdmin
-                ? [
-                    { Icon: Activity, label: "Run a system health check on the RAG pipeline", hint: "Diagnostics" },
-                    { Icon: GitCompare, label: "Test multi-model response comparison for a complex query", hint: "Models" },
-                    { Icon: Gauge, label: "What are the current system metrics and performance stats?", hint: "Metrics" },
-                    { Icon: ShieldCheck, label: "Evaluate the quality of responses for edge-case queries", hint: "Evaluation" },
-                  ]
-                : [
-                    { Icon: Sparkles, label: "Explain TF-IDF using the Module 3 reading", hint: "Module 3" },
-                    { Icon: BookOpen, label: "Summarize Lecture 8 in three bullet points", hint: "Lecture 8" },
-                    { Icon: Code2, label: "Walk me through the embeddings code demo", hint: "Code · Module 4" },
-                    { Icon: Lightbulb, label: "Quiz me on RAG vs fine-tuning", hint: "Practice" },
-                  ]
-              ).map(({ Icon: SuggestionIcon, label, hint }) => {
-                const accent = isAdmin
-                  ? "hover:border-amber-500 hover:bg-amber-500/[0.05] dark:hover:border-amber-500"
-                  : "hover:border-emerald-500 hover:bg-emerald-500/[0.04] dark:hover:border-emerald-500";
-                const tile = isAdmin
-                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                  : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => setComposerText(label)}
-                    className={`flex items-start gap-2.5 rounded-2xl border border-zinc-200 bg-white p-3 text-left text-[13px] font-medium text-zinc-800 transition dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 ${accent}`}
-                  >
-                    <span className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${tile}`}>
-                      <SuggestionIcon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="flex-1 leading-snug">
-                      {label}
-                      <span className="mt-1 block font-mono text-[10.5px] tracking-wide text-zinc-400 dark:text-zinc-500">
-                        {hint}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
       </div>
 
       {/* File Viewer Modal */}

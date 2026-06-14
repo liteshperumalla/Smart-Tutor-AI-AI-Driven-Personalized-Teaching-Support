@@ -6,6 +6,7 @@ import Link from "next/link";
 import { fetchResources, fetchResearchUploads, getResourceDownloadUrl, ResearchUpload, Resource } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
+import { PageHero } from "@/components/page-hero";
 import { FolderOpen, ExternalLink, FileText, Download } from "lucide-react";
 
 type CategoryMap = Record<string, { title: string; url: string }[]>;
@@ -69,6 +70,12 @@ export default function ResourcesPage() {
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
+      <PageHero
+        icon={FolderOpen}
+        title="Resource"
+        accent="Hub"
+        subtitle="Lecture slides, Canvas links, readings, and uploaded files — curated for INFO 5731 in one place."
+      />
       {error && (
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
           {error}
