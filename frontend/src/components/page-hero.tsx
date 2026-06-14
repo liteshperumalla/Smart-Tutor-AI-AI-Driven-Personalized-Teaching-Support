@@ -10,6 +10,8 @@ interface PageHeroProps {
   subtitle?: ReactNode;
   /** Optional Lucide icon shown as a chip above the title. */
   icon?: LucideIcon;
+  /** Optional uppercase label rendered as a pill (with `icon`) above the title. */
+  eyebrow?: string;
   /** Extra classes for the outer header element. */
   className?: string;
   /** Optional right-aligned slot (e.g. action buttons). */
@@ -27,6 +29,7 @@ export function PageHero({
   accent,
   subtitle,
   icon: Icon,
+  eyebrow,
   className,
   actions,
 }: PageHeroProps) {
@@ -34,7 +37,7 @@ export function PageHero({
     "relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10",
     "animate-fade-in-down dark:border-zinc-800",
     "bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)]",
-    "dark:bg-[linear-gradient(160deg,#04201d_0%,#0f172a_55%,#1a193f_100%)]",
+    "dark:bg-[linear-gradient(160deg,#041410_0%,#000000_55%,#08030f_100%)]",
     className,
   ]
     .filter(Boolean)
@@ -63,10 +66,17 @@ export function PageHero({
 
       <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          {Icon && (
-            <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 text-emerald-600 shadow-sm ring-1 ring-zinc-200 dark:bg-white/10 dark:text-emerald-400 dark:ring-white/10">
-              <Icon className="h-5 w-5" />
+          {eyebrow ? (
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+              {Icon && <Icon className="h-3.5 w-3.5" />}
+              {eyebrow}
             </span>
+          ) : (
+            Icon && (
+              <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 text-emerald-600 shadow-sm ring-1 ring-zinc-200 dark:bg-white/10 dark:text-emerald-400 dark:ring-white/10">
+                <Icon className="h-5 w-5" />
+              </span>
+            )
           )}
           <h1 className="font-display text-3xl font-bold leading-[1.05] tracking-tight text-zinc-900 dark:text-white sm:text-4xl lg:text-5xl">
             {title}

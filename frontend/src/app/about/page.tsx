@@ -2,145 +2,170 @@
 
 import { PageShell } from "@/components/page-shell";
 import { PageHero } from "@/components/page-hero";
-import { Info } from "lucide-react";
+import {
+  Info,
+  LayoutGrid,
+  Layers,
+  User,
+  MessageSquare,
+  Brain,
+  Sparkles,
+  FolderOpen,
+  CalendarDays,
+  ShieldCheck,
+  Github,
+  Linkedin,
+  Mail,
+  type LucideIcon,
+} from "lucide-react";
 
-const keyFeatures = [
+const keyFeatures: { icon: LucideIcon; title: string; body: string }[] = [
   {
-    title: "Interactive Document Chat",
-    body: "Ask contextual questions about your uploaded materials and get cited responses.",
+    icon: MessageSquare,
+    title: "Interactive document chat",
+    body: "Ask contextual questions about uploaded materials and get cited responses.",
   },
   {
-    title: "Custom Quiz Generation",
+    icon: Brain,
+    title: "Custom quiz generation",
     body: "Create formative assessments sourced directly from class content.",
   },
   {
-    title: "Personalized Tutoring",
+    icon: Sparkles,
+    title: "Personalized tutoring",
     body: "Receive AI guidance that adapts to your progress and pace.",
   },
   {
-    title: "Resource Hub",
+    icon: FolderOpen,
+    title: "Resource hub",
     body: "Browse a curated library of INFO 5731 readings, slides, and notes.",
   },
   {
-    title: "Appointment Scheduling",
+    icon: CalendarDays,
+    title: "Appointment scheduling",
     body: "Book meetings with professors or TAs without leaving the tutor.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Grounded answers",
+    body: "Every response cites a real chunk of indexed course material.",
   },
 ];
 
 const techStack = [
-  { label: "Frontend", value: "Next.js & TailwindCSS" },
-  { label: "Backend & AI Core", value: "FastAPI, Python, LlamaIndex" },
-  { label: "LLM Runtime", value: "AWS Bedrock (Llama 3.1 70B)" },
-  { label: "File Processing", value: "PyMuPDF, python-pptx, docx" },
+  { label: "Frontend", value: "Next.js · React 19 · Tailwind v4" },
+  { label: "Backend & AI", value: "FastAPI · Python · LlamaIndex" },
+  { label: "LLM Runtime", value: "AWS Bedrock · Llama 3.1 70B" },
+  { label: "File Processing", value: "PyMuPDF · python-pptx · docx" },
 ];
 
-const developerLinks = [
-  { label: "Email", href: "mailto:liteshperumalla@my.unt.edu" },
-  { label: "GitHub", href: "https://github.com/liteshperumalla" },
-  { label: "LinkedIn", href: "https://www.linkedin.com/in/perumalla-litesh/" },
+const developerLinks: { icon: LucideIcon; label: string; href: string }[] = [
+  { icon: Github, label: "GitHub", href: "https://github.com/liteshperumalla" },
+  { icon: Linkedin, label: "LinkedIn", href: "https://www.linkedin.com/in/perumalla-litesh/" },
+  { icon: Mail, label: "Email", href: "mailto:liteshperumalla@my.unt.edu" },
 ];
+
+function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">
+      <Icon className="h-4 w-4" />
+      {children}
+    </div>
+  );
+}
 
 export default function AboutPage() {
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-10" noCard>
-        <PageHero
-          icon={Info}
-          title="About"
-          accent="Smart AI Tutor"
-          subtitle="A grounded, citation-first study companion for INFO 5731 — built to teach, quiz, and guide without the hallucinations."
-        />
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 animate-fade-in-up">
-           <div className="flex items-center gap-3 mb-4">
-             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Purpose</h2>
-           </div>
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-            Smart AI Tutor is designed to help students engage with course artifacts, test their
-            understanding, and collaborate with AI in a trustworthy way. By grounding every answer in
-            the indexed corpus, the tutor reduces hallucinations while surfacing the most relevant
-            knowledge from INFO 5731.
-          </p>
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {keyFeatures.map((feature, i) => (
+      <PageHero
+        icon={Info}
+        eyebrow="About"
+        title="Why Smart"
+        accent="AI Tutor exists."
+        subtitle="An RAG-grounded tutor for INFO 5731. Built so students always get answers backed by the actual lectures and readings."
+      />
+
+      {/* Key features */}
+      <section className="animate-fade-in-up">
+        <SectionLabel icon={LayoutGrid}>Key Features</SectionLabel>
+        <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+          {keyFeatures.map((feature, i) => {
+            const Icon = feature.icon;
+            return (
               <article
                 key={feature.title}
-                className="group rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4 transition hover:-translate-y-1 hover:border-indigo-200 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-800/50 dark:hover:border-indigo-800"
-                style={{animationDelay: `${i * 0.1}s`}}
+                className="group rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900"
+                style={{ animationDelay: `${i * 0.05}s` }}
               >
-                 <div className="mb-3">
-                  <h3 className="text-base font-semibold text-zinc-900 dark:text-white">{feature.title}</h3>
-                </div>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{feature.body}</p>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h3 className="font-display mt-5 text-lg font-bold text-zinc-900 dark:text-white">
+                  {feature.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                  {feature.body}
+                </p>
               </article>
-            ))}
-          </div>
-        </section>
+            );
+          })}
+        </div>
+      </section>
 
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 animate-fade-in-up stagger-1">
-           <div className="flex items-center gap-3 mb-4">
-             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Technology Stack</h2>
-           </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {techStack.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300"
-              >
-                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400">{item.label}</p>
-                <p className="pt-2 text-base font-medium text-zinc-900 dark:text-white">{item.value}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 animate-fade-in-up stagger-2">
-           <div className="flex items-center gap-3 mb-4">
-             <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Developer</h2>
-           </div>
-          <div className="mt-4 flex flex-col gap-6 md:flex-row">
-            <div className="flex-shrink-0">
-              <img
-                src="https://github.com/liteshperumalla.png"
-                alt="Litesh Perumalla"
-                className="h-36 w-36 rounded-full border-4 border-blue-100 object-cover dark:border-blue-900"
-              />
-            </div>
-            <div className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-              <p className="text-lg font-semibold text-zinc-900 dark:text-white">Litesh Perumalla</p>
-              <p>Master&apos;s Student in Data Science, University of North Texas</p>
-              <p>
-                Litesh focuses on AI-first experiences that unlock new ways of learning. His
-                interests include Retrieval-Augmented Generation, human-in-the-loop AI, and
-                full-stack experimentation with Python, FastAPI, and modern JavaScript frameworks.
+      {/* Technology stack */}
+      <section className="animate-fade-in-up stagger-1">
+        <SectionLabel icon={Layers}>Technology Stack</SectionLabel>
+        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {techStack.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-500">
+                {item.label}
               </p>
-              <div className="flex flex-wrap gap-2">
-                {developerLinks.map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-full border border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 transition hover:border-zinc-300 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-600"
-                  >
-                    {link.label}
-                  </a>
-                ))}
-              </div>
+              <p className="mt-2 text-sm font-semibold text-zinc-900 dark:text-white">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Developer */}
+      <section className="animate-fade-in-up stagger-2 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 sm:p-8">
+        <SectionLabel icon={User}>Developer</SectionLabel>
+        <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-2xl font-bold text-white">
+              L
+            </span>
+            <div>
+              <p className="font-display text-xl font-bold text-zinc-900 dark:text-white">
+                Litesh Perumalla
+              </p>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">UNT · Computer Science</p>
             </div>
           </div>
-        </section>
-
-        <section className="rounded-3xl border-2 border-blue-200 bg-blue-50/60 p-8 text-center dark:border-blue-800 dark:bg-blue-900/20 animate-fade-in-up stagger-3">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Contact & Contributions</h2>
+          <div className="flex flex-wrap gap-2.5">
+            {developerLinks.map((link) => {
+              const Icon = link.icon;
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-zinc-200 px-4 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+                >
+                  <Icon className="h-4 w-4" />
+                  {link.label}
+                </a>
+              );
+            })}
           </div>
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-            Feedback fuels the roadmap. Share feature ideas, report bugs, or contribute evaluations
-            directly from the Feedback page in the tutor sidebar.
-          </p>
-          <div className="mt-4 text-xs uppercase tracking-[0.35em] text-blue-500 dark:text-blue-400">
-            Thank you for supporting smart learning
-          </div>
-        </section>
+        </div>
+      </section>
     </PageShell>
   );
 }

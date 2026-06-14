@@ -71,7 +71,7 @@ export default async function Home() {
   const professor = overview?.professor;
   return (
     <PageShell contentClassName="gap-10 pb-6" noCard>
-        <header className="relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10 animate-fade-in-down dark:border-zinc-800 bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)] dark:bg-[linear-gradient(160deg,#04201d_0%,#0f172a_55%,#1a193f_100%)]">
+        <header className="relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10 animate-fade-in-down dark:border-zinc-800 bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)] dark:bg-[linear-gradient(160deg,#041410_0%,#000000_55%,#08030f_100%)]">
           {/* Dotted texture */}
           <div
             className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20"
@@ -99,7 +99,10 @@ export default async function Home() {
             <h2 className="font-display text-2xl font-bold mb-6">Quick Actions</h2>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {quickActions.map((action, i) => {
-                const featured = action.href === "/code" || action.href === "/chat";
+                const featured =
+                  action.href === "/code" ||
+                  action.href === "/chat" ||
+                  action.href === "/quiz";
                 return (
                   <Link
                     key={action.title}
