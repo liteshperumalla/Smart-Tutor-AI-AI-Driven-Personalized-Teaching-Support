@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      NEO4J_AURA_INSTANCE_ID: ${{ secrets.NEO4J_AURA_INSTANCE_ID || vars.NEO4J_AURA_INSTANCE_ID || 'b0e9fb13' }}
+      NEO4J_AURA_INSTANCE_ID: ${{ secrets.NEO4J_AURA_INSTANCE_ID || vars.NEO4J_AURA_INSTANCE_ID || '57036f35' }}
       NEO4J_AURA_CLIENT_ID: ${{ secrets.NEO4J_AURA_CLIENT_ID || secrets.NEO4J_AURA_API_CLIENT_ID || secrets.AURA_CLIENT_ID || vars.NEO4J_AURA_CLIENT_ID || vars.NEO4J_AURA_API_CLIENT_ID || vars.AURA_CLIENT_ID || '' }}
       NEO4J_AURA_CLIENT_SECRET: ${{ secrets.NEO4J_AURA_CLIENT_SECRET || secrets.NEO4J_AURA_API_CLIENT_SECRET || secrets.AURA_CLIENT_SECRET || '' }}
       # Aura free-tier instances routinely take 7-12 minutes to resume from a
