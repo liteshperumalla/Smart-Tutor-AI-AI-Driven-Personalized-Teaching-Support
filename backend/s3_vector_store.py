@@ -141,15 +141,18 @@ class S3VectorStore:
         if force_rebuild:
             self._invalidate_cache()
 
+        # A present-but-empty S3 index (0 vectors) must not be treated as a
+        # successful load — otherwise retrieval silently returns no sources and
+        # the tutor answers without citations. Fall through to rebuild instead.
         if not force_rebuild:
-            if self._download_index_from_s3():
+            if self._download_index_from_s3() and self.vectors:
                 logger.info(f"✓ Loaded {len(self.vectors)} vectors from S3")
                 self._build_numpy_cache()
                 return
 
         if not force_rebuild and cache_path.exists():
             logger.info("S3 index not found, loading from local cache...")
-            if self._load_from_local_cache():
+            if self._load_from_local_cache() and self.vectors:
                 logger.info(f"✓ Loaded {len(self.vectors)} vectors from local cache")
                 self._build_numpy_cache()
                 self._upload_index_to_s3()
@@ -258,47 +261,73 @@ class S3VectorStore:
             logger.error(f"Failed to upload index to S3: {e}")
 
     def _build_index_from_s3(self):
-        """Build index by downloading all vectors from S3"""
+        """Build index by downloading all chunk embeddings from S3.
+
+        Supports two on-disk chunk layouts:
+          * ``<name>.json`` — current format: embedding **and** text inline.
+            The text is fetched at query time from this same key, so ``s3_key``
+            points at the file itself.
+          * ``<name>.vector.json`` — legacy format: embedding only, with the
+            text in a sibling ``<name>.txt``.
+
+        Chunks without an ``embedding`` field are skipped (e.g. raw text-only
+        exports), so a partially-embedded corpus still yields a usable index.
+        """
         self.vectors = []
         self.metadata = {}
 
-        # List all vector files in S3
+        # Download + parse chunks in parallel — a full corpus is tens of
+        # thousands of small objects, and sequential GETs make a cold rebuild
+        # take minutes instead of seconds.
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         paginator = self.s3.get_paginator("list_objects_v2")
-        pages = paginator.paginate(Bucket=self.bucket_name, Prefix="chunks/")
+        keys = [
+            obj["Key"]
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix="chunks/")
+            for obj in page.get("Contents", [])
+            if obj["Key"].endswith(".json")
+        ]
+
+        def _load(key):
+            try:
+                vector_data = json.loads(
+                    self.s3.get_object(Bucket=self.bucket_name, Key=key)["Body"].read()
+                )
+                embedding = vector_data.get("embedding")
+                if not embedding:
+                    return None
+                chunk_id = vector_data.get("chunk_id") or key
+                # Legacy ".vector.json" stores text in a sibling ".txt"; the
+                # current ".json" format keeps it inline, so reuse the key.
+                text_key = (
+                    key.replace(".vector.json", ".txt")
+                    if key.endswith(".vector.json")
+                    else key
+                )
+                return chunk_id, np.array(embedding, dtype=np.float32), {
+                    "source_file": vector_data.get("source_file", ""),
+                    "chunk_index": vector_data.get("chunk_index", 0),
+                    "s3_key": text_key,
+                }
+            except Exception as e:
+                logger.warning(f"Error loading vector {key}: {e}")
+                return None
 
         vector_count = 0
-        for page in pages:
-            if "Contents" not in page:
-                continue
-
-            for obj in page["Contents"]:
-                key = obj["Key"]
-
-                # Only process .vector.json files
-                if not key.endswith(".vector.json"):
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            for future in as_completed(
+                {executor.submit(_load, key): key for key in keys}
+            ):
+                result = future.result()
+                if result is None:
                     continue
-
-                try:
-                    # Download vector file
-                    response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
-                    vector_data = json.loads(response["Body"].read())
-
-                    chunk_id = vector_data["chunk_id"]
-                    embedding = vector_data["embedding"]
-
-                    self.vectors.append((chunk_id, np.array(embedding)))
-                    self.metadata[chunk_id] = {
-                        "source_file": vector_data.get("source_file", ""),
-                        "chunk_index": vector_data.get("chunk_index", 0),
-                        "s3_key": key.replace(".vector.json", ".txt"),
-                    }
-
-                    vector_count += 1
-                    if vector_count % 100 == 0:
-                        logger.info(f"  Loaded {vector_count} vectors...")
-
-                except Exception as e:
-                    logger.warning(f"Error loading vector {key}: {e}")
+                chunk_id, vec, meta = result
+                self.vectors.append((chunk_id, vec))
+                self.metadata[chunk_id] = meta
+                vector_count += 1
+                if vector_count % 1000 == 0:
+                    logger.info(f"  Loaded {vector_count} vectors...")
 
         logger.info(f"✓ Built index with {len(self.vectors)} vectors")
 
