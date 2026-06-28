@@ -38,12 +38,16 @@ jobs:
     steps:
       - name: Decide action (DST-aware, weekday-gated)
         id: decide
+        # Pass the dispatch input through the environment rather than
+        # interpolating ${{ ... }} directly into the shell — avoids script
+        # injection (flagged by run-shell-injection SAST rules).
+        env:
+          MANUAL_ACTION: ${{ github.event.inputs.action }}
         run: |
           set -euo pipefail
-          MANUAL="${{ github.event.inputs.action }}"
-          if [ -n "$MANUAL" ]; then
-            echo "Manual dispatch: $MANUAL"
-            echo "action=$MANUAL" >> "$GITHUB_OUTPUT"
+          if [ -n "$MANUAL_ACTION" ]; then
+            echo "Manual dispatch: $MANUAL_ACTION"
+            echo "action=$MANUAL_ACTION" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           NOW="$(TZ='America/Chicago' date '+%A %Y-%m-%d %H:%M %Z')"

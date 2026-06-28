@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/context/theme-context";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ToastProvider } from "@/components/toast-provider";
 import { AnnouncementToaster } from "@/components/announcement-toaster";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -59,6 +60,7 @@ export default function RootLayout({
             <ThemeProvider>
               <ToastProvider />
               <AnnouncementToaster />
+              <MaintenanceBanner />
               <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
             </ThemeProvider>
           </ErrorBoundary>
