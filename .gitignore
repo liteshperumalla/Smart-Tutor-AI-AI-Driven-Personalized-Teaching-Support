@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.coverage
+.coverage.*
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -48,6 +51,8 @@ Thumbs.db
 .env.*.local
 .env.backup
 .env.production
+.env.prod
+.env.vercel
 *.key
 *.pem
 
