@@ -47,11 +47,11 @@ The system implements a four-stage pipeline to eliminate hallucinations:
 
 | Metric | Value |
 |---|---|
-| Documents processed | 85 across 11 course modules |
+| Source documents | INFO 5731 corpus across 11 course modules |
 | Processing success rate | 100% (including OCR for scanned PDFs) |
-| Total vector chunks | 14,049 |
+| Total vector chunks | 12,669 |
 | Embedding model | Amazon Titan (1,024-dim) |
-| Vector index size | 56.5 MB |
+| Vector index size | ~55 MB (`s3://smart-ai-tutor-docs/vector_index/`) |
 | Supported formats | PDF, PPTX, DOCX, IPYNB, HTML, CSV, YouTube transcripts |
 
 ### Retrieval Quality
@@ -87,11 +87,12 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Vercel (Frontend)                           │
-│                Next.js 14 · Tailwind CSS                        │
+│            Next.js 16 · React 19 · Tailwind v4                  │
+│      /api/backend/* proxy → graceful 503 on scheduled downtime  │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTPS / SSE streaming
+                            │ HTTPS / streaming
 ┌───────────────────────────▼─────────────────────────────────────┐
-│                    FastAPI Backend (AWS EC2)                     │
+│              FastAPI Backend (AWS EC2 · t3a.medium)              │
 │          JWT Auth · Rate Limiting · CSRF Protection             │
 └──────┬──────────┬──────────┬──────────┬──────────┬─────────────┘
        │          │          │          │          │
@@ -102,12 +103,12 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
        │         │          │          │
   ┌────▼─────────▼──────────▼──────────▼────────────────────────┐
   │                        Data Layer                           │
-  │  S3 (vectors)  PostgreSQL  DynamoDB  Redis  Neo4j           │
+  │  S3 (vectors)  PostgreSQL  DynamoDB  Redis  Neo4j Aura      │
   └─────────────────────────────────────────────────────────────┘
                             │
   ┌─────────────────────────▼────────────────────────────────────┐
   │                    AWS Bedrock                               │
-  │     Claude 3 Haiku (chat)  ·  Titan Embeddings              │
+  │     Claude Haiku (chat)  ·  Titan Embeddings               │
   └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,13 +121,14 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
 | **RAG Chat** | Course-grounded Q&A with source citations, streaming responses |
 | **Code Sandbox** | AI-powered code generation, explanation, and debugging (Python/JS/Java) |
 | **Quiz Generator** | Automated MCQ and open-ended quiz generation from lecture materials |
-| **Agent System** | Multi-agent routing (tutor, quiz helper, feedback, doubts agents) |
-| **Knowledge Graph** | Neo4j-backed concept relationship graph built from interactions |
+| **Agent System** | Multi-agent routing (tutor, quiz helper, feedback, doubts, personalised agents) via LangGraph |
+| **Knowledge Graph** | Neo4j Aura-backed concept relationship graph, with scheduled auto-resume of paused instances |
 | **Collaborative Sharing** | Shareable chat links with 24-hour expiry |
 | **LLMOps Dashboard** | Prompt versioning, latency tracking, satisfaction metrics |
 | **PostHog Analytics** | Event taxonomy, LLM cost tracking, feature flags |
 | **File Upload** | Direct document ingestion and indexing from the UI |
 | **Prometheus Metrics** | `/metrics` endpoint with LLM request/latency/token counters |
+| **Cost-optimized uptime** | EC2 scheduled to Mon–Fri 9–5 CT with a graceful in-app maintenance notice off-hours |
 
 ---
 
@@ -134,17 +136,17 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
 
 | Component | Technology |
 |---|---|
-| Frontend | Next.js 14, Tailwind CSS, Lucide React |
+| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React |
 | Backend | FastAPI (Python 3.11), Uvicorn |
-| LLM | AWS Bedrock (Claude 3 Haiku, Llama 3.2 11B/90B) |
+| LLM | AWS Bedrock (Claude Haiku, Llama 3) with circuit breaker + complexity routing |
 | Embeddings | Amazon Titan (1,024-dim) |
-| Vector Store | LlamaIndex + S3 persistence |
-| Graph DB | Neo4j Community (knowledge graph) |
+| Vector Store | LlamaIndex + custom S3 vector store (`backend/s3_vector_store.py`) |
+| Graph DB | Neo4j Aura (managed; Aura API auto-resume) |
 | Relational DB | PostgreSQL (users, sessions) |
 | Session Store | DynamoDB |
 | Cache | Redis |
 | Observability | Prometheus + Grafana, PostHog, Langfuse |
-| Infrastructure | Docker Compose, AWS EC2, Vercel, AWS Secrets Manager |
+| Infrastructure | Docker, AWS EC2 (t3a.medium), Vercel, AWS Secrets Manager |
 | CI/CD | GitHub Actions, CodeRabbit AI |
 
 ---
@@ -154,8 +156,8 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
 ### Prerequisites
 
 - Docker 24+ and Docker Compose V2
-- AWS credentials with Bedrock access (Claude 3 + Titan Embeddings)
-- Node.js 18+ (frontend dev only)
+- AWS credentials with Bedrock access (Claude + Titan Embeddings)
+- Node.js 20 (`>=20.9.0 <21`, see `.nvmrc`) — frontend dev only
 
 ### Run Locally
 
@@ -198,25 +200,42 @@ REDIS_URL=redis://localhost:6380
 smart-tutor-ai/
 ├── backend/
 │   ├── api/
-│   │   ├── routes/          # auth, chat, code, quiz, admin
-│   │   ├── dependencies.py  # auth, rate limiting middleware
-│   │   └── main.py
-│   ├── agents/              # multi-agent system (tutor, quiz, feedback, doubts)
-│   ├── rag/                 # retrieval pipeline, chunking, evaluation
-│   ├── config.py            # singleton config (env + AWS Secrets Manager)
-│   ├── llm_provider.py      # Bedrock / Ollama abstraction
-│   ├── llmops.py            # LLMOps logging + Prometheus metrics
-│   ├── prompt_registry.py   # versioned prompt store
-│   └── s3_retriever.py      # S3-backed vector retrieval
-├── frontend/
+│   │   ├── routes/             # 17 routers: auth, chat, code, quiz, admin, evaluation,
+│   │   │                       #   research, resources, appointments, feedback, profile,
+│   │   │                       #   files, home, health, rag, ws_chat
+│   │   ├── dependencies.py     # auth, rate limiting, admin-session guards
+│   │   └── main.py             # FastAPI app factory
+│   ├── agents/                 # LangGraph multi-agent system
+│   │   ├── graph.py, router.py # graph wiring + intent routing
+│   │   ├── tutor_agent.py, doubts_agent.py, quiz_helper_agent.py,
+│   │   │                       #   feedback_agent.py, personalised_agent.py
+│   │   ├── neo4j_client.py     # Aura driver + auto-resume on connectivity errors
+│   │   └── streaming.py        # __AGENT_META__ streaming protocol
+│   ├── rag/                    # retrieval pipeline: hybrid_search, reranker, hyde,
+│   │                           #   self_rag, semantic_chunker, query_enhancement, evaluation
+│   ├── cloud/ · db/ · events/ · content/   # provider adapters, DB layer, events, static content
+│   ├── config.py               # singleton config (env + AWS Secrets Manager)
+│   ├── s3_vector_store.py      # custom S3 vector store (build/search/serialize)
+│   ├── s3_retriever.py         # LlamaIndex-compatible S3 retriever (+ reranking)
+│   ├── llm_provider.py · llm_router.py · circuit_breaker.py   # Bedrock + routing + resilience
+│   ├── llmops.py · posthog_tracker.py · langfuse_setup.py     # observability
+│   └── prompt_registry.py      # versioned prompt store
+├── frontend/                   # Next.js 16 App Router
 │   └── src/
-│       ├── app/             # chat, code, quiz, admin, evaluation pages
-│       ├── components/      # site-chrome, chat, knowledge-base-widget
-│       └── lib/             # API client, auth utilities
-├── monitoring/              # Prometheus, Grafana, SLO definitions
-├── e2e/                     # end-to-end test suite
-├── docs/                    # architecture docs, runbooks, design plans
-└── docker-compose.yml
+│       ├── app/                # pages: chat, code, quiz, evaluation, admin, research,
+│       │   │                   #   appointments, feedback, profile, resources, about, auth/*
+│       │   └── api/backend/    # proxy route → EC2 backend (classified 503 on downtime)
+│       ├── components/         # site-chrome, chat/*, maintenance-banner, page-hero, …
+│       ├── context/ · hooks/ · types/
+│       └── lib/                # api.ts, api-client.ts, auth.ts, maintenance.ts, events.ts
+├── .github/workflows/          # CI, Production Deploy, ec2-schedule, neo4j-aura-resume
+├── scripts/                    # ops + s3-vectors (index rebuild), aws, ci helpers
+├── monitoring/                 # prometheus, grafana, alertmanager, slo, finops
+├── terraform/ · k8s/ · helm/ · gitops/   # IaC, manifests, Helm chart, ArgoCD
+├── chaos-engineering/ · e2e/   # chaos experiments, Playwright end-to-end tests
+├── docs/                       # adr, architecture, deployment runbooks, development
+├── docker/ · Dockerfile · docker-compose*.yml
+└── Makefile · pyproject.toml · requirements.txt
 ```
 
 ---
@@ -240,12 +259,23 @@ POST /code/explain           # Explain code snippet
 POST /code/debug             # Debug with suggestions
 POST /code/chat              # Coding assistant conversation
 
+# Learning tools
+POST /quiz/generate          # Generate a quiz from course materials
+POST /research/citations     # Extract citations from a query
+GET  /resources              # Curated learning resources
+GET  /appointments           # Office-hours / appointment scheduling
+POST /feedback               # Submit feedback
+GET  /home/overview          # Landing-page system status (public)
+
 # Admin (requires admin role)
-GET  /admin/llmops            # LLMOps logs
-GET  /admin/prompts           # List prompt versions
-POST /admin/prompts/{name}    # Create/update prompt
-GET  /admin/agent-metrics     # Agent system analytics
+GET  /admin/llmops                  # LLMOps logs
+GET  /admin/prompts                 # List prompt versions
+POST /admin/prompts/{name}          # Create/update prompt
+GET  /admin/agent-metrics           # Agent system analytics (Neo4j-backed)
+GET  /admin/knowledge-graph-metrics # Knowledge graph stats (Neo4j Aura)
 ```
+
+> Interactive Swagger docs: `http://52.2.3.101/docs` (or `/docs` locally).
 
 ---
 
@@ -262,18 +292,20 @@ GET  /admin/agent-metrics     # Agent system analytics
 
 ## Deployment
 
-The system is deployed on AWS EC2 (t2.micro) with frontend on Vercel:
+The backend runs on AWS EC2 (`t3a.medium`, Elastic IP `52.2.3.101`); the frontend is on Vercel. Deploys are automated: a push to `main` runs the **CI Pipeline**, which on success triggers the **Production Deploy** workflow (`.github/workflows/deploy-production.yml`) to roll a new container onto EC2 over SSH.
 
 ```bash
-# Production rebuild
-docker compose -f docker-compose.yml up -d --build backend frontend
+# Trigger a deploy
+git push origin main          # CI Pipeline → Production Deploy (GitHub Actions)
 
 # Check service health
 curl http://52.2.3.101/health
 
-# View logs
-docker compose logs -f backend
+# View backend logs (on the instance)
+docker logs -f smart-tutor-backend
 ```
+
+**Cost-optimized scheduling.** To cut the always-on compute bill, the instance is stopped outside **Mon–Fri 09:00–17:00 America/Chicago** by `.github/workflows/ec2-schedule.yml` (DST-aware, with a `workflow_dispatch` manual start/stop override). The Elastic IP and `restart=unless-stopped` containers mean the stack auto-recovers on the morning boot; off-hours, the frontend shows a graceful maintenance notice instead of errors (`frontend/src/lib/maintenance.ts`).
 
 See [`docs/deployment/`](docs/deployment/) for full production runbooks.
 
