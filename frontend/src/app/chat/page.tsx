@@ -523,11 +523,21 @@ function ChatWorkspaceContent() {
         return;
       }
 
-      // Handle LLM unavailable / server busy (503)
+      // Handle LLM unavailable / server busy / scheduled downtime (503)
       if (response.status === 503) {
-        const err = await response.json();
-        const secs = err.detail?.retry_after || 60;
-        toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
+        const err = await response.json().catch(() => ({}));
+        if (err.reason === "scheduled_maintenance") {
+          // Backend is intentionally stopped outside business hours.
+          toast.error(
+            err.detail ||
+              "Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT."
+          );
+        } else if (err.reason === "backend_unavailable") {
+          toast.error("The tutor backend is temporarily unavailable. Please try again shortly.");
+        } else {
+          const secs = err.detail?.retry_after || 60;
+          toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
+        }
         updateActiveSessionMessages((messages) => messages.slice(0, -1));
         setIsStreaming(false);
         return;

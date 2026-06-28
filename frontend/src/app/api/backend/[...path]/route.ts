@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { posix } from "path";
+import { getMaintenanceState } from "@/lib/maintenance";
 
 // Increase timeout for long-running operations like initial S3 index download (can take up to 3-4 minutes)
 export const maxDuration = 300;
@@ -165,7 +166,32 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     (init as Record<string, unknown>).duplex = "half";
   }
 
-  const response = await fetch(url, init);
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch {
+    // The backend is unreachable. This is expected during the scheduled
+    // stop window (see lib/maintenance + .github/workflows/ec2-schedule.yml),
+    // and otherwise indicates a real outage. Either way, return a clean 503
+    // with a classified reason instead of letting the error surface as a 500.
+    const { isDown, resumesLabel } = getMaintenanceState();
+    return new Response(
+      JSON.stringify({
+        detail: isDown
+          ? `Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT.${resumesLabel ? ` Service resumes ${resumesLabel}.` : ""}`
+          : "Backend temporarily unavailable. Please try again shortly.",
+        reason: isDown ? "scheduled_maintenance" : "backend_unavailable",
+        resumes: isDown ? resumesLabel : null,
+      }),
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "application/json",
+          "Retry-After": "300",
+        },
+      }
+    );
+  }
   const proxyHeaders = new Headers();
   appendResponseHeaders(proxyHeaders, response.headers);
   // NOTE: Do NOT delete the Content-Security-Policy header — removing it would

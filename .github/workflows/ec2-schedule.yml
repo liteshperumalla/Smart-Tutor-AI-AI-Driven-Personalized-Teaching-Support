@@ -1,0 +1,90 @@
+name: EC2 Schedule (weekday business hours)
+
+# Stops the production EC2 instance outside Mon–Fri 09:00–17:00 America/Chicago
+# to cut the always-on compute bill. The Elastic IP (52.2.3.101) survives
+# stop/start, and every container uses restart=unless-stopped, so the app
+# comes back up automatically on the morning boot.
+#
+# GitHub cron is UTC-only, so each boundary is scheduled at BOTH its CDT and
+# CST UTC time; the job then gates on the real America/Chicago hour, making the
+# 09:00/17:00 boundaries correct across daylight-saving changes. The two extra
+# fires per day are cheap no-ops.
+
+on:
+  schedule:
+    # Start 09:00 America/Chicago  → 14:00 UTC (CDT) and 15:00 UTC (CST)
+    - cron: "0 14 * * 1-5"
+    - cron: "0 15 * * 1-5"
+    # Stop  17:00 America/Chicago  → 22:00 UTC (CDT) and 23:00 UTC (CST)
+    - cron: "0 22 * * 1-5"
+    - cron: "0 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Manually start or stop the instance
+        type: choice
+        options: [start, stop]
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  INSTANCE_ID: i-0c35826b951e9dd6f
+
+jobs:
+  schedule:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide action (DST-aware, weekday-gated)
+        id: decide
+        # Pass the dispatch input through the environment rather than
+        # interpolating ${{ ... }} directly into the shell — avoids script
+        # injection (flagged by run-shell-injection SAST rules).
+        env:
+          MANUAL_ACTION: ${{ github.event.inputs.action }}
+        run: |
+          set -euo pipefail
+          if [ -n "$MANUAL_ACTION" ]; then
+            echo "Manual dispatch: $MANUAL_ACTION"
+            echo "action=$MANUAL_ACTION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          NOW="$(TZ='America/Chicago' date '+%A %Y-%m-%d %H:%M %Z')"
+          HOUR="$(TZ='America/Chicago' date +%H)"
+          DOW="$(TZ='America/Chicago' date +%u)"   # 1=Mon .. 7=Sun
+          echo "Central time: $NOW (hour=$HOUR dow=$DOW)"
+          if [ "$DOW" -gt 5 ]; then
+            echo "Weekend — no action."
+            echo "action=none" >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "09" ]; then
+            echo "action=start" >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "17" ]; then
+            echo "action=stop" >> "$GITHUB_OUTPUT"
+          else
+            echo "Hour $HOUR is not a schedule boundary — no action."
+            echo "action=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        if: steps.decide.outputs.action == 'start' || steps.decide.outputs.action == 'stop'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Start instance
+        if: steps.decide.outputs.action == 'start'
+        run: |
+          set -euo pipefail
+          aws ec2 start-instances --instance-ids "$INSTANCE_ID"
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+          echo "✓ Started $INSTANCE_ID (containers auto-restart via restart=unless-stopped)"
+
+      - name: Stop instance
+        if: steps.decide.outputs.action == 'stop'
+        run: |
+          set -euo pipefail
+          aws ec2 stop-instances --instance-ids "$INSTANCE_ID"
+          echo "✓ Stop requested for $INSTANCE_ID"
