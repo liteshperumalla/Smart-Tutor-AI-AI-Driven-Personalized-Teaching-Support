@@ -531,7 +531,9 @@ jobs:
     needs: [observability]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    secrets:
+      SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+      SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
     with:
       channel: SMART_TUTOR_AI
       workflow_name: Production Observability Bootstrap
@@ -539,7 +541,7 @@ jobs:
       verbiage: Observability
       message: |
         ${{ needs.observability.outputs.skipped_reason != '' && ':warning: *Observability bootstrap skipped* — production EC2 was not reachable over SSH from the scheduled runner.' || (needs.observability.result == 'failure' && ':x: *Observability bootstrap FAILED* — monitoring stack not deployed or backend observability checks failed.' || ':white_check_mark: *Observability bootstrap SUCCEEDED* — Prometheus, Grafana, Alertmanager, exporters, and backend Langfuse/PostHog checks are validated.') }}
-        Trigger: `${{ github.event_name }}`. Scheduled daily at 13:00 UTC.
+        Trigger: `${{ github.event_name }}`. Scheduled weekdays at 15:30 UTC.
       fields: >-
         [
           {"title": "Remote Directory", "value": "${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}", "short": true},
@@ -553,7 +555,9 @@ jobs:
     needs: [observability]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    secrets:
+      SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+      SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: Production Observability Bootstrap
