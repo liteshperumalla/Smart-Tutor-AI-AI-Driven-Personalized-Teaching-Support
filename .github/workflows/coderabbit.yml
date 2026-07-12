@@ -290,7 +290,9 @@ jobs:
     needs: [review]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    secrets:
+      SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+      SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
     with:
       channel: SMART_TUTOR_AI
       workflow_name: CodeRabbit AI Review
@@ -315,7 +317,9 @@ jobs:
     needs: [review]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
-    secrets: inherit
+    secrets:
+      SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+      SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: CodeRabbit AI Review

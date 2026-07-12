@@ -278,7 +278,7 @@ async def metrics(
     # SECURITY: Require authentication for metrics endpoint
     if not authorization:
         # Allow unauthenticated access only from explicitly trusted scrapers
-        client_host = request.client.host if request else None
+        client_host = request.client.host if request and request.client else None
         # Only allow exact loopback addresses; Prometheus should use auth token
         # or be configured in METRICS_ALLOWED_IPS env var
         allowed_raw = os.environ.get("METRICS_ALLOWED_IPS", "127.0.0.1,::1,172.16.0.0/12").split(",")
