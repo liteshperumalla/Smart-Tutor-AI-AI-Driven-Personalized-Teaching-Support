@@ -3,8 +3,11 @@ name: Production Observability Bootstrap
 on:
   workflow_dispatch:
   schedule:
-    # Runs daily at 13:00 UTC (8:00 AM America/Chicago during CDT).
-    - cron: '0 13 * * *'
+    # Weekdays only, 90 minutes after the 09:00 America/Chicago EC2 start
+    # (see ec2-schedule.yml) so the app has finished booting. 15:30 UTC is
+    # 10:30 AM during CDT and 9:30 AM during CST — inside business hours
+    # either way, so no DST-specific cron entries are needed.
+    - cron: '30 15 * * 1-5'
 
 concurrency:
   group: production-observability

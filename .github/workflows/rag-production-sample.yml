@@ -2,10 +2,12 @@ name: Scheduled Production Sample Evaluation
 
 on:
   schedule:
-    # Daily at 07:00 UTC, 1 hour after the static-dataset eval at 06:00.
-    # Staggered so a slow production sampler can't compete with the dataset
-    # eval for the same Bedrock quota window.
-    - cron: "0 7 * * *"
+    # Weekdays only, 16:00 UTC — inside the Mon-Fri 09:00-17:00
+    # America/Chicago maintenance window (see ec2-schedule.yml) either side
+    # of DST (11:00 AM CDT / 10:00 AM CST), and 30 minutes after the
+    # observability bootstrap so a slow production sampler can't compete
+    # with it for the same Bedrock quota window.
+    - cron: "0 16 * * 1-5"
   workflow_dispatch:
     inputs:
       sample_size:
@@ -190,6 +192,22 @@ jobs:
           fi
 
           if [ "${http_code}" != "200" ]; then
+            # 502/503/504/000 from a scheduled run usually means the request
+            # landed just outside the Mon-Fri 09:00-17:00 America/Chicago
+            # maintenance window (see ec2-schedule.yml) — e.g. a delayed
+            # cron firing before the app has finished booting. Skip instead
+            # of failing loudly; workflow_dispatch always fails hard so real
+            # problems surface immediately during manual testing.
+            case "${http_code}" in
+              502|503|504|000)
+                if [ "${WORKFLOW_TRIGGER}" = "schedule" ]; then
+                  echo "::warning::Production sampler unreachable (HTTP ${http_code:-no response}) — likely outside the maintenance window. Skipping without failing the workflow."
+                  echo "sampled_pairs=0" >> "$GITHUB_OUTPUT"
+                  echo "skipped_reason=backend_unreachable" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+                ;;
+            esac
             echo "::error::Production sampler call failed (HTTP ${http_code})."
             echo "sampled_pairs=0" >> "$GITHUB_OUTPUT"
             exit 1

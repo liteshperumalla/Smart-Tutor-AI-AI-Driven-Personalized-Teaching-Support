@@ -2,7 +2,11 @@ name: Production Compliance Scan
 
 on:
   schedule:
-    - cron: "0 8 * * 1"
+    # Monday 16:30 UTC — inside the Mon-Fri 09:00-17:00 America/Chicago
+    # maintenance window (see ec2-schedule.yml) either side of DST (11:30 AM
+    # CDT / 10:30 AM CST). Previously ran at 08:00 UTC (3 AM Central),
+    # always outside the window, so the EC2 host checks always skipped.
+    - cron: "30 16 * * 1"
   workflow_dispatch:
 
 concurrency:
