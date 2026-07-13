@@ -211,26 +211,49 @@ async def sitemap():
 @app.get("/health")
 @limiter.limit("10/minute")  # Rate limit health checks
 async def health_check(request: Request):
-    """Simple health check endpoint"""
+    """Simple health check endpoint. Returns 503 when a core dependency
+    (database, redis, bedrock, neo4j, s3) is unhealthy so callers relying
+    on HTTP status (curl -f, uptime monitors) actually detect failure --
+    a "degraded" status (only a peripheral like langfuse/posthog is down)
+    still returns 200, since the app is substantively still serving."""
     from backend.health import HealthChecker
     health = HealthChecker.get_simple_health()
 
-    return {
-        **health,
-        "environment": config.ENVIRONMENT,
-        "version": "1.0.0"
-    }
+    status_code = 503 if health["status"] == "unhealthy" else 200
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            **health,
+            "environment": config.ENVIRONMENT,
+            "version": "1.0.0"
+        },
+    )
 
 
 @app.get("/ready")
 @limiter.limit("30/minute")
 async def readiness_check(request: Request):
-    """Lightweight readiness probe for deploys and load balancers."""
-    return {
-        "status": "ready",
-        "environment": config.ENVIRONMENT,
-        "version": "1.0.0"
-    }
+    """Readiness probe for deploys, rollbacks, and load balancers.
+
+    Checks only database and redis -- the dependencies nearly every
+    request needs -- and returns 503 when either is down. Deliberately
+    fast and cheap: this is Docker's HEALTHCHECK target, polled every 5s
+    for the entire lifetime of the container, so it must not carry the
+    latency or cost of the external checks (Bedrock, Neo4j, S3, Secrets
+    Manager) that live in /health instead.
+    """
+    from backend.health import HealthChecker
+    result = HealthChecker.get_liveness_core()
+
+    status_code = 200 if result["status"] == "ready" else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            **result,
+            "environment": config.ENVIRONMENT,
+            "version": "1.0.0"
+        },
+    )
 
 
 @app.get("/health/detailed")
