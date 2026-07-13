@@ -118,6 +118,67 @@ class HealthChecker:
             }
 
     @staticmethod
+    def check_neo4j() -> Dict[str, Any]:
+        """Check Neo4j connectivity (knowledge graph)"""
+        try:
+            from backend.config import config
+
+            if not config.NEO4J_URI:
+                return {
+                    "status": "not_configured",
+                    "message": "NEO4J_URI is not set"
+                }
+
+            from backend.agents.neo4j_client import get_neo4j_client
+
+            get_neo4j_client().driver.verify_connectivity()
+
+            return {
+                "status": "healthy",
+                "message": "Connected"
+            }
+
+        except Exception as e:
+            # Includes a paused Aura instance -- reported as unhealthy here
+            # rather than triggering an in-request resume, which can take
+            # minutes; the scheduled resume-guard workflow owns that job.
+            logger.error(f"Neo4j health check failed: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+
+    @staticmethod
+    def check_s3() -> Dict[str, Any]:
+        """Check S3 connectivity (vector store / uploads)"""
+        try:
+            from backend.config import config
+
+            if not config.S3_VECTORS_BUCKET:
+                return {
+                    "status": "not_configured",
+                    "message": "S3_VECTORS_BUCKET is not set"
+                }
+
+            from backend.cloud.aws_helpers import get_boto3_client
+
+            s3 = get_boto3_client("s3")
+            s3.head_bucket(Bucket=config.S3_VECTORS_BUCKET)
+
+            return {
+                "status": "healthy",
+                "bucket": config.S3_VECTORS_BUCKET,
+                "message": "Accessible"
+            }
+
+        except Exception as e:
+            logger.error(f"S3 health check failed: {e}")
+            return {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+
+    @staticmethod
     def check_secrets_manager() -> Dict[str, Any]:
         """Check AWS Secrets Manager access"""
         try:
@@ -203,6 +264,12 @@ class HealthChecker:
                 "error": str(e)
             }
 
+    # Components the app cannot meaningfully serve traffic without. A
+    # failure here means "unhealthy" (gates deploys/rollbacks); a failure
+    # in anything else means "degraded" (observability/secrets-cache blips
+    # that shouldn't block a promotion on their own).
+    CORE_COMPONENTS = {"database", "redis", "bedrock", "neo4j", "s3"}
+
     @classmethod
     def get_detailed_health(cls) -> Dict[str, Any]:
         """
@@ -215,6 +282,8 @@ class HealthChecker:
             "database": cls.check_database(),
             "redis": cls.check_redis(),
             "bedrock": cls.check_bedrock(),
+            "neo4j": cls.check_neo4j(),
+            "s3": cls.check_s3(),
             "secrets_manager": cls.check_secrets_manager(),
             "jwt_blacklist": cls.check_jwt_blacklist(),
             "langfuse": cls.check_langfuse(),
@@ -226,8 +295,11 @@ class HealthChecker:
             name for name, check in checks.items()
             if check.get("status") == "unhealthy"
         ]
+        unhealthy_core = [name for name in unhealthy_components if name in cls.CORE_COMPONENTS]
 
-        if unhealthy_components:
+        if unhealthy_core:
+            overall_status = "unhealthy"
+        elif unhealthy_components:
             overall_status = "degraded"
         else:
             overall_status = "healthy"
@@ -252,4 +324,30 @@ class HealthChecker:
         return {
             "status": detailed["status"],
             "timestamp": detailed["timestamp"]
+        }
+
+    @classmethod
+    def get_liveness_core(cls) -> Dict[str, Any]:
+        """
+        Fast, cheap check of only the dependencies nearly every request
+        needs. This backs /ready, which Docker's HEALTHCHECK polls every
+        5s for the entire lifetime of the container -- deliberately
+        excludes slower/external checks (Bedrock, Neo4j, S3, Secrets
+        Manager, Langfuse, PostHog) that belong in /health instead.
+
+        Returns:
+            Dict with status ("ready" or "unhealthy") and component checks
+        """
+        checks = {
+            "database": cls.check_database(),
+            "redis": cls.check_redis(),
+        }
+        unhealthy = [
+            name for name, check in checks.items()
+            if check.get("status") == "unhealthy"
+        ]
+        return {
+            "status": "unhealthy" if unhealthy else "ready",
+            "checks": checks,
+            "unhealthy_components": unhealthy if unhealthy else None
         }
