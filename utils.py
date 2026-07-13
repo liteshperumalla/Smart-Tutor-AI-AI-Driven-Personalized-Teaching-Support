@@ -709,17 +709,23 @@ def _self_rag_wrapper(generator, context_str: str):
         yield DISCLAIMER
 
 
-def _check_answer_cache(query: str) -> Optional[Dict]:
-    """Check exact then fuzzy cache. Returns {response, sources} or None."""
+def _check_answer_cache(query: str, user_id: Optional[str] = None) -> Optional[Dict]:
+    """Check exact then fuzzy cache, scoped to user_id. Returns {response, sources} or None.
+
+    user_id scoping matters: without it, one user's bad, incorrect, or
+    successfully-jailbroken answer would be replayed verbatim to every
+    other user asking the same (or, via fuzzy match, a similar-enough)
+    question for the rest of the cache TTL.
+    """
     try:
         cache = _get_answer_cache()
-        return cache.get_query_result(query)
+        return cache.get_query_result(query, user_id=user_id)
     except Exception as exc:
         logging.warning(f"Answer cache lookup failed: {exc}")
         return None
 
 
-def _caching_generator(original_gen, query, sources):
+def _caching_generator(original_gen, query, sources, user_id: Optional[str] = None):
     """Tee pattern: yield chunks to frontend AND collect for caching."""
     chunks = []
     for chunk in original_gen:
@@ -737,6 +743,7 @@ def _caching_generator(original_gen, query, sources):
                     "sources": sources,
                     "cached_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 },
+                user_id=user_id,
             )
             logging.info(f"Answer cached for query: {query[:60]}...")
         except Exception as exc:
@@ -838,7 +845,7 @@ def generate_response_stream_and_sources(
 
         # Answer Cache: check for cached response before RAG retrieval
         if config.ANSWER_CACHE_ENABLED:
-            cached = _check_answer_cache(query)
+            cached = _check_answer_cache(query, user_id=user_id)
             if cached:
                 logging.info(f"Answer cache HIT for: {query[:60]}...")
 
@@ -1071,10 +1078,14 @@ def generate_response_stream_and_sources(
                 response_text_generator, context_str
             )
 
-        # Answer Cache: wrap generator to cache the full response after streaming
-        if config.ANSWER_CACHE_ENABLED:
+        # Answer Cache: wrap generator to cache the full response after streaming.
+        # Skip web-search-derived answers -- they're time-sensitive and
+        # ungrounded-checked (see the Self-RAG skip above), so caching them
+        # for up to ANSWER_CACHE_TTL risks serving stale "current events"
+        # answers well past their freshness window.
+        if config.ANSWER_CACHE_ENABLED and not used_web_search:
             response_text_generator = _caching_generator(
-                response_text_generator, query, response_sources
+                response_text_generator, query, response_sources, user_id=user_id
             )
 
         context_passages = []

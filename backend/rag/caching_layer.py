@@ -446,11 +446,21 @@ class QueryCache:
         self._fuzzy_dim = fuzzy_embedding_dim
         self._use_hnsw = use_hnsw
 
-    def _generate_key(self, query: str) -> str:
-        """Generate cache key from query"""
-        # Normalize query
+    def _generate_key(self, query: str, user_id: Optional[str] = None) -> str:
+        """Generate cache key from query, scoped per user.
+
+        Without user_id in the key, two different users asking the exact
+        same normalized text would share one cache entry -- a jailbroken
+        or incorrect answer elicited by one user would be replayed
+        verbatim to everyone else asking something textually identical,
+        for the full cache TTL. user_id defaults to None (not a real
+        empty-string user) so callers that genuinely have no identity
+        still get a single shared, clearly-unauthenticated bucket rather
+        than silently colliding with a real user's cache.
+        """
         normalized = query.lower().strip()
-        return hashlib.sha256(normalized.encode()).hexdigest()
+        scope = user_id or "__anonymous__"
+        return hashlib.sha256(f"{scope}:{normalized}".encode()).hexdigest()
 
     def _calculate_similarity(
         self,
@@ -472,12 +482,12 @@ class QueryCache:
 
         return dot_product / (norm1 * norm2)
 
-    def get_exact(self, query: str) -> Optional[Dict[str, Any]]:
-        """Get cached result for exact query match"""
+    def get_exact(self, query: str, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get cached result for exact query match, scoped to user_id"""
         if not self.use_exact_matching:
             return None
 
-        key = self._generate_key(query)
+        key = self._generate_key(query, user_id)
 
         # Check in-memory cache
         result = self.exact_cache.get(key)
@@ -502,13 +512,22 @@ class QueryCache:
     def get_fuzzy(
         self,
         query: str,
-        query_embedding: List[float]
+        query_embedding: List[float],
+        user_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Get cached result for similar query (fuzzy match).
+        """Get cached result for similar query (fuzzy match), scoped to user_id.
 
         Uses an HNSW (when available) or vectorised numpy index for $O(\\log N)$
         or BLAS-accelerated similarity lookup. Falls back to a miss on any
         index inconsistency rather than a Python loop scan.
+
+        The vector index itself is shared across all users' embeddings --
+        unlike the exact-match cache, folding user_id into the key alone
+        doesn't scope this, since nearest-neighbour search finds the
+        closest embedding regardless of whose query produced it. The
+        nearest match's stored user_id is checked explicitly instead; a
+        mismatch is treated as a miss rather than serving another user's
+        cached answer for a "close enough" question.
         """
         if not self.use_fuzzy_matching or self._fuzzy_index is None:
             return None
@@ -523,6 +542,9 @@ class QueryCache:
             self._fuzzy_index.remove(best_key)
             return None
 
+        if cached_data.get("user_id") != user_id:
+            return None
+
         logger.debug(
             f"Query cache HIT (fuzzy, similarity={best_similarity:.3f}): {query[:50]}"
         )
@@ -532,10 +554,11 @@ class QueryCache:
         self,
         query: str,
         result: Dict[str, Any],
-        query_embedding: Optional[List[float]] = None
+        query_embedding: Optional[List[float]] = None,
+        user_id: Optional[str] = None,
     ):
-        """Store query result in cache"""
-        key = self._generate_key(query)
+        """Store query result in cache, scoped to user_id"""
+        key = self._generate_key(query, user_id)
 
         # Store in exact cache
         if self.use_exact_matching:
@@ -577,16 +600,17 @@ class QueryCache:
                 "query": query,
                 "embedding": query_embedding,
                 "result": result,
+                "user_id": user_id,
             })
             if evicted_key:
                 self._fuzzy_index.remove(evicted_key)
             self._fuzzy_index.add(key, query_embedding)
 
-    def invalidate(self, query: Optional[str] = None):
+    def invalidate(self, query: Optional[str] = None, user_id: Optional[str] = None):
         """Invalidate cache entries"""
         if query:
             # Invalidate specific query
-            key = self._generate_key(query)
+            key = self._generate_key(query, user_id)
             if key in self.exact_cache.cache:
                 del self.exact_cache.cache[key]
 
@@ -671,17 +695,18 @@ class RAGCache:
     def get_query_result(
         self,
         query: str,
-        query_embedding: Optional[List[float]] = None
+        query_embedding: Optional[List[float]] = None,
+        user_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Get cached query result (exact or fuzzy match)"""
+        """Get cached query result (exact or fuzzy match), scoped to user_id"""
         # Try exact match first
-        result = self.query_cache.get_exact(query)
+        result = self.query_cache.get_exact(query, user_id)
         if result:
             return result
 
         # Try fuzzy match
         if query_embedding:
-            result = self.query_cache.get_fuzzy(query, query_embedding)
+            result = self.query_cache.get_fuzzy(query, query_embedding, user_id)
             if result:
                 return result
 
@@ -691,10 +716,11 @@ class RAGCache:
         self,
         query: str,
         result: Dict[str, Any],
-        query_embedding: Optional[List[float]] = None
+        query_embedding: Optional[List[float]] = None,
+        user_id: Optional[str] = None,
     ):
-        """Cache query result"""
-        self.query_cache.put(query, result, query_embedding)
+        """Cache query result, scoped to user_id"""
+        self.query_cache.put(query, result, query_embedding, user_id)
 
     def get_all_stats(self) -> Dict[str, Any]:
         """Get statistics for all caches"""
