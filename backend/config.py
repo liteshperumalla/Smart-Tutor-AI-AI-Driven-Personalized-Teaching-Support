@@ -249,6 +249,12 @@ class Config:
         "BEDROCK_EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0"
     )
 
+    # Bedrock Guardrail: blocks jailbreak/prompt-injection attempts and
+    # harmful content, masks PII in model responses. Empty ID disables
+    # guardrail enforcement (e.g. local dev without one provisioned).
+    BEDROCK_GUARDRAIL_ID = os.getenv("BEDROCK_GUARDRAIL_ID", "")
+    BEDROCK_GUARDRAIL_VERSION = os.getenv("BEDROCK_GUARDRAIL_VERSION", "DRAFT")
+
     # S3 Buckets - Updated for Terraform module naming convention
     S3_UPLOADS_BUCKET = os.getenv(
         "S3_UPLOADS_BUCKET", f"smart-tutor-{ENVIRONMENT}-uploads"

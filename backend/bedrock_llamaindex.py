@@ -93,9 +93,10 @@ class BedrockLLM(LLM):
             prompt=prompt,
             max_tokens=kwargs.get("max_tokens", 2048),
             temperature=kwargs.get("temperature", 0.7),
+            system_prompt=kwargs.get("system_prompt"),
         )
         return CompletionResponse(text=response)
-    
+
     @llm_completion_callback()
     def stream_complete(
         self, prompt: str, formatted: bool = False, **kwargs: Any
@@ -106,6 +107,7 @@ class BedrockLLM(LLM):
             prompt=prompt,
             max_tokens=kwargs.get("max_tokens", 2048),
             temperature=kwargs.get("temperature", 0.7),
+            system_prompt=kwargs.get("system_prompt"),
         ):
             text += chunk
             yield CompletionResponse(text=text, delta=chunk)

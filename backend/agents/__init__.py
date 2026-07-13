@@ -255,6 +255,7 @@ def run_agent_pipeline(
         prompt=prep["prompt"],
         logger=logger,
         model_id=prep["model_id"],
+        system_prompt=prep.get("system_prompt"),
     )
 
     def _on_complete(full_response: str) -> None:
