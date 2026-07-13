@@ -61,6 +61,7 @@ async def generate_quiz(
         scope="quiz_generate",
     )
     await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
     _, user = session
     try:
         quiz = quiz_service.generate_quiz(

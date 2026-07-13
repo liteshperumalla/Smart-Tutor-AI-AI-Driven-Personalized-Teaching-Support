@@ -310,6 +310,7 @@ async def send_message(
     else:
         effective_model = app_config.BEDROCK_MODEL_ID
     await rate_limiter.check_model_rate_limit(request, effective_model)
+    await rate_limiter.check_cost_budget(request, effective_model)
 
     # Resolve the generator before opening the stream — this lets FastAPI return
     # a proper 503 JSON body if the circuit is open or the LLM is unavailable,
