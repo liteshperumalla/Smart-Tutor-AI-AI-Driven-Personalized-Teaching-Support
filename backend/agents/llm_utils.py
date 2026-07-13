@@ -38,6 +38,7 @@ def stream_complete_with_model_fallback(
     prompt: str,
     logger: logging.Logger,
     model_id: Optional[str] = None,
+    system_prompt: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """Stream LLM tokens with a one-shot fallback to the default model.
 
@@ -45,6 +46,11 @@ def stream_complete_with_model_fallback(
     any tokens. Once even a single delta has been emitted the partial response
     has already reached the user, so a mid-stream failure is re-raised rather
     than silently swapping models mid-flight.
+
+    system_prompt is kept on the model's dedicated system channel rather
+    than folded into `prompt`, so persona/instructions carry the strongest
+    instruction-hierarchy signal against prompt injection from `prompt`
+    (which may embed untrusted RAG context or user text).
     """
     from backend.llm_provider import get_llm
 
@@ -56,7 +62,7 @@ def stream_complete_with_model_fallback(
         # Track previously-emitted text so providers that send cumulative
         # .text instead of .delta don't replay the whole response each tick.
         seen = ""
-        for resp in llm.stream_complete(prompt):
+        for resp in llm.stream_complete(prompt, system_prompt=system_prompt):
             chunk = _extract_delta(resp, seen)
             if chunk:
                 seen += chunk
@@ -90,6 +96,7 @@ def complete_with_model_fallback(
     prompt: str,
     logger: logging.Logger,
     model_id: Optional[str] = None,
+    system_prompt: Optional[str] = None,
 ) -> str:
     from backend.llm_provider import get_llm
 
@@ -97,7 +104,7 @@ def complete_with_model_fallback(
         llm_kwargs = {}
         if target_model_id:
             llm_kwargs["model_id"] = target_model_id
-        response = get_llm(**llm_kwargs).complete(prompt)
+        response = get_llm(**llm_kwargs).complete(prompt, system_prompt=system_prompt)
         response_text = extract_completion_text(response)
         if not response_text:
             raise ValueError("LLM returned an empty response")

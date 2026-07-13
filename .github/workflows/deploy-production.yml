@@ -310,18 +310,35 @@ jobs:
           # Forward AWS_REGION so the remote awslogs driver lines below resolve
           # to the configured region instead of falling back to us-east-1 only.
           AWS_REGION: ${{ env.AWS_REGION }}
+          # Bedrock Guardrail (jailbreak/prompt-attack detection, content
+          # filters, PII masking) -- an identifier, not a credential, so
+          # this lives in repo vars rather than secrets. Empty value is a
+          # no-op: bedrock_llm.py only applies a guardrail when configured.
+          BEDROCK_GUARDRAIL_ID: ${{ vars.BEDROCK_GUARDRAIL_ID || '' }}
+          BEDROCK_GUARDRAIL_VERSION: ${{ vars.BEDROCK_GUARDRAIL_VERSION || '1' }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION
           script: |
             set -euo pipefail
 
             command -v docker >/dev/null
             command -v curl >/dev/null
             command -v gzip >/dev/null
+
+            echo "=== Syncing Bedrock Guardrail config into smart-tutor.env ==="
+            touch ~/smart-tutor.env
+            sed -i '/^BEDROCK_GUARDRAIL_ID=/d; /^BEDROCK_GUARDRAIL_VERSION=/d' ~/smart-tutor.env
+            if [ -n "${BEDROCK_GUARDRAIL_ID:-}" ]; then
+              echo "BEDROCK_GUARDRAIL_ID=${BEDROCK_GUARDRAIL_ID}" >> ~/smart-tutor.env
+              echo "BEDROCK_GUARDRAIL_VERSION=${BEDROCK_GUARDRAIL_VERSION}" >> ~/smart-tutor.env
+              echo "Guardrail configured: ${BEDROCK_GUARDRAIL_ID} (version ${BEDROCK_GUARDRAIL_VERSION})"
+            else
+              echo "No BEDROCK_GUARDRAIL_ID repo variable set -- guardrail enforcement stays disabled."
+            fi
 
             docker_with_timeout() {
               local seconds="$1"

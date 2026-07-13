@@ -99,6 +99,29 @@ class BedrockLLM:
         self.total_input_tokens = 0
         self.total_output_tokens = 0
 
+    def _guardrail_kwargs(self) -> Dict[str, str]:
+        """Extra invoke_model kwargs to apply the configured Bedrock
+        Guardrail (jailbreak/prompt-attack detection, content filters, PII
+        masking). Returns {} when no guardrail is configured, so callers
+        can always do **self._guardrail_kwargs() unconditionally."""
+        if not config.BEDROCK_GUARDRAIL_ID:
+            return {}
+        return {
+            "guardrailIdentifier": config.BEDROCK_GUARDRAIL_ID,
+            "guardrailVersion": config.BEDROCK_GUARDRAIL_VERSION,
+        }
+
+    def _check_guardrail_intervention(self, response_body: Dict[str, Any], prompt: str) -> None:
+        """Log (but don't block on) a guardrail intervention. The response
+        already contains safe blocked-messaging text in place of the real
+        completion -- callers stream/return it like any other response --
+        this just gives operational visibility into how often it fires."""
+        if response_body.get("amazon-bedrock-guardrailAction") == "INTERVENED":
+            logger.warning(
+                f"[Bedrock] Guardrail intervened (blocked jailbreak/harmful-content "
+                f"attempt) for prompt: {prompt[:100]!r}"
+            )
+
     def generate(
         self,
         prompt: str,
@@ -159,10 +182,13 @@ class BedrockLLM:
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id, body=json.dumps(request_body)
+                modelId=self.model_id,
+                body=json.dumps(request_body),
+                **self._guardrail_kwargs(),
             )
 
             response_body = json.loads(response["body"].read())
+            self._check_guardrail_intervention(response_body, prompt)
 
             # Extract tokens and calculate cost
             usage = response_body.get("usage", {})
@@ -218,10 +244,13 @@ class BedrockLLM:
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id, body=json.dumps(request_body)
+                modelId=self.model_id,
+                body=json.dumps(request_body),
+                **self._guardrail_kwargs(),
             )
 
             response_body = json.loads(response["body"].read())
+            self._check_guardrail_intervention(response_body, prompt)
 
             # Debug: Log the actual response structure
             logger.info(
@@ -256,7 +285,12 @@ class BedrockLLM:
             raise
 
     def stream_generate(
-        self, prompt: str, max_tokens: int = 2048, temperature: float = 0.7, **kwargs
+        self,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        system_prompt: Optional[str] = None,
+        **kwargs,
     ) -> Generator[str, None, None]:
         """
         Stream response using Bedrock (for real-time display)
@@ -265,13 +299,19 @@ class BedrockLLM:
             prompt: User prompt
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
+            system_prompt: Optional system prompt -- kept on Anthropic's
+                dedicated system channel rather than folded into the user
+                message, so persona/instructions carry Claude's strongest
+                instruction-hierarchy signal against prompt injection.
 
         Yields:
             Text chunks as they're generated
         """
         if "claude" not in self.model_id.lower():
             # Fallback to non-streaming for non-Claude models
-            yield self.generate(prompt, max_tokens, temperature, **kwargs)
+            yield self.generate(
+                prompt, max_tokens, temperature, system_prompt=system_prompt, **kwargs
+            )
             return
 
         messages = [{"role": "user", "content": prompt}]
@@ -283,13 +323,23 @@ class BedrockLLM:
             "messages": messages,
         }
 
+        if system_prompt:
+            request_body["system"] = system_prompt
+
         try:
             response = self.client.invoke_model_with_response_stream(
-                modelId=self.model_id, body=json.dumps(request_body)
+                modelId=self.model_id,
+                body=json.dumps(request_body),
+                **self._guardrail_kwargs(),
             )
 
+            intervened = False
             for event in response["body"]:
                 chunk = json.loads(event["chunk"]["bytes"])
+
+                if not intervened and chunk.get("amazon-bedrock-guardrailAction") == "INTERVENED":
+                    intervened = True
+                    self._check_guardrail_intervention(chunk, prompt)
 
                 if chunk["type"] == "content_block_delta":
                     text = chunk["delta"].get("text", "")
