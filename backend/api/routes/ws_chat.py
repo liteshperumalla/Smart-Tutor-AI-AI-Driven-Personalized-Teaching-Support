@@ -152,10 +152,18 @@ async def websocket_chat_endpoint(
 
                     # Stream response
                     try:
-                        generator, sources, _ = chat_service.stream_response(
+                        # stream_response() itself does real blocking work before
+                        # it returns a generator (profile lookup incl. a Neo4j
+                        # call that can trip an Aura auto-resume attempt, RAG
+                        # retrieval, agent routing) -- offload the call itself,
+                        # not just the generator iteration below, or a slow or
+                        # paused-Neo4j request blocks the whole event loop for
+                        # every other connection this worker is serving.
+                        generator, sources, _ = await asyncio.to_thread(
+                            chat_service.stream_response,
                             query,
                             user_id=user_id,
-                            session_id=session_id
+                            session_id=session_id,
                         )
 
                         # Collect chunks in a thread-pool worker so the sync generator

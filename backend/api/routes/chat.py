@@ -315,9 +315,19 @@ async def send_message(
     # Resolve the generator before opening the stream — this lets FastAPI return
     # a proper 503 JSON body if the circuit is open or the LLM is unavailable,
     # rather than sending a partial streamed response then aborting.
+    #
+    # stream_response() is synchronous and does real blocking work before it
+    # ever returns a generator -- student profile lookup (including a Neo4j
+    # call that can trip an Aura auto-resume attempt), RAG retrieval, and
+    # agent routing. Called directly inside this async handler with no
+    # await/to_thread, any one of those blocks the whole event loop, so
+    # every other concurrent request on this worker stalls too, not just
+    # this one. asyncio.to_thread moves it off the event loop so a slow
+    # or paused-Neo4j request only blocks its own thread-pool worker.
     from backend.circuit_breaker import CircuitBreakerOpenError, bedrock_circuit_breaker
     try:
-        generator, sources, resolved_model_id = chat_service.stream_response(
+        generator, sources, resolved_model_id = await asyncio.to_thread(
+            chat_service.stream_response,
             effective_query,
             user_id=user["username"],
             session_id=session_id,

@@ -97,8 +97,23 @@ def _get_instance_status() -> Optional[str]:
         return None
 
 
-def _resume_aura_instance(max_wait: int = 120) -> bool:
-    """Resume a paused Aura instance and wait for it to become running.
+def _resume_aura_instance(max_wait: int = 20) -> bool:
+    """Trigger an Aura resume and do a brief best-effort check -- WITHOUT
+    blocking for anywhere near the full resume duration.
+
+    Real Aura resume takes 7-12 minutes (the dedicated Neo4j Aura Resume
+    Guard workflow's poll timeout was deliberately bumped to 900s after a
+    real run measured 420s) -- far longer than any request should ever
+    block for. The old 120s default couldn't succeed on a genuine cold
+    pause either, it just wasted two minutes finding that out. This
+    fires the resume request and polls briefly (default 20s) purely to
+    catch the fast case where the instance was already resuming when we
+    got here; on the much more common cold-pause case, callers get a
+    quick "not ready yet" and should degrade gracefully -- see
+    profile.py's _graph_profile, which already falls back to an empty
+    profile on any exception here -- rather than hang. Keeping the
+    instance warm in steady state is the scheduled resume-guard
+    workflow's job, not this in-request path's.
 
     Uses a lock to prevent multiple concurrent resume attempts.
     Returns True if the instance is running, False otherwise.
