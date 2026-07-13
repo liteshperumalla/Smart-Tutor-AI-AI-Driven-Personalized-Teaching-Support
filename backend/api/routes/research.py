@@ -3,12 +3,14 @@ from __future__ import annotations
 import logging
 from typing import List, Optional, TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-from backend.api.dependencies import get_current_session
+from backend.api.dependencies import get_current_session, get_rate_limiter_dep
+from backend.config import config
+from backend.rate_limiter import limiter, PerUserRateLimiter
 from backend.validators import FileValidator
 from backend.exceptions import InvalidFileError
 
@@ -142,11 +144,16 @@ def knowledge_base_stats(session=Depends(get_current_session)):
 
 
 @router.post("/query")
-def run_research_query(
+@limiter.limit("60/hour")
+async def run_research_query(
+    request: Request,
     payload: ResearchQueryRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
+    await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="research_query")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     if not payload.query.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -255,12 +262,16 @@ def clear_research_uploads_post(
 
 
 @router.post("/search/web")
-def search_web(
+@limiter.limit("40/hour")
+async def search_web(
+    request: Request,
     payload: WebSearchRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Search the web for supplementary information."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="research_search_web")
     try:
         result = service.search_web(payload.query, payload.max_results)
         return result
@@ -272,12 +283,16 @@ def search_web(
 
 
 @router.post("/search/academic")
-def search_academic(
+@limiter.limit("40/hour")
+async def search_academic(
+    request: Request,
     payload: AcademicSearchRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Search academic databases (arXiv, PubMed, Google Scholar) for papers."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="research_search_academic")
     try:
         result = service.search_academic_papers(
             payload.query, payload.sources, payload.max_results
@@ -291,12 +306,17 @@ def search_academic(
 
 
 @router.post("/compare")
-def compare_sources(
+@limiter.limit("30/hour")
+async def compare_sources(
+    request: Request,
     payload: CompareSourcesRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Compare information across multiple documents on a topic."""
+    await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_compare")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         result = service.compare_sources(
             payload.topic, payload.document_ids, payload.uploaded_only
@@ -310,12 +330,17 @@ def compare_sources(
 
 
 @router.post("/citations")
-def extract_citations(
+@limiter.limit("40/hour")
+async def extract_citations(
+    request: Request,
     payload: CitationExtractionRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Extract and format citations from uploaded documents."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="research_citations")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         result = service.extract_citations(payload.document_id, payload.format_style)
         return result
@@ -327,12 +352,17 @@ def extract_citations(
 
 
 @router.post("/summary")
-def generate_summary(
+@limiter.limit("30/hour")
+async def generate_summary(
+    request: Request,
     payload: SummaryRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Generate document summary in specified mode (executive, detailed, bullets)."""
+    await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_summary")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         result = service.generate_summary(
             payload.document_id, payload.mode, payload.max_length
@@ -346,12 +376,17 @@ def generate_summary(
 
 
 @router.post("/questions")
-def generate_questions(
+@limiter.limit("30/hour")
+async def generate_questions(
+    request: Request,
     payload: QuestionGenerationRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Generate study questions from uploaded documents."""
+    await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_questions")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         result = service.generate_questions(
             payload.document_id,
@@ -368,12 +403,17 @@ def generate_questions(
 
 
 @router.post("/fact-check")
-def fact_check(
+@limiter.limit("30/hour")
+async def fact_check(
+    request: Request,
     payload: FactCheckRequest,
     session=Depends(get_current_session),
     service: ResearchService = Depends(get_research_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Cross-reference claims across sources and provide a verdict."""
+    await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_fact_check")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         result = service.fact_check(
             payload.claim, payload.uploaded_only, payload.include_web

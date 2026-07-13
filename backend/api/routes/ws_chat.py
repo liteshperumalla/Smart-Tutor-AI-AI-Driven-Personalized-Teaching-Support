@@ -7,6 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from backend.websocket.manager import manager
 from backend.services.models import ChatMessage
 from backend.logger import get_logger
+from backend.rate_limiter import get_rate_limiter
 import json
 import asyncio
 
@@ -111,6 +112,35 @@ async def websocket_chat_endpoint(
                         await websocket.send_json({
                             "type": "error",
                             "message": "Empty message"
+                        })
+                        continue
+
+                    # Rate limit each message the same way the HTTP /chat
+                    # route does -- an open WebSocket has no per-request
+                    # gate otherwise, so a tight client loop could fire
+                    # unlimited Bedrock calls for the life of the connection.
+                    try:
+                        rate_limiter = get_rate_limiter()
+                        await rate_limiter.check_rate_limit(
+                            websocket, limit=60, window=3600, scope="ws_chat_message"
+                        )
+                        from backend.config import config as app_config
+                        if app_config.LLM_ROUTING_ENABLED:
+                            from backend.llm_router import (
+                                classify_query_complexity,
+                                select_model_for_complexity,
+                            )
+                            tier, _ = classify_query_complexity(query)
+                            effective_model = select_model_for_complexity(tier)
+                        else:
+                            effective_model = app_config.BEDROCK_MODEL_ID
+                        await rate_limiter.check_model_rate_limit(websocket, effective_model)
+                    except HTTPException as exc:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": exc.detail.get("message", "Rate limit exceeded")
+                            if isinstance(exc.detail, dict) else str(exc.detail),
+                            "retry_after": exc.detail.get("retry_after") if isinstance(exc.detail, dict) else None,
                         })
                         continue
 
