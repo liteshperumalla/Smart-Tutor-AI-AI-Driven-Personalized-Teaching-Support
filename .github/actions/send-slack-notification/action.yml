@@ -101,6 +101,7 @@ runs:
         python3 - <<'PY'
         import json
         import os
+        import re
         import sys
 
         # --- Status normalisation ---------------------------------------------
@@ -193,10 +194,20 @@ runs:
                 "elements": [{"type": "mrkdwn", "text": " | ".join(footer_parts)}],
             })
 
+        # Plain-text summary for clients that don't render Block Kit — mobile
+        # push notifications, desktop notification banners, IRC-style
+        # clients, screen readers, and any tool that lists/searches messages
+        # by preview text. Without this, attachments that only carry
+        # `blocks` show up blank everywhere except the full message view.
+        # Slack recommends fallback contain no markup, so strip mrkdwn
+        # emphasis and :emoji: shortcodes from the snippet.
+        message_snippet = re.sub(r"^:\w+:\s*|\*", "", message.splitlines()[0]) if message else ""
+        fallback = f"{status_label}: {verbiage} — {message_snippet[:200] or '(no message)'}"
+
         payload = {
             "username": "GitHub Actions",
             "icon_emoji": ":github:",
-            "attachments": [{"color": color, "blocks": blocks}],
+            "attachments": [{"color": color, "fallback": fallback, "blocks": blocks}],
         }
 
         # --- Size guard --------------------------------------------------------
