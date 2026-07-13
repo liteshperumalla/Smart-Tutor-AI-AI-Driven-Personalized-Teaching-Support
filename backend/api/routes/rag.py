@@ -2,7 +2,7 @@
 FastAPI routes for enhanced RAG service.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import logging
@@ -10,7 +10,9 @@ import logging
 from backend.rag.service import RAGService, RAGVariant
 # Consolidated auth: supports both HttpOnly cookie (web clients) and Bearer
 # header (server-to-server). Also enforces disabled-user check.
-from backend.api.dependencies import get_current_user
+from backend.api.dependencies import get_current_user, get_rate_limiter_dep
+from backend.config import config
+from backend.rate_limiter import limiter, PerUserRateLimiter
 
 
 logger = logging.getLogger(__name__)
@@ -82,10 +84,13 @@ class RAGStatsResponse(BaseModel):
 # Routes
 
 @router.post("/query", response_model=RAGQueryResponse)
+@limiter.limit("60/hour")
 async def rag_query(
-    request: RAGQueryRequest,
+    request: Request,
+    payload: RAGQueryRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """
     Process a RAG query with enhanced retrieval.
@@ -107,18 +112,20 @@ async def rag_query(
     }
     ```
     """
+    await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="rag_query")
+    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
     try:
         user_id = current_user.get("sub")  # User ID from JWT
 
         result = await rag_service.query(
-            query=request.query,
+            query=payload.query,
             user_id=user_id,
-            variant=request.variant,
-            top_k=request.top_k,
-            max_retrieval=request.max_retrieval
+            variant=payload.variant,
+            top_k=payload.top_k,
+            max_retrieval=payload.max_retrieval
         )
 
-        logger.info(f"RAG query processed for user {user_id}: {request.query[:50]}...")
+        logger.info(f"RAG query processed for user {user_id}: {payload.query[:50]}...")
 
         return RAGQueryResponse(**result)
 
@@ -128,10 +135,13 @@ async def rag_query(
 
 
 @router.post("/ingest", response_model=DocumentIngestionResponse)
+@limiter.limit("30/hour")
 async def ingest_document(
-    request: DocumentIngestionRequest,
+    request: Request,
+    payload: DocumentIngestionRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
-    rag_service: RAGService = Depends(get_rag_service)
+    rag_service: RAGService = Depends(get_rag_service),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """
     Ingest a document into the RAG system.
@@ -154,14 +164,15 @@ async def ingest_document(
     }
     ```
     """
+    await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="rag_ingest")
     try:
         # Add user info to metadata
-        metadata = request.metadata.copy()
+        metadata = payload.metadata.copy()
         metadata["uploaded_by"] = current_user.get("email")
         metadata["user_id"] = current_user.get("sub")
 
         result = await rag_service.ingest_document(
-            content=request.content,
+            content=payload.content,
             metadata=metadata
         )
 

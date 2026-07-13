@@ -8,7 +8,7 @@ This module provides endpoints for:
 
 import logging
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 import traceback
@@ -18,7 +18,8 @@ import subprocess
 import tempfile
 import os
 
-from ..dependencies import get_current_user, get_admin_session
+from ..dependencies import get_current_user, get_admin_session, get_rate_limiter_dep
+from backend.rate_limiter import limiter, PerUserRateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,14 @@ class CodeChatResponse(BaseModel):
     response: str
 
 
+def _code_llm_model_id() -> str:
+    """Resolve the code LLM model id, overridable via CODE_LLM_MODEL_ID."""
+    return os.environ.get(
+        "CODE_LLM_MODEL_ID",
+        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    )
+
+
 def _get_code_llm():
     """Get the code LLM instance using AWS Bedrock.
 
@@ -166,11 +175,7 @@ def _get_code_llm():
         from backend.bedrock_llm import BedrockLLM
         from backend.config import config
 
-        model_id = os.environ.get(
-            "CODE_LLM_MODEL_ID",
-            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        )
-        return BedrockLLM(model_id=model_id, region=config.AWS_REGION)
+        return BedrockLLM(model_id=_code_llm_model_id(), region=config.AWS_REGION)
     except (ImportError, ValueError, RuntimeError):
         logger.exception("Failed to initialize Bedrock LLM")
         return None
@@ -454,11 +459,16 @@ async def execute_code(
 
 
 @router.post("/generate", response_model=CodeGenerateResponse)
+@limiter.limit("40/hour")
 async def generate_code(
-    request: CodeGenerateRequest,
+    request: Request,
+    payload: CodeGenerateRequest,
     user: dict = Depends(get_current_user),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Generate code from a natural language prompt."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_generate")
+    await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -467,30 +477,35 @@ async def generate_code(
         )
 
     system_prompt = (
-        f"You are a helpful coding assistant. Write ONLY {request.language} code for the following request. "
+        f"You are a helpful coding assistant. Write ONLY {payload.language} code for the following request. "
         "Output ONLY the code in a single code block. "
         "Do NOT include explanations, comments, or any text before or after the code block."
     )
 
     try:
         response = llm.generate(
-            prompt=f"Request: {request.prompt}\n\nCode:",
+            prompt=f"Request: {payload.prompt}\n\nCode:",
             system_prompt=system_prompt,
             max_tokens=2048,
             temperature=0.3,
         )
         code = _extract_code(response.strip())
-        return CodeGenerateResponse(code=code, language=request.language)
+        return CodeGenerateResponse(code=code, language=payload.language)
     except Exception as e:
         raise HTTPException(status_code=500, detail="Code generation failed")
 
 
 @router.post("/explain", response_model=CodeExplainResponse)
+@limiter.limit("40/hour")
 async def explain_code(
-    request: CodeExplainRequest,
+    request: Request,
+    payload: CodeExplainRequest,
     user: dict = Depends(get_current_user),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Explain what the code does."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_explain")
+    await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -499,13 +514,13 @@ async def explain_code(
         )
 
     system_prompt = (
-        f"You are an expert {request.language} developer. "
+        f"You are an expert {payload.language} developer. "
         "Explain what the following code does, step by step, in simple terms."
     )
 
     try:
         response = llm.generate(
-            prompt=f"Code:\n{request.code}\n\nExplanation:",
+            prompt=f"Code:\n{payload.code}\n\nExplanation:",
             system_prompt=system_prompt,
             max_tokens=2048,
             temperature=0.3,
@@ -519,11 +534,16 @@ async def explain_code(
 
 
 @router.post("/debug", response_model=CodeDebugResponse)
+@limiter.limit("40/hour")
 async def debug_code(
-    request: CodeDebugRequest,
+    request: Request,
+    payload: CodeDebugRequest,
     user: dict = Depends(get_current_user),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Debug and fix code issues using AWS Bedrock."""
+    await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_debug")
+    await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -532,14 +552,14 @@ async def debug_code(
         )
 
     system_prompt = (
-        f"You are a skilled {request.language} developer. "
+        f"You are a skilled {payload.language} developer. "
         "Find and fix any bugs in the following code. "
         "Explain the problem and provide the corrected code."
     )
 
     try:
         response = llm.generate(
-            prompt=f"Code:\n{request.code}\n\nDebugging:",
+            prompt=f"Code:\n{payload.code}\n\nDebugging:",
             system_prompt=system_prompt,
             max_tokens=2048,
             temperature=0.3,
@@ -568,11 +588,16 @@ async def debug_code(
 
 
 @router.post("/chat", response_model=CodeChatResponse)
+@limiter.limit("60/hour")
 async def chat_with_code_llm(
-    request: CodeChatRequest,
+    request: Request,
+    payload: CodeChatRequest,
     user: dict = Depends(get_current_user),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     """Chat with AWS Bedrock for coding assistance."""
+    await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="code_chat")
+    await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -581,8 +606,8 @@ async def chat_with_code_llm(
         )
 
     context = ""
-    if request.history:
-        for msg in request.history[-5:]:
+    if payload.history:
+        for msg in payload.history[-5:]:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             context += f"{role.capitalize()}: {content}\n"
@@ -597,7 +622,7 @@ async def chat_with_code_llm(
 
     try:
         response = llm.generate(
-            prompt=f"{context}User: {request.message}\nAssistant:",
+            prompt=f"{context}User: {payload.message}\nAssistant:",
             system_prompt=system_prompt,
             max_tokens=2048,
             temperature=0.7,

@@ -185,7 +185,15 @@ class PerUserRateLimiter:
         window_secs = window or self.window_seconds
 
         # Get endpoint identifier
-        endpoint = f"{request.method}:{request.url.path}"
+        # WebSocket connections (e.g. ws_chat.py) share Request's .headers/
+        # .cookies/.url via the common HTTPConnection base class, but have
+        # no .method. .url.path also isn't usable there since it embeds a
+        # per-connection session_id -- keying on it would let a user bypass
+        # the limit by opening a new session per burst. Collapse to a
+        # literal "WS" identifier instead, so callers from that context
+        # rely solely on the caller-supplied `scope` to differentiate.
+        method = getattr(request, "method", None)
+        endpoint = f"{method}:{request.url.path}" if method else "WS"
 
         # Generate rate limit key
         key = self._get_rate_limit_key(username, endpoint, scope=scope)
@@ -236,7 +244,15 @@ class PerUserRateLimiter:
         if not username:
             return {"enabled": True, "authenticated": False}
 
-        endpoint = f"{request.method}:{request.url.path}"
+        # WebSocket connections (e.g. ws_chat.py) share Request's .headers/
+        # .cookies/.url via the common HTTPConnection base class, but have
+        # no .method. .url.path also isn't usable there since it embeds a
+        # per-connection session_id -- keying on it would let a user bypass
+        # the limit by opening a new session per burst. Collapse to a
+        # literal "WS" identifier instead, so callers from that context
+        # rely solely on the caller-supplied `scope` to differentiate.
+        method = getattr(request, "method", None)
+        endpoint = f"{method}:{request.url.path}" if method else "WS"
         key = self._get_rate_limit_key(username, endpoint)
 
         try:
