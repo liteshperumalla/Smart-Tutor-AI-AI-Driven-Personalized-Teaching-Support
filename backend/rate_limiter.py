@@ -4,7 +4,7 @@ Implements rate limiting based on authenticated user (not just IP address)
 Uses Redis for distributed rate limiting across multiple servers
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import Request, HTTPException, status
 from slowapi import Limiter
@@ -28,6 +28,7 @@ limiter = Limiter(key_func=get_remote_address, enabled=_slowapi_enabled)
 MODEL_FAMILY_MAP = {
     "llama": "default",
     "claude-3-haiku": "fast",
+    "claude-haiku": "fast",  # covers claude-haiku-4-5 and later, not just claude-3-haiku
     "claude-3-5-sonnet": "pro",
     "claude-sonnet": "pro",
     "claude-opus": "admin",
@@ -56,6 +57,26 @@ def get_model_limit(family: str) -> int:
     return limits.get(family, config.MODEL_RATE_LIMIT_DEFAULT)
 
 
+# Conservative per-request cost estimate by family, in integer micro-dollars
+# (millionths of a USD -- Redis HINCRBY requires integers, and cents alone
+# would lose precision on the cheapest tier). Used only to enforce the daily
+# spend cap (see check_cost_budget). Derived from BedrockLLM.PRICING's
+# *output* rate (the pricier component) at an assumed ~2000 generated
+# tokens -- a request-time estimate, not exact billing; actual cost per
+# call is logged precisely post-call by cost_tracking.py.
+MODEL_FAMILY_COST_MICROS = {
+    "default": 2_000,     # Llama: ~$0.002/2K output tokens
+    "fast": 10_000,        # Haiku: ~$0.01/2K output tokens
+    "pro": 30_000,         # Sonnet: ~$0.03/2K output tokens
+    "admin": 150_000,      # Opus: ~$0.15/2K output tokens
+}
+
+
+def get_model_cost_estimate_micros(family: str) -> int:
+    """Conservative flat per-request cost estimate for a model family, in micro-dollars."""
+    return MODEL_FAMILY_COST_MICROS.get(family, MODEL_FAMILY_COST_MICROS["default"])
+
+
 class PerUserRateLimiter:
     """Rate limiter that tracks requests per authenticated user"""
 
@@ -74,6 +95,25 @@ class PerUserRateLimiter:
     end
     
     return current_count
+    """
+
+    # Lua script for atomic per-user daily spend tracking. Same
+    # increment-then-compare shape as _RATE_LIMIT_LUA_SCRIPT: the request
+    # that pushes the total over budget is the one rejected by the caller,
+    # but its estimated cost is still recorded (consistent with how the
+    # request-count limiter already behaves).
+    _BUDGET_LUA_SCRIPT = """
+    local key = KEYS[1]
+    local ttl_secs = ARGV[1]
+    local increment_micros = ARGV[2]
+
+    local current_micros = redis.call('hincrby', key, 'micros', increment_micros)
+
+    if current_micros == tonumber(increment_micros) then
+        redis.call('expire', key, ttl_secs)
+    end
+
+    return current_micros
     """
 
     def __init__(self, redis_cache: Optional[RedisCache] = None):
@@ -321,6 +361,70 @@ class PerUserRateLimiter:
             raise
         except Exception as e:
             logger.warning(f"Model rate limiter error: {e}")
+
+    async def check_cost_budget(self, request: Request, model_id: str) -> None:
+        """
+        Enforce a per-user daily USD spend cap across all Bedrock calls.
+
+        Request-count limits (check_rate_limit, check_model_rate_limit)
+        bound how *often* a user can call the LLM, but not how much a
+        single burst of expensive requests can cost -- this bounds actual
+        dollars. Uses a conservative flat per-request estimate by model
+        family (see MODEL_FAMILY_COST_MICROS) rather than exact post-call
+        cost, since the real token count isn't known until the LLM
+        response completes; exact per-call cost is still logged separately
+        and precisely by cost_tracking.py for billing/audit purposes.
+
+        The tracking key is suffixed with today's UTC date, so it resets
+        naturally at midnight rather than N hours after each user's first
+        request of the day.
+        """
+        if not self.enabled:
+            return
+
+        budget_usd = config.DAILY_COST_BUDGET_USD
+        if budget_usd <= 0:
+            return  # Budget enforcement disabled
+
+        username = self._get_username_from_token(request)
+        if not username:
+            return
+
+        family = get_model_family(model_id)
+        increment_micros = get_model_cost_estimate_micros(family)
+        budget_micros = int(budget_usd * 1_000_000)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        key = f"cost_budget:user:{username}:{today}"
+
+        try:
+            redis_client = self.redis.client
+            # 90000s (25h) TTL as a safety net so the key doesn't linger
+            # indefinitely if Redis somehow never expires it -- the daily
+            # date suffix is what actually drives the reset boundary.
+            current_micros = redis_client.eval(
+                self._BUDGET_LUA_SCRIPT, 1, key, 90000, increment_micros
+            )
+
+            if current_micros > budget_micros:
+                spent_usd = current_micros / 1_000_000
+                logger.warning(
+                    f"Daily cost budget exceeded for {username}: ~${spent_usd:.4f}/${budget_usd:.2f}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "error": "Daily spend limit reached",
+                        "message": (
+                            f"You've reached today's usage limit (${budget_usd:.2f}). "
+                            "It resets at midnight UTC."
+                        ),
+                        "budget_usd": budget_usd,
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Cost budget check error: {e}")
 
     async def get_all_model_limits(self, request: Request) -> dict:
         """Return rate-limit status for every model family for this user."""

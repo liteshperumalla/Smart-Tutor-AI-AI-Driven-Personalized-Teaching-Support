@@ -135,6 +135,7 @@ async def websocket_chat_endpoint(
                         else:
                             effective_model = app_config.BEDROCK_MODEL_ID
                         await rate_limiter.check_model_rate_limit(websocket, effective_model)
+                        await rate_limiter.check_cost_budget(websocket, effective_model)
                     except HTTPException as exc:
                         await websocket.send_json({
                             "type": "error",

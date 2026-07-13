@@ -469,6 +469,7 @@ async def generate_code(
     """Generate code from a natural language prompt."""
     await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_generate")
     await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
+    await rate_limiter.check_cost_budget(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -506,6 +507,7 @@ async def explain_code(
     """Explain what the code does."""
     await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_explain")
     await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
+    await rate_limiter.check_cost_budget(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -544,6 +546,7 @@ async def debug_code(
     """Debug and fix code issues using AWS Bedrock."""
     await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="code_debug")
     await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
+    await rate_limiter.check_cost_budget(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(
@@ -598,6 +601,7 @@ async def chat_with_code_llm(
     """Chat with AWS Bedrock for coding assistance."""
     await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="code_chat")
     await rate_limiter.check_model_rate_limit(request, _code_llm_model_id())
+    await rate_limiter.check_cost_budget(request, _code_llm_model_id())
     llm = _get_code_llm()
     if not llm:
         raise HTTPException(

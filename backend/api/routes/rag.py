@@ -114,6 +114,7 @@ async def rag_query(
     """
     await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="rag_query")
     await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
     try:
         user_id = current_user.get("sub")  # User ID from JWT
 

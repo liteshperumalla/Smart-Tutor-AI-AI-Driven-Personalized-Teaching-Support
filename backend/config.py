@@ -528,6 +528,12 @@ class Config:
     MODEL_RATE_LIMIT_ADMIN = int(os.getenv("MODEL_RATE_LIMIT_ADMIN", "5"))
     MODEL_RATE_LIMIT_WINDOW = int(os.getenv("MODEL_RATE_LIMIT_WINDOW", "3600"))  # 1 hour
 
+    # Per-user daily Bedrock spend cap in USD. Request-count limits above
+    # bound *how often* a user can call the LLM, but not how much a single
+    # burst can cost -- this bounds actual dollars. 0 disables enforcement.
+    # Resets at UTC midnight (see rate_limiter.py's check_cost_budget).
+    DAILY_COST_BUDGET_USD = float(os.getenv("DAILY_COST_BUDGET_USD", "2.00"))
+
     # Max concurrent LLM synthesis calls — backpressure for streaming chat
     LLM_MAX_CONCURRENT = int(os.getenv("LLM_MAX_CONCURRENT", "10"))
 
