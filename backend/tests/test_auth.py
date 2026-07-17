@@ -272,3 +272,51 @@ class TestJWTSecurity:
         response = test_client.get("/auth/me", headers={"Authorization": f"Bearer {refresh_token}"})
         assert response.status_code == 200
         assert response.json().get("user") is None
+
+    def test_refresh_token_revoked_after_logout(self, test_client, test_user):
+        """A stolen refresh token must stop working the moment the user logs out,
+        not just when it eventually expires up to 7 days later."""
+        import re
+        test_client.cookies.clear()
+        login = test_client.post("/auth/login", json={
+            "username": test_user["username"],
+            "password": test_user["password"]
+        })
+        set_cookie = login.headers.get("set-cookie", "")
+        match = re.search(r"refresh_token=([^;]+)", set_cookie)
+        assert match, "No refresh_token found in login cookies"
+        refresh_token = match.group(1)
+
+        logout_response = test_client.post("/auth/logout")
+        assert logout_response.status_code == 200
+
+        # Replay the (now revoked) refresh token directly against /auth/refresh
+        test_client.cookies.clear()
+        response = test_client.post("/auth/refresh", cookies={"refresh_token": refresh_token})
+        assert response.status_code == 401
+
+        test_client.cookies.clear()
+
+    def test_refresh_token_rotates_and_old_one_is_rejected(self, test_client, test_user):
+        """Refresh tokens are single-use: once rotated, the pre-rotation token
+        must be rejected even though it hasn't expired yet."""
+        import re
+        test_client.cookies.clear()
+        login = test_client.post("/auth/login", json={
+            "username": test_user["username"],
+            "password": test_user["password"]
+        })
+        set_cookie = login.headers.get("set-cookie", "")
+        match = re.search(r"refresh_token=([^;]+)", set_cookie)
+        assert match, "No refresh_token found in login cookies"
+        old_refresh_token = match.group(1)
+
+        first_refresh = test_client.post("/auth/refresh")
+        assert first_refresh.status_code == 200
+
+        # Replaying the pre-rotation refresh token must now be rejected
+        test_client.cookies.clear()
+        replay = test_client.post("/auth/refresh", cookies={"refresh_token": old_refresh_token})
+        assert replay.status_code == 401
+
+        test_client.cookies.clear()

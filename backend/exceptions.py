@@ -74,8 +74,8 @@ class AccountLockedError(AuthenticationError):
 
 class SessionExpiredError(AuthenticationError):
     """User session has expired"""
-    def __init__(self):
-        super().__init__("Session expired. Please log in again", "SESSION_EXPIRED")
+    def __init__(self, message: str = "Session expired. Please log in again"):
+        super().__init__(message, "SESSION_EXPIRED")
 
 
 class PasswordValidationError(AuthenticationError):

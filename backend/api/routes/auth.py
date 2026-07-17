@@ -467,17 +467,10 @@ def refresh_token(
 
         tokens = auth_service.refresh_token(refresh_token_value)
 
-        # SECURITY: Set new access token in HttpOnly cookie
-        # Note: Refresh token stays the same
-        response.set_cookie(
-            key="access_token",
-            value=tokens["access_token"],
-            httponly=True,
-            secure=config.ENVIRONMENT == "production",
-            samesite="lax",
-            max_age=config.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            path="/",
-        )
+        # SECURITY: Refresh tokens rotate on every use (single-use) — set_auth_cookies
+        # writes both the new access_token and the new refresh_token cookie, and
+        # matches the domain/secure/samesite attributes used at login.
+        set_auth_cookies(response, tokens["access_token"], tokens["refresh_token"])
 
         # Renew CSRF cookie so it doesn't expire while the user is still logged in
         from backend.csrf_protection import CSRFProtection
@@ -580,7 +573,11 @@ def logout(
     SECURITY: Removes HttpOnly cookies to prevent token reuse.
     """
     token, user = session
-    auth_service.logout(token)
+    # SECURITY: Also revoke the refresh token cookie, not just the access token,
+    # so a copied/stolen refresh_token cookie can't keep minting access tokens
+    # after the user has explicitly logged out.
+    refresh_token_value = request.cookies.get("refresh_token")
+    auth_service.logout(token, refresh_token_value)
 
     # SECURITY: Log logout
     SecurityLogger.log_logout(
