@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from typing import TYPE_CHECKING
 
@@ -102,6 +102,7 @@ def change_password(
 
 @router.delete("")
 def delete_account(
+    request: Request,
     payload: DeleteAccountPayload,
     session=Depends(get_current_session),
     service: ProfileService = Depends(get_profile_service),
@@ -118,7 +119,10 @@ def delete_account(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
-    auth_service.logout(token)
+    # SECURITY: Revoke the refresh token too — the account no longer exists,
+    # so its refresh token must not be able to mint further access tokens.
+    refresh_token_value = request.cookies.get("refresh_token")
+    auth_service.logout(token, refresh_token_value)
     return {"success": True}
 
 

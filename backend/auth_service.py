@@ -750,29 +750,53 @@ class AuthService:
             refresh_token: Valid refresh token
 
         Returns:
-            New tokens dict with access_token and token_type
+            New tokens dict with access_token, refresh_token, and token_type
 
         Raises:
-            SessionExpiredError: If refresh token is invalid
+            SessionExpiredError: If refresh token is invalid or has been revoked
         """
         try:
+            # SECURITY: A refresh token blacklisted at logout (or by a prior
+            # rotation below) must not be usable to mint new access tokens.
+            if self.jwt_blacklist and self.jwt_blacklist.is_blacklisted(refresh_token):
+                raise SessionExpiredError("Refresh token has been revoked")
+
             # Verify refresh token and get new access token
             new_access_token = self.jwt_service.refresh_access_token(refresh_token)
+            payload = self.jwt_service.verify_token(refresh_token, token_type="refresh")
+
+            # SECURITY: Rotate the refresh token on every use (single-use refresh
+            # tokens) so a stolen-but-unused cookie stops working the moment the
+            # legitimate client refreshes, instead of staying valid for 7 days.
+            new_refresh_token = self.jwt_service.create_refresh_token(
+                username=payload.get("sub"), email=payload.get("email", "")
+            )
+            if self.jwt_blacklist:
+                exp = payload.get("exp")
+                if exp:
+                    expiry_seconds = max(int(exp - datetime.now().timestamp()), 0)
+                else:
+                    expiry_seconds = config.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+                self.jwt_blacklist.blacklist_token(refresh_token, expiry_seconds)
 
             logger.info("Access token refreshed successfully")
 
             return {
                 "access_token": new_access_token,
+                "refresh_token": new_refresh_token,
                 "token_type": "bearer"
             }
+        except SessionExpiredError:
+            raise
         except Exception as e:
             logger.warning(f"Token refresh failed: {e}")
             raise SessionExpiredError("Invalid refresh token")
 
-    def logout(self, session_token: str) -> None:
+    def logout(self, session_token: str, refresh_token: Optional[str] = None) -> None:
         """
         Logout and invalidate session.
-        Adds JWT token to blacklist to prevent further use.
+        Adds JWT access token (and, if provided, refresh token) to the blacklist
+        to prevent further use.
         """
         # Remove legacy sessions if they exist
         if session_token in self.sessions:
@@ -809,6 +833,26 @@ class AuthService:
             # Log error but don't fail the logout
             logger.error(f"Error during logout: {e}")
             logger.info("User logged out (token may not be blacklisted)")
+
+        # SECURITY: Also revoke the refresh token. Without this, a stolen refresh
+        # token cookie keeps minting new access tokens for its full 7-day life
+        # even after the legitimate user has explicitly logged out.
+        if refresh_token:
+            try:
+                refresh_payload = self.jwt_service.verify_token(refresh_token, token_type="refresh")
+                refresh_exp = refresh_payload.get("exp")
+                if refresh_exp:
+                    refresh_expiry_seconds = max(int(refresh_exp - datetime.now().timestamp()), 0)
+                else:
+                    refresh_expiry_seconds = config.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600
+
+                if self.jwt_blacklist:
+                    self.jwt_blacklist.blacklist_token(refresh_token, refresh_expiry_seconds)
+                    logger.info("Refresh token blacklisted at logout")
+            except SessionExpiredError:
+                logger.info("Refresh token already expired at logout")
+            except Exception as e:
+                logger.error(f"Error revoking refresh token during logout: {e}")
 
     def change_password(self, username: str, old_password: str, new_password: str) -> None:
         """
