@@ -2,7 +2,11 @@ name: Scheduled RAG Evaluation
 
 on:
   schedule:
-    - cron: "0 6 * * *" # daily at 06:00 UTC
+    # 16:00 UTC = 11am CDT / 10am CST, Mon-Fri only — inside the 9AM-5PM
+    # Central maintenance window so this doesn't wake the cost-saving EC2
+    # instance outside its scheduled hours (it was previously "0 6 * * *",
+    # 1am Central every day including weekends).
+    - cron: "0 16 * * 1-5"
   workflow_dispatch:
     inputs:
       dataset_limit:
