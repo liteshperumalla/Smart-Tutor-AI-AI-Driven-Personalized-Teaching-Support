@@ -154,20 +154,24 @@ class HealthChecker:
         try:
             from backend.config import config
 
-            if not config.S3_VECTORS_BUCKET:
+            # S3_DOCUMENTS_BUCKET is the bucket S3VectorStore and every other
+            # S3-backed service (files, quiz, research) actually reads/writes.
+            # S3_VECTORS_BUCKET is unused elsewhere and its default name was
+            # never provisioned as a real bucket, so checking it always 404s.
+            if not config.S3_DOCUMENTS_BUCKET:
                 return {
                     "status": "not_configured",
-                    "message": "S3_VECTORS_BUCKET is not set"
+                    "message": "S3_DOCUMENTS_BUCKET is not set"
                 }
 
             from backend.cloud.aws_helpers import get_boto3_client
 
             s3 = get_boto3_client("s3")
-            s3.head_bucket(Bucket=config.S3_VECTORS_BUCKET)
+            s3.head_bucket(Bucket=config.S3_DOCUMENTS_BUCKET)
 
             return {
                 "status": "healthy",
-                "bucket": config.S3_VECTORS_BUCKET,
+                "bucket": config.S3_DOCUMENTS_BUCKET,
                 "message": "Accessible"
             }
 
