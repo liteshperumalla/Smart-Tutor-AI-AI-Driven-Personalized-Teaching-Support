@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Docker runs the standalone server, while Vercel packages Next.js output
+  // itself. Enabling standalone on Vercel makes its post-build file lookup
+  // fail because the expected runtime manifest is not emitted there.
+  output: process.env.VERCEL ? undefined : "standalone",
+  turbopack: {
+    // Keep Turbopack scoped to this app when another lockfile exists above it.
+    root: process.cwd(),
+  },
   reactStrictMode: true,
   reactCompiler: true,
   poweredByHeader: false,

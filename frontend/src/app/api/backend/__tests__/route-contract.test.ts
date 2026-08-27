@@ -2,6 +2,10 @@
 
 import { NextRequest } from "next/server";
 
+jest.mock("@/lib/maintenance", () => ({
+  getMaintenanceState: () => ({ isDown: false, resumesLabel: null }),
+}));
+
 import { GET, POST } from "../[...path]/route";
 
 describe("backend proxy contract", () => {
@@ -101,14 +105,19 @@ describe("backend proxy contract", () => {
     expect(init.headers.get("x-real-ip")).toBeNull();
   });
 
-  it("returns a gateway error when the backend is unavailable", async () => {
+  it("returns a classified service-unavailable response when the backend is unavailable", async () => {
     fetchSpy.mockRejectedValueOnce(new TypeError("network down"));
     const response = await GET(
       new NextRequest("http://localhost:4000/api/backend/home/overview"),
       { params: { path: ["home", "overview"] } }
     );
 
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({ detail: "The backend is temporarily unavailable" });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("300");
+    await expect(response.json()).resolves.toEqual({
+      detail: "Backend temporarily unavailable. Please try again shortly.",
+      reason: "backend_unavailable",
+      resumes: null,
+    });
   });
 });

@@ -231,7 +231,7 @@ class ResourceService:
         for resource in resources:
             if resource.get("id") == resource_id:
                 resource["indexing_status"] = dict(progress)
-                resource["updated_at"] = datetime.utcnow().isoformat()
+                resource["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_resources(resources)
                 return
 
