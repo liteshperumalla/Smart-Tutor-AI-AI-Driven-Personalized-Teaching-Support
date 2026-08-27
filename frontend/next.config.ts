@@ -15,10 +15,21 @@ const nextConfig: NextConfig = {
 
   // Security headers
   async headers() {
+    const isProduction = process.env.NODE_ENV === "production";
     // Check if we're running on localhost/development
     const isLocalhost = process.env.NEXT_PUBLIC_APP_BASE_URL?.includes('localhost') ||
                         process.env.HOSTNAME === 'localhost' ||
                         !process.env.NEXT_PUBLIC_APP_BASE_URL?.startsWith('https');
+    const developmentConnectSources = isProduction
+      ? []
+      : [
+          "http://localhost:8010",
+          "http://localhost:8000",
+          "http://backend:8000",
+          "https://localhost:8010",
+          "https://localhost:8000",
+          "https://backend:8000",
+        ];
 
     return [
       {
@@ -32,7 +43,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com https://api.fontshare.com",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://accounts.google.com https://us.i.posthog.com https://us-assets.i.posthog.com http://localhost:8010 http://localhost:8000 http://backend:8000 https://localhost:8010 https://localhost:8000 https://backend:8000 http://52.2.3.101",
+              `connect-src 'self' https://accounts.google.com https://us.i.posthog.com https://us-assets.i.posthog.com ${developmentConnectSources.join(" ")}`.trim(),
               "frame-src 'self' https://accounts.google.com",
               "object-src 'none'",
               "base-uri 'self'",

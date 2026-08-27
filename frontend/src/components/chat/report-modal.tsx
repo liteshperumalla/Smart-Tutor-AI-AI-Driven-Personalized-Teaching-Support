@@ -18,6 +18,7 @@ interface ReportModalProps {
   sessionId: string;
   messageIndex: number;
   token: string | null;
+  courseId?: string;
 }
 
 export function ReportModal({
@@ -26,6 +27,7 @@ export function ReportModal({
   sessionId,
   messageIndex,
   token,
+  courseId,
 }: ReportModalProps) {
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [otherText, setOtherText] = useState("");
@@ -72,6 +74,7 @@ export function ReportModal({
         messageIndex,
         feedbackType: "report",
         reason: reasonText,
+        courseId,
       });
       setIsSubmitted(true);
       // Close modal after a brief delay
@@ -83,7 +86,7 @@ export function ReportModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [token, sessionId, messageIndex, selectedReason, otherText, onClose]);
+  }, [token, sessionId, messageIndex, courseId, selectedReason, otherText, onClose]);
 
   if (!isOpen) return null;
 

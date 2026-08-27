@@ -5,7 +5,10 @@ metadata:
   namespace: monitoring
 data:
   loki.yaml: |
-    auth_enabled: false
+    # auth_enabled controls whether multi-tenancy is active.
+    # In production, set to true so that only authenticated Grafana datasource
+    # connections (with valid X-Scope-OrgID header) can query logs.
+    auth_enabled: true
 
     server:
       http_listen_port: 3100

@@ -6,13 +6,19 @@ Implements the Prompt Versioning & A/B Testing pattern from LLMOps:
 - Retrieve a specific version or the latest
 - Track per-version usage and user satisfaction votes
 
-Storage: logs/prompt_registry.json  (plain JSON, easy to back up / export).
-In production, swap _load/_save for a Redis hash or DynamoDB item.
+Storage Backend (selected via PROMPT_REGISTRY_BACKEND env var):
+  - "redis"    : Redis hash (distributed, survives pod restarts)  ← production
+  - "dynamodb" : DynamoDB item (serverless, durable)              ← serverless
+  - "file"     : Local JSON file (dev / offline fallback)         ← default
+
+Set PROMPT_REGISTRY_BACKEND=redis in .env / Secrets Manager to enable
+distributed storage in production.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,11 +29,143 @@ from backend.logger import get_logger
 logger = get_logger(__name__)
 
 REGISTRY_FILE = Path("logs/prompt_registry.json")
+_BACKEND = os.getenv("PROMPT_REGISTRY_BACKEND", "file").lower()
+_REDIS_KEY = "smart_ai_tutor:prompt_registry"
+_DYNAMO_TABLE = os.getenv("PROMPT_REGISTRY_DYNAMO_TABLE", "smart-tutor-prompt-registry")
+_DYNAMO_PK = "prompt_registry_singleton"
 
+
+# =============================================================================
+# Storage backend implementations
+# =============================================================================
+
+class _FileBackend:
+    """Local JSON file — dev/offline only. Not safe across multiple pods."""
+
+    def load(self) -> Dict[str, Any]:
+        REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if REGISTRY_FILE.exists():
+            try:
+                return json.loads(REGISTRY_FILE.read_text())
+            except Exception as exc:
+                logger.warning("Prompt registry file load failed: %s", exc)
+        return {}
+
+    def save(self, data: Dict[str, Any]) -> None:
+        try:
+            REGISTRY_FILE.write_text(json.dumps(data, indent=2))
+        except Exception as exc:
+            logger.warning("Prompt registry file save failed: %s", exc)
+
+    @property
+    def name(self) -> str:
+        return "file"
+
+
+class _RedisBackend:
+    """
+    Redis HASH backend — distributed, survives pod restarts.
+    Entire registry is stored as a single JSON string in a Redis key.
+    Requires REDIS_HOST / REDIS_PORT / REDIS_PASSWORD to be configured.
+    """
+
+    def __init__(self) -> None:
+        import redis as _redis
+        from backend.config import config
+
+        self._client = _redis.Redis(
+            host=config.REDIS_HOST,
+            port=config.REDIS_PORT,
+            password=config.REDIS_PASSWORD or None,
+            ssl=config.REDIS_SSL,
+            decode_responses=True,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+        )
+        # Verify connection
+        self._client.ping()
+        logger.info("PromptRegistry: connected to Redis backend (%s:%s)", config.REDIS_HOST, config.REDIS_PORT)
+
+    def load(self) -> Dict[str, Any]:
+        try:
+            raw = self._client.get(_REDIS_KEY)
+            if raw:
+                return json.loads(raw)
+        except Exception as exc:
+            logger.warning("PromptRegistry Redis load failed: %s", exc)
+        return {}
+
+    def save(self, data: Dict[str, Any]) -> None:
+        try:
+            self._client.set(_REDIS_KEY, json.dumps(data))
+        except Exception as exc:
+            logger.warning("PromptRegistry Redis save failed: %s", exc)
+
+    @property
+    def name(self) -> str:
+        return "redis"
+
+
+class _DynamoBackend:
+    """
+    DynamoDB backend — serverless, durable, strongly consistent.
+    Requires AWS credentials and PROMPT_REGISTRY_DYNAMO_TABLE to be set.
+    """
+
+    def __init__(self) -> None:
+        import boto3
+        self._table = boto3.resource("dynamodb").Table(_DYNAMO_TABLE)
+        logger.info("PromptRegistry: connected to DynamoDB backend (table=%s)", _DYNAMO_TABLE)
+
+    def load(self) -> Dict[str, Any]:
+        try:
+            resp = self._table.get_item(Key={"pk": _DYNAMO_PK})
+            item = resp.get("Item", {})
+            if "data" in item:
+                return json.loads(item["data"])
+        except Exception as exc:
+            logger.warning("PromptRegistry DynamoDB load failed: %s", exc)
+        return {}
+
+    def save(self, data: Dict[str, Any]) -> None:
+        try:
+            self._table.put_item(Item={"pk": _DYNAMO_PK, "data": json.dumps(data)})
+        except Exception as exc:
+            logger.warning("PromptRegistry DynamoDB save failed: %s", exc)
+
+    @property
+    def name(self) -> str:
+        return "dynamodb"
+
+
+def _build_backend() -> _FileBackend | _RedisBackend | _DynamoBackend:
+    """Instantiate the configured storage backend, falling back to file on error."""
+    if _BACKEND == "redis":
+        try:
+            return _RedisBackend()
+        except Exception as exc:
+            logger.warning(
+                "PromptRegistry: Redis backend init failed (%s) — falling back to file backend", exc
+            )
+    elif _BACKEND == "dynamodb":
+        try:
+            return _DynamoBackend()
+        except Exception as exc:
+            logger.warning(
+                "PromptRegistry: DynamoDB backend init failed (%s) — falling back to file backend", exc
+            )
+    if _BACKEND not in ("file", "redis", "dynamodb"):
+        logger.warning("Unknown PROMPT_REGISTRY_BACKEND=%r — using file backend", _BACKEND)
+    return _FileBackend()
+
+
+# =============================================================================
+# PromptRegistry
+# =============================================================================
 
 class PromptRegistry:
     """
-    Thread-safe versioned prompt store.
+    Thread-safe versioned prompt store with pluggable storage backend.
 
     Each prompt name maps to a list of version entries::
 
@@ -42,26 +180,19 @@ class PromptRegistry:
     """
 
     def __init__(self) -> None:
-        REGISTRY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self._backend = _build_backend()
         self._lock = threading.Lock()
         self._data: Dict[str, List[Dict[str, Any]]] = {}
         self._load()
+        logger.info("PromptRegistry initialized (backend=%s)", self._backend.name)
 
     # ── Persistence ───────────────────────────────────────────────────
 
     def _load(self) -> None:
-        if REGISTRY_FILE.exists():
-            try:
-                self._data = json.loads(REGISTRY_FILE.read_text())
-            except Exception as exc:
-                logger.warning("Prompt registry load failed: %s", exc)
-                self._data = {}
+        self._data = self._backend.load()
 
     def _save(self) -> None:
-        try:
-            REGISTRY_FILE.write_text(json.dumps(self._data, indent=2))
-        except Exception as exc:
-            logger.warning("Prompt registry save failed: %s", exc)
+        self._backend.save(self._data)
 
     # ── CRUD ──────────────────────────────────────────────────────────
 
@@ -88,7 +219,7 @@ class PromptRegistry:
             versions.append(entry)
             self._data[name] = versions
             self._save()
-            logger.info("Prompt '%s' registered as %s", name, version)
+            logger.info("Prompt '%s' registered as %s (backend=%s)", name, version, self._backend.name)
             return entry
 
     def get(self, name: str, version: str = "latest") -> Optional[Dict[str, Any]]:
@@ -167,6 +298,11 @@ class PromptRegistry:
             elif vote == "thumbs_down":
                 target["metrics"]["thumbs_down"] = target["metrics"].get("thumbs_down", 0) + 1
             self._save()
+
+    # ── Backend Info ──────────────────────────────────────────────────
+
+    def backend_info(self) -> Dict[str, str]:
+        return {"backend": self._backend.name}
 
 
 # ── Singleton ─────────────────────────────────────────────────────────

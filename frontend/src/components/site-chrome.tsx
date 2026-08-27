@@ -16,7 +16,9 @@ import {
   createChatSession,
   pinChatSession,
   archiveChatSession,
+  fetchCourses,
 } from "@/lib/api";
+import { loginPathFor } from "@/lib/safe-next";
 import { dispatchChatSessionsUpdated } from "@/lib/events";
 import { CHAT_SESSIONS_UPDATED_EVENT } from "@/lib/events";
 import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
@@ -49,7 +51,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 
-type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }>; adminOnly?: boolean };
+type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }>; adminOnly?: boolean; instructorOnly?: boolean };
 
 const navIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "/": Home,
@@ -62,6 +64,7 @@ const navIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "/feedback": MessageSquare,
   "/profile": User,
   "/admin": ShieldAlert,
+  "/instructor": GraduationCap,
 };
 
 export function SiteChrome({
@@ -90,6 +93,7 @@ export function SiteChrome({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [hasInstructorCourse, setHasInstructorCourse] = useState(false);
   const router = useRouter();
   const year = new Date().getFullYear();
 
@@ -110,8 +114,22 @@ export function SiteChrome({
     }
   }, [token]);
 
+  useEffect(() => {
+    if (!token || isAdmin) {
+      setHasInstructorCourse(Boolean(isAdmin));
+      return;
+    }
+    fetchCourses(token)
+      .then((courses) => setHasInstructorCourse(courses.some((course) => course.membership_role === "instructor")))
+      .catch(() => setHasInstructorCourse(false));
+  }, [isAdmin, token]);
+
   const handleCreateSession = useCallback(async () => {
-    if (!token || isCreatingSession) return;
+    if (!token) {
+      router.push(loginPathFor("/chat"));
+      return;
+    }
+    if (isCreatingSession) return;
     setIsCreatingSession(true);
     try {
       const next = await createChatSession({ token, title: undefined });
@@ -320,6 +338,9 @@ export function SiteChrome({
       if (!a.is_pinned && b.is_pinned) return 1;
       return 0;
     });
+  const visibleNavLinks = navLinks.filter(
+    (link) => (!link.adminOnly || isAdmin) && (!link.instructorOnly || hasInstructorCourse)
+  );
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -449,6 +470,13 @@ export function SiteChrome({
         )}
 
         <nav className="flex-1 px-4 flex flex-col min-h-0 overflow-hidden">
+          <div className="mb-4 grid gap-1">
+            {visibleNavLinks.map((link) => {
+              const Icon = navIcons[link.href] || FolderOpen;
+              const selected = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
+              return <Link key={link.href} href={link.href} onClick={() => setMobileNavOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${selected ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}><Icon className="h-4 w-4" />{link.label}</Link>;
+            })}
+          </div>
           {!isLoggedIn && (
             <div className="rounded-xl border border-dashed border-zinc-200 bg-white/70 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
               <p className="font-semibold">You are not signed in yet.</p>
@@ -681,8 +709,8 @@ export function SiteChrome({
         <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
           <nav aria-label="Site navigation" className="mx-auto max-w-6xl px-4 py-2 sm:px-6">
             <div className="flex flex-nowrap items-center justify-center">
-              {navLinks
-                .filter((link) => !link.adminOnly || isAdmin)
+              {visibleNavLinks
+                .filter((link) => ["/", "/chat", "/quiz", "/profile"].includes(link.href))
                 .map((link) => {
                   const Icon = navIcons[link.href] || FolderOpen;
                   return (

@@ -112,9 +112,11 @@ class SecurityVerifier:
         print("\n🔍 Checking JWT blacklist...")
 
         try:
-            from backend.jwt_blacklist import get_jwt_blacklist
+            from backend.jwt_blacklist import get_jwt_blacklist, init_jwt_blacklist
 
             blacklist = get_jwt_blacklist()
+            if not blacklist:
+                blacklist = init_jwt_blacklist()
 
             if blacklist:
                 stats = blacklist.get_stats()
@@ -123,7 +125,7 @@ class SecurityVerifier:
                 else:
                     self.warnings.append("JWT blacklist using in-memory fallback (not distributed)")
             else:
-                self.warnings.append("JWT blacklist not initialized (call init_jwt_blacklist)")
+                self.warnings.append("JWT blacklist not initialized")
 
         except Exception as e:
             self.errors.append(f"JWT blacklist check failed: {e}")

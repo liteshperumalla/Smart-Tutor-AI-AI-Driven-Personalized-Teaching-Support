@@ -52,10 +52,13 @@ def print_health_component(name: str, info: dict, indent: int = 0):
     if "statistics" in info and isinstance(info["statistics"], dict):
         print(f"{prefix}   Statistics:")
         for cache_name, cache_stats in info["statistics"].items():
-            print(f"{prefix}     - {cache_name}:")
-            for key, value in cache_stats.items():
-                if key != 'backend':
-                    print(f"{prefix}         {key}: {value}")
+            if isinstance(cache_stats, dict):
+                print(f"{prefix}     - {cache_name}:")
+                for key, value in cache_stats.items():
+                    if key != 'backend':
+                        print(f"{prefix}         {key}: {value}")
+            else:
+                print(f"{prefix}     - {cache_name}: {cache_stats}")
 
 
 def print_feature_status(features: dict, phase_name: str):

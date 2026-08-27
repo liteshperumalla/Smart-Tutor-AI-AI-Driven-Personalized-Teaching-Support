@@ -199,8 +199,8 @@ services:
         - BACKEND_API_BASE_URL=http://backend:8000
         - NEXT_PUBLIC_APP_BASE_URL=${NEXT_PUBLIC_APP_BASE_URL:-http://localhost:4000}
         # SECURITY: OAuth credentials from .env — never hardcode in compose
-        - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
-        - NEXT_PUBLIC_GOOGLE_REDIRECT_URI=${NEXT_PUBLIC_GOOGLE_REDIRECT_URI:-http://localhost:4000/auth/google/callback}
+        - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-${GOOGLE_OAUTH_CLIENT_ID:-}}
+        - NEXT_PUBLIC_GOOGLE_REDIRECT_URI=${NEXT_PUBLIC_GOOGLE_REDIRECT_URI:-${GOOGLE_OAUTH_REDIRECT_URI:-http://localhost:4000/auth/google/callback}}
     container_name: smart-tutor-frontend
     ports:
       - "127.0.0.1:${FRONTEND_PORT_EXPOSE:-4000}:4000"
@@ -353,9 +353,9 @@ services:
       - smart-tutor-network
     restart: unless-stopped
     healthcheck:
-      # /api/tags returns {"models":[...]} with HTTP 200 only when Ollama is fully ready.
-      # The root "/" endpoint returns plain text and is less reliable for health checks.
-      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      # The official image has no curl or wget. Its CLI checks the local API
+      # and exits non-zero until the server is ready.
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       start_period: 120s

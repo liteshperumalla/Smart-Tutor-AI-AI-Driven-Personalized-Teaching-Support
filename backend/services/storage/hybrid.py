@@ -135,6 +135,11 @@ class HybridStorageBackend(BaseStorageBackend):
             self.postgres.close()
         logger.info("Hybrid storage backend connections closed")
 
+    def check_health(self) -> None:
+        """Verify both authoritative stores used by the hybrid backend."""
+        self.postgres.check_health()
+        self.dynamodb.check_health()
+
 
 # Singleton instance
 _hybrid_backend = None

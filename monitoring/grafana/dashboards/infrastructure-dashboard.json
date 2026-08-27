@@ -508,16 +508,12 @@
                 "value": null
               },
               {
-                "color": "yellow",
-                "value": 50
-              },
-              {
                 "color": "green",
-                "value": 70
+                "value": 1
               }
             ]
           },
-          "unit": "percent"
+          "unit": "none"
         }
       },
       "gridPos": {
@@ -539,11 +535,11 @@
       },
       "targets": [
         {
-          "expr": "(redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)) * 100",
+          "expr": "up{job=\"redis\"}",
           "refId": "A"
         }
       ],
-      "title": "Redis Cache Hit Rate",
+      "title": "Redis Exporter Health",
       "type": "gauge"
     }
   ],

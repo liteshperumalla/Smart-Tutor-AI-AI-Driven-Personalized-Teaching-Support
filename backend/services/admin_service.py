@@ -100,6 +100,7 @@ class AdminService:
     def get_all_feedback(
         self,
         feedback_type: Optional[str] = None,
+        course_id: Optional[str] = None,
         limit: int = 200,
     ) -> List[Dict[str, Any]]:
         """Scan feedback, bug reports, and message reports across all users."""
@@ -130,6 +131,8 @@ class AdminService:
                                     entry = json.loads(line)
                                     entry["username"] = username
                                     entry["type"] = kind
+                                    if course_id and entry.get("course_id") != course_id:
+                                        continue
                                     # Generate a deterministic ID for status tracking
                                     entry.setdefault(
                                         "id",
@@ -167,6 +170,8 @@ class AdminService:
 
                         if entry.get("feedback_type") != "report":
                             continue
+                        if course_id and entry.get("course_id") != course_id:
+                            continue
 
                         reason = entry.get("reason")
                         report_entry = {
@@ -188,6 +193,7 @@ class AdminService:
                             "message": reason,
                             "session_id": str(entry.get("session_id") or ""),
                             "message_index": _coerce_int(entry.get("message_index")),
+                            "course_id": entry.get("course_id"),
                         }
                         entries.append(report_entry)
             except OSError:

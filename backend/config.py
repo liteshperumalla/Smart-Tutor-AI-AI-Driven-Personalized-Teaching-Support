@@ -108,6 +108,7 @@ class Config:
     ALLOWED_REDIRECT_DOMAINS = os.getenv("ALLOWED_REDIRECT_DOMAINS", "").split(",")
     CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
     CORS_ALLOW_LOCALHOST = os.getenv("CORS_ALLOW_LOCALHOST", "false").lower() == "true"
+    TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "").split(",") if host.strip()]
 
     # JWT Settings - with AWS Secrets Manager support
     JWT_SECRET_KEY = (
@@ -694,6 +695,12 @@ class Config:
                 errors.append(
                     "CRITICAL: CORS_ALLOWED_ORIGINS must be set in production. "
                     "Example: CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://app.yourdomain.com"
+                )
+
+            if not cls.TRUSTED_HOSTS:
+                errors.append(
+                    "CRITICAL: TRUSTED_HOSTS must be set in production. "
+                    "Use the public API hostname(s), for example api.example.edu."
                 )
 
             # Database password validation

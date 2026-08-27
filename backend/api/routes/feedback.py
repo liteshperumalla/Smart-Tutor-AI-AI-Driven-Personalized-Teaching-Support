@@ -7,13 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
+from backend.csrf_protection import csrf_protect
 from backend.rate_limiter import limiter, PerUserRateLimiter
 
 if TYPE_CHECKING:
     from backend.services.feedback_service import FeedbackService
 
 
-router = APIRouter(prefix="/feedback", tags=["feedback"])
+router = APIRouter(prefix="/feedback", tags=["feedback"], dependencies=[Depends(csrf_protect)])
 
 _FEEDBACK_LIMIT = 12
 _FEEDBACK_WINDOW = 3600
@@ -38,6 +39,7 @@ class FeedbackPayload(BaseModel):
     message: str = Field(..., min_length=10)
     name: str | None = None
     email: EmailStr | None = None
+    course_id: str | None = Field(default=None, max_length=64)
 
 
 class BugReportPayload(BaseModel):
@@ -47,6 +49,7 @@ class BugReportPayload(BaseModel):
     steps: str | None = None
     name: str | None = None
     email: EmailStr | None = None
+    course_id: str | None = Field(default=None, max_length=64)
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -70,6 +73,9 @@ async def submit_feedback(
         scope="feedback_submit",
     )
     _, user = session
+    if payload.course_id:
+        from backend.services.learning_service import get_learning_service
+        get_learning_service().require_access(user["username"], user, payload.course_id)
     entry = FeedbackEntry(
         username=user["username"],
         name=payload.name or "",
@@ -77,6 +83,7 @@ async def submit_feedback(
         category=payload.category,
         message=payload.message,
         created_at=datetime.now(timezone.utc),
+        course_id=payload.course_id,
     )
     try:
         service.log_feedback(entry)
@@ -112,6 +119,9 @@ async def submit_bug(
         scope="bug_submit",
     )
     _, user = session
+    if payload.course_id:
+        from backend.services.learning_service import get_learning_service
+        get_learning_service().require_access(user["username"], user, payload.course_id)
     entry = BugReportEntry(
         username=user["username"],
         name=payload.name or "",
@@ -121,6 +131,7 @@ async def submit_bug(
         description=payload.description,
         steps=payload.steps or "",
         created_at=datetime.now(timezone.utc),
+        course_id=payload.course_id,
     )
     try:
         service.log_bug_report(entry)

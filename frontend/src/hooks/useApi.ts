@@ -2,7 +2,7 @@
  * Custom React hooks for API calls with comprehensive error handling
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { apiRequest, APIError } from "@/lib/api-client";
 import { getApiBaseUrl } from "@/lib/api";
 import { useAuthToken } from "./useAuthToken";
@@ -162,20 +162,21 @@ export function useApiQuery<T>(
     setLoading(false);
   }, []);
 
-  // Auto-fetch on mount if enabled
-  useState(() => {
+  // Auto-fetch on mount and when the enabled/token state changes.
+  useEffect(() => {
     if (options?.enabled !== false && token) {
-      fetchData();
+      void fetchData();
     }
-  });
+  }, [fetchData, options?.enabled, token]);
 
-  // Set up interval if specified
-  useState(() => {
+  // Keep periodic refetching lifecycle-bound so intervals are cleaned up.
+  useEffect(() => {
     if (options?.refetchInterval && options?.enabled !== false && token) {
       const interval = setInterval(fetchData, options.refetchInterval);
       return () => clearInterval(interval);
     }
-  });
+    return undefined;
+  }, [fetchData, options?.enabled, options?.refetchInterval, token]);
 
   return { data, error, loading, execute, reset, refetch };
 }

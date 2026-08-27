@@ -139,6 +139,7 @@ class ResourceService:
         description: str = "",
         order: int = 0,
         created_by: str = "admin",
+        course_id: str | None = None,
     ) -> Dict[str, Any]:
         resource = {
             "id": str(uuid.uuid4()),
@@ -154,6 +155,7 @@ class ResourceService:
             "order": order,
             "active": True,
             "created_by": created_by,
+            "course_id": course_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -173,6 +175,7 @@ class ResourceService:
         description: str = "",
         order: int = 0,
         created_by: str = "admin",
+        course_id: str | None = None,
     ) -> Optional[Dict[str, Any]]:
         # Sanitise filename for S3 key
         safe_name = file_name.replace(" ", "_")
@@ -196,6 +199,7 @@ class ResourceService:
             "order": order,
             "active": True,
             "created_by": created_by,
+            "course_id": course_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -209,7 +213,7 @@ class ResourceService:
         self, resource_id: str, updates: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         resources = self._read_resources()
-        allowed = {"category", "title", "url", "description", "order", "active"}
+        allowed = {"category", "title", "url", "description", "order", "active", "course_id"}
         for res in resources:
             if res["id"] == resource_id:
                 for key in allowed:
@@ -220,6 +224,29 @@ class ResourceService:
                 logger.info("Updated resource: %s", resource_id)
                 return res
         return None
+
+    def update_indexing_status(self, resource_id: str, progress: Dict[str, Any]) -> None:
+        """Persist the last known indexing outcome beyond Redis/process lifetime."""
+        resources = self._read_resources()
+        for resource in resources:
+            if resource.get("id") == resource_id:
+                resource["indexing_status"] = dict(progress)
+                resource["updated_at"] = datetime.utcnow().isoformat()
+                self._write_resources(resources)
+                return
+
+    def assign_unscoped_resources_to_course(self, course_id: str) -> int:
+        """One-time compatibility migration for the original single-course catalog."""
+        resources = self._read_resources()
+        changed = 0
+        for resource in resources:
+            if resource.get("course_id") is None:
+                resource["course_id"] = course_id
+                resource["updated_at"] = datetime.utcnow().isoformat()
+                changed += 1
+        if changed:
+            self._write_resources(resources)
+        return changed
 
     def delete_resource(self, resource_id: str) -> bool:
         resources = self._read_resources()

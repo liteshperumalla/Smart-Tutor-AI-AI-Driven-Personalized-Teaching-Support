@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy only backend dependency manifest
 COPY backend/requirements.txt ./requirements.txt
+COPY alembic.ini ./alembic.ini
 
 # Install Python dependencies (as root).
 # Use PyTorch CPU index as primary so torch resolves to CPU wheels instead of CUDA builds.

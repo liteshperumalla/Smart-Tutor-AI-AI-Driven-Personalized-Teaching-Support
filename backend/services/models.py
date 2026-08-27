@@ -61,6 +61,7 @@ class ChatSession:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     is_pinned: bool = False
     is_archived: bool = False
+    course_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         # Handle both ChatMessage objects and dicts (from DynamoDB)
@@ -82,6 +83,7 @@ class ChatSession:
             "updated_at": self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else self.updated_at,
             "is_pinned": self.is_pinned,
             "is_archived": self.is_archived,
+            "course_id": self.course_id,
         }
 
     @classmethod
@@ -118,6 +120,7 @@ class ChatSession:
             updated_at=parse_timestamp(updated_at),
             is_pinned=data.get("is_pinned", False),
             is_archived=data.get("is_archived", False),
+            course_id=data.get("course_id"),
         )
 
 

@@ -35,6 +35,9 @@ def get_storage_backend() -> BaseStorageBackend:
                 _storage_backend = get_hybrid_backend()
                 logger.info("Using Hybrid storage backend (PostgreSQL + DynamoDB)")
             except Exception as e:
+                if config.ENVIRONMENT == "production":
+                    logger.critical("Hybrid storage initialization failed in production", exc_info=True)
+                    raise RuntimeError("Production storage backend is unavailable") from e
                 logger.warning(f"Failed to initialize hybrid backend, falling back to filesystem: {e}")
                 _storage_backend = FileSystemStorageBackend()
 
@@ -44,6 +47,9 @@ def get_storage_backend() -> BaseStorageBackend:
                 _storage_backend = get_postgres_backend()
                 logger.info("Using PostgreSQL storage backend")
             except Exception as e:
+                if config.ENVIRONMENT == "production":
+                    logger.critical("PostgreSQL storage initialization failed in production", exc_info=True)
+                    raise RuntimeError("Production storage backend is unavailable") from e
                 logger.warning(f"Failed to initialize postgres backend, falling back to filesystem: {e}")
                 _storage_backend = FileSystemStorageBackend()
 
@@ -53,6 +59,9 @@ def get_storage_backend() -> BaseStorageBackend:
                 _storage_backend = get_dynamodb_backend()
                 logger.info("Using DynamoDB storage backend")
             except Exception as e:
+                if config.ENVIRONMENT == "production":
+                    logger.critical("DynamoDB storage initialization failed in production", exc_info=True)
+                    raise RuntimeError("Production storage backend is unavailable") from e
                 logger.warning(f"Failed to initialize dynamodb backend, falling back to filesystem: {e}")
                 _storage_backend = FileSystemStorageBackend()
         else:

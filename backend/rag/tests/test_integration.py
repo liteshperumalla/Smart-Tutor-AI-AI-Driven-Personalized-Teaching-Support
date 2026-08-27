@@ -480,6 +480,35 @@ class TestABTestingIntegration:
 class TestPerformanceMonitoring:
     """Test performance monitoring integration."""
 
+    def test_query_cache_emits_one_metric_per_lookup(self):
+        """Application metrics must reflect query-cache outcomes, not Redis internals."""
+        cache = RAGCache(enable_memory=True, enable_redis=False, enable_s3=False)
+
+        with patch("backend.rag.caching_layer.track_cache_miss") as track_miss, \
+             patch("backend.rag.caching_layer.track_cache_hit") as track_hit:
+            assert cache.get_query_result("What is retrieval-augmented generation?") is None
+            cache.put_query_result(
+                "What is retrieval-augmented generation?",
+                {"answer": "A grounded generation technique."},
+            )
+            assert cache.get_query_result("What is retrieval-augmented generation?") is not None
+
+        track_miss.assert_called_once_with(cache_type="query_result")
+        track_hit.assert_called_once_with(cache_type="query_result")
+
+    def test_embedding_cache_emits_one_metric_per_lookup(self):
+        """Embedding cache metrics distinguish a miss from a subsequent hit."""
+        cache = RAGCache(enable_memory=True, enable_redis=False, enable_s3=False)
+
+        with patch("backend.rag.caching_layer.track_cache_miss") as track_miss, \
+             patch("backend.rag.caching_layer.track_cache_hit") as track_hit:
+            assert cache.get_embedding("cacheable text") is None
+            cache.put_embedding("cacheable text", [0.1, 0.2])
+            assert cache.get_embedding("cacheable text") == [0.1, 0.2]
+
+        track_miss.assert_called_once_with(cache_type="embedding")
+        track_hit.assert_called_once_with(cache_type="embedding")
+
     @pytest.mark.asyncio
     async def test_latency_tracking(self, rag_pipeline):
         """Test latency tracking in pipeline."""

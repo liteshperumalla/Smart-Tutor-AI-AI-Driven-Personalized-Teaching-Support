@@ -25,6 +25,7 @@ class MessageFeedback:
     message_index: int
     feedback_type: FeedbackType
     reason: Optional[str] = None
+    course_id: Optional[str] = None
     created_at: Optional[str] = None
 
     def __post_init__(self):
@@ -41,6 +42,7 @@ class MessageFeedback:
             message_index=data["message_index"],
             feedback_type=data["feedback_type"],
             reason=data.get("reason"),
+            course_id=data.get("course_id"),
             created_at=data.get("created_at"),
         )
 

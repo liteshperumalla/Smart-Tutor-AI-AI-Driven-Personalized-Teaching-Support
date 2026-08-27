@@ -15,15 +15,27 @@ logger = logging.getLogger(__name__)
 
 
 def _build_client_kwargs() -> dict[str, Any]:
-    """Build shared kwargs for boto3 clients from config."""
-    from backend.config import config
+    """Build shared kwargs for boto3 clients from config or env."""
+    import os
 
-    kwargs: dict[str, Any] = {"region_name": config.AWS_REGION}
-    if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
-        kwargs["aws_access_key_id"] = config.AWS_ACCESS_KEY_ID
-        kwargs["aws_secret_access_key"] = config.AWS_SECRET_ACCESS_KEY
-        if config.AWS_SESSION_TOKEN:
-            kwargs["aws_session_token"] = config.AWS_SESSION_TOKEN
+    try:
+        from backend.config import config
+        region = getattr(config, "AWS_REGION", None) or os.getenv("AWS_REGION", "us-east-1")
+        access_key = getattr(config, "AWS_ACCESS_KEY_ID", None) or os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = getattr(config, "AWS_SECRET_ACCESS_KEY", None) or os.getenv("AWS_SECRET_ACCESS_KEY")
+        session_token = getattr(config, "AWS_SESSION_TOKEN", None) or os.getenv("AWS_SESSION_TOKEN")
+    except (ImportError, AttributeError):
+        region = os.getenv("AWS_REGION", "us-east-1")
+        access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+        session_token = os.getenv("AWS_SESSION_TOKEN")
+
+    kwargs: dict[str, Any] = {"region_name": region}
+    if access_key and secret_key:
+        kwargs["aws_access_key_id"] = access_key
+        kwargs["aws_secret_access_key"] = secret_key
+        if session_token:
+            kwargs["aws_session_token"] = session_token
     return kwargs
 
 

@@ -47,22 +47,6 @@ export function getApiBaseUrl(): string {
   return resolveApiBaseUrl();
 }
 
-// Get direct backend URL for admin/file operations that should bypass the proxy
-function getDirectBackendUrl(): string {
-  // On server side, use the backend URL directly
-  if (typeof window === "undefined") {
-    return process.env.BACKEND_API_BASE_URL || "http://localhost:8010";
-  }
-  // On client side, prefer an explicit public backend URL (e.g. EC2 IP via nginx port 80)
-  if (process.env.NEXT_PUBLIC_BACKEND_URL) {
-    return process.env.NEXT_PUBLIC_BACKEND_URL;
-  }
-  // Fallback: construct from window.location + port
-  const { protocol, hostname } = window.location;
-  const backendPort = process.env.NEXT_PUBLIC_BACKEND_PORT || "8010";
-  return `${protocol}//${hostname}:${backendPort}`;
-}
-
 function joinApiUrl(baseUrl: string, path: string): string {
   const normalizedBase = baseUrl.replace(/\/$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -86,23 +70,9 @@ function readCsrfTokenCookie(): string | null {
 }
 
 function getAdminRequestTargets(path: string): string[] {
-  const targets: string[] = [];
-
-  const addTarget = (url: string) => {
-    if (url && !targets.includes(url)) {
-      targets.push(url);
-    }
-  };
-
-  if (typeof window !== "undefined") {
-    addTarget(joinApiUrl(CLIENT_PROXY_API_BASE_URL, path));
-    addTarget(joinApiUrl(getDirectBackendUrl(), path));
-  } else {
-    addTarget(joinApiUrl(getDirectBackendUrl(), path));
-    addTarget(joinApiUrl(resolveApiBaseUrl(), path));
-  }
-
-  return targets;
+  // Keep browser requests same-origin. A public port fallback is unreliable in
+  // deployments and can bypass the cookie/security boundary of the app proxy.
+  return [joinApiUrl(resolveApiBaseUrl(), path)];
 }
 
 async function parseRequestError(response: Response): Promise<Error & { status?: number }> {
@@ -117,10 +87,8 @@ async function parseRequestError(response: Response): Promise<Error & { status?:
 }
 
 /**
- * Admin request — use the same-origin proxy first in the browser so production
- * deployments keep a working auth/cookie path, then fall back to the direct
- * backend URL when needed. Admin auth is still enforced by the backend's
- * get_admin_session dependency (role == "Admin").
+ * Admin requests always use the configured API base. In the browser this is the
+ * same-origin proxy, preserving the application's auth and security boundary.
  */
 async function adminRequest<T>(
   path: string,
@@ -208,6 +176,7 @@ export type ChatSessionDTO = {
   updated_at?: string;
   is_pinned?: boolean;
   is_archived?: boolean;
+  course_id?: string | null;
 };
 
 export type QuizFolder = {
@@ -216,11 +185,90 @@ export type QuizFolder = {
   file_count: number;
 };
 
+export type Course = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  membership_role: "student" | "instructor" | "admin";
+};
+
+export type CourseCatalogEntry = Omit<Course, "membership_role"> & {
+  enrolled: boolean;
+};
+
+export type CourseMembership = {
+  username: string;
+  course_id: string;
+  role: "student" | "instructor";
+  active: boolean;
+  enrolled_at: string;
+};
+
+export type CourseIngestionDocument = IndexStatus & {
+  resource_id: string;
+  title: string;
+  file_name: string;
+  active: boolean;
+  indexable: boolean;
+};
+
+export type CourseIngestionStatus = {
+  course_id: string;
+  total_documents: number;
+  indexable_documents: number;
+  status_counts: Record<string, number>;
+  documents: CourseIngestionDocument[];
+};
+
+export type ObjectiveCoverage = {
+  course_id: string;
+  total_objectives: number;
+  covered_objectives: number;
+  coverage_pct: number;
+  objectives: Array<{ objective_id: string; title: string; module_id: string; quiz_item_count: number; assessed_item_count: number; covered: boolean }>;
+};
+
+export type InstructorSummary = {
+  course_id: string;
+  enrolled_students: number;
+  objectives: Array<{ objective_id: string; title: string; student_count: number; average_mastery: number | null }>;
+};
+
+export type MasterySnapshot = {
+  objective_id: string;
+  title: string;
+  module_id: string;
+  score: number;
+  attempts: number;
+  correct: number;
+  next_review_at?: string | null;
+  self_confidence?: number | null;
+};
+
+export type StudyRecommendation = {
+  objective_id: string;
+  title: string;
+  module_id: string;
+  mastery: number;
+  reason: string;
+  difficulty: "easy" | "medium" | "hard";
+};
+
+export type LearningDashboard = {
+  course: Pick<Course, "id" | "code" | "title"> | null;
+  mastery: MasterySnapshot[];
+  recommendation: StudyRecommendation | null;
+  weekly_goal: { target: number; completed: number };
+  recent_activity: Array<{ id: string; created_at: string; is_correct: boolean }>;
+};
+
 export type QuizQuestion = {
   id: string;
   question: string;
   options: string[];
   explanation?: string | null;
+  objective_id?: string | null;
 };
 
 export type QuizHistoryEntry = {
@@ -730,6 +778,22 @@ export async function patchJSON<T>({
   });
 }
 
+export async function putJSON<T>({
+  path,
+  body,
+  token,
+}: {
+  path: string;
+  body: unknown;
+  token?: string;
+}) {
+  return request<T>(path, {
+    method: "PUT",
+    body: JSON.stringify(body),
+    authToken: token,
+  });
+}
+
 export async function deleteJSON<T>({
   path,
   body,
@@ -756,9 +820,9 @@ export async function getJSON<T>({
   return request<T>(path, { method: "GET", authToken: token });
 }
 
-export async function listChatSessions(token: string): Promise<ChatSessionDTO[]> {
+export async function listChatSessions(token: string, courseId?: string): Promise<ChatSessionDTO[]> {
   const data = await getJSON<{ sessions: ChatSessionDTO[] }>({
-    path: "/chat/sessions",
+    path: courseId ? `/chat/sessions?course_id=${encodeURIComponent(courseId)}` : "/chat/sessions",
     token,
   });
   return data.sessions ?? [];
@@ -805,11 +869,16 @@ export async function archiveChatSession(token: string, sessionId: string, archi
 export async function createChatSession({
   token,
   title,
+  courseId,
 }: {
   token: string;
   title?: string;
+  courseId?: string;
 }): Promise<ChatSessionDTO> {
-  const query = title ? `?title=${encodeURIComponent(title)}` : "";
+  const params = new URLSearchParams();
+  if (title) params.set("title", title);
+  if (courseId) params.set("course_id", courseId);
+  const query = params.size ? `?${params.toString()}` : "";
   const data = await postJSON<{ session: ChatSessionDTO }>({
     path: `/chat/sessions${query}`,
     body: {},
@@ -818,9 +887,9 @@ export async function createChatSession({
   return data.session;
 }
 
-export async function fetchQuizFolders(token: string): Promise<QuizFolder[]> {
+export async function fetchQuizFolders(token: string, courseId?: string): Promise<QuizFolder[]> {
   const data = await getJSON<{ folders: QuizFolder[] }>({
-    path: "/quiz/folders",
+    path: courseId ? `/quiz/folders?course_id=${encodeURIComponent(courseId)}` : "/quiz/folders",
     token,
   });
   return data.folders || [];
@@ -830,10 +899,16 @@ export async function generateQuiz({
   token,
   folders,
   numQuestions,
+  courseId,
+  objectiveIds,
+  difficulty,
 }: {
   token: string;
   folders: string[];
   numQuestions: number;
+  courseId?: string;
+  objectiveIds?: string[];
+  difficulty?: "easy" | "medium" | "hard";
 }) {
   return postJSON<{
     quiz_id: string;
@@ -842,9 +917,111 @@ export async function generateQuiz({
     generated_at: string;
   }>({
     path: "/quiz/generate",
-    body: { folders, num_questions: numQuestions },
+    body: { folders, num_questions: numQuestions, course_id: courseId, objective_ids: objectiveIds, difficulty },
     token,
   });
+}
+
+export async function fetchCourses(token: string): Promise<Course[]> {
+  const data = await getJSON<{ courses: Course[] }>({ path: "/courses", token });
+  return data.courses ?? [];
+}
+
+export async function fetchCourseCatalog(token: string): Promise<CourseCatalogEntry[]> {
+  const data = await getJSON<{ courses: CourseCatalogEntry[] }>({ path: "/courses/catalog", token });
+  return data.courses ?? [];
+}
+
+export async function enrollInCourse(token: string, courseId: string): Promise<void> {
+  await postJSON({ path: `/courses/${encodeURIComponent(courseId)}/enroll`, token, body: {} });
+}
+
+export async function createCourse(token: string, payload: {
+  id?: string;
+  code: string;
+  title: string;
+  description?: string;
+  open_enrollment?: boolean;
+  resource_prefixes?: string[];
+  modules?: Array<{ id: string; title: string; resource_prefixes?: string[]; objectives: Array<{ id: string; title: string; module_id: string }> }>;
+}): Promise<Course> {
+  const data = await postJSON<{ course: Course }>({ path: "/courses", token, body: payload });
+  return data.course;
+}
+
+export async function fetchCourseMemberships(token: string, courseId: string): Promise<CourseMembership[]> {
+  const data = await getJSON<{ memberships: CourseMembership[] }>({ path: `/courses/${encodeURIComponent(courseId)}/memberships`, token });
+  return data.memberships ?? [];
+}
+
+export async function saveCourseMembership(token: string, courseId: string, username: string, role: "student" | "instructor"): Promise<CourseMembership> {
+  const data = await putJSON<{ membership: CourseMembership }>({ path: `/courses/${encodeURIComponent(courseId)}/memberships`, token, body: { username, role } });
+  return data.membership;
+}
+
+export async function removeCourseMembership(token: string, courseId: string, username: string): Promise<void> {
+  await deleteJSON<{ success: boolean }>({ path: `/courses/${encodeURIComponent(courseId)}/memberships/${encodeURIComponent(username)}`, token });
+}
+
+export async function fetchCourseIngestionStatus(token: string, courseId: string): Promise<CourseIngestionStatus> {
+  return getJSON<CourseIngestionStatus>({ path: `/courses/${encodeURIComponent(courseId)}/content-ingestion`, token });
+}
+
+export async function reindexCourseResource(token: string, courseId: string, resourceId: string): Promise<void> {
+  await postJSON({ path: `/courses/${encodeURIComponent(courseId)}/resources/${encodeURIComponent(resourceId)}/reindex`, token, body: {} });
+}
+
+export async function fetchObjectiveCoverage(token: string, courseId: string): Promise<ObjectiveCoverage> {
+  return getJSON<ObjectiveCoverage>({ path: `/courses/${encodeURIComponent(courseId)}/objective-coverage`, token });
+}
+
+export async function fetchInstructorSummary(token: string, courseId: string): Promise<InstructorSummary> {
+  return getJSON<InstructorSummary>({ path: `/courses/${encodeURIComponent(courseId)}/instructor-summary`, token });
+}
+
+export async function fetchCourseEvaluationCases(token: string, courseId: string): Promise<EvaluationCase[]> {
+  const data = await getJSON<{ cases: EvaluationCase[] }>({ path: `/courses/${encodeURIComponent(courseId)}/evaluation/cases`, token });
+  return data.cases ?? [];
+}
+
+export async function createCourseEvaluationCase(token: string, courseId: string, payload: Omit<EvaluationCase, "id"> & { objective_ids?: string[] }): Promise<EvaluationCase> {
+  const data = await postJSON<{ case: EvaluationCase }>({ path: `/courses/${encodeURIComponent(courseId)}/evaluation/cases`, token, body: payload });
+  return data.case;
+}
+
+export async function runCourseEvaluationSuite(token: string, courseId: string): Promise<EvaluationRunResponse> {
+  return postJSON<EvaluationRunResponse>({ path: `/courses/${encodeURIComponent(courseId)}/evaluation/run`, token, body: {}, timeoutMs: 120000 });
+}
+
+export async function uploadCourseResource(token: string, courseId: string, file: File): Promise<Resource> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", file.name);
+  const response = await fetch(`${getApiBaseUrl()}/courses/${encodeURIComponent(courseId)}/resources/upload`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+    headers: token && token !== "authenticated" ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) throw await parseRequestError(response);
+  return ((await response.json()) as { resource: Resource }).resource;
+}
+
+export async function fetchLearningDashboard(token: string, courseId?: string): Promise<LearningDashboard> {
+  const query = courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
+  return getJSON<LearningDashboard>({ path: `/learning/dashboard${query}`, token });
+}
+
+export async function fetchStudyRecommendation(token: string, courseId: string): Promise<StudyRecommendation | null> {
+  const data = await getJSON<{ recommendation: StudyRecommendation | null }>({
+    path: `/learning/recommendation?course_id=${encodeURIComponent(courseId)}`,
+    token,
+  });
+  return data.recommendation;
+}
+
+export async function saveObjectiveConfidence(token: string, payload: { course_id: string; objective_id: string; confidence: number }) {
+  return postJSON<{ confidence: { confidence: number } }>({ path: "/learning/confidence", token, body: payload });
 }
 
 export async function submitQuiz({
@@ -864,9 +1041,9 @@ export async function submitQuiz({
   });
 }
 
-export async function fetchQuizHistory(token: string) {
+export async function fetchQuizHistory(token: string, courseId?: string) {
   return getJSON<{ results: QuizHistoryEntry[] }>({
-    path: "/quiz/history",
+    path: courseId ? `/quiz/history?course_id=${encodeURIComponent(courseId)}` : "/quiz/history",
     token,
   });
 }
@@ -942,6 +1119,7 @@ export type Resource = {
   created_by: string;
   created_at: string;
   updated_at: string;
+  course_id?: string | null;
 };
 
 export async function fetchResources(token: string) {
@@ -972,7 +1150,7 @@ export async function fetchAdminResources(token: string): Promise<{ resources: R
 
 export async function createResource(
   token: string,
-  data: { category: string; title: string; url: string; description?: string; order?: number }
+  data: { category: string; title: string; url: string; description?: string; order?: number; course_id?: string }
 ): Promise<Resource> {
   const res = await adminRequest<{ resource: Resource }>("/admin/resources", {
     method: "POST",
@@ -989,6 +1167,7 @@ export async function uploadResourceFile({
   title,
   description,
   order,
+  courseId,
 }: {
   token: string;
   file: File;
@@ -996,6 +1175,7 @@ export async function uploadResourceFile({
   title: string;
   description?: string;
   order?: number;
+  courseId?: string;
 }): Promise<Resource> {
   const formData = new FormData();
   formData.append("file", file);
@@ -1003,6 +1183,7 @@ export async function uploadResourceFile({
   formData.append("title", title);
   if (description) formData.append("description", description);
   if (order !== undefined) formData.append("order", String(order));
+  if (courseId) formData.append("course_id", courseId);
 
   let lastError: Error | null = null;
 
@@ -1045,7 +1226,7 @@ export async function uploadResourceFile({
 export async function updateResource(
   token: string,
   resourceId: string,
-  data: Partial<{ category: string; title: string; url: string; description: string; order: number; active: boolean }>
+  data: Partial<{ category: string; title: string; url: string; description: string; order: number; active: boolean; course_id: string }>
 ): Promise<Resource> {
   const res = await adminRequest<{ resource: Resource }>(
     `/admin/resources/${encodeURIComponent(resourceId)}`,
@@ -2309,16 +2490,18 @@ export async function submitMessageFeedback({
   messageIndex,
   feedbackType,
   reason,
+  courseId,
 }: {
   token: string;
   sessionId: string;
   messageIndex: number;
   feedbackType: MessageFeedbackType;
   reason?: string;
+  courseId?: string;
 }): Promise<MessageFeedbackResponse> {
   return postJSON<MessageFeedbackResponse>({
     path: `/chat/sessions/${sessionId}/messages/${messageIndex}/feedback`,
-    body: { type: feedbackType, reason },
+    body: { type: feedbackType, reason, course_id: courseId },
     token,
   });
 }
@@ -2513,6 +2696,7 @@ export type AdminFeedbackEntry = {
   reason?: string;
   session_id?: string;
   message_index?: number;
+  course_id?: string | null;
 };
 
 export type QuizMetrics = {
@@ -2611,11 +2795,13 @@ export async function deleteAdminUser(
 export async function fetchAllFeedback(
   token: string,
   feedbackType?: string,
-  limit?: number
+  limit?: number,
+  courseId?: string
 ): Promise<{ feedback: AdminFeedbackEntry[]; total: number }> {
   const params = new URLSearchParams();
   if (feedbackType) params.set("feedback_type", feedbackType);
   if (limit) params.set("limit", String(limit));
+  if (courseId) params.set("course_id", courseId);
   const query = params.toString() ? `?${params.toString()}` : "";
   return adminRequest<{ feedback: AdminFeedbackEntry[]; total: number }>(`/admin/feedback${query}`, { authToken: token });
 }

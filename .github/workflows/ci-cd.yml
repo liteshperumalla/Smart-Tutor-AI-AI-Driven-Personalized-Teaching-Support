@@ -6,7 +6,7 @@ on:
     paths-ignore:
       - helm/smart-ai-tutor/values-production.yaml
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 env:
@@ -14,9 +14,6 @@ env:
   NODE_VERSION: "20.20.2"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -69,26 +66,25 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Python safety check
+      - name: Python dependency audit
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          pip install "safety<4"
-          touch safety-report.json
-          safety check --file=backend/requirements.txt --json --output safety-report.json || true
+          pip install pip-audit
+          pip-audit --requirement backend/requirements.txt --format json --output pip-audit.json
 
       - name: npm audit (frontend)
         run: |
           set -euo pipefail
           cd frontend
           npm ci --legacy-peer-deps
-          npm audit --audit-level=critical
+          npm audit --omit=dev --audit-level=high
 
       - name: Upload security report
         uses: actions/upload-artifact@v4
         with:
           name: security-reports
-          path: safety-report.json
+          path: pip-audit.json
           if-no-files-found: warn
           retention-days: 30
 
@@ -595,6 +591,140 @@ jobs:
           cd frontend
           npm test -- --runInBand --testPathPattern route-contract --watchAll=false
 
+  container-smoke:
+    name: Container Smoke Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [secret-scanning]
+    env:
+      NEXT_PUBLIC_API_BASE_URL: /api/backend
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build backend container
+        run: |
+          set -euo pipefail
+          docker build --tag smart-tutor-backend:ci --file backend/Dockerfile .
+
+      - name: Verify backend container runtime
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e ENVIRONMENT=test \
+            smart-tutor-backend:ci \
+            python -c "from backend.api.main import app; print(app.title)"
+
+      - name: Build frontend container
+        run: |
+          set -euo pipefail
+          docker build --tag smart-tutor-frontend:ci --file frontend/Dockerfile frontend \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+            --build-arg BACKEND_API_BASE_URL="$BACKEND_API_BASE_URL" \
+            --build-arg NEXT_PUBLIC_APP_BASE_URL="$NEXT_PUBLIC_APP_BASE_URL" \
+            --build-arg NEXT_PUBLIC_GOOGLE_CLIENT_ID="$NEXT_PUBLIC_GOOGLE_CLIENT_ID" \
+            --build-arg NEXT_PUBLIC_GOOGLE_REDIRECT_URI="$NEXT_PUBLIC_GOOGLE_REDIRECT_URI"
+
+      - name: Verify frontend container responds
+        run: |
+          set -euo pipefail
+          docker run --detach --rm --name smart-tutor-frontend-ci -p 4000:4000 smart-tutor-frontend:ci
+          trap 'docker logs smart-tutor-frontend-ci || true; docker stop smart-tutor-frontend-ci || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:4000/ >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 30 ]; then
+              sleep 2
+            fi
+          done
+          echo "::error::Frontend container did not become ready."
+          exit 1
+
+  public-ui-e2e:
+    name: Public UI E2E
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs: [frontend-tests]
+    env:
+      NEXT_PUBLIC_API_BASE_URL: /api/backend
+      BACKEND_API_BASE_URL: http://backend:8000
+      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
+      E2E_SKIP_WEBSERVER: "true"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies and build
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci --legacy-peer-deps
+          npm run build
+
+      - name: Install Chromium
+        run: |
+          set -euo pipefail
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Start frontend
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm run start -- -p 4000 > ../public-ui-e2e.log 2>&1 &
+          echo $! > ../public-ui-e2e.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4000/ >/dev/null; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 30 ]; then
+              sleep 2
+            fi
+          done
+          cat ../public-ui-e2e.log
+          exit 1
+
+      - name: Run public browser checks
+        run: |
+          set -euo pipefail
+          cd frontend
+          npx playwright test --config=playwright.public.config.ts --project=chromium
+
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-ui-e2e-artifacts
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            public-ui-e2e.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop frontend
+        if: always()
+        run: |
+          if [ -f public-ui-e2e.pid ]; then
+            kill "$(cat public-ui-e2e.pid)" || true
+          fi
+
   security-management:
     name: Security Management
     runs-on: ubuntu-latest
@@ -657,6 +787,8 @@ jobs:
       - backend-tests
       - frontend-tests
       - contract-tests
+      - container-smoke
+      - public-ui-e2e
       - migration-validation
       - environment-discipline
       - security-management
@@ -670,6 +802,8 @@ jobs:
             "${{ needs.backend-tests.result }}" \
             "${{ needs.frontend-tests.result }}" \
             "${{ needs.contract-tests.result }}" \
+            "${{ needs.container-smoke.result }}" \
+            "${{ needs.public-ui-e2e.result }}" \
             "${{ needs.migration-validation.result }}" \
             "${{ needs.environment-discipline.result }}" \
             "${{ needs.security-management.result }}"; do
@@ -686,6 +820,8 @@ jobs:
             echo "| Backend tests | \`${{ needs.backend-tests.result }}\` |"
             echo "| Frontend tests | \`${{ needs.frontend-tests.result }}\` |"
             echo "| Contract tests | \`${{ needs.contract-tests.result }}\` |"
+            echo "| Container smoke tests | \`${{ needs.container-smoke.result }}\` |"
+            echo "| Public UI E2E | \`${{ needs.public-ui-e2e.result }}\` |"
             echo "| Migration validation | \`${{ needs.migration-validation.result }}\` |"
             echo "| Environment discipline | \`${{ needs.environment-discipline.result }}\` |"
             echo "| Security management | \`${{ needs.security-management.result }}\` |"

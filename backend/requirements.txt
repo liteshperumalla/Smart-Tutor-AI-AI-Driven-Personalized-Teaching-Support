@@ -582,6 +582,10 @@ python-multipart==0.0.22
     # via -r backend/requirements.txt
 python-pptx==1.0.2
     # via -r backend/requirements.txt
+pytest==8.3.5
+    # Dockerized backend test runner
+pytest-cov==6.1.1
+    # Coverage plugin required by backend/pytest.ini
 pytz==2025.2
     # via pandas
 pyyaml==6.0.3

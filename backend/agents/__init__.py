@@ -74,6 +74,7 @@ def run_agent_pipeline(
     user_id: str,
     session_id: Optional[str] = None,
     model_id: Optional[str] = None,
+    source_prefixes: Optional[List[str]] = None,
 ) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
     """Run the full multi-agent pipeline and return (stream_generator, sources).
 
@@ -104,7 +105,7 @@ def run_agent_pipeline(
     # ── 2. RAG retrieval (reuse existing S3/Chroma logic) ─────────
     retrieval_started_at = time.time()
     with traced_span(main_trace, "agent-rag-retrieval", input={"query": query}) as rag_span:
-        context_str, sources = _retrieve_rag_context(query)
+        context_str, sources = _retrieve_rag_context(query, source_prefixes=source_prefixes)
     retrieval_elapsed = time.time() - retrieval_started_at
 
     # ── 3. Build state + classify intent ─────────────────────────
@@ -380,7 +381,7 @@ def _log_post_stream(
 
 # ── RAG context helper ───────────────────────────────────────────
 
-def _retrieve_rag_context(query: str) -> Tuple[str, List[Dict[str, Any]]]:
+def _retrieve_rag_context(query: str, source_prefixes: Optional[List[str]] = None) -> Tuple[str, List[Dict[str, Any]]]:
     """Run the existing S3/Chroma retrieval pipeline and return (context_str, sources)."""
     import os
     from urllib.parse import quote
@@ -404,8 +405,15 @@ def _retrieve_rag_context(query: str) -> Tuple[str, List[Dict[str, Any]]]:
             idx = load_index_from_storage(sc)
             retriever = idx.as_retriever(similarity_top_k=retrieval_limit)
 
+        retrieved = retriever.retrieve(query)
+        if source_prefixes:
+            normalized_prefixes = tuple(prefix.replace("\\", "/").lstrip("/") for prefix in source_prefixes)
+            retrieved = [
+                item for item in retrieved
+                if str((item.node.metadata.get("file_path") or item.node.metadata.get("source_file") or "")).replace("\\", "/").lstrip("/").startswith(normalized_prefixes)
+            ]
         nodes = select_diverse_items(
-            retriever.retrieve(query),
+            retrieved,
             query=query,
             limit=retrieval_limit,
             max_per_source=2,
