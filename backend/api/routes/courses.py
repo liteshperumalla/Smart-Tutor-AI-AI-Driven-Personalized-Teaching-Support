@@ -1,5 +1,7 @@
 """Course workspaces and aggregate instructor learning analytics."""
 
+import logging
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -9,6 +11,7 @@ from backend.api.dependencies import get_admin_session, get_current_session
 from backend.csrf_protection import csrf_protect
 
 router = APIRouter(prefix="/courses", tags=["courses"], dependencies=[Depends(csrf_protect)])
+logger = logging.getLogger(__name__)
 
 
 def get_learning_service():
@@ -189,4 +192,14 @@ def run_course_evaluations(course_id: str, session=Depends(get_current_session),
     _, user = session
     service.require_access(user["username"], user, course_id, roles=("instructor",))
     from backend.services.evaluation_service import get_evaluation_service
-    return get_evaluation_service().run_tests(course_id=course_id, source_prefixes=service.course_prefixes(user["username"], user, course_id))
+    try:
+        return get_evaluation_service().run_tests(
+            course_id=course_id,
+            source_prefixes=service.course_prefixes(user["username"], user, course_id),
+        )
+    except Exception:
+        logger.exception("Course evaluation failed for course %s", course_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Course evaluation is temporarily unavailable.",
+        )

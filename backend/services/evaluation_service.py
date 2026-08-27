@@ -224,45 +224,32 @@ class EvaluationService:
         self.dataset = self._load_dataset()
         self.evaluator: RAGEvaluationMetrics = get_evaluator(config.EVALUATION_LOG_FILE)
         self._retrievers: Dict[int, Any] = {}
-        # Instructor-managed evaluation cases are production data.  Keep them
-        # beside learner state, which is mounted on the production host, rather
-        # than inside the container's disposable /app/data directory.
-        self.course_dataset_dir = Path(config.USER_DATA_ROOT) / "evaluation_datasets"
-        self.course_dataset_dir.mkdir(parents=True, exist_ok=True)
+        # Instructor-managed evaluation cases are production data. Store them
+        # in one mounted, fixed-path JSON document; course IDs remain keys in
+        # that document rather than influencing a filesystem path.
+        course_dataset_path = Path(config.USER_DATA_ROOT) / "evaluation_datasets.json"
+        self.course_datasets = JSONDatabase(str(course_dataset_path))
 
-    def _course_dataset_path(self, course_id: str) -> Path:
+    @staticmethod
+    def _validate_course_id(course_id: str) -> None:
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", course_id):
             raise ValueError("Invalid course id")
-        return self.course_dataset_dir / f"{course_id}.json"
 
     def _load_course_dataset(self, course_id: str) -> Dict[str, Any]:
-        path = self._course_dataset_path(course_id)
-        legacy_path = Path(getattr(config, "DATA_DIR", "data")) / "evaluation_datasets" / f"{course_id}.json"
-        if not path.exists():
-            # One-time, best-effort migration from the initial container-local
-            # location.  New writes always use the persistent user-data mount.
-            if legacy_path.exists():
-                try:
-                    with legacy_path.open("r", encoding="utf-8") as handle:
-                        legacy_data = json.load(handle)
-                    if isinstance(legacy_data, list):
-                        legacy_data = {"course_id": course_id, "test_cases": legacy_data}
-                    if isinstance(legacy_data, dict) and isinstance(legacy_data.get("test_cases"), list):
-                        self._save_course_dataset(course_id, legacy_data)
-                        return legacy_data
-                except (OSError, json.JSONDecodeError):
-                    pass
-            # INFO 5731 is the migrated first course.  Preserve its established
-            # benchmark as a concrete course-owned snapshot on first access.
-            if course_id == "info-5731":
-                seeded = {"course_id": course_id, "migrated_from_global": True, "test_cases": list(self.dataset.get("test_cases", []))}
-                self._save_course_dataset(course_id, seeded)
-                return seeded
-            return {"course_id": course_id, "test_cases": []}
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except (OSError, json.JSONDecodeError):
+        self._validate_course_id(course_id)
+        datasets = self.course_datasets.get_all()
+        data = datasets.get(course_id)
+        if data is None and course_id == "info-5731":
+            # Preserve the established benchmark as the first course-owned
+            # dataset the first time INFO 5731 is accessed.
+            data = {
+                "course_id": course_id,
+                "migrated_from_global": True,
+                "test_cases": list(self.dataset.get("test_cases", [])),
+            }
+            self._save_course_dataset(course_id, data)
+            return data
+        if data is None:
             return {"course_id": course_id, "test_cases": []}
         if isinstance(data, list):
             return {"course_id": course_id, "test_cases": data}
@@ -271,14 +258,9 @@ class EvaluationService:
         return data
 
     def _save_course_dataset(self, course_id: str, data: Dict[str, Any]) -> None:
-        path = self._course_dataset_path(course_id)
-        # Reuse the cross-process-safe JSON persistence primitive.  Each
-        # course still has an independently portable file, but writers cannot
-        # clobber one another during concurrent instructor updates.
-        store = JSONDatabase(str(path))
-        with store.transaction() as current:
-            current.clear()
-            current.update(data)
+        self._validate_course_id(course_id)
+        with self.course_datasets.transaction() as datasets:
+            datasets[course_id] = data
 
     def _resolve_dataset_path(self) -> Path:
         configured = Path(config.EVALUATION_DATASET_FILE)
