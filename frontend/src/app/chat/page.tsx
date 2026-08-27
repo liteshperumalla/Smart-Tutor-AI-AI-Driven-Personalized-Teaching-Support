@@ -8,6 +8,8 @@ import {
   ChatAttachment,
   ChatSessionDTO,
   createChatSession,
+  fetchCourses,
+  type Course,
   getApiBaseUrl,
   listChatSessions,
   getSessionFeedback,
@@ -19,6 +21,7 @@ import {
   archiveChatSession,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
+import { useActiveCourse } from "@/components/active-course-provider";
 import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
 import { PageShell } from "@/components/page-shell";
 import {
@@ -107,6 +110,9 @@ function ChatWorkspaceContent() {
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true); // On by default
   const [selectedStyle, setSelectedStyle] = useState("normal");
+  const [learningMode, setLearningMode] = useState<"ask" | "learn" | "practice" | "review">("ask");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const { activeCourseId = "info-5731", setActiveCourseId } = useActiveCourse();
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
@@ -238,6 +244,18 @@ function ChatWorkspaceContent() {
   useEffect(() => {
     if (isLoggedIn) fetchModelQuota();
   }, [isLoggedIn, fetchModelQuota]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !token) return;
+    fetchCourses(token).then((items) => {
+      setCourses(items);
+      const requestedCourse = searchParams.get("course");
+      if (requestedCourse && items.some((course) => course.id === requestedCourse)) setActiveCourseId(requestedCourse);
+      else if (items[0]) setActiveCourseId(items.some((course) => course.id === activeCourseId) ? activeCourseId : items[0].id);
+      const requestedMode = searchParams.get("mode");
+      if (requestedMode === "ask" || requestedMode === "learn" || requestedMode === "practice" || requestedMode === "review") setLearningMode(requestedMode);
+    }).catch(() => {});
+  }, [activeCourseId, isLoggedIn, token, searchParams, setActiveCourseId]);
 
   // Cleanup speech recognition, mic stream, and active fetch on unmount
   useEffect(() => {
@@ -404,11 +422,15 @@ function ChatWorkspaceContent() {
     [sessions, selectedSessionId]
   );
 
+  useEffect(() => {
+    if (activeSession?.course_id) setActiveCourseId(activeSession.course_id);
+  }, [activeSession?.course_id, setActiveCourseId]);
+
   async function handleCreateSession() {
     if (!token || !isLoggedIn) return;
     setIsCreatingSession(true);
     try {
-      const next = await createChatSession({ token, title: undefined });
+      const next = await createChatSession({ token, title: undefined, courseId: activeCourseId });
       setSessions((prev) => [next, ...prev.filter((s) => s.id !== next.id)]);
       setSelectedSessionId(next.id);
       dispatchChatSessionsUpdated();
@@ -498,6 +520,8 @@ function ChatWorkspaceContent() {
             model_id: currentModel.modelId,
             web_search_enabled: webSearchEnabled,
             response_style: selectedStyle,
+            course_id: activeCourseId,
+            learning_mode: learningMode,
             uploaded_only: attachments.length > 0,
             uploaded_file_ids: uploadedFileIds.length > 0 ? uploadedFileIds : undefined,
             attachments: attachments.length > 0
@@ -805,6 +829,8 @@ function ChatWorkspaceContent() {
             model_id: currentModel.modelId,
             web_search_enabled: webSearchEnabled,
             response_style: selectedStyle,
+            course_id: activeCourseId,
+            learning_mode: learningMode,
             uploaded_only: uploadedFiles.length > 0,
             uploaded_file_ids: uploadedFiles
               .map((item) => item.id)
@@ -979,6 +1005,8 @@ function ChatWorkspaceContent() {
             model_id: currentModel.modelId,
             web_search_enabled: webSearchEnabled,
             response_style: selectedStyle,
+            course_id: activeCourseId,
+            learning_mode: learningMode,
             uploaded_only: uploadedFiles.length > 0,
             uploaded_file_ids: uploadedFiles
               .map((item) => item.id)
@@ -1313,6 +1341,7 @@ function ChatWorkspaceContent() {
                     messageIndex={index}
                     sessionId={selectedSessionId!}
                     token={token}
+                    courseId={activeCourseId}
                     isStreaming={isStreamingMessage}
                     currentFeedback={feedbackMap[index] || null}
                     onFeedbackChange={(feedback) => handleFeedbackChange(index, feedback)}
@@ -1418,8 +1447,13 @@ function ChatWorkspaceContent() {
               />
 
               {/* Active options indicator */}
-              {(webSearchEnabled || selectedStyle !== 'normal') && (
+              {(webSearchEnabled || selectedStyle !== 'normal' || learningMode !== 'ask') && (
                 <div className="flex items-center gap-2 mb-2 px-2">
+                  <label className="sr-only" htmlFor="learning-mode">Learning mode</label>
+                  <select id="learning-mode" value={learningMode} onChange={(event) => setLearningMode(event.target.value as typeof learningMode)} className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
+                    <option value="ask">Ask</option><option value="learn">Learn</option><option value="practice">Practice</option><option value="review">Review</option>
+                  </select>
+                  {courses.length > 1 && <><label className="sr-only" htmlFor="active-course">Active course</label><select id="active-course" value={activeCourseId} onChange={(event) => setActiveCourseId(event.target.value)} className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-800">{courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}</select></>}
                   {webSearchEnabled && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs">
                       <Globe className="h-3 w-3" />
@@ -1714,6 +1748,7 @@ function ChatWorkspaceContent() {
         sessionId={selectedSessionId || ""}
         messageIndex={reportMessageIndex}
         token={token}
+        courseId={activeCourseId}
       />
 
       {/* Share Chat Modal */}
@@ -1761,6 +1796,7 @@ interface ChatBubbleProps {
   messageIndex: number;
   sessionId: string;
   token?: string | null;
+  courseId?: string;
   isStreaming?: boolean;
   currentFeedback: MessageFeedbackType | null;
   onFeedbackChange: (feedback: MessageFeedbackType | null) => void;
@@ -1784,6 +1820,7 @@ function ChatBubble({
   messageIndex,
   sessionId,
   token,
+  courseId,
   isStreaming,
   currentFeedback,
   onFeedbackChange,
@@ -1955,6 +1992,7 @@ function ChatBubble({
                 sessionId={sessionId}
                 messageIndex={messageIndex}
                 token={token || null}
+                courseId={courseId}
                 hasSources={hasSources || false}
                 currentFeedback={currentFeedback}
                 onFeedbackChange={onFeedbackChange}

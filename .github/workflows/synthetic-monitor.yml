@@ -1,0 +1,75 @@
+name: Synthetic Production Monitor
+
+on:
+  schedule:
+    # Run every 5 minutes, 24x7 — always-on synthetic probes
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment to probe"
+        required: false
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: synthetic-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+  PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+
+jobs:
+  synthetic-probes:
+    name: Synthetic Monitor (Production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Make synthetic monitor executable
+        run: chmod +x scripts/synthetic-monitor.sh
+
+      - name: Run synthetic probes
+        id: probes
+        env:
+          PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+          PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+          SYNTHETIC_TEST_USERNAME: ${{ secrets.SYNTHETIC_TEST_USERNAME }}
+          SYNTHETIC_TEST_PASSWORD: ${{ secrets.SYNTHETIC_TEST_PASSWORD }}
+          SYNTHETIC_ADMIN_TOKEN: ${{ secrets.SYNTHETIC_ADMIN_TOKEN }}
+          ALERTMANAGER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL }}
+        run: ./scripts/synthetic-monitor.sh
+
+      - name: Report failure to Slack
+        if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            curl -s -X POST "$SLACK_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "{\"text\": \"🚨 *Synthetic Monitor* FAILED — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\"}"
+          fi
+
+      - name: Probe Summary
+        if: always()
+        run: |
+          {
+            echo "## Synthetic Monitor Run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Status | \`${{ job.status }}\` |"
+            echo "| API URL | \`${PRODUCTION_API_URL:-not configured}\` |"
+            echo "| App URL | \`${PRODUCTION_APP_URL:-not configured}\` |"
+            echo "| Run time | \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

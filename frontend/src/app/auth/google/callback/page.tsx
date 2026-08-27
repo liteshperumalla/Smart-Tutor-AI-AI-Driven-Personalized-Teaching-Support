@@ -4,6 +4,8 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
+import { getGoogleOAuthRedirectUri } from "@/lib/google-oauth";
+import { getSafeNextPath } from "@/lib/safe-next";
 
 // This page uses useSearchParams(), so must be dynamic
 export const dynamic = "force-dynamic";
@@ -22,10 +24,12 @@ function GoogleCallbackContent() {
       return;
     }
     let intent = "login";
+    let returnTo = "/";
     if (state) {
       try {
         const parsed = JSON.parse(atob(state));
         intent = parsed.intent || "login";
+        returnTo = getSafeNextPath(parsed.next);
         // Read nonce from cookie (more reliable than sessionStorage on iOS Safari,
         // which can clear sessionStorage during cross-origin OAuth navigation)
         const cookieMatch = document.cookie.match(/(?:^|;\s*)google_oauth_nonce=([^;]*)/);
@@ -47,9 +51,9 @@ function GoogleCallbackContent() {
     const run = async () => {
       try {
         const apiBaseUrl = getApiBaseUrl();
-        const redirectUri =
-          process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI ||
-          `${window.location.origin}/auth/google/callback`;
+        const redirectUri = getGoogleOAuthRedirectUri(
+          process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI
+        );
         const response = await fetch(`${apiBaseUrl}/auth/google/callback`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -69,7 +73,8 @@ function GoogleCallbackContent() {
               token: payload.password_setup_token,
               username: payload.username,
             });
-            router.replace(`/password-setup?${params.toString()}`);
+          params.set("next", returnTo);
+          router.replace(`/password-setup?${params.toString()}`);
             return;
           }
           throw new Error("Password setup required but token missing.");
@@ -82,7 +87,7 @@ function GoogleCallbackContent() {
         saveAuthToken("authenticated");
         setStatus("Signed in successfully. Redirecting…");
         setTimeout(() => {
-          router.replace("/");
+          router.replace(returnTo);
         }, 800);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unexpected error.");

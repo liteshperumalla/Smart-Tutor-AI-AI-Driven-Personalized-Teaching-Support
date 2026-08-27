@@ -13,7 +13,7 @@ from backend.rag.semantic_chunker import SemanticChunker
 from backend.rag.hybrid_search import HybridSearcher, BM25Retriever
 from backend.rag.reranker import AdvancedReranker
 from backend.rag.hyde import HyDERetriever
-from backend.rag.query_enhancement import QueryEnhancer
+from backend.rag.query_enhancement import QueryEnhancementPipeline
 from backend.rag.caching_layer import RAGCache
 
 
@@ -112,11 +112,7 @@ class RAGService:
 
         # Query enhancer
         if self.enable_query_enhancement:
-            self.query_enhancer = QueryEnhancer(
-                llm=self.llm,
-                spacy_model="en_core_web_sm",
-                num_expanded_queries=3
-            )
+            self.query_enhancer = QueryEnhancementPipeline(llm_provider=self.llm)
 
         # Hybrid search (will be initialized per query with retrievers)
         # BM25 and semantic retrievers are created dynamically
@@ -238,7 +234,7 @@ class RAGService:
             enhancement_start = time.time()
             enhanced = self.query_enhancer.enhance(query)
             metrics["enhancement_ms"] = (time.time() - enhancement_start) * 1000
-            metrics["intent"] = enhanced.intent
+            metrics["intent"] = enhanced.intent.value
             metrics["entities"] = len(enhanced.entities)
 
             search_query = enhanced.rewritten_query or query
@@ -247,7 +243,7 @@ class RAGService:
             search_query = query
 
         # Step 2: Retrieval Strategy Selection
-        use_hyde = self.enable_hyde and enhanced and enhanced.intent in [
+        use_hyde = self.enable_hyde and enhanced and enhanced.intent.value in [
             "definitional", "conceptual", "explanatory"
         ]
 
@@ -269,7 +265,7 @@ class RAGService:
         rerank_start = time.time()
         reranked_docs = self.reranker.rerank(
             query=search_query,
-            documents=[d.get("text", "") for d in documents],
+            documents=documents,
             top_k=top_k,
             method="combined"  # cross-encoder + MMR
         )
@@ -287,7 +283,7 @@ class RAGService:
             "retrieved_docs": len(documents),
             "final_docs": len(reranked_docs),
             "confidence": self._calculate_confidence(reranked_docs),
-            "intent": enhanced.intent if enhanced else None
+            "intent": enhanced.intent.value if enhanced else None
         }
 
     async def _baseline_query(

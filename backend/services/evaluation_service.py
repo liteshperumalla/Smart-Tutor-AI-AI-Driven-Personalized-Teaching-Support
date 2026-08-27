@@ -5,10 +5,12 @@ import math
 import re
 import statistics
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
+from backend.database import JSONDatabase
 from backend.rag_evaluation import RAGEvaluationMetrics, get_evaluator
 from backend.s3_retriever import create_s3_retriever
 from backend.bedrock_llm import BedrockLLM
@@ -222,6 +224,43 @@ class EvaluationService:
         self.dataset = self._load_dataset()
         self.evaluator: RAGEvaluationMetrics = get_evaluator(config.EVALUATION_LOG_FILE)
         self._retrievers: Dict[int, Any] = {}
+        # Instructor-managed evaluation cases are production data. Store them
+        # in one mounted, fixed-path JSON document; course IDs remain keys in
+        # that document rather than influencing a filesystem path.
+        course_dataset_path = Path(config.USER_DATA_ROOT) / "evaluation_datasets.json"
+        self.course_datasets = JSONDatabase(str(course_dataset_path))
+
+    @staticmethod
+    def _validate_course_id(course_id: str) -> None:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,63}", course_id):
+            raise ValueError("Invalid course id")
+
+    def _load_course_dataset(self, course_id: str) -> Dict[str, Any]:
+        self._validate_course_id(course_id)
+        datasets = self.course_datasets.get_all()
+        data = datasets.get(course_id)
+        if data is None and course_id == "info-5731":
+            # Preserve the established benchmark as the first course-owned
+            # dataset the first time INFO 5731 is accessed.
+            data = {
+                "course_id": course_id,
+                "migrated_from_global": True,
+                "test_cases": list(self.dataset.get("test_cases", [])),
+            }
+            self._save_course_dataset(course_id, data)
+            return data
+        if data is None:
+            return {"course_id": course_id, "test_cases": []}
+        if isinstance(data, list):
+            return {"course_id": course_id, "test_cases": data}
+        if not isinstance(data, dict) or not isinstance(data.get("test_cases"), list):
+            return {"course_id": course_id, "test_cases": []}
+        return data
+
+    def _save_course_dataset(self, course_id: str, data: Dict[str, Any]) -> None:
+        self._validate_course_id(course_id)
+        with self.course_datasets.transaction() as datasets:
+            datasets[course_id] = data
 
     def _resolve_dataset_path(self) -> Path:
         configured = Path(config.EVALUATION_DATASET_FILE)
@@ -289,8 +328,8 @@ class EvaluationService:
             )
         return self._retrievers[similarity_top_k]
 
-    def list_cases(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        cases = self.dataset.get("test_cases", [])
+    def list_cases(self, limit: Optional[int] = None, course_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        cases = (self._load_course_dataset(course_id) if course_id else self.dataset).get("test_cases", [])
         data = [
             {
                 "id": case.get("id"),
@@ -298,6 +337,7 @@ class EvaluationService:
                 "category": case.get("category"),
                 "difficulty": case.get("difficulty"),
                 "expected_topics": case.get("expected_topics", []),
+                "objective_ids": case.get("objective_ids", []),
             }
             for case in cases
         ]
@@ -305,14 +345,32 @@ class EvaluationService:
             data = data[:limit]
         return data
 
+    def create_course_case(self, course_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        dataset = self._load_course_dataset(course_id)
+        case = {
+            "id": payload.get("id") or f"{course_id}-{uuid.uuid4().hex[:12]}",
+            "query": payload["query"].strip(),
+            "category": payload.get("category") or "course",
+            "difficulty": payload.get("difficulty") or "medium",
+            "expected_topics": [str(topic).strip() for topic in payload.get("expected_topics", []) if str(topic).strip()],
+            "objective_ids": [str(item) for item in payload.get("objective_ids", [])],
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        dataset.setdefault("test_cases", []).append(case)
+        dataset["course_id"] = course_id
+        self._save_course_dataset(course_id, dataset)
+        return case
+
     def run_tests(
         self,
         limit: Optional[int] = None,
         categories: Optional[List[str]] = None,
         difficulties: Optional[List[str]] = None,
         enable_quality_eval: bool = False,
+        course_id: Optional[str] = None,
+        source_prefixes: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        cases = self.dataset.get("test_cases", [])
+        cases = (self._load_course_dataset(course_id) if course_id else self.dataset).get("test_cases", [])
         if categories:
             cases = [case for case in cases if case.get("category") in set(categories)]
         if difficulties:
@@ -324,15 +382,16 @@ class EvaluationService:
 
         results = []
         for case in cases:
-            result = self._run_single_case(case, enable_quality_eval=enable_quality_eval)
+            result = self._run_single_case(case, enable_quality_eval=enable_quality_eval, source_prefixes=source_prefixes, course_id=course_id)
             if result:
                 results.append(result)
 
         analysis = self._analyze_results(results)
-        return {"analysis": analysis, "results": results}
+        return {"course_id": course_id, "analysis": analysis, "results": results}
 
     def _run_single_case(
-        self, case: Dict[str, Any], enable_quality_eval: bool = False
+        self, case: Dict[str, Any], enable_quality_eval: bool = False,
+        source_prefixes: Optional[List[str]] = None, course_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         query = case.get("query")
         if not query:
@@ -348,6 +407,18 @@ class EvaluationService:
         )
         retriever = self._load_index(max(top_k, config.SIMILARITY_TOP_K))
         retrieved_nodes = retriever.retrieve(query)
+        if source_prefixes:
+            normalized_prefixes = [prefix.strip().lstrip("/") for prefix in source_prefixes if prefix.strip()]
+            def in_course_scope(node: Any) -> bool:
+                metadata = getattr(node.node, "metadata", {}) or {}
+                source = str(metadata.get("source_file") or metadata.get("s3_key") or "").lstrip("/")
+                normalized_source = source.removeprefix("modules/")
+                return any(
+                    source.startswith(prefix)
+                    or normalized_source.startswith(prefix.removeprefix("modules/"))
+                    for prefix in normalized_prefixes
+                )
+            retrieved_nodes = [node for node in retrieved_nodes if in_course_scope(node)]
         selected_nodes = select_diverse_items(
             retrieved_nodes,
             query=query,
@@ -418,6 +489,7 @@ class EvaluationService:
                 "mode": "evaluation",
                 "case_id": case["id"],
                 "category": case.get("category"),
+                "course_id": course_id,
                 "retrieval_limit": top_k,
             },
             quality_metrics=quality_metrics,
@@ -428,6 +500,7 @@ class EvaluationService:
             "query": query,
             "category": case.get("category"),
             "difficulty": case.get("difficulty"),
+            "course_id": course_id,
             "response": response_text,
             "response_length": len(response_text),
             "total_time": round(total_time, 3),

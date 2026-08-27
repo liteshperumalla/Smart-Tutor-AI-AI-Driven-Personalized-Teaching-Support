@@ -66,6 +66,10 @@ class DynamoDBStorageBackend(BaseStorageBackend):
         # Create table if it doesn't exist (for local development)
         if endpoint_url:
             self._ensure_table_exists()
+        elif config.ENVIRONMENT == "production":
+            # A boto3 Table is lazy; verify IAM and table availability before
+            # the service is declared ready to receive production traffic.
+            self.table.load()
 
         logger.info(f"DynamoDB storage backend initialized (table: {table_name})")
 
@@ -98,6 +102,10 @@ class DynamoDBStorageBackend(BaseStorageBackend):
                 logger.info(f"DynamoDB table '{self.table_name}' created successfully")
             else:
                 raise
+
+    def check_health(self) -> None:
+        """Raise when the configured DynamoDB table or IAM access is unavailable."""
+        self.table.load()
 
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         """List all chat sessions for a user"""

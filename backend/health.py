@@ -98,8 +98,8 @@ class HealthChecker:
             # Simple check - verify boto3 can be imported and region is set
             import boto3
 
-            # Try to get STS caller identity (lightweight API call)
-            sts = boto3.client('sts', region_name=config.AWS_REGION)
+            from backend.cloud.aws_helpers import get_boto3_client
+            sts = get_boto3_client('sts')
             identity = sts.get_caller_identity()
 
             return {
@@ -194,9 +194,8 @@ class HealthChecker:
                     "message": "Secrets Manager only used in production"
                 }
 
-            import boto3
-
-            client = boto3.client('secretsmanager', region_name=config.AWS_REGION)
+            from backend.cloud.aws_helpers import get_boto3_client
+            client = get_boto3_client('secretsmanager')
 
             # Try to describe the app secrets (lightweight operation)
             try:

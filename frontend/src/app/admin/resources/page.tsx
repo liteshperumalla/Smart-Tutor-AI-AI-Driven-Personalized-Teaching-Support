@@ -11,8 +11,10 @@ import {
   migrateStaticResources,
   triggerReindex,
   fetchIndexStatus,
+  fetchCourses,
   Resource,
   IndexStatus,
+  Course,
 } from "@/lib/api";
 import { toast } from "sonner";
 import {
@@ -47,6 +49,7 @@ type TabFilter = "all" | "link" | "file";
 export default function AdminResourcesPage() {
   const { token } = useAuthToken({ redirectTo: "/login" });
   const [resources, setResources] = useState<Resource[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabFilter>("all");
   const [showForm, setShowForm] = useState(false);
@@ -58,6 +61,7 @@ export default function AdminResourcesPage() {
   const [formTitle, setFormTitle] = useState("");
   const [formUrl, setFormUrl] = useState("");
   const [formDescription, setFormDescription] = useState("");
+  const [formCourseId, setFormCourseId] = useState("");
   const [formFile, setFormFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,12 +77,17 @@ export default function AdminResourcesPage() {
     try {
       const data = await fetchAdminResources(token);
       setResources(data.resources ?? []);
+      const availableCourses = await fetchCourses(token);
+      setCourses(availableCourses);
+      if (!availableCourses.some((course) => course.id === formCourseId)) {
+        setFormCourseId(availableCourses[0]?.id ?? "");
+      }
     } catch {
       setResources([]);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, formCourseId]);
 
   useEffect(() => {
     load();
@@ -124,12 +133,13 @@ export default function AdminResourcesPage() {
     setFormTitle("");
     setFormUrl("");
     setFormDescription("");
+    setFormCourseId(courses[0]?.id ?? "");
     setFormFile(null);
     setFormMode("link");
   };
 
   const handleCreateLink = async () => {
-    if (!token || !formTitle.trim() || !formUrl.trim() || !formCategory.trim()) return;
+    if (!token || !formCourseId || !formTitle.trim() || !formUrl.trim() || !formCategory.trim()) return;
     setSaving(true);
     try {
       await createResource(token, {
@@ -137,6 +147,7 @@ export default function AdminResourcesPage() {
         title: formTitle,
         url: formUrl,
         description: formDescription,
+        course_id: formCourseId,
       });
       resetForm();
       await load();
@@ -149,7 +160,7 @@ export default function AdminResourcesPage() {
   };
 
   const handleUploadFile = async () => {
-    if (!token || !formTitle.trim() || !formCategory.trim() || !formFile) return;
+    if (!token || !formCourseId || !formTitle.trim() || !formCategory.trim() || !formFile) return;
     setSaving(true);
     try {
       const result = await uploadResourceFile({
@@ -158,6 +169,7 @@ export default function AdminResourcesPage() {
         category: formCategory,
         title: formTitle,
         description: formDescription,
+        courseId: formCourseId,
       });
       resetForm();
       await load();
@@ -180,7 +192,7 @@ export default function AdminResourcesPage() {
   };
 
   const handleUpdate = async () => {
-    if (!token || !editingId) return;
+    if (!token || !editingId || !formCourseId) return;
     setSaving(true);
     try {
       await updateResource(token, editingId, {
@@ -188,6 +200,7 @@ export default function AdminResourcesPage() {
         title: formTitle || undefined,
         url: formUrl || undefined,
         description: formDescription,
+        course_id: formCourseId,
       });
       resetForm();
       await load();
@@ -252,6 +265,7 @@ export default function AdminResourcesPage() {
     setFormTitle(res.title);
     setFormUrl(res.url ?? "");
     setFormDescription(res.description);
+    setFormCourseId(res.course_id ?? "");
     setFormMode(res.type);
     setShowForm(true);
   };
@@ -368,6 +382,17 @@ export default function AdminResourcesPage() {
           )}
 
           <div className="space-y-4">
+            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Course workspace
+              <select
+                value={formCourseId}
+                onChange={(event) => setFormCourseId(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              >
+                <option value="" disabled>Select a course workspace</option>
+                {courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}
+              </select>
+            </label>
             {/* Category with suggestions */}
             <div>
               <input
@@ -412,7 +437,11 @@ export default function AdminResourcesPage() {
             ) : !editingId ? (
               /* File upload zone */
               <div
+                role="button"
+                tabIndex={0}
+                aria-label="Choose a file to upload"
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); fileInputRef.current?.click(); } }}
                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 onDrop={(e) => {
                   e.preventDefault();
@@ -462,6 +491,7 @@ export default function AdminResourcesPage() {
                 onClick={editingId ? handleUpdate : formMode === "link" ? handleCreateLink : handleUploadFile}
                 disabled={
                   saving ||
+                  !formCourseId ||
                   !formTitle.trim() ||
                   !formCategory.trim() ||
                   (!editingId && formMode === "link" && !formUrl.trim()) ||

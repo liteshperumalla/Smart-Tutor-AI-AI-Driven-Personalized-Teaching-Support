@@ -43,10 +43,15 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'cd .. && ./scripts/start-dev.sh',
-    url: 'http://localhost:4000',
-    reuseExistingServer: true,
-    timeout: 120000,
-  },
+  // The full integration suite starts Docker through scripts/start-dev.sh.
+  // CI's public-route smoke test starts a pre-built Next server itself, so it
+  // can remain deterministic and avoid test-account/cloud dependencies.
+  webServer: process.env.E2E_SKIP_WEBSERVER === 'true'
+    ? undefined
+    : {
+        command: 'cd .. && ./scripts/start-dev.sh',
+        url: 'http://localhost:4000',
+        reuseExistingServer: true,
+        timeout: 120000,
+      },
 })

@@ -23,6 +23,34 @@ logger = get_logger(__name__)
 _cross_encoder_reranker = None
 _cross_encoder_lock = threading.Lock()
 
+# Process-wide shared vector store and embeddings. The vector index (~14k
+# vectors, ~56 MB download) and the embedding LRU cache are expensive to
+# rebuild, so retrievers created without explicit dependencies share these
+# instances instead of re-downloading the index from S3 on every request.
+_shared_vector_store: Optional[S3VectorStore] = None
+_shared_embeddings: Optional[BedrockEmbeddings] = None
+_shared_lock = threading.Lock()
+
+
+def get_shared_vector_store() -> S3VectorStore:
+    """Return the process-wide S3VectorStore singleton (lazy, thread-safe)."""
+    global _shared_vector_store
+    if _shared_vector_store is None:
+        with _shared_lock:
+            if _shared_vector_store is None:
+                _shared_vector_store = S3VectorStore()
+    return _shared_vector_store
+
+
+def get_shared_embeddings() -> BedrockEmbeddings:
+    """Return the process-wide BedrockEmbeddings singleton (lazy, thread-safe)."""
+    global _shared_embeddings
+    if _shared_embeddings is None:
+        with _shared_lock:
+            if _shared_embeddings is None:
+                _shared_embeddings = BedrockEmbeddings()
+    return _shared_embeddings
+
 
 def _get_cross_encoder():
     """Return a singleton CrossEncoderReranker (lazy init, thread-safe)."""
@@ -59,13 +87,10 @@ class S3Retriever(BaseRetriever):
         """
         super().__init__()
 
-        self.vector_store = vector_store or S3VectorStore()
-        self.embeddings = embeddings or BedrockEmbeddings()
+        self.vector_store = vector_store or get_shared_vector_store()
+        self.embeddings = embeddings or get_shared_embeddings()
         self.similarity_top_k = similarity_top_k
         self.force_rebuild_index = force_rebuild_index
-
-        self._index_loaded = False
-        self._index_load_lock = threading.Lock()
         self._stats = {
             "total_retrievals": 0,
             "total_nodes_retrieved": 0,
@@ -75,23 +100,19 @@ class S3Retriever(BaseRetriever):
         self._stats_lock = threading.Lock()
 
     def _ensure_index_loaded(self):
-        """Load index if not already loaded."""
-        if not self._index_loaded:
-            with self._index_load_lock:
-                if not self._index_loaded:
-                    logger.info("Loading S3 vector index...")
-                    try:
-                        self.vector_store.load_index(
-                            force_rebuild=self.force_rebuild_index
-                        )
-                        stats = self.vector_store.get_stats()
-                        logger.info(
-                            f"✓ S3 Retriever ready with {stats['total_vectors']} vectors"
-                        )
-                        self._index_loaded = True
-                    except Exception as e:
-                        logger.error(f"✗ Failed to load S3 vector index: {e}")
-                        raise
+        """Ensure the (possibly shared) vector store has its index loaded.
+
+        Load-once semantics live on the store itself, so many retriever
+        instances can share one loaded index without re-downloading it.
+        """
+        try:
+            self.vector_store.ensure_loaded(force_rebuild=self.force_rebuild_index)
+            # A forced rebuild should only happen once per retriever, not on
+            # every retrieval call.
+            self.force_rebuild_index = False
+        except Exception as e:
+            logger.error(f"✗ Failed to load S3 vector index: {e}")
+            raise
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
         start_time = time.time()

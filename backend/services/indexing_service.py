@@ -77,14 +77,24 @@ class IndexingService:
 
     def _set_progress(self, resource_id: str, data: dict):
         key = f"indexing:{resource_id}"
+        stored_in_redis = False
         if self.redis:
             try:
                 self.redis.client.setex(key, 3600, json.dumps(data))
-                return
+                stored_in_redis = True
             except Exception:
                 pass
-        with _store_lock:
-            _progress_store[key] = data
+        if not stored_in_redis:
+            with _store_lock:
+                _progress_store[key] = data
+        # The UI needs durable health after the short-lived Redis progress key
+        # expires or a worker restarts.  Resource persistence is best-effort so
+        # it can never prevent the indexing job itself from progressing.
+        try:
+            from backend.services.resource_service import get_resource_service
+            get_resource_service().update_indexing_status(resource_id, data)
+        except Exception:
+            logger.debug("Could not persist indexing status for %s", resource_id, exc_info=True)
 
     def get_status(self, resource_id: str) -> Optional[dict]:
         key = f"indexing:{resource_id}"
@@ -96,7 +106,14 @@ class IndexingService:
             except Exception:
                 pass
         with _store_lock:
-            return _progress_store.get(key)
+            memory_status = _progress_store.get(key)
+        if memory_status:
+            return memory_status
+        try:
+            resource = __import__("backend.services.resource_service", fromlist=["get_resource_service"]).get_resource_service().get_resource(resource_id)
+            return resource.get("indexing_status") if resource else None
+        except Exception:
+            return None
 
     # ── Public API ─────────────────────────────────────────────────────────────
 

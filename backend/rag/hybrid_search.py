@@ -16,7 +16,7 @@ Date: December 28, 2025
 
 import math
 import re
-from typing import List, Dict, Any, Optional, Tuple, Set
+from typing import List, Dict, Any, Optional, Protocol, Tuple, Set
 from dataclasses import dataclass
 from collections import Counter, defaultdict
 import numpy as np
@@ -57,6 +57,18 @@ class SearchResult:
             'keyword_score': self.keyword_score,
             'rank': self.rank
         }
+
+
+class SemanticRetriever(Protocol):
+    """Interface required by :class:`HybridSearcher` for dense retrieval.
+
+    The concrete retriever is supplied by the active vector-store integration.
+    Keeping this lightweight structural contract here prevents the RAG service
+    from depending on a particular vector-store implementation.
+    """
+
+    def retrieve(self, query_bundle: Any) -> List[Any]:
+        """Return scored semantic nodes for a LlamaIndex query bundle."""
 
 
 class BM25Retriever:
