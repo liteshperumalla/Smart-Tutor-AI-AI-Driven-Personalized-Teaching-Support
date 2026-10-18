@@ -1,27 +1,35 @@
 """
 PostgreSQL Storage Backend
 Implements BaseStorageBackend using PostgreSQL for production-grade user data storage
+Supports Read Replicas (Pattern 29) and Optimistic Locking (Pattern 36)
 """
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
-from psycopg2 import sql  # SECURITY: For safe SQL identifier quoting
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    from psycopg2.pool import SimpleConnectionPool
+    from psycopg2 import sql  # SECURITY: For safe SQL identifier quoting
+except ImportError:
+    psycopg2 = None
+    RealDictCursor = None
+    SimpleConnectionPool = None
+    sql = None
 from contextlib import contextmanager
 import re
 
 from backend.config import config
 from backend.logger import get_logger
+from backend.exceptions import OptimisticLockError
 from backend.services.storage.base import BaseStorageBackend
-from backend.services.models import ChatSession, QuizResult  # Fixed import path
+from backend.services.models import ChatSession, QuizResult
 
 logger = get_logger(__name__)
 
 
 class PostgresStorageBackend(BaseStorageBackend):
-    """PostgreSQL implementation of storage backend"""
+    """PostgreSQL implementation of storage backend with Read Replica and Optimistic Locking support"""
 
     def __init__(
         self,
@@ -32,8 +40,9 @@ class PostgresStorageBackend(BaseStorageBackend):
         password: str = "",
         min_connections: int = 2,
         max_connections: int = 10,
+        reader_host: Optional[str] = None,
+        reader_port: Optional[int] = None,
     ):
-        # SECURITY: Add SSL configuration
         from backend.config import config
 
         self.connection_params = {
@@ -50,18 +59,46 @@ class PostgresStorageBackend(BaseStorageBackend):
         if config.POSTGRES_SSL_ROOT_CERT:
             self.connection_params["sslrootcert"] = config.POSTGRES_SSL_ROOT_CERT
 
-        # Create connection pool for efficient connection management
+        # Primary writer connection pool
         self.pool = SimpleConnectionPool(
             min_connections,
             max_connections,
             **self.connection_params
         )
+
+        # Dedicated Read Replica pool (Pattern 29)
+        effective_reader_host = reader_host or getattr(config, "POSTGRES_READER_HOST", "") or None
+        effective_reader_port = reader_port or getattr(config, "POSTGRES_READER_PORT", port)
+
+        if effective_reader_host and effective_reader_host != host:
+            self.reader_connection_params = dict(self.connection_params)
+            self.reader_connection_params["host"] = effective_reader_host
+            self.reader_connection_params["port"] = effective_reader_port
+            try:
+                self.reader_pool = SimpleConnectionPool(
+                    min_connections,
+                    max_connections,
+                    **self.reader_connection_params
+                )
+                logger.info(
+                    f"Configured dedicated read-replica pool for {effective_reader_host}:{effective_reader_port} (pool: {min_connections}-{max_connections})"
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to initialize read-replica pool ({exc}); falling back to primary pool for reads"
+                )
+                self.reader_pool = self.pool
+        else:
+            self.reader_pool = self.pool
+
         # Chat sessions live in DynamoDB, lazily resolved so that environments
         # without AWS configured (unit tests, local-only dev) don't pay the
         # boto3 cost or trip credential lookups at backend-init time.
         self._chat_backend = None
 
-        logger.info(f"PostgreSQL storage backend initialized (pool: {min_connections}-{max_connections})")
+        logger.info(
+            f"PostgreSQL storage backend initialized (writer pool: {min_connections}-{max_connections})"
+        )
 
     @property
     def chat_storage(self):
@@ -72,45 +109,54 @@ class PostgresStorageBackend(BaseStorageBackend):
         return self._chat_backend
 
     @contextmanager
-    def _get_connection(self):
-        """Get connection from pool with health check on return"""
-        conn = self.pool.getconn()
+    def _get_connection(self, read_only: bool = False):
+        """Get connection from primary or reader pool with health check and graceful fallback"""
+        use_reader = read_only and self.reader_pool is not None and self.reader_pool is not self.pool
+        target_pool = self.reader_pool if use_reader else self.pool
+        conn = None
+        try:
+            conn = target_pool.getconn()
+        except Exception as exc:
+            if use_reader:
+                logger.warning(
+                    f"Failed to obtain connection from read replica ({exc}); falling back to primary pool"
+                )
+                target_pool = self.pool
+                conn = self.pool.getconn()
+            else:
+                raise
         try:
             yield conn
         finally:
-            # Return broken connections to pool with close=True
-            if conn.closed or conn.status != psycopg2.extensions.STATUS_READY:
-                self.pool.putconn(conn, close=True)
-            else:
-                self.pool.putconn(conn)
+            if conn is not None:
+                # Return broken connections to pool with close=True
+                status_ready = psycopg2.extensions.STATUS_READY if psycopg2 and hasattr(psycopg2, "extensions") else 0
+                if conn.closed or conn.status != status_ready:
+                    target_pool.putconn(conn, close=True)
+                else:
+                    target_pool.putconn(conn)
 
     @staticmethod
     def _is_valid_field_name(field_name: str) -> bool:
         """
         Validate field name to prevent SQL injection.
         Only allows alphanumeric characters and underscores.
-
-        Args:
-            field_name: The field name to validate
-
-        Returns:
-            bool: True if valid, False otherwise
         """
-        # Field names must be alphanumeric with underscores only
-        # Must start with letter or underscore
         pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
         return bool(re.match(pattern, field_name))
 
     @contextmanager
-    def _get_cursor(self, cursor_factory=RealDictCursor):
-        """Get cursor with automatic commit/rollback"""
-        with self._get_connection() as conn:
+    def _get_cursor(self, cursor_factory=RealDictCursor, read_only: bool = False):
+        """Get cursor with automatic commit/rollback and read/write pool routing"""
+        with self._get_connection(read_only=read_only) as conn:
             cursor = conn.cursor(cursor_factory=cursor_factory)
             try:
                 yield cursor
-                conn.commit()
+                if not read_only:
+                    conn.commit()
             except Exception as e:
-                conn.rollback()
+                if not read_only:
+                    conn.rollback()
                 logger.error(f"Database error: {e}", exc_info=True)
                 raise
             finally:
@@ -118,7 +164,7 @@ class PostgresStorageBackend(BaseStorageBackend):
 
     def check_health(self) -> None:
         """Raise when PostgreSQL cannot serve a simple query."""
-        with self._get_cursor() as cursor:
+        with self._get_cursor(read_only=True) as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchone()
 
@@ -134,17 +180,20 @@ class PostgresStorageBackend(BaseStorageBackend):
                     user_dict[key] = metadata[key]
         # Default role when not set
         user_dict.setdefault("role", "User")
+        # Ensure version exists
+        user_dict["version"] = int(user_dict.get("version") or 1)
         return user_dict
 
     def get_user(self, username: str) -> Optional[dict]:
-        """Get user by username"""
+        """Get user by username (routed to read pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=True) as cursor:
                 cursor.execute(
                     """
                     SELECT
                         username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata
+                        created_at, last_login, login_attempts, locked_until, metadata,
+                        COALESCE(version, 1) AS version
                     FROM users
                     WHERE username = %s
                     """,
@@ -162,16 +211,17 @@ class PostgresStorageBackend(BaseStorageBackend):
             return None
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
-        """Get user by email"""
+        """Get user by email (routed to read pool)"""
         if not email:
             return None
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=True) as cursor:
                 cursor.execute(
                     """
                     SELECT
                         username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata
+                        created_at, last_login, login_attempts, locked_until, metadata,
+                        COALESCE(version, 1) AS version
                     FROM users
                     WHERE email = %s
                     """,
@@ -187,9 +237,9 @@ class PostgresStorageBackend(BaseStorageBackend):
             return None
 
     def create_user(self, username: str, password_hash: str, **extras) -> dict:
-        """Create a new user"""
+        """Create a new user (routed to writer pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=False) as cursor:
                 # Extract known fields from extras
                 email = extras.get("email", username)
                 full_name = extras.get("full_name", username)
@@ -203,12 +253,12 @@ class PostgresStorageBackend(BaseStorageBackend):
                 cursor.execute(
                     """
                     INSERT INTO users (
-                        username, email, password_hash, full_name, metadata
+                        username, email, password_hash, full_name, metadata, version
                     )
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, 1)
                     RETURNING
                         username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata
+                        created_at, last_login, login_attempts, locked_until, metadata, version
                     """,
                     (username, email, password_hash, full_name,
                      psycopg2.extras.Json(metadata) if metadata else None)
@@ -226,13 +276,10 @@ class PostgresStorageBackend(BaseStorageBackend):
 
     def increment_login_attempts(self, username: str) -> int:
         """
-        Atomic counter bump via ``UPDATE … RETURNING``. Two concurrent failed
-        logins for the same account each see their own pre-incremented value,
-        so brute-force lockouts can't be defeated by parallel requests.
-        Returns 0 when the user does not exist.
+        Atomic counter bump via ``UPDATE … RETURNING`` on writer pool.
         """
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=False) as cursor:
                 cursor.execute(
                     """
                     UPDATE users
@@ -250,16 +297,24 @@ class PostgresStorageBackend(BaseStorageBackend):
             logger.error(f"Error incrementing login attempts for {username}: {e}")
             raise
 
-    def update_user(self, username: str, updates: dict) -> dict:
-        """Update user fields"""
-        if not updates:
+    def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
+        """
+        Update user fields with optimistic locking support (Pattern 36).
+
+        Args:
+            username: Username of user to update
+            updates: Dictionary of fields to modify
+            expected_version: Optional expected version for concurrency detection
+
+        Raises:
+            OptimisticLockError: If expected_version does not match current version
+            ValueError: If user does not exist or invalid field names
+        """
+        if not updates and expected_version is None:
             return self.get_user(username)
 
         try:
             # Build dynamic UPDATE query
-            set_clauses = []
-            values = []
-
             allowed_fields = {
                 'email', 'password_hash', 'full_name',
                 'locked_until', 'login_attempts', 'last_login', 'metadata'
@@ -281,6 +336,7 @@ class PostgresStorageBackend(BaseStorageBackend):
 
             # SECURITY: Use psycopg2.sql.Identifier for safe column quoting
             sql_set_clauses = []
+            values = []
             for key, value in updates.items():
                 if key in allowed_fields:
                     if not self._is_valid_field_name(key):
@@ -294,31 +350,51 @@ class PostgresStorageBackend(BaseStorageBackend):
                     )
                     values.append(value)
 
-            if not sql_set_clauses:
-                return self.get_user(username)
+            # Optimistic locking version bump (Pattern 36)
+            sql_set_clauses.append(sql.SQL("version = COALESCE(version, 1) + 1"))
 
-            # Add username to values for WHERE clause
+            # Build WHERE clause
+            where_conditions = [sql.SQL("username = %s")]
             values.append(username)
 
-            with self._get_cursor() as cursor:
+            if expected_version is not None:
+                where_conditions.append(sql.SQL("version = %s"))
+                values.append(expected_version)
+
+            with self._get_cursor(read_only=False) as cursor:
                 query = sql.SQL("""
                     UPDATE users
                     SET {}
-                    WHERE username = %s
+                    WHERE {}
                     RETURNING
                         username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata
-                """).format(sql.SQL(", ").join(sql_set_clauses))
+                        created_at, last_login, login_attempts, locked_until, metadata, version
+                """).format(
+                    sql.SQL(", ").join(sql_set_clauses),
+                    sql.SQL(" AND ").join(where_conditions)
+                )
 
                 cursor.execute(query, values)
                 user = cursor.fetchone()
 
                 if not user:
+                    if expected_version is not None:
+                        # Check if user exists to distinguish not-found from version mismatch
+                        cursor.execute("SELECT version FROM users WHERE username = %s", (username,))
+                        existing = cursor.fetchone()
+                        if existing:
+                            raise OptimisticLockError(
+                                resource=f"user:{username}",
+                                current_version=existing["version"],
+                                expected_version=expected_version
+                            )
                     raise ValueError(f"User {username} not found")
 
-                logger.debug(f"Updated user: {username}")
+                logger.debug(f"Updated user: {username} (new version: {user['version']})")
                 return self._enrich_user_dict(dict(user))
 
+        except OptimisticLockError:
+            raise
         except Exception as e:
             logger.error(f"Error updating user {username}: {e}")
             raise
@@ -342,11 +418,6 @@ class PostgresStorageBackend(BaseStorageBackend):
     def reset_login_attempts(self, username: str) -> None:
         """Reset failed login attempts"""
         self.update_user(username, {"login_attempts": 0})
-
-    def lock_account(self, username: str, until) -> None:
-        """Lock user account until specified time"""
-        locked_until = until.isoformat() if hasattr(until, "isoformat") else str(until)
-        self.update_user(username, {"locked_until": locked_until})
 
     def is_account_locked(self, username: str) -> bool:
         """Check if account is locked"""
@@ -383,9 +454,9 @@ class PostgresStorageBackend(BaseStorageBackend):
         return self.chat_storage.delete_chat_session(username, session_id)
 
     def save_quiz_result(self, result: QuizResult) -> None:
-        """Save quiz result to PostgreSQL"""
+        """Save quiz result to PostgreSQL (writer pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=False) as cursor:
                 cursor.execute(
                     """
                     INSERT INTO quiz_results (
@@ -395,8 +466,8 @@ class PostgresStorageBackend(BaseStorageBackend):
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (
-                        result.user_id,  # username maps to user_id
-                        result.id,  # quiz_id maps to id
+                        result.user_id,
+                        result.id,
                         result.score,
                         result.total_questions,
                         psycopg2.extras.Json(result.metadata.get("responses", [])) if result.metadata else None,
@@ -410,9 +481,9 @@ class PostgresStorageBackend(BaseStorageBackend):
             raise
 
     def list_quiz_results(self, username: str) -> List[QuizResult]:
-        """List quiz results for a user"""
+        """List quiz results for a user (routed to read pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=True) as cursor:
                 cursor.execute(
                     """
                     SELECT
@@ -427,10 +498,9 @@ class PostgresStorageBackend(BaseStorageBackend):
 
                 results = []
                 for row in cursor.fetchall():
-                    # Map database fields to QuizResult model
                     result = QuizResult(
-                        id=row['quiz_id'],  # quiz_id from DB maps to id
-                        user_id=row['username'],  # username from DB maps to user_id
+                        id=row['quiz_id'],
+                        user_id=row['username'],
                         score=row['score'],
                         total_questions=row['total_questions'],
                         percentage=(row['score'] / row['total_questions'] * 100.0) if row.get('total_questions') else 0.0,
@@ -446,14 +516,15 @@ class PostgresStorageBackend(BaseStorageBackend):
             return []
 
     def list_users(self) -> List[dict]:
-        """List all users (without passwords)"""
+        """List all users (without passwords, routed to read pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=True) as cursor:
                 cursor.execute(
                     """
                     SELECT
                         username, email, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata
+                        created_at, last_login, login_attempts, locked_until, metadata,
+                        COALESCE(version, 1) AS version
                     FROM users
                     ORDER BY created_at DESC
                     """
@@ -469,9 +540,9 @@ class PostgresStorageBackend(BaseStorageBackend):
             return []
 
     def delete_user(self, username: str) -> bool:
-        """Delete a user by username"""
+        """Delete a user by username (writer pool)"""
         try:
-            with self._get_cursor() as cursor:
+            with self._get_cursor(read_only=False) as cursor:
                 cursor.execute("DELETE FROM users WHERE username = %s", (username,))
                 if cursor.rowcount > 0:
                     logger.info(f"Deleted user: {username}")
@@ -482,10 +553,13 @@ class PostgresStorageBackend(BaseStorageBackend):
             return False
 
     def close(self):
-        """Close all connections in pool"""
+        """Close all connections in primary and reader pools"""
         if self.pool:
             self.pool.closeall()
-            logger.info("PostgreSQL connection pool closed")
+            logger.info("PostgreSQL primary connection pool closed")
+        if self.reader_pool and self.reader_pool is not self.pool:
+            self.reader_pool.closeall()
+            logger.info("PostgreSQL read-replica connection pool closed")
 
 
 # Singleton instance
@@ -496,7 +570,6 @@ def get_postgres_backend() -> PostgresStorageBackend:
     """Get singleton PostgreSQL backend instance"""
     global _postgres_backend
     if _postgres_backend is None:
-        # Read from environment or config
         host = config.POSTGRES_HOST
         port = int(config.POSTGRES_PORT)
         database = config.POSTGRES_DB
@@ -508,6 +581,8 @@ def get_postgres_backend() -> PostgresStorageBackend:
             port=port,
             database=database,
             user=user,
-            password=password
+            password=password,
+            reader_host=config.POSTGRES_READER_HOST,
+            reader_port=config.POSTGRES_READER_PORT,
         )
     return _postgres_backend

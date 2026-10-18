@@ -153,6 +153,19 @@ class DataCorruptionError(DatabaseError):
         )
 
 
+class OptimisticLockError(DatabaseError):
+    """Raised when an optimistic concurrency version check fails."""
+    def __init__(self, resource: str, current_version: Any, expected_version: Any):
+        super().__init__(
+            f"Optimistic lock conflict on {resource}: expected version {expected_version}, but current version is {current_version}",
+            "OPTIMISTIC_LOCK_CONFLICT",
+            {"resource": resource, "current_version": current_version, "expected_version": expected_version}
+        )
+        self.resource = resource
+        self.current_version = current_version
+        self.expected_version = expected_version
+
+
 # Validation Exceptions
 class ValidationError(SmartTutorException):
     """Base validation error"""

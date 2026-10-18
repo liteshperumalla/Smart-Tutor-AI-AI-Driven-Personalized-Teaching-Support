@@ -48,8 +48,8 @@ class FileSystemStorageBackend(BaseStorageBackend):
     def create_user(self, username: str, password_hash: str, **extras) -> dict:
         return self.user_db.create_user(username, password_hash, **extras)
 
-    def update_user(self, username: str, updates: dict) -> dict:
-        return self.user_db.update_user(username, updates)
+    def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
+        return self.user_db.update_user(username, updates, expected_version=expected_version)
 
     # -- Chat helpers ----------------------------------------------------
     def _sanitize(self, value: str) -> str:

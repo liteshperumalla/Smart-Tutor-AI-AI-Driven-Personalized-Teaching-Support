@@ -37,9 +37,9 @@ class HybridStorageBackend(BaseStorageBackend):
         """Create user in PostgreSQL"""
         return self.postgres.create_user(username, password_hash, **extras)
 
-    def update_user(self, username: str, updates: dict) -> dict:
+    def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
         """Update user in PostgreSQL"""
-        return self.postgres.update_user(username, updates)
+        return self.postgres.update_user(username, updates, expected_version=expected_version)
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         """Get user by email from PostgreSQL"""

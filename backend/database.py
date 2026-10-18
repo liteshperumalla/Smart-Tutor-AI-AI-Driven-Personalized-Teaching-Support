@@ -16,7 +16,8 @@ from .config import config
 from .logger import get_logger
 from .exceptions import (
     DataNotFoundError, DataSaveError, DataLoadError,
-    DataCorruptionError, UserNotFoundError, UserAlreadyExistsError
+    DataCorruptionError, UserNotFoundError, UserAlreadyExistsError,
+    OptimisticLockError
 )
 from .validators import PathValidator
 
@@ -209,6 +210,7 @@ class UserDatabase:
                 'profile_picture_path': '',
                 'login_attempts': 0,
                 'locked_until': None,
+                'version': 1,
                 **additional_fields
             }
 
@@ -261,23 +263,32 @@ class UserDatabase:
                 return user
         return None
 
-    def update_user(self, username: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    def update_user(self, username: str, updates: Dict[str, Any], expected_version: Optional[int] = None) -> Dict[str, Any]:
         """
-        Update user data
+        Update user data with optimistic locking support
 
         Args:
             username: Username
             updates: Dictionary of fields to update
+            expected_version: Optional expected version for optimistic concurrency check
 
         Returns:
             Updated user data
 
         Raises:
             UserNotFoundError: If user doesn't exist
+            OptimisticLockError: If expected_version does not match current version
         """
         with self.db.transaction() as users:
             if username not in users:
                 raise UserNotFoundError(username)
+
+            if expected_version is not None:
+                current_ver = users[username].get("version", 1)
+                if current_ver != expected_version:
+                    raise OptimisticLockError(
+                        f"user:{username}", current_version=current_ver, expected_version=expected_version
+                    )
 
             # Update only provided fields. We intentionally no longer mirror
             # password_hash -> hashed_password; the legacy `hashed_password`
@@ -288,8 +299,9 @@ class UserDatabase:
                 if key != 'username':  # Don't allow username change
                     users[username][key] = value
 
+            users[username]["version"] = users[username].get("version", 1) + 1
             users[username]['updated_at'] = datetime.now(timezone.utc).isoformat()
-            logger.info(f"User updated: {username}, fields: {list(updates.keys())}")
+            logger.info(f"User updated: {username}, fields: {list(updates.keys())}, version: {users[username]['version']}")
 
             return users[username]
 
@@ -397,6 +409,10 @@ class UserDatabase:
             safe_data['username'] = username
             user_list.append(safe_data)
         return user_list
+
+
+# Alias for backward compatibility
+UserManager = UserDatabase
 
 
 class ChatSessionDatabase:

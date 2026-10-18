@@ -18,7 +18,7 @@ class BaseStorageBackend(ABC):
         ...
 
     @abstractmethod
-    def update_user(self, username: str, updates: dict) -> dict:
+    def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
         ...
 
     def increment_login_attempts(self, username: str) -> int:

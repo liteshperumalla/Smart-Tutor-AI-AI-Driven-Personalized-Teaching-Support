@@ -195,6 +195,13 @@ class Config:
     POSTGRES_SSL_ROOT_CERT = os.getenv(
         "POSTGRES_SSL_ROOT_CERT", ""
     )  # Path to CA certificate for RDS
+    # Read Replica Settings (Pattern 29)
+    POSTGRES_READER_HOST = (
+        _rds_credentials.get("reader_host")
+        if _rds_credentials
+        else os.getenv("POSTGRES_READER_HOST", os.getenv("POSTGRES_REPLICA_HOST", ""))
+    )
+    POSTGRES_READER_PORT = int(os.getenv("POSTGRES_READER_PORT", str(POSTGRES_PORT)))
 
     # DynamoDB Settings (Phase 2) - Updated for AWS production deployment
     DYNAMODB_ENDPOINT = os.getenv(

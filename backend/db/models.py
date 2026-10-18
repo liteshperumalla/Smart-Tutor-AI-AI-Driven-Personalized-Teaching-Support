@@ -1,10 +1,11 @@
 """SQLAlchemy models for the PostgreSQL schema managed by Alembic."""
 
 from datetime import datetime
+from typing import List, Optional
 
 from sqlalchemy import DateTime, ForeignKey, Float, Index, Integer, String, UniqueConstraint, desc, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -27,8 +28,17 @@ class UserRecord(Base):
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime())
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    version: Mapped[int] = mapped_column(Integer(), server_default=text("1"), default=1, nullable=False)
 
     __table_args__ = (Index("idx_users_email", "email"),)
+
+    # Relationships configured with eager loading (lazy="selectin") to prevent N+1 queries (Pattern 27)
+    quiz_results: Mapped[List["QuizResultRecord"]] = relationship(
+        "QuizResultRecord", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    course_memberships: Mapped[List["CourseMembershipRecord"]] = relationship(
+        "CourseMembershipRecord", back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class QuizResultRecord(Base):
@@ -54,6 +64,8 @@ class QuizResultRecord(Base):
         Index("idx_quiz_results_created_at", desc("created_at")),
     )
 
+    user: Mapped["UserRecord"] = relationship("UserRecord", back_populates="quiz_results", lazy="selectin")
+
 
 class CourseRecord(Base):
     __tablename__ = "courses"
@@ -64,6 +76,14 @@ class CourseRecord(Base):
     owner_username: Mapped[str | None] = mapped_column(String(255), ForeignKey("users.username", ondelete="SET NULL"))
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(), server_default=text("CURRENT_TIMESTAMP"))
+
+    # Relationships with eager loading (lazy="selectin") to prevent N+1 queries (Pattern 27)
+    memberships: Mapped[List["CourseMembershipRecord"]] = relationship(
+        "CourseMembershipRecord", back_populates="course", cascade="all, delete-orphan", lazy="selectin"
+    )
+    learning_objectives: Mapped[List["LearningObjectiveRecord"]] = relationship(
+        "LearningObjectiveRecord", back_populates="course", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class CourseMembershipRecord(Base):
@@ -77,6 +97,9 @@ class CourseMembershipRecord(Base):
 
     __table_args__ = (UniqueConstraint("course_id", "username", name="uq_course_membership"), Index("idx_course_memberships_username", "username"))
 
+    course: Mapped["CourseRecord"] = relationship("CourseRecord", back_populates="memberships", lazy="selectin")
+    user: Mapped["UserRecord"] = relationship("UserRecord", back_populates="course_memberships", lazy="selectin")
+
 
 class LearningObjectiveRecord(Base):
     __tablename__ = "learning_objectives"
@@ -88,6 +111,11 @@ class LearningObjectiveRecord(Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
 
     __table_args__ = (Index("idx_learning_objectives_course", "course_id"),)
+
+    course: Mapped["CourseRecord"] = relationship("CourseRecord", back_populates="learning_objectives", lazy="selectin")
+    mastery_records: Mapped[List["MasteryRecord"]] = relationship(
+        "MasteryRecord", back_populates="objective", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class MasteryRecord(Base):
@@ -101,5 +129,9 @@ class MasteryRecord(Base):
     attempts: Mapped[int] = mapped_column(Integer(), nullable=False, server_default=text("0"))
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(), server_default=text("CURRENT_TIMESTAMP"))
+    version: Mapped[int] = mapped_column(Integer(), server_default=text("1"), default=1, nullable=False)
 
     __table_args__ = (UniqueConstraint("username", "course_id", "objective_id", name="uq_student_mastery"), Index("idx_student_mastery_course", "course_id"))
+
+    objective: Mapped["LearningObjectiveRecord"] = relationship("LearningObjectiveRecord", back_populates="mastery_records", lazy="selectin")
+    user: Mapped["UserRecord"] = relationship("UserRecord", lazy="selectin")
