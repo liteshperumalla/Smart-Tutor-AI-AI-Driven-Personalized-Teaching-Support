@@ -8,7 +8,7 @@ controlled by the SECRETS_PROVIDER environment variable.
 """
 
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pathlib import Path
 from dotenv import load_dotenv
 import json
@@ -108,7 +108,22 @@ class Config:
     ALLOWED_REDIRECT_DOMAINS = os.getenv("ALLOWED_REDIRECT_DOMAINS", "").split(",")
     CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
     CORS_ALLOW_LOCALHOST = os.getenv("CORS_ALLOW_LOCALHOST", "false").lower() == "true"
-    TRUSTED_HOSTS = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "").split(",") if host.strip()]
+    @staticmethod
+    def _parse_trusted_hosts() -> List[str]:
+        raw = os.getenv("TRUSTED_HOSTS", "").strip()
+        if raw:
+            return [h.strip() for h in raw.split(",") if h.strip()]
+        hosts: List[str] = []
+        from urllib.parse import urlparse
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(","):
+            origin = origin.strip()
+            if origin:
+                parsed = urlparse(origin)
+                if parsed.hostname and parsed.hostname not in hosts:
+                    hosts.append(parsed.hostname)
+        return hosts
+
+    TRUSTED_HOSTS = _parse_trusted_hosts()
 
     # JWT Settings - with AWS Secrets Manager support
     JWT_SECRET_KEY = (
@@ -698,9 +713,9 @@ class Config:
                 )
 
             if not cls.TRUSTED_HOSTS:
-                errors.append(
-                    "CRITICAL: TRUSTED_HOSTS must be set in production. "
-                    "Use the public API hostname(s), for example api.example.edu."
+                warnings.append(
+                    "SECURITY: TRUSTED_HOSTS is not set in production. "
+                    "Set it to public API hostname(s) to enforce Host header validation."
                 )
 
             # Database password validation

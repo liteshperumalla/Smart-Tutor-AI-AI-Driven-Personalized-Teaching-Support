@@ -340,6 +340,10 @@ jobs:
               echo "No BEDROCK_GUARDRAIL_ID repo variable set -- guardrail enforcement stays disabled."
             fi
 
+            echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
+            sed -i '/^TRUSTED_HOSTS=/d' ~/smart-tutor.env
+            echo "TRUSTED_HOSTS=127.0.0.1,localhost,${{ steps.ec2-target.outputs.host }}" >> ~/smart-tutor.env
+
             docker_with_timeout() {
               local seconds="$1"
               shift

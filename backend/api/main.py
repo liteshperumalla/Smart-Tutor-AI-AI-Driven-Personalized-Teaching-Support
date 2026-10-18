@@ -170,9 +170,11 @@ add_security_middleware(app, config={
 
 # Trusted Host middleware (prevent host header injection)
 if config.ENVIRONMENT == "production":
-    _trusted_hosts = os.environ.get("TRUSTED_HOSTS", "").split(",")
-    _trusted_hosts = [h.strip() for h in _trusted_hosts if h.strip()]
+    _trusted_hosts = list(config.TRUSTED_HOSTS)
     if _trusted_hosts:
+        for _local in ("127.0.0.1", "localhost"):
+            if _local not in _trusted_hosts:
+                _trusted_hosts.append(_local)
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=_trusted_hosts,
