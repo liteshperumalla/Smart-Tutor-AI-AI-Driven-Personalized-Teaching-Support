@@ -27,8 +27,9 @@ class TestQuizEndpoints:
             "num_questions": 3
         })
         # Accept 200 (generated), 400/422 (folders not found / validation),
+        # 403 (unenrolled user in course-scoped deployment),
         # or 500 (AWS credentials unavailable in CI)
-        assert response.status_code in (200, 400, 422, 500)
+        assert response.status_code in (200, 400, 403, 422, 500)
 
     def test_quiz_history_requires_auth(self, test_client):
         """Quiz history without auth must return 401"""

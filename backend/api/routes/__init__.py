@@ -39,10 +39,12 @@ _v1.include_router(evaluation.router)
 _v1.include_router(home.router)
 _v1.include_router(files.router)
 _v1.include_router(code.router)
-_v1.include_router(rag.router)
+# NOTE: rag.router is NOT included here — it already has prefix="/api/v1/rag"
+# and would become /api/v1/api/v1/rag if nested. Registered directly on app below.
 _v1.include_router(courses.router)
 _v1.include_router(learning.router)
 _v1.include_router(admin.router)
+
 
 
 def register_routes(app: FastAPI) -> None:
@@ -64,12 +66,17 @@ def register_routes(app: FastAPI) -> None:
 
     # ── Versioned API (/api/v1/) ──────────────────────────────────────────
     app.include_router(_v1)
+    # rag.router self-prefixes to /api/v1/rag — register directly so it isn't
+    # double-nested to /api/v1/api/v1/rag by the _v1 parent router.
+    app.include_router(rag.router)
 
     # ── WebSocket (unversioned — WS upgrade proxy compatibility) ─────────
     app.include_router(ws_chat.router)
 
     # ── Legacy bare-path routes (backward compatibility) ──────────────────
-    # TODO: Remove after all clients have migrated to /api/v1/*
+    # Sunset date: 90 days from production launch (remove when all clients migrate).
+    # rag.router is excluded from this list — it already uses /api/v1/rag as its
+    # canonical path; there is no unversioned legacy path for it.
     app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(quiz.router)
@@ -82,7 +89,6 @@ def register_routes(app: FastAPI) -> None:
     app.include_router(home.router)
     app.include_router(files.router)
     app.include_router(code.router)
-    app.include_router(rag.router)
     app.include_router(courses.router)
     app.include_router(learning.router)
     app.include_router(admin.router)

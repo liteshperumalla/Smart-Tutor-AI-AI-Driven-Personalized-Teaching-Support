@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 from typing import TYPE_CHECKING
 
 from backend.api.dependencies import get_current_session
+from backend.csrf_protection import csrf_protect
 from backend.exceptions import InvalidCredentialsError, PasswordValidationError
+from backend.rate_limiter import limiter
 
 if TYPE_CHECKING:
     from backend.auth_service import AuthService
@@ -86,8 +88,10 @@ def save_notes(
     return {"notes": payload.content.strip()}
 
 
-@router.post("/password")
+@router.post("/password", dependencies=[Depends(csrf_protect)])
+@limiter.limit("5/minute")
 def change_password(
+    request: Request,
     payload: PasswordChangePayload,
     session=Depends(get_current_session),
     auth_service: AuthService = Depends(get_auth_service),
@@ -100,7 +104,8 @@ def change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
-@router.delete("")
+@router.delete("", dependencies=[Depends(csrf_protect)])
+@limiter.limit("3/minute")
 def delete_account(
     request: Request,
     payload: DeleteAccountPayload,
