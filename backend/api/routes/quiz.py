@@ -125,29 +125,40 @@ def submit_quiz(
     quiz_service: "QuizService" = Depends(get_quiz_service),
 ):
     token, user = session
+    from backend.saga import create_quiz_submission_saga, SagaExecutionError
+
+    saga = create_quiz_submission_saga()
+    context = {
+        "user_id": user["username"],
+        "quiz_id": payload.quiz_id,
+        "answers": payload.answers,
+        "quiz_service": quiz_service,
+    }
+
     try:
-        result = quiz_service.save_result(
-            user_id=user["username"],
-            quiz_id=payload.quiz_id,
-            answers=payload.answers,
+        outcome = saga.execute(context)
+        result = outcome["context"]["quiz_result"]
+    except SagaExecutionError as saga_err:
+        orig = getattr(saga_err, "__cause__", None) or saga_err
+        if isinstance(orig, ValueError) or "not found" in str(orig).lower():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(orig))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Quiz submission failed: {orig}",
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    metadata = result.metadata or {}
-    if metadata.get("course_id"):
-        from backend.services.learning_service import get_learning_service
-        get_learning_service().record_assessment(
-            user["username"], metadata["course_id"], metadata.get("responses", []), metadata.get("difficulty", "medium")
-        )
+
     posthog_tracker.capture(
         distinct_id=user["username"],
         event="quiz_completed",
         properties={
             "quiz_id": payload.quiz_id,
             "score": result.to_dict().get("score"),
+            "saga_id": saga.saga_id,
         },
     )
-    return {"result": result.to_dict()}
+    return {"result": result.to_dict(), "saga_id": saga.saga_id}
 
 
 @router.get("/history")

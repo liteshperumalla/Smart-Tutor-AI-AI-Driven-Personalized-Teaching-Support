@@ -394,17 +394,13 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
     """
     saga = SagaOrchestrator("quiz-submission-saga", get_saga_state_store())
 
-    # Step 1: Validate quiz — check the quiz_id exists and belongs to the user
+    # Step 1: Validate quiz — check the quiz_id exists
     def validate_quiz(ctx: Dict[str, Any]) -> bool:
         quiz_id = ctx.get("quiz_id")
         user_id = ctx.get("user_id")
         logger.info("Validating quiz %s for user %s", quiz_id, user_id)
-        from backend.services.quiz_service import get_quiz_service
-        svc = get_quiz_service()
-        quiz = svc.get_quiz(user_id, quiz_id) if hasattr(svc, "get_quiz") else None
-        if quiz is None:
-            logger.warning("Quiz validation failed: quiz %s not found for user %s", quiz_id, user_id)
-            return False
+        if not quiz_id:
+            raise ValueError("quiz_id is required")
         return True
 
     saga.add_step(
@@ -422,7 +418,9 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
         logger.info("Saving quiz submission: %s", submission_id)
         try:
             from backend.services.quiz_service import get_quiz_service
-            result = get_quiz_service().save_result(user_id=user_id, quiz_id=quiz_id, answers=answers)
+            svc = ctx.get("quiz_service") or get_quiz_service()
+            result = svc.save_result(user_id=user_id, quiz_id=quiz_id, answers=answers)
+            ctx["quiz_result"] = result
             return result.quiz_id if hasattr(result, "quiz_id") else submission_id
         except Exception as exc:
             logger.error("save_submission failed: %s", exc, exc_info=True)
@@ -432,7 +430,6 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
         submission_id = ctx.get("save_submission_result")
         logger.info("Compensation: removing quiz submission %s", submission_id)
         # Quiz results are immutable once stored; log the intent for auditing
-        # A future hard-delete can be added here if regulatory requirements demand it.
 
     saga.add_step(
         name="save_submission",
@@ -442,25 +439,17 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
 
     # Step 3: Grade quiz — derive score from saved result metadata
     def grade_quiz(ctx: Dict[str, Any]) -> Dict[str, Any]:
-        submission_id = ctx.get("save_submission_result")
-        logger.info("Grading quiz submission: %s", submission_id)
-        try:
-            from backend.services import get_storage_backend
-            results = get_storage_backend().list_quiz_results(ctx.get("user_id", ""))
-            result = next((r for r in results if r.quiz_id == submission_id), None)
-            if result:
-                d = result.to_dict()
-                total = d.get("total_questions", 1) or 1
-                score = d.get("score", 0)
-                return {"score": score, "max_score": total, "percentage": round(score / total * 100, 1)}
-        except Exception as exc:
-            logger.warning("grade_quiz lookup failed (%s), using safe defaults", exc)
+        result = ctx.get("quiz_result")
+        if result:
+            d = result.to_dict()
+            total = d.get("total_questions", 1) or 1
+            score = d.get("score", 0)
+            return {"score": score, "max_score": total, "percentage": round(score / total * 100, 1)}
         return {"score": 0, "max_score": 1, "percentage": 0.0}
 
     def delete_grades(ctx: Dict[str, Any]):
         submission_id = ctx.get("save_submission_result")
         logger.info("Compensation: marking grades void for submission %s", submission_id)
-        # Grades are derived from the result record; compensation is logging only.
 
     saga.add_step(
         name="grade_quiz",
@@ -468,25 +457,49 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
         compensation=delete_grades
     )
 
-    # Step 4: Send notification (best-effort — cannot unsend)
+    # Step 4: Record learning assessment (best-effort)
+    def record_assessment(ctx: Dict[str, Any]) -> bool:
+        result = ctx.get("quiz_result")
+        metadata = (result.metadata if result else {}) or {}
+        course_id = metadata.get("course_id") or ctx.get("course_id")
+        user_id = ctx.get("user_id")
+        if course_id:
+            try:
+                from backend.services.learning_service import get_learning_service
+                get_learning_service().record_assessment(
+                    user_id, course_id, metadata.get("responses", []), metadata.get("difficulty", "medium")
+                )
+            except Exception as exc:
+                logger.warning("record_assessment failed (best-effort): %s", exc)
+        return True
+
+    saga.add_step(
+        name="record_assessment",
+        action=record_assessment,
+        compensation=lambda ctx: None
+    )
+
+    # Step 5: Send notification (best-effort — cannot unsend)
     def send_notification(ctx: Dict[str, Any]) -> bool:
         user_id = ctx.get("user_id")
         grade_result = ctx.get("grade_quiz_result", {})
+        result = ctx.get("quiz_result")
+        metadata = (result.metadata if result else {}) or {}
         logger.info("Sending grade notification to user: %s", user_id)
         try:
             from backend.events.event_schemas import QuizGradedEvent
-            from backend.events.event_handlers import EventHandler
+            from backend.events.event_bus import publish_event
             event = QuizGradedEvent(
                 user_id=user_id,
                 quiz_id=ctx.get("quiz_id", ""),
                 score=grade_result.get("score", 0),
                 max_score=grade_result.get("max_score", 0),
                 percentage=grade_result.get("percentage", 0),
-                course_id=ctx.get("course_id"),
-                responses=ctx.get("responses", []),
-                difficulty=ctx.get("difficulty", "medium"),
+                course_id=metadata.get("course_id") or ctx.get("course_id"),
+                responses=metadata.get("responses", []),
+                difficulty=metadata.get("difficulty", "medium"),
             )
-            EventHandler.handle(event)
+            publish_event(event)
         except Exception as exc:
             logger.warning("send_notification best-effort failed: %s", exc)
         return True

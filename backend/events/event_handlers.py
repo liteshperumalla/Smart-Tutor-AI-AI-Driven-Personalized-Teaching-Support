@@ -4,7 +4,7 @@ Allows services to subscribe to and handle events
 """
 
 import logging
-from typing import Callable, Dict, List, Any
+from typing import Callable, Dict, List, Any, Optional
 from functools import wraps
 
 from .event_schemas import BaseEvent, EventType

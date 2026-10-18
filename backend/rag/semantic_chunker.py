@@ -20,24 +20,18 @@ import logging
 
 import nltk
 from nltk.tokenize import sent_tokenize
-import spacy
 
-from backend.config import config
-from backend.logger import get_logger
+logger = logging.getLogger(__name__)
 
-logger = get_logger(__name__)
-
-# Download required NLTK data
 try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt', quiet=True)
-
-# Load spaCy model for advanced NLP
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    logger.warning("spaCy model not found. Run: python -m spacy download en_core_web_sm")
+    import spacy
+    try:
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        logger.warning("spaCy model not found. Run: python -m spacy download en_core_web_sm")
+        nlp = None
+except ImportError:
+    spacy = None
     nlp = None
 
 

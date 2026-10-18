@@ -24,10 +24,12 @@ const REQUEST_HEADER_ALLOWLIST = new Set([
   "authorization",
   "content-type",
   "cookie",
+  "idempotency-key",
   "if-modified-since",
   "if-none-match",
   "range",
   "user-agent",
+  "x-idempotency-key",
   "x-request-id",
 ]);
 
@@ -51,6 +53,8 @@ const RESPONSE_HEADER_ALLOWLIST = new Set([
   "www-authenticate",
   "x-content-type-options",
   "x-frame-options",
+  "x-idempotency-key",
+  "x-idempotent-replayed",
 ]);
 
 // Path traversal is blocked above; admin auth is enforced by the backend's

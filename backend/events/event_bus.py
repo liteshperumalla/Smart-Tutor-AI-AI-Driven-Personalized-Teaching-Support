@@ -5,9 +5,10 @@ Supports AWS EventBridge, SNS, and SQS for event-driven architecture
 
 import json
 import logging
+import os
 from typing import List, Optional, Callable, Dict, Any
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,11 @@ class InMemoryEventBus(EventBusBackend):
     def __init__(self):
         self.events: List[BaseEvent] = []
         self.subscribers: Dict[str, List[Callable]] = {}
-        logger.info("Using in-memory event bus")
+        self.dead_letter_queue: List[Dict[str, Any]] = []
+        logger.info("Using in-memory event bus with Dead Letter Queue (DLQ) enabled")
 
     def publish(self, event: BaseEvent) -> bool:
-        """Publish event to in-memory bus"""
+        """Publish event to in-memory bus with DLQ routing on handler failures"""
         try:
             self.events.append(event)
             logger.info(f"Published event: {event.type} (id={event.id})")
@@ -60,7 +62,27 @@ class InMemoryEventBus(EventBusBackend):
                     try:
                         handler(event)
                     except Exception as e:
-                        logger.error(f"Event handler failed: {e}", exc_info=True)
+                        logger.error(f"Event handler '{getattr(handler, '__name__', str(handler))}' failed: {e}", exc_info=True)
+                        # Route unhandled handler failure to Dead Letter Queue
+                        event_payload = (
+                            event.model_dump() if hasattr(event, "model_dump")
+                            else (event.to_dict() if hasattr(event, "to_dict") else getattr(event, "data", {}))
+                        )
+                        dlq_entry = {
+                            "event_id": getattr(event, "id", None),
+                            "event_type": event_type,
+                            "source": getattr(event, "source", "in_memory_event_bus"),
+                            "event": event_payload,
+                            "handler": getattr(handler, "__name__", str(handler)),
+                            "error": str(e),
+                            "failed_at": datetime.now(timezone.utc).isoformat(),
+                            "retry_count": 0,
+                        }
+                        self.dead_letter_queue.append(dlq_entry)
+                        logger.warning(
+                            "Event %s routed to InMemory Dead Letter Queue (DLQ depth=%d)",
+                            getattr(event, "id", None), len(self.dead_letter_queue),
+                        )
 
             return True
 
@@ -97,10 +119,89 @@ class InMemoryEventBus(EventBusBackend):
             return [e for e in self.events if e.type == event_type][:limit]
         return self.events[:limit]
 
+    def get_dead_letter_events(
+        self, event_type: Optional[str] = None, limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Retrieve failed events from Dead Letter Queue"""
+        if event_type:
+            return [
+                entry for entry in self.dead_letter_queue
+                if entry.get("event_type") == event_type
+            ][:limit]
+        return self.dead_letter_queue[:limit]
+
+    def purge_dead_letter_queue(self) -> int:
+        """Clear Dead Letter Queue and return number of purged entries"""
+        count = len(self.dead_letter_queue)
+        self.dead_letter_queue.clear()
+        logger.info("Purged %d entries from Dead Letter Queue", count)
+        return count
+
+    def replay_dead_letter_events(self, limit: int = 100) -> Dict[str, int]:
+        """
+        Re-dispatch DLQ events to their registered subscribers.
+        Removes successfully handled events from the DLQ.
+        """
+        replayed = 0
+        still_failing = 0
+        remaining = []
+
+        candidates = self.dead_letter_queue[:limit]
+        remaining_uninspected = self.dead_letter_queue[limit:]
+
+        for item in candidates:
+            event_type = item.get("event_type")
+            raw_event = item.get("event", {})
+            try:
+                event_data = raw_event.get("data", raw_event) if isinstance(raw_event, dict) else raw_event
+                event = BaseEvent(
+                    id=item.get("event_id"),
+                    source=item.get("source", "dlq_replay"),
+                    type=event_type,
+                    data=event_data,
+                )
+                success = True
+                if event_type in self.subscribers:
+                    for handler in self.subscribers[event_type]:
+                        try:
+                            handler(event)
+                        except Exception as exc:
+                            success = False
+                            item["error"] = str(exc)
+                            item["retry_count"] = item.get("retry_count", 0) + 1
+                            item["failed_at"] = datetime.now(timezone.utc).isoformat()
+                            break
+
+                if success:
+                    replayed += 1
+                else:
+                    still_failing += 1
+                    remaining.append(item)
+            except Exception as exc:
+                still_failing += 1
+                item["error"] = str(exc)
+                item["retry_count"] = item.get("retry_count", 0) + 1
+                item["failed_at"] = datetime.now(timezone.utc).isoformat()
+                remaining.append(item)
+
+        self.dead_letter_queue = remaining + remaining_uninspected
+        logger.info(
+            "DLQ Replay: %d replayed, %d still failing, %d remaining",
+            replayed,
+            still_failing,
+            len(self.dead_letter_queue),
+        )
+        return {
+            "replayed": replayed,
+            "still_failing": still_failing,
+            "remaining": len(self.dead_letter_queue),
+        }
+
     def clear(self):
-        """Clear all events"""
+        """Clear all events and DLQ entries"""
         self.events.clear()
-        logger.info("Cleared in-memory event bus")
+        self.dead_letter_queue.clear()
+        logger.info("Cleared in-memory event bus and Dead Letter Queue")
 
 
 class EventBridgeBackend(EventBusBackend):
@@ -234,18 +335,80 @@ class SNSBackend(EventBusBackend):
 
 class SQSConsumer:
     """
-    AWS SQS consumer for async event processing
+    AWS SQS consumer for async event processing with Dead Letter Queue (DLQ) support
     """
 
-    def __init__(self, queue_url: str, region: str = "us-east-1"):
+    def __init__(
+        self,
+        queue_url: str,
+        region: str = "us-east-1",
+        dlq_url: Optional[str] = None,
+        max_receive_count: int = 3,
+    ):
         if not AWS_AVAILABLE:
             raise RuntimeError("boto3 not installed. Cannot use SQS consumer.")
 
         self.queue_url = queue_url
         self.region = region
         self.client = boto3.client('sqs', region_name=region)
+        self.dlq_url = dlq_url or os.getenv("SQS_DLQ_URL")
+        self.max_receive_count = max_receive_count
+        self._running = True
 
-        logger.info(f"SQS consumer created for queue: {queue_url}")
+        logger.info(
+            "SQS consumer created for queue: %s (dlq=%s, max_receive_count=%d)",
+            queue_url, self.dlq_url, self.max_receive_count
+        )
+
+    def stop(self):
+        """Signal the consumer loop to stop gracefully"""
+        self._running = False
+        logger.info("SQS consumer stopping...")
+
+    def send_to_dlq(self, message: Dict[str, Any], error: str) -> bool:
+        """Forward an unprocessable poison message to the Dead Letter Queue"""
+        if not self.dlq_url:
+            logger.warning(
+                "DLQ not configured; cannot route failed message %s to DLQ",
+                message.get("MessageId"),
+            )
+            return False
+
+        try:
+            self.client.send_message(
+                QueueUrl=self.dlq_url,
+                MessageBody=message.get("Body", "{}"),
+                MessageAttributes={
+                    "OriginalQueueUrl": {
+                        "StringValue": self.queue_url,
+                        "DataType": "String",
+                    },
+                    "OriginalMessageId": {
+                        "StringValue": str(message.get("MessageId", "")),
+                        "DataType": "String",
+                    },
+                    "ErrorReason": {
+                        "StringValue": str(error)[:256],
+                        "DataType": "String",
+                    },
+                    "FailedAt": {
+                        "StringValue": datetime.now(timezone.utc).isoformat(),
+                        "DataType": "String",
+                    },
+                },
+            )
+            logger.info(
+                "Routed message %s to DLQ: %s (error=%s)",
+                message.get("MessageId"), self.dlq_url, error,
+            )
+            self.delete_message(message["ReceiptHandle"])
+            return True
+        except Exception as exc:
+            logger.error(
+                "Failed sending message %s to DLQ: %s",
+                message.get("MessageId"), exc, exc_info=True,
+            )
+            return False
 
     def receive_messages(
         self,
@@ -268,6 +431,7 @@ class SQSConsumer:
                 MaxNumberOfMessages=min(max_messages, 10),
                 WaitTimeSeconds=wait_time_seconds,
                 MessageAttributeNames=['All'],
+                AttributeNames=['ApproximateReceiveCount'],
             )
 
             messages = response.get('Messages', [])
@@ -286,7 +450,7 @@ class SQSConsumer:
                 QueueUrl=self.queue_url,
                 ReceiptHandle=receipt_handle,
             )
-            logger.debug(f"Deleted message from SQS")
+            logger.debug("Deleted message from SQS")
             return True
 
         except ClientError as e:
@@ -295,25 +459,45 @@ class SQSConsumer:
 
     def process_messages(self, handler: Callable[[BaseEvent], bool], batch_size: int = 10):
         """
-        Process messages from queue
+        Process messages from queue with DLQ routing
 
         Args:
             handler: Function to process each event
             batch_size: Messages to receive per batch
         """
-        while True:
+        while self._running:
             messages = self.receive_messages(max_messages=batch_size)
 
             if not messages:
                 continue
 
             for message in messages:
+                if not self._running:
+                    break
+
+                receive_count = 1
+                attributes = message.get('Attributes', {})
+                if 'ApproximateReceiveCount' in attributes:
+                    try:
+                        receive_count = int(attributes['ApproximateReceiveCount'])
+                    except ValueError:
+                        receive_count = 1
+
+                # If receive count already exceeded limit, route to DLQ immediately
+                if receive_count >= self.max_receive_count and self.dlq_url:
+                    logger.warning(
+                        "Message %s exceeded max_receive_count (%d/%d), routing to DLQ",
+                        message.get("MessageId"), receive_count, self.max_receive_count,
+                    )
+                    self.send_to_dlq(message, error="Max receive count exceeded")
+                    continue
+
                 try:
                     # Parse event from message
                     body = json.loads(message['Body'])
                     event_data = json.loads(body.get('Message', '{}'))
 
-                    # Reconstruct event (simplified)
+                    # Reconstruct event
                     event = BaseEvent(**event_data)
 
                     # Process event
@@ -324,9 +508,13 @@ class SQSConsumer:
                         self.delete_message(message['ReceiptHandle'])
                     else:
                         logger.warning(f"Handler returned False for event: {event.id}")
+                        if receive_count >= self.max_receive_count:
+                            self.send_to_dlq(message, error="Handler returned False")
 
                 except Exception as e:
                     logger.error(f"Failed to process message: {e}", exc_info=True)
+                    if receive_count >= self.max_receive_count:
+                        self.send_to_dlq(message, error=str(e))
 
 
 class EventBus:
@@ -373,6 +561,26 @@ class EventBus:
         if not self.enable_local_cache:
             return []
         return self.local_cache[-limit:]
+
+    def get_dead_letter_events(
+        self, event_type: Optional[str] = None, limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Retrieve dead-letter queue entries if supported by active backend"""
+        if hasattr(self.backend, "get_dead_letter_events"):
+            return self.backend.get_dead_letter_events(event_type, limit)
+        return []
+
+    def purge_dead_letter_queue(self) -> int:
+        """Purge dead-letter entries from active backend"""
+        if hasattr(self.backend, "purge_dead_letter_queue"):
+            return self.backend.purge_dead_letter_queue()
+        return 0
+
+    def replay_dead_letter_events(self, limit: int = 100) -> Dict[str, int]:
+        """Replay dead-letter entries through active backend"""
+        if hasattr(self.backend, "replay_dead_letter_events"):
+            return self.backend.replay_dead_letter_events(limit)
+        return {"replayed": 0, "still_failing": 0, "remaining": 0}
 
 
 # Global event bus instance

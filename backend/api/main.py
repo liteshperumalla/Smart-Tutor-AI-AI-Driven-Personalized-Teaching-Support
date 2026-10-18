@@ -88,7 +88,14 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-CSRF-Token"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-CSRF-Token",
+        "Idempotency-Key",
+        "X-Idempotency-Key",
+    ],
+    expose_headers=["X-Idempotency-Key", "X-Idempotent-Replayed"],
     max_age=600,  # Cache preflight requests for 10 minutes
 )
 
@@ -152,6 +159,10 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
+# Add Idempotency middleware for mutation deduplication
+from backend.idempotency import IdempotencyMiddleware
+app.add_middleware(IdempotencyMiddleware)
 
 # Add SlowAPI middleware for rate limiting
 app.add_middleware(SlowAPIMiddleware)
@@ -435,6 +446,35 @@ async def _seed_admin_user_background() -> None:
     await asyncio.to_thread(_seed_admin_user)
 
 
+async def _run_sqs_worker_background() -> None:
+    """Run SQS queue consumer worker when enabled"""
+    from backend.events.event_bus import SQSConsumer
+    from backend.events.event_handlers import EventHandler
+
+    queue_url = os.getenv("SQS_QUEUE_URL")
+    if not queue_url:
+        logger.info("ℹ️  SQS worker not started: SQS_QUEUE_URL not configured")
+        return
+
+    dlq_url = os.getenv("SQS_DLQ_URL")
+    region = os.getenv("AWS_REGION", "us-east-1")
+    logger.info("🚀 Starting SQS event worker for queue: %s (dlq=%s)", queue_url, dlq_url)
+    consumer = SQSConsumer(queue_url=queue_url, region=region, dlq_url=dlq_url)
+
+    def handler(event):
+        results = EventHandler.handle(event)
+        return all(r.get("success", False) for r in results) if results else True
+
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, consumer.process_messages, handler)
+    except asyncio.CancelledError:
+        consumer.stop()
+        logger.info("ℹ️  SQS event worker stopped")
+    except Exception as exc:
+        logger.error("SQS event worker error: %s", exc, exc_info=True)
+
+
 # Lifespan-invoked startup handler (see `lifespan()` near the top of this module).
 async def startup_event():
     """Validate configuration and initialize resources on startup"""
@@ -507,6 +547,12 @@ async def startup_event():
     _schedule_startup_background_task("Cold-start warmup", _run_warmup_background())
 
     _schedule_startup_background_task("Admin user seed", _seed_admin_user_background())
+
+    if (
+        os.getenv("ENABLE_SQS_WORKER", "false").lower() == "true"
+        or os.getenv("EVENT_BUS_BACKEND") == "sqs"
+    ):
+        _schedule_startup_background_task("SQS queue worker", _run_sqs_worker_background())
 
     logger.info("=" * 60)
 
