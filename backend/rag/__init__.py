@@ -26,6 +26,7 @@ from .semantic_chunker import (
 # Hybrid Search
 from .hybrid_search import (
     BM25Retriever,
+    SemanticRetriever,
     HybridSearcher,
     SearchResult,
     create_bm25_retriever,
@@ -76,6 +77,7 @@ __all__ = [
 
     # Hybrid Search
     "BM25Retriever",
+    "SemanticRetriever",
     "HybridSearcher",
     "SearchResult",
     "create_bm25_retriever",

@@ -10,9 +10,11 @@ import {
   checkAuthStatus,
 } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/api";
+import { getCurrentAppPath, loginPathFor } from "@/lib/safe-next";
 
 type Options = {
   redirectTo?: string;
+  preserveReturnTo?: boolean;
 };
 
 /**
@@ -52,7 +54,7 @@ export function useAuthToken(options: Options = { redirectTo: "/login" }) {
           setIsChecking(false);
 
           if (!isAuthenticated && options.redirectTo) {
-            router.replace(options.redirectTo);
+            router.replace(options.preserveReturnTo === false ? options.redirectTo : loginPathFor(getCurrentAppPath()));
           }
         }
       } catch {
@@ -60,7 +62,7 @@ export function useAuthToken(options: Options = { redirectTo: "/login" }) {
           setToken(null);
           setIsChecking(false);
           if (options.redirectTo) {
-            router.replace(options.redirectTo);
+            router.replace(options.preserveReturnTo === false ? options.redirectTo : loginPathFor(getCurrentAppPath()));
           }
         }
       }
@@ -71,7 +73,7 @@ export function useAuthToken(options: Options = { redirectTo: "/login" }) {
     return () => {
       cancelled = true;
     };
-  }, [options.redirectTo, router]);
+  }, [options.preserveReturnTo, options.redirectTo, router]);
 
   const updateToken = useCallback(
     (value: string | null) => {
@@ -79,14 +81,14 @@ export function useAuthToken(options: Options = { redirectTo: "/login" }) {
         clearAuthToken();
         setToken(null);
         if (options.redirectTo) {
-          router.replace(options.redirectTo);
+          router.replace(options.preserveReturnTo === false ? options.redirectTo : loginPathFor(getCurrentAppPath()));
         }
         return;
       }
       saveAuthToken(value);
       setToken("authenticated");
     },
-    [options.redirectTo, router]
+    [options.preserveReturnTo, options.redirectTo, router]
   );
 
   useEffect(() => {

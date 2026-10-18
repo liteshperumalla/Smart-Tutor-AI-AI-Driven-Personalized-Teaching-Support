@@ -82,8 +82,9 @@ class ChatService:
     def __init__(self):
         self.storage = get_storage_backend()
 
-    def list_sessions(self, username: str):
-        return self.storage.list_chat_sessions(username)
+    def list_sessions(self, username: str, course_id: Optional[str] = None):
+        sessions = self.storage.list_chat_sessions(username)
+        return [session for session in sessions if not course_id or session.course_id == course_id]
 
     def load_session(self, username: str, session_id: str) -> Optional[ChatSession]:
         return self.storage.load_chat_session(username, session_id)
@@ -105,13 +106,19 @@ class ChatService:
             self.save_session(username, session)
             return session
 
-    def create_session(self, username: str, title: Optional[str] = None) -> ChatSession:
+    def create_session(
+        self,
+        username: str,
+        title: Optional[str] = None,
+        course_id: Optional[str] = None,
+    ) -> ChatSession:
         session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
         default_title = _normalize_session_title(title)
         session = ChatSession(
             id=session_id,
             title=default_title,
             messages=[],
+            course_id=course_id,
         )
         self.save_session(username, session)
         return session
@@ -153,7 +160,13 @@ class ChatService:
         return session
 
     def stream_response(
-        self, query: str, user_id: str, session_id: Optional[str] = None, model_id: Optional[str] = None
+        self,
+        query: str,
+        user_id: str,
+        session_id: Optional[str] = None,
+        model_id: Optional[str] = None,
+        source_prefixes: Optional[list[str]] = None,
+        allow_web_search: bool = True,
     ):
         from backend.config import config as app_config
         import logging
@@ -186,12 +199,14 @@ class ChatService:
             from backend.agents import run_agent_pipeline
             generator, sources = run_agent_pipeline(
                 query=query, user_id=user_id,
-                session_id=session_id, model_id=routed_model_id,
+                session_id=session_id, model_id=routed_model_id, source_prefixes=source_prefixes,
             )
             return generator, sources, routed_model_id
 
         generator, sources = generate_response_stream_and_sources(
-            query, user_id=user_id, session_id=session_id, model_id=routed_model_id
+            query, user_id=user_id, session_id=session_id, model_id=routed_model_id,
+            source_prefixes=source_prefixes,
+            allow_web_search=allow_web_search,
         )
         return generator, sources, routed_model_id
 

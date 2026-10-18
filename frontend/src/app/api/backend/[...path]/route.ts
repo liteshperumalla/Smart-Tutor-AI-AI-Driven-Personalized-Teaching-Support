@@ -6,7 +6,52 @@ import { getMaintenanceState } from "@/lib/maintenance";
 export const maxDuration = 300;
 
 const BACKEND_BASE_URL =
-  process.env.BACKEND_API_BASE_URL || "http://localhost:8010";
+  process.env.BACKEND_API_BASE_URL ||
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:8010");
+
+const BACKEND_TIMEOUT_MS = 120_000;
+const VERSIONED_API_PREFIX = "/api/v1";
+const INFRASTRUCTURE_PATHS = new Set(["/health", "/ready", "/metrics", "/csrf-token"]);
+const PUBLIC_PATHS = new Set(["/health", "/home/overview", "/home/announcements"]);
+
+// Only forward headers that the backend needs to serve the request. In
+// particular, never forward client-provided X-Forwarded-* or X-Real-IP values:
+// Vercel/Next is the trusted proxy boundary and accepting those values lets a
+// browser spoof security logs and IP-based controls.
+const REQUEST_HEADER_ALLOWLIST = new Set([
+  "accept",
+  "accept-language",
+  "authorization",
+  "content-type",
+  "cookie",
+  "if-modified-since",
+  "if-none-match",
+  "range",
+  "user-agent",
+  "x-request-id",
+]);
+
+// Exclude hop-by-hop headers and backend transport details. Set-Cookie is
+// copied separately because it can occur more than once.
+const RESPONSE_HEADER_ALLOWLIST = new Set([
+  "cache-control",
+  "content-disposition",
+  "content-encoding",
+  "content-language",
+  "content-length",
+  "content-range",
+  "content-security-policy",
+  "content-type",
+  "etag",
+  "last-modified",
+  "location",
+  "referrer-policy",
+  "retry-after",
+  "vary",
+  "www-authenticate",
+  "x-content-type-options",
+  "x-frame-options",
+]);
 
 // Path traversal is blocked above; admin auth is enforced by the backend's
 // get_admin_session dependency (role == "Admin"). No need to block here.
@@ -52,7 +97,8 @@ function splitSetCookieHeader(headerValue: string): string[] {
 
 function appendResponseHeaders(target: Headers, source: Headers) {
   for (const [key, value] of source.entries()) {
-    if (key.toLowerCase() === "set-cookie") {
+    const normalizedKey = key.toLowerCase();
+    if (normalizedKey === "set-cookie" || !RESPONSE_HEADER_ALLOWLIST.has(normalizedKey)) {
       continue;
     }
     target.append(key, value);
@@ -71,6 +117,25 @@ function appendResponseHeaders(target: Headers, source: Headers) {
   }
 }
 
+function jsonError(status: number, detail: string) {
+  return new Response(JSON.stringify({ detail }), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
+}
+
+function backendPathFor(clientPath: string): string {
+  return INFRASTRUCTURE_PATHS.has(clientPath)
+    ? clientPath
+    : `${VERSIONED_API_PREFIX}${clientPath}`;
+}
+
+function clientPathForBackendLocation(path: string): string {
+  return path.startsWith(VERSIONED_API_PREFIX)
+    ? path.slice(VERSIONED_API_PREFIX.length) || "/"
+    : path;
+}
+
 async function resolvePath(paramsOrPromise: RouteParams | Promise<RouteParams>) {
   const resolved =
     typeof (paramsOrPromise as Promise<RouteParams>).then === "function"
@@ -80,6 +145,9 @@ async function resolvePath(paramsOrPromise: RouteParams | Promise<RouteParams>) 
 }
 
 async function proxyRequest(request: NextRequest, path: string[]) {
+  if (!BACKEND_BASE_URL) {
+    return jsonError(503, "Backend API is not configured");
+  }
   // Reject any path segment containing traversal sequences, encoded dots, or null bytes.
   const segments = path ?? [];
   for (const segment of segments) {
@@ -90,10 +158,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
       /%2e/i.test(segment) ||
       /%00/i.test(segment)
     ) {
-      return new Response(JSON.stringify({ detail: "Bad Request" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonError(400, "Bad Request");
     }
   }
 
@@ -109,10 +174,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
       normalizedWithSlash === prefix ||
       normalizedWithSlash.startsWith(prefix + "/")
     ) {
-      return new Response(JSON.stringify({ detail: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonError(403, "Forbidden");
     }
   }
 
@@ -123,21 +185,21 @@ async function proxyRequest(request: NextRequest, path: string[]) {
   const isAuthPath =
     normalizedWithSlash.startsWith("/auth/") ||
     normalizedWithSlash === "/auth";
-  const isPublicPath =
-    normalizedWithSlash === "/home/overview" ||
-    normalizedWithSlash === "/home/announcements";
+  const isPublicPath = PUBLIC_PATHS.has(normalizedWithSlash);
   if (!hasAuthCookie && !isAuthPath && !isPublicPath) {
-    return new Response(JSON.stringify({ detail: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonError(401, "Unauthorized");
   }
 
   const search = request.nextUrl.search || "";
-  const url = `${BACKEND_BASE_URL.replace(/\/$/, "")}/${normalizedPath}${search}`;
+  const backendPath = backendPathFor(normalizedWithSlash);
+  const url = `${BACKEND_BASE_URL.replace(/\/$/, "")}${backendPath}${search}`;
 
-  const headers = new Headers(request.headers);
-  headers.delete("host");
+  const headers = new Headers();
+  for (const [key, value] of request.headers.entries()) {
+    if (REQUEST_HEADER_ALLOWLIST.has(key.toLowerCase())) {
+      headers.set(key, value);
+    }
+  }
 
   // IMPORTANT: Forward cookies for authentication
   const cookies = request.headers.get("cookie");
@@ -166,10 +228,15 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     (init as Record<string, unknown>).duplex = "half";
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(url, init);
-  } catch {
+    response = await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return jsonError(504, "The backend took too long to respond");
+    }
     // The backend is unreachable. This is expected during the scheduled
     // stop window (see lib/maintenance + .github/workflows/ec2-schedule.yml),
     // and otherwise indicates a real outage. Either way, return a clean 503
@@ -191,6 +258,8 @@ async function proxyRequest(request: NextRequest, path: string[]) {
         },
       }
     );
+  } finally {
+    clearTimeout(timeout);
   }
   const proxyHeaders = new Headers();
   appendResponseHeaders(proxyHeaders, response.headers);
@@ -207,7 +276,7 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     }
     // If it's a redirect to the backend directly, rewrite to go through proxy
     else if (location.startsWith(BACKEND_BASE_URL)) {
-      const pathPart = location.replace(BACKEND_BASE_URL, "");
+      const pathPart = clientPathForBackendLocation(location.replace(BACKEND_BASE_URL, ""));
       const newLocation = `/api/backend${pathPart}`;
       proxyHeaders.set("location", newLocation);
     }

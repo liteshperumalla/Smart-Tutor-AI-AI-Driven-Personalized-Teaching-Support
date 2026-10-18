@@ -639,7 +639,13 @@ class QuizService:
         return None
 
     def generate_quiz(
-        self, user_id: str, selected_folders: List[str], num_questions: int
+        self,
+        user_id: str,
+        selected_folders: List[str],
+        num_questions: int,
+        course_id: str = "info-5731",
+        objective_ids: List[str] | None = None,
+        difficulty: str = "medium",
     ) -> Dict[str, object]:
         if not selected_folders:
             raise ValueError("At least one folder must be selected")
@@ -725,6 +731,7 @@ class QuizService:
                     "options": payload["options"],
                     "correct_answer_letter": payload["correct_answer_letter"],
                     "explanation": explanation,
+                    "objective_id": (objective_ids or [None])[len(questions) % max(1, len(objective_ids or [None]))],
                 }
             )
             logger.info(f"Generated question {len(questions)}/{num_questions}")
@@ -739,7 +746,13 @@ class QuizService:
         # Store full questions in Redis (shared across all workers, auto-expires)
         self._redis.set(
             f"{self._QUIZ_KEY_PREFIX}{quiz_id}",
-            {"questions": questions, "selected_folders": selected_folders},
+            {
+                "questions": questions,
+                "selected_folders": selected_folders,
+                "course_id": course_id,
+                "objective_ids": objective_ids or [],
+                "difficulty": difficulty,
+            },
             ttl=_QUIZ_STORE_TTL_SECONDS,
         )
 
@@ -751,6 +764,7 @@ class QuizService:
                     "id": q["id"],
                     "question": q["question"],
                     "options": q["options"],
+                    "objective_id": q.get("objective_id"),
                 }
             )
 
@@ -759,6 +773,9 @@ class QuizService:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "questions": safe_questions,
             "selected_folders": selected_folders,
+            "course_id": course_id,
+            "objective_ids": objective_ids or [],
+            "difficulty": difficulty,
         }
 
     def _is_valid_question(self, payload: Dict[str, object]) -> bool:
@@ -834,6 +851,7 @@ class QuizService:
                     else None,
                     "is_correct": is_correct,
                     "explanation": question.get("explanation", ""),
+                    "objective_id": question.get("objective_id"),
                 }
             )
 
@@ -846,6 +864,9 @@ class QuizService:
             percentage=percentage,
             metadata={
                 "selected_folders": selected_folders,
+                "course_id": quiz_data.get("course_id", "info-5731"),
+                "objective_ids": quiz_data.get("objective_ids", []),
+                "difficulty": quiz_data.get("difficulty", "medium"),
                 "responses": detailed_results,
             },
         )

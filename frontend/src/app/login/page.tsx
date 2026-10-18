@@ -7,6 +7,7 @@ import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { GoogleAuthButton } from "@/components/google-auth-button";
 import { LogoMark } from "@/components/logo-mark";
+import { getSafeNextPath } from "@/lib/safe-next";
 import { User, Lock, LogIn, ArrowLeft } from "lucide-react";
 
 type LoginResponse = {
@@ -38,6 +39,7 @@ function LoginPageContent() {
     () => searchParams.get("signup") === "verified",
     [searchParams]
   );
+  const returnTo = useMemo(() => getSafeNextPath(searchParams.get("next")), [searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -75,8 +77,7 @@ function LoginPageContent() {
       // Trigger auth state change event so useAuthToken hook updates
       saveAuthToken("authenticated");
 
-      // Redirect to home page
-      router.push("/");
+      router.push(returnTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
       setIsSubmitting(false);
@@ -125,20 +126,19 @@ function LoginPageContent() {
         {/* Headline */}
         <div className="relative z-10 flex flex-1 flex-col justify-center">
           <h2 className="font-display text-5xl font-bold leading-[1.04] tracking-tight animate-fade-in-up">
-            Learn what your{" "}
+            Learn across{" "}
             <span style={{ backgroundImage: "linear-gradient(90deg, #6ee7b7, #818cf8)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
-              course actually
-            </span>{" "}
-            taught.
+              your courses
+            </span>.
           </h2>
           <p className="mt-4 max-w-md text-base leading-relaxed text-white/65 animate-fade-in-up stagger-1">
-            INFO 5731 · Computational Methods. Grounded answers, cited to the lecture.
+            Grounded answers and targeted practice, sourced from your enrolled courses.
           </p>
         </div>
 
         {/* Footer note */}
         <div className="relative z-10 text-[11px] tracking-wide text-white/40">
-          Built for INFO 5731 · Computational Methods for Information Systems
+          Built for university learners and instructors
         </div>
       </div>
 
@@ -272,7 +272,7 @@ function LoginPageContent() {
             <div className="text-center text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
               or continue with Google
             </div>
-            <GoogleAuthButton intent="login" />
+          <GoogleAuthButton intent="login" returnTo={returnTo} />
           </div>
         </form>
 

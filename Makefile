@@ -21,7 +21,7 @@ typecheck:
 	./scripts/test.sh --typecheck
 
 security:
-	python scripts/verify_security.py
+	python3 scripts/verify_security.py
 
 contract:
 	cd frontend && npm test -- --runInBand --testPathPattern route-contract
@@ -30,4 +30,4 @@ migrate-validate:
 	./scripts/validate-migrations.sh
 
 env-check:
-	python scripts/check-env-drift.py
+	python3 scripts/check-env-drift.py

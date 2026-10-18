@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getGoogleOAuthRedirectUri } from "@/lib/google-oauth";
+import { getSafeNextPath } from "@/lib/safe-next";
 
 type GoogleAuthButtonProps = {
   intent: "login" | "signup";
+  returnTo?: string;
 };
 
 function generateNonce(): string {
@@ -15,7 +18,7 @@ function generateNonce(): string {
   return Date.now().toString(16);
 }
 
-export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
+export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
   const [nonce] = useState<string>(generateNonce);
 
   useEffect(() => {
@@ -27,17 +30,13 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
   const config = useMemo(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     const redirectEnv = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
-    const fallbackRedirect =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/auth/google/callback`
-        : undefined;
-    const redirectUri = redirectEnv || fallbackRedirect;
+    const redirectUri = getGoogleOAuthRedirectUri(redirectEnv);
 
     if (!clientId || !redirectUri) {
       return { ready: false } as const;
     }
 
-    const statePayload = btoa(JSON.stringify({ intent, nonce }));
+    const statePayload = btoa(JSON.stringify({ intent, nonce, next: getSafeNextPath(returnTo) }));
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -53,7 +52,7 @@ export function GoogleAuthButton({ intent }: GoogleAuthButtonProps) {
       ready: true,
       url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
     } as const;
-  }, [intent, nonce]);
+  }, [intent, nonce, returnTo]);
 
   const label =
     intent === "login" ? "Sign in with Google" : "Sign up with Google";

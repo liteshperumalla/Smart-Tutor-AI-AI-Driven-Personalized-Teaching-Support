@@ -85,17 +85,19 @@ aws secretsmanager create-secret \
 echo "✅ RDS credentials secret created"
 
 # Create application secrets
+# REQUIRED: Set these environment variables before running this script.
+# Do NOT commit real values; rotate any key that was previously hardcoded here.
+: "${SMART_TUTOR_JWT_SECRET:?Set SMART_TUTOR_JWT_SECRET (min 64 random chars)}"
+: "${SERPAPI_API_KEY:?Set SERPAPI_API_KEY from https://serpapi.com/manage-api-key}"
+: "${LANGFUSE_PUBLIC_KEY:?Set LANGFUSE_PUBLIC_KEY from your Langfuse project settings}"
+: "${LANGFUSE_SECRET_KEY:?Set LANGFUSE_SECRET_KEY from your Langfuse project settings}"
+
 echo ""
 echo "Creating application secrets..."
 aws secretsmanager create-secret \
   --name smart-tutor/app/secrets \
   --description "Smart AI Tutor application API keys and secrets" \
-  --secret-string '{
-    "jwt_secret_key": "change-this-secret-key-in-production",
-    "serpapi_api_key": "3c038994a212111fb22a28235721467f808089938934890057994addde50dd36",
-    "langfuse_public_key": "pk-lf-206a6716-2d0d-490b-8fdc-4057c92234b8",
-    "langfuse_secret_key": "sk-lf-fbec8985-d86a-4d50-9d1e-96b1ac785bc1"
-  }' \
+  --secret-string "{\n    \"jwt_secret_key\": \"${SMART_TUTOR_JWT_SECRET}\",\n    \"serpapi_api_key\": \"${SERPAPI_API_KEY}\",\n    \"langfuse_public_key\": \"${LANGFUSE_PUBLIC_KEY}\",\n    \"langfuse_secret_key\": \"${LANGFUSE_SECRET_KEY}\"\n  }" \
   --tags Key=Application,Value=smart-ai-tutor Key=Environment,Value=production \
   --region $AWS_REGION \
   2>/dev/null || echo "⚠️  Secret may already exist"

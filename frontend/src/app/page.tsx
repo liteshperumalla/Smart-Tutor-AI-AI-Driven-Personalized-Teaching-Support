@@ -83,13 +83,13 @@ export default async function Home() {
 
           <div className="relative z-10">
             <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-zinc-900 dark:text-white sm:text-5xl lg:text-6xl">
-              Advanced Computational{" "}
+              Smart AI{" "}
               <span style={{ backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
-                Methods
+                Tutor
               </span>
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-300 sm:text-lg">
-              An AI tutor that cites every answer in your INFO 5731 corpus. Ask, quiz, and study — without the hallucinations.
+              Your multi-course learning platform for grounded answers, targeted practice, and measurable mastery.
             </p>
           </div>
         </header>

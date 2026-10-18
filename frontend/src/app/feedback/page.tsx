@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { postJSON } from "@/lib/api";
+import { fetchCourses, postJSON, type Course } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { MessageSquare, Bug, User, Mail, Tag, FileText, Send, CheckCircle, AlertTriangle, Sparkles, ThumbsUp, Zap, ShieldAlert } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
@@ -30,11 +30,21 @@ export default function FeedbackPage() {
   const { token } = useAuthToken();
   const { isAdmin } = useUser();
   const [feedbackType, setFeedbackType] = useState<FeedbackType>('feedback');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [courseId, setCourseId] = useState("");
   const [formState, setFormState] = useState<{
     loading: boolean;
     error: string | null;
     success: boolean;
   }>({ loading: false, error: null, success: false });
+
+  useEffect(() => {
+    if (!token) return;
+    fetchCourses(token).then((items) => {
+      setCourses(items);
+      setCourseId(items[0]?.id ?? "");
+    }).catch(() => {});
+  }, [token]);
 
   async function submitToApi(path: string, payload: unknown) {
     if (!token) {
@@ -57,6 +67,7 @@ export default function FeedbackPage() {
           email: formData.get("email")?.toString(),
           category: formData.get("category")?.toString() || "general",
           message: formData.get("message")?.toString() || "",
+          course_id: courseId || undefined,
         };
         await submitToApi("/feedback", payload);
       } else {
@@ -67,6 +78,7 @@ export default function FeedbackPage() {
           severity: formData.get("severity")?.toString() || "low",
           description: formData.get("description")?.toString() || "",
           steps: formData.get("steps")?.toString(),
+          course_id: courseId || undefined,
         };
         await submitToApi("/feedback/bug", payload);
       }
@@ -167,6 +179,7 @@ export default function FeedbackPage() {
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
+          {courses.length > 0 && <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Course context<select value={courseId} onChange={(event) => setCourseId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">{courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}</select></label>}
           {/* Personal Info - Always Shown */}
           <div className="grid gap-4 md:grid-cols-2">
             <div>

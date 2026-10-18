@@ -12,16 +12,19 @@ import {
   Megaphone,
   BarChart3,
   FolderOpen,
+  GraduationCap,
   ShieldAlert,
 } from "lucide-react";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/courses", label: "Courses", icon: GraduationCap },
   { href: "/admin/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/admin/feedback", label: "Feedback & Bugs", icon: MessageSquare },
   { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
   { href: "/admin/resources", label: "Resources", icon: FolderOpen },
+  { href: "/admin/course-quality", label: "Course Quality", icon: GraduationCap },
   { href: "/admin/evaluation", label: "Evaluation", icon: BarChart3 },
 ];
 

@@ -116,6 +116,12 @@ class PostgresStorageBackend(BaseStorageBackend):
             finally:
                 cursor.close()
 
+    def check_health(self) -> None:
+        """Raise when PostgreSQL cannot serve a simple query."""
+        with self._get_cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+
     def _enrich_user_dict(self, user_dict: dict) -> dict:
         """Extract role and profile fields from metadata into top-level keys."""
         for key, value in list(user_dict.items()):

@@ -32,6 +32,7 @@ class FeedbackEntry:
     category: FeedbackCategory
     message: str
     created_at: datetime
+    course_id: str | None = None
 
 
 @dataclass
@@ -44,6 +45,7 @@ class BugReportEntry:
     description: str
     steps: str
     created_at: datetime
+    course_id: str | None = None
 
 
 class FeedbackService:
@@ -68,6 +70,7 @@ class FeedbackService:
             "created_at": entry.created_at.isoformat(),
             "name": entry.name,
             "email": entry.email,
+            "course_id": entry.course_id,
         })
 
     def log_bug_report(self, entry: BugReportEntry) -> None:
@@ -85,6 +88,7 @@ class FeedbackService:
             "created_at": entry.created_at.isoformat(),
             "name": entry.name,
             "email": entry.email,
+            "course_id": entry.course_id,
         })
 
     def _serialize_feedback(self, entry: FeedbackEntry) -> str:
@@ -94,6 +98,7 @@ class FeedbackService:
             f"Name: {entry.name or 'Anonymous'}",
             f"Email: {entry.email or 'Not provided'}",
             f"Category: {entry.category}",
+            f"Course: {entry.course_id or 'Unscoped'}",
             "Message:",
             entry.message,
             "--- End of Entry ---\n",
@@ -108,6 +113,7 @@ class FeedbackService:
             f"Reporter Email: {entry.email or 'Not provided'}",
             f"Page/Feature: {entry.feature}",
             f"Severity: {entry.severity}",
+            f"Course: {entry.course_id or 'Unscoped'}",
             "Description:",
             entry.description,
         ]

@@ -21,6 +21,7 @@ interface ResponseActionBarProps {
   sessionId: string;
   messageIndex: number;
   token: string | null;
+  courseId?: string;
   hasSources: boolean;
   currentFeedback: MessageFeedbackType | null;
   onFeedbackChange: (feedback: MessageFeedbackType | null) => void;
@@ -36,6 +37,7 @@ export function ResponseActionBar({
   sessionId,
   messageIndex,
   token,
+  courseId,
   hasSources,
   currentFeedback,
   onFeedbackChange,
@@ -69,6 +71,7 @@ export function ResponseActionBar({
           sessionId,
           messageIndex,
           feedbackType,
+          courseId,
         });
 
         // Update local state based on response
@@ -79,7 +82,7 @@ export function ResponseActionBar({
         setIsSubmitting(false);
       }
     },
-    [token, sessionId, messageIndex, isSubmitting, onFeedbackChange]
+    [token, sessionId, messageIndex, courseId, isSubmitting, onFeedbackChange]
   );
 
   const isLiked = currentFeedback === "thumbs_up";

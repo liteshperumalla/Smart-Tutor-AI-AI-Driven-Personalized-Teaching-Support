@@ -8,18 +8,18 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: Git ref to deploy to staging
+        description: Protected branch to deploy (staging deploys only from develop)
         required: true
         default: develop
+        type: choice
+        options:
+          - develop
 
 env:
   PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20.9.0"
+  NODE_VERSION: "20.20.2"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
-  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 concurrency:
   group: staging-deploy
@@ -43,9 +43,9 @@ jobs:
     env:
       NEXT_PUBLIC_API_BASE_URL: /api/backend
       BACKEND_API_BASE_URL: http://backend:8000
-      NEXT_PUBLIC_APP_BASE_URL: https://staging.smart-ai-tutor.com
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
-      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: https://staging.smart-ai-tutor.com/auth/google/callback
+      NEXT_PUBLIC_APP_BASE_URL: ${{ secrets.STAGING_APP_URL }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ secrets.STAGING_GOOGLE_OAUTH_REDIRECT_URI }}
     steps:
       - name: Resolve deployment target
         id: target
@@ -59,10 +59,14 @@ jobs:
 
           if [ "${EVENT_NAME}" = "workflow_run" ]; then
             checkout_ref="${WORKFLOW_HEAD_SHA}"
-            deploy_ref="${WORKFLOW_HEAD_BRANCH}"
+            deploy_ref="develop"
           else
-            checkout_ref="${INPUT_GIT_REF}"
-            deploy_ref="${INPUT_GIT_REF}"
+            if [ "${INPUT_GIT_REF}" != "develop" ]; then
+              echo "::error::Manual staging deployments are restricted to the protected develop branch."
+              exit 1
+            fi
+            checkout_ref="develop"
+            deploy_ref="develop"
           fi
 
           echo "checkout_ref=${checkout_ref}" >> "$GITHUB_OUTPUT"
@@ -79,11 +83,13 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+          EC2_SSH_FINGERPRINT: ${{ secrets.EC2_SSH_FINGERPRINT }}
         run: |
           set -euo pipefail
 
           missing=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY; do
+          for name in EC2_HOST EC2_USER EC2_SSH_KEY EC2_KNOWN_HOSTS EC2_SSH_FINGERPRINT NEXT_PUBLIC_APP_BASE_URL NEXT_PUBLIC_GOOGLE_CLIENT_ID NEXT_PUBLIC_GOOGLE_REDIRECT_URI; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
@@ -94,17 +100,19 @@ jobs:
             exit 1
           fi
 
-      - name: Validate optional Vercel configuration
-        run: |
-          set -euo pipefail
+          for url_name in NEXT_PUBLIC_APP_BASE_URL NEXT_PUBLIC_GOOGLE_REDIRECT_URI; do
+            case "${!url_name}" in
+              https://*) ;;
+              *)
+                echo "::error::${url_name} must be an HTTPS public URL."
+                exit 1
+                ;;
+            esac
+          done
 
-          vercel_configured=0
-          if [ -n "${VERCEL_TOKEN}" ] && [ -n "${VERCEL_ORG_ID}" ] && [ -n "${VERCEL_PROJECT_ID}" ]; then
-            vercel_configured=1
-          fi
-
-          if [ "${vercel_configured}" -eq 0 ]; then
-            echo "::warning::Vercel deploy secrets are not fully configured. Frontend preview deploy will be skipped. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID to enable."
+          if [ "${NEXT_PUBLIC_GOOGLE_CLIENT_ID}" = "ci-google-client-id" ]; then
+            echo "::error::Staging builds must not use placeholder Google OAuth configuration."
+            exit 1
           fi
 
       - name: Generate version tag
@@ -183,46 +191,27 @@ jobs:
           cache-from: type=gha,scope=frontend-image
           cache-to: type=gha,mode=min,scope=frontend-image
 
-      - name: Deploy frontend preview to Vercel
-        id: vercel_deploy
-        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          npm install --global vercel@latest
-          vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
-          deployment_url="$(vercel deploy --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
-          if [ -z "$deployment_url" ]; then
-            echo "::error::Vercel deploy did not return a deployment URL."
-            exit 1
-          fi
-
-          vercel inspect "$deployment_url" --token="$VERCEL_TOKEN" >/tmp/vercel-inspect.txt
-          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-
-      - name: Note non-blocking Vercel deploy failure
-        if: ${{ steps.vercel_deploy.outcome == 'failure' }}
-        run: |
-          echo "::warning::Frontend Vercel preview deploy failed, but backend staging deployment will continue. Review the 'Deploy frontend preview to Vercel' step for details."
-
       - name: Transfer backend image bundle to staging EC2
         id: transfer_backend_image
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
           ARCHIVE_PATH: ${{ steps.export_backend_image.outputs.archive_path }}
           ARCHIVE_NAME: ${{ steps.export_backend_image.outputs.archive_name }}
         run: |
           set -euo pipefail
 
           key_file="$(mktemp)"
+          known_hosts_file="$(mktemp)"
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          printf '%s\n' "${EC2_KNOWN_HOSTS}" > "${known_hosts_file}"
           chmod 600 "${key_file}"
 
           remote_archive="/tmp/${ARCHIVE_NAME}"
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
             "set -euo pipefail;
              rm -f /tmp/backend-image-*.tar.gz /tmp/backend-image-*.tar /tmp/drone-scp-* /tmp/*.tmp 2>/dev/null || true;
@@ -231,17 +220,17 @@ jobs:
              docker builder prune -af >/dev/null 2>&1 || true;
              df -h / /tmp || true"
 
-          scp -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+          scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
 
-          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
             "set -euo pipefail;
              test -f '${remote_archive}';
              ls -lh '${remote_archive}';
              df -h / /tmp || true"
 
-          rm -f "${key_file}"
+          rm -f "${key_file}" "${known_hosts_file}"
 
       - name: Deploy backend to staging EC2
         id: deploy_backend
@@ -253,6 +242,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          fingerprint: ${{ secrets.EC2_SSH_FINGERPRINT }}
           command_timeout: 75m
           envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
           script: |
@@ -456,16 +446,11 @@ jobs:
             echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
             echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
             echo "| Backend staging deploy | \`${{ steps.deploy_backend.outcome }}\` |"
-            if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
-              echo "| Frontend preview deploy | \`${{ steps.vercel_deploy.outcome }}\` |"
-              echo "| Frontend preview URL | \`${{ steps.vercel_deploy.outputs.deployment_url || 'n/a' }}\` |"
-            else
-              echo "| Frontend preview deploy | skipped: Vercel secrets not configured |"
-            fi
+            echo "| Frontend preview deploy | Vercel Git integration |"
             echo ""
             echo "Stages:"
             echo "- Backend image build and smoke test"
             echo "- Frontend image build"
-            echo "- Optional Vercel preview deploy"
+            echo "- Vercel Git integration publishes the frontend preview from develop"
             echo "- Staging EC2 backend replacement"
           } >> "$GITHUB_STEP_SUMMARY"

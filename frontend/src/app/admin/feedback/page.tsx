@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import {
   fetchAllFeedback,
   updateFeedbackStatus,
   AdminFeedbackEntry,
+  Course,
+  fetchCourses,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp, Flag } from "lucide-react";
+import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp, Flag, Search } from "lucide-react";
 
 type TabFilter = "all" | "feedback" | "bug" | "report";
 
@@ -23,22 +26,29 @@ export default function AdminFeedbackPage() {
   const [entries, setEntries] = useState<AdminFeedbackEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabFilter>("all");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [courseId, setCourseId] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const feedbackType = tab === "all" ? undefined : tab;
-      const data = await fetchAllFeedback(token, feedbackType, 500);
+      const [data, availableCourses] = await Promise.all([
+        fetchAllFeedback(token, feedbackType, 500, courseId || undefined),
+        fetchCourses(token),
+      ]);
       setEntries(data.feedback);
+      setCourses(availableCourses);
     } catch {
       setEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [token, tab]);
+  }, [token, tab, courseId]);
 
   useEffect(() => {
     load();
@@ -68,6 +78,10 @@ export default function AdminFeedbackPage() {
     { key: "bug", label: "Bug Reports", icon: Bug },
     { key: "report", label: "Message Reports", icon: Flag },
   ];
+  const visibleEntries = entries.filter((entry) => {
+    const haystack = [entry.username, entry.message, entry.reason, entry.description, entry.category, entry.feature, entry.course_id, entry.severity].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(search.trim().toLowerCase());
+  });
 
   return (
     <div className="space-y-6">
@@ -75,12 +89,12 @@ export default function AdminFeedbackPage() {
         <MessageSquare className="h-5 w-5" />
         Feedback, Reports & Bugs
         <span className="ml-2 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-          {entries.length}
+          {visibleEntries.length}
         </span>
       </h2>
 
       {/* Tab Filters */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -99,19 +113,24 @@ export default function AdminFeedbackPage() {
             </button>
           );
         })}
+        <label className="sr-only" htmlFor="feedback-search">Search feedback</label><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" /><input id="feedback-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search feedback" className="rounded-xl border border-zinc-200 bg-white py-2 pl-9 pr-3 text-sm dark:border-zinc-700 dark:bg-zinc-900" /></div>
+        <label className="sr-only" htmlFor="feedback-course">Course</label><select id="feedback-course" value={courseId} onChange={(event) => setCourseId(event.target.value)} className="ml-auto rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+          <option value="">All courses and unscoped</option>
+          {courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}
+        </select>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
         </div>
-      ) : entries.length === 0 ? (
+      ) : visibleEntries.length === 0 ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/30 dark:text-zinc-400">
           No feedback entries found.
         </div>
       ) : (
         <div className="space-y-3">
-          {entries.map((entry) => {
+          {visibleEntries.map((entry) => {
             const isExpanded = expanded === entry.id;
             const isFeedback = entry.type === "feedback";
             const isReport = entry.type === "report";
@@ -153,6 +172,7 @@ export default function AdminFeedbackPage() {
                       by {entry.username} · {entry.created_at ? new Date(entry.created_at).toLocaleDateString() : "—"}
                       {isFeedback && entry.category && ` · ${entry.category}`}
                       {isReport && entry.session_id && ` · Session ${entry.session_id.slice(0, 8)}`}
+                      {entry.course_id && ` · ${entry.course_id}`}
                       {!isFeedback && entry.severity && ` · ${entry.severity}`}
                     </p>
                   </div>
@@ -196,6 +216,7 @@ export default function AdminFeedbackPage() {
                             <span className="font-medium text-zinc-500 dark:text-zinc-400">Session ID: </span>
                             {entry.session_id || "—"}
                           </div>
+                          {entry.session_id && <Link href={`/chat?session=${encodeURIComponent(entry.session_id)}${entry.course_id ? `&course=${encodeURIComponent(entry.course_id)}` : ""}`} className="inline-flex text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-300">Open reported conversation</Link>}
                           <div>
                             <span className="font-medium text-zinc-500 dark:text-zinc-400">Message Index: </span>
                             {typeof entry.message_index === "number" ? entry.message_index : "—"}
@@ -233,6 +254,10 @@ export default function AdminFeedbackPage() {
                           )}
                         </>
                       )}
+                      <div>
+                        <span className="font-medium text-zinc-500 dark:text-zinc-400">Course: </span>
+                        {entry.course_id || "Unscoped / legacy"}
+                      </div>
                       <div>
                         <span className="font-medium text-zinc-500 dark:text-zinc-400">Contact: </span>
                         {entry.name || "Anonymous"} {entry.email ? `(${entry.email})` : ""}

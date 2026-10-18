@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { ToastProvider } from "@/components/toast-provider";
 import { AnnouncementToaster } from "@/components/announcement-toaster";
 import { MaintenanceBanner } from "@/components/maintenance-banner";
+import { ActiveCourseProvider } from "@/components/active-course-provider";
 import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -23,7 +24,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Smart AI Tutor",
-  description: "Modern FastAPI + Next.js experience for INFO 5731",
+  description: "Multi-course AI tutoring, targeted practice, and measurable learning mastery.",
 };
 
 export default function RootLayout({
@@ -40,6 +41,7 @@ export default function RootLayout({
     { href: "/about", label: "About" },
     { href: "/feedback", label: "Feedback" },
     { href: "/profile", label: "Profile" },
+    { href: "/instructor", label: "Teaching", instructorOnly: true },
     { href: "/evaluation", label: "Evaluation", adminOnly: true },
     { href: "/admin", label: "Admin", adminOnly: true },
   ];
@@ -61,7 +63,10 @@ export default function RootLayout({
               <ToastProvider />
               <AnnouncementToaster />
               <MaintenanceBanner />
-              <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
+              <ActiveCourseProvider>
+                <MaintenanceBanner />
+                <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
+              </ActiveCourseProvider>
             </ThemeProvider>
           </ErrorBoundary>
         </PostHogProvider>

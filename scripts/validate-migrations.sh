@@ -10,6 +10,7 @@ POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
 POSTGRES_SSL_MODE="${POSTGRES_SSL_MODE:-disable}"
 
 export SECRETS_PROVIDER="${SECRETS_PROVIDER:-env}"
+export POSTGRES_HOST POSTGRES_PORT POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_SSL_MODE
 
 db_url="$(python3 - <<'PY'
 import os
@@ -28,5 +29,5 @@ PY
 
 # Never log db_url here; it contains credentials.
 echo "Validating Alembic migrations against ${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-ALEMBIC_DB_URL="${db_url}" python -m alembic -c alembic.ini upgrade head
-ALEMBIC_DB_URL="${db_url}" python -m alembic -c alembic.ini current
+ALEMBIC_DB_URL="${db_url}" python3 -m alembic -c alembic.ini upgrade head
+ALEMBIC_DB_URL="${db_url}" python3 -m alembic -c alembic.ini current

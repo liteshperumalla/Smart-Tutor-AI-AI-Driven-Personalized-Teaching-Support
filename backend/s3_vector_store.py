@@ -8,6 +8,7 @@ import io
 import json
 import numpy as np
 import struct
+import threading
 from typing import List, Dict, Tuple
 from pathlib import Path
 from botocore.exceptions import ClientError
@@ -51,6 +52,8 @@ class S3VectorStore:
         self.metadata = {}
         self._numpy_cache = None
         self._chunk_ids_cache = None
+        self._loaded = False
+        self._load_lock = threading.Lock()
 
         logger.info(f"S3VectorStore initialized: {self.bucket_name}")
 
@@ -128,6 +131,20 @@ class S3VectorStore:
             return
         self._chunk_ids_cache = [item[0] for item in self.vectors]
         self._numpy_cache = np.array([item[1] for item in self.vectors])
+
+    def ensure_loaded(self, force_rebuild: bool = False):
+        """Load the index exactly once per process (thread-safe).
+
+        Subsequent calls are no-ops unless force_rebuild is set, so a shared
+        store can back many retrievers without re-downloading from S3.
+        """
+        if self._loaded and not force_rebuild:
+            return
+        with self._load_lock:
+            if self._loaded and not force_rebuild:
+                return
+            self.load_index(force_rebuild=force_rebuild)
+            self._loaded = True
 
     def load_index(self, force_rebuild: bool = False):
         """

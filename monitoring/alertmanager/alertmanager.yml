@@ -1,12 +1,128 @@
 global:
   resolve_timeout: 5m
+  # Slack global defaults — override per receiver below
+  slack_api_url: "${ALERTMANAGER_SLACK_WEBHOOK_URL}"
+  smtp_smarthost: "${SMTP_HOST}:587"
+  smtp_from: "alerts@smart-ai-tutor.com"
+  smtp_auth_username: "${SMTP_USERNAME}"
+  smtp_auth_password: "${SMTP_PASSWORD}"
+  smtp_require_tls: true
 
+# Route tree: critical → PagerDuty + Slack, warning → Slack only, info → email
 route:
-  receiver: "null"
+  receiver: "slack-warnings"
   group_by: ["alertname", "component", "severity"]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    # Critical severity → PagerDuty + Slack #alerts-critical (immediate, short repeat)
+    - matchers:
+        - severity="critical"
+      receiver: "pagerduty-critical"
+      continue: true
+      group_wait: 10s
+      repeat_interval: 1h
+
+    - matchers:
+        - severity="critical"
+      receiver: "slack-critical"
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning severity → Slack #alerts-warnings
+    - matchers:
+        - severity="warning"
+      receiver: "slack-warnings"
+      group_wait: 30s
+      repeat_interval: 4h
+
+    # SLO burn rate alerts → dedicated SLO channel
+    - matchers:
+        - slo=~".+"
+      receiver: "slack-slo"
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # DDoS alerts → security channel + PagerDuty
+    - matchers:
+        - component="ddos"
+      receiver: "slack-security"
+      group_wait: 10s
+      repeat_interval: 30m
+
+inhibit_rules:
+  # Suppress warning if critical already firing for same component
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ["alertname", "component"]
+
+  # Suppress all alerts if service is down (avoid alert storm)
+  - source_matchers:
+      - alertname="BackendServiceDown"
+    target_matchers:
+      - component="backend"
+    equal: []
 
 receivers:
-  - name: "null"
+  # ── PagerDuty (critical incidents only) ────────────────────────────────────
+  - name: "pagerduty-critical"
+    pagerduty_configs:
+      - routing_key: "${PAGERDUTY_ROUTING_KEY}"
+        severity: critical
+        description: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ end }}"
+        details:
+          firing: "{{ .Alerts.Firing | len }}"
+          environment: production
+          service: smart-ai-tutor-backend
+
+  # ── Slack: Critical alerts ──────────────────────────────────────────────────
+  - name: "slack-critical"
+    slack_configs:
+      - channel: "#alerts-critical"
+        title: "🚨 [CRITICAL] {{ .CommonAnnotations.summary }}"
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Component:* {{ .CommonLabels.component }}
+          *Description:* {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+          *Firing since:* {{ range .Alerts }}{{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}{{ end }}
+        color: danger
+        send_resolved: true
+
+  # ── Slack: Warning alerts ───────────────────────────────────────────────────
+  - name: "slack-warnings"
+    slack_configs:
+      - channel: "#alerts-warnings"
+        title: "⚠️ [WARNING] {{ .CommonAnnotations.summary }}"
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Component:* {{ .CommonLabels.component }}
+          *Description:* {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        color: warning
+        send_resolved: true
+
+  # ── Slack: SLO burn rate alerts ─────────────────────────────────────────────
+  - name: "slack-slo"
+    slack_configs:
+      - channel: "#slo-alerts"
+        title: "📊 [SLO] {{ .CommonAnnotations.summary }}"
+        text: |
+          *SLO:* {{ .CommonLabels.slo }}
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Description:* {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        color: "#ff9900"
+        send_resolved: true
+
+  # ── Slack: Security / DDoS alerts ──────────────────────────────────────────
+  - name: "slack-security"
+    slack_configs:
+      - channel: "#security-alerts"
+        title: "🛡️ [SECURITY] {{ .CommonAnnotations.summary }}"
+        text: |
+          *Alert:* {{ .CommonLabels.alertname }}
+          *Component:* {{ .CommonLabels.component }}
+          *Description:* {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+        color: danger
+        send_resolved: true

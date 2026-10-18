@@ -812,6 +812,8 @@ def generate_response_stream_and_sources(
     session_id: Optional[str] = None,
     enable_llm_judge: bool = False,
     model_id: Optional[str] = None,
+    source_prefixes: Optional[List[str]] = None,
+    allow_web_search: bool = True,
 ):
     """Generate streaming response with sources
 
@@ -922,6 +924,12 @@ def generate_response_stream_and_sources(
                 retriever = idx.as_retriever(similarity_top_k=3)
                 retrieved_nodes = retriever.retrieve(retrieval_query)
 
+            if source_prefixes:
+                normalized_prefixes = tuple(prefix.replace("\\", "/").lstrip("/") for prefix in source_prefixes)
+                retrieved_nodes = [
+                    item for item in retrieved_nodes
+                    if str((item.node.metadata.get("file_path") or item.node.metadata.get("source_file") or "")).replace("\\", "/").lstrip("/").startswith(normalized_prefixes)
+                ]
             local_sources = []
             for n_ws in retrieved_nodes:
                 node = n_ws.node
@@ -971,7 +979,7 @@ def generate_response_stream_and_sources(
 
         # ── Span: web-search-decision ────────────────────────────────
         with traced_span(main_trace, "web-search-decision", input={"query": query}) as ws_decision_span:
-            should_search = _should_search_web(query, context_str, local_sources)
+            should_search = allow_web_search and _should_search_web(query, context_str, local_sources)
 
         if should_search:
             # ── Span: web-search-execution ───────────────────────────
@@ -1034,9 +1042,7 @@ def generate_response_stream_and_sources(
                 template_for_response = CHAT_QA_TEMPLATE
                 nodes_for_prompt = retrieved_nodes
 
-        print("--------CONTEXT PASSED TO LLM--------")
-        print(context_str)
-        print("--------------------------------------")
+        logging.debug("Context passed to LLM (%d chars)", len(context_str))
 
         # ── Span: llm-synthesis ──────────────────────────────────────
         with traced_span(main_trace, "llm-synthesis", input={"query": query, "model_id": model_id}) as synth_span:

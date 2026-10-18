@@ -176,8 +176,7 @@ STORAGE_BACKEND=dynamodb
 S3_LOGS_BUCKET=smart-ai-tutor-logs
 
 # DynamoDB Tables
-DYNAMODB_TABLE_USERS=smart-tutor-users
-DYNAMODB_TABLE_QUIZ_RESULTS=smart-tutor-quiz-results
+DYNAMODB_TABLE_USER_SESSIONS=smart-tutor-user-sessions
 
 # CloudWatch Logs
 CLOUDWATCH_LOG_GROUP=/aws/smart-ai-tutor/backend

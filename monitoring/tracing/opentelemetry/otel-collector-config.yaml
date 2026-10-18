@@ -15,8 +15,8 @@ data:
             endpoint: 0.0.0.0:4318
             cors:
               allowed_origins:
-                - "http://*"
-                - "https://*"
+                - "https://smart-ai-tutor.vercel.app"
+                - "https://*.smart-ai-tutor.com"
 
       # Prometheus receiver for scraping metrics
       prometheus:
@@ -79,9 +79,9 @@ data:
           - key: http.url
             action: hash
 
-      # Probabilistic sampler - sample traces
+      # Probabilistic sampler - 10% baseline in production (errors + slow always sampled via tail_sampling)
       probabilistic_sampler:
-        sampling_percentage: 100  # Sample all in dev, reduce in prod
+        sampling_percentage: 10  # 10% base rate; errors/latency overridden by tail_sampling below
 
       # Tail sampling - intelligent sampling based on conditions
       tail_sampling:

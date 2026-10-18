@@ -74,7 +74,7 @@ class CSRFProtection:
             token = CSRFProtection.generate_token()
 
         from backend.config import config
-        is_production = config.ENVIRONMENT == "production"
+        is_production = config.ENVIRONMENT in ("production", "staging")
 
         # Set CSRF token in regular cookie (NOT HttpOnly, so JavaScript can read it).
         # 15-minute TTL — short enough that a stolen token has a tight expiry
@@ -155,6 +155,13 @@ class CSRFProtection:
         # Skip CSRF validation in test environment
         from backend.config import config
         if getattr(config, "ENVIRONMENT", "") == "test":
+            return
+
+        # Bearer-token clients do not automatically attach credentials to a
+        # cross-site request and are therefore not susceptible to cookie CSRF.
+        # Keep the protection focused on browser-cookie authentication.
+        authorization = request.headers.get("Authorization", "")
+        if authorization.lower().startswith("bearer ") and not request.cookies.get("access_token"):
             return
 
         # Only validate CSRF for state-changing methods

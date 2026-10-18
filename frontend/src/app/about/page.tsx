@@ -38,7 +38,7 @@ const keyFeatures: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: FolderOpen,
     title: "Resource hub",
-    body: "Browse a curated library of INFO 5731 readings, slides, and notes.",
+    body: "Browse course-scoped readings, slides, and notes across your enrolled courses.",
   },
   {
     icon: CalendarDays,
@@ -82,7 +82,7 @@ export default function AboutPage() {
         eyebrow="About"
         title="Why Smart"
         accent="AI Tutor exists."
-        subtitle="An RAG-grounded tutor for INFO 5731. Built so students always get answers backed by the actual lectures and readings."
+        subtitle="An RAG-grounded, multi-course tutor built so students get answers backed by their actual lectures and readings."
       />
 
       {/* Key features */}

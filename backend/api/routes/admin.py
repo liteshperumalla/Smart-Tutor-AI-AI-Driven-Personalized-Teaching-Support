@@ -74,6 +74,7 @@ class CreateResourceLinkRequest(BaseModel):
     url: str = Field(..., min_length=1)
     description: str = Field(default="", max_length=2000)
     order: int = Field(default=0, ge=0)
+    course_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class UpdateResourceRequest(BaseModel):
@@ -83,6 +84,7 @@ class UpdateResourceRequest(BaseModel):
     description: Optional[str] = Field(default=None, max_length=2000)
     order: Optional[int] = Field(default=None, ge=0)
     active: Optional[bool] = None
+    course_id: Optional[str] = Field(default=None, max_length=64)
 
 
 # ── Dashboard ─────────────────────────────────────────────────────
@@ -186,11 +188,12 @@ def update_appointment_status(
 @router.get("/feedback")
 def list_all_feedback(
     feedback_type: Optional[str] = Query(None, pattern="^(feedback|bug|report)$"),
+    course_id: Optional[str] = Query(None, max_length=64),
     limit: int = Query(200, ge=1, le=1000),
     session=Depends(get_admin_session),
 ):
     svc = get_admin_service()
-    entries = svc.get_all_feedback(feedback_type=feedback_type, limit=limit)
+    entries = svc.get_all_feedback(feedback_type=feedback_type, course_id=course_id, limit=limit)
 
     # Overlay statuses from the status file
     statuses = svc._load_feedback_statuses()
@@ -388,6 +391,7 @@ def create_resource_link(
         description=payload.description,
         order=payload.order,
         created_by=admin_user.get("username", "admin"),
+        course_id=payload.course_id,
     )
     return {"resource": resource}
 
@@ -399,6 +403,7 @@ async def upload_resource_file(
     title: str = Form(...),
     description: str = Form(""),
     order: int = Form(0),
+    course_id: str = Form(""),
     session=Depends(get_admin_session),
 ):
     _, admin_user = session
@@ -419,6 +424,7 @@ async def upload_resource_file(
         description=description,
         order=order,
         created_by=admin_user.get("username", "admin"),
+        course_id=course_id or None,
     )
     if not resource:
         raise HTTPException(

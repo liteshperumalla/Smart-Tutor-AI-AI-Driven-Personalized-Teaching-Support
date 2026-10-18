@@ -24,6 +24,8 @@ from collections import OrderedDict
 
 import numpy as np
 
+from backend.metrics import track_cache_hit, track_cache_miss
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -656,13 +658,35 @@ class RAGCache:
         redis_client: Optional[Any] = None,
         s3_client: Optional[Any] = None,
         s3_bucket: Optional[str] = None,
-        enable_all: bool = True
+        enable_all: bool = True,
+        enable_memory: Optional[bool] = None,
+        enable_redis: Optional[bool] = None,
+        enable_s3: Optional[bool] = None,
     ):
+        """Create a RAG cache and optionally control each cache tier.
+
+        ``enable_all`` remains the backwards-compatible default.  The
+        per-tier flags let the service disable an unavailable shared tier
+        without disabling the in-process cache.  They also match the service
+        constructor, which already passes these flags.
+        """
+        memory_enabled = enable_all if enable_memory is None else enable_memory
+        redis_enabled = (
+            enable_all and redis_client is not None
+            if enable_redis is None
+            else enable_redis and redis_client is not None
+        )
+        s3_enabled = (
+            enable_all and s3_client is not None and s3_bucket is not None
+            if enable_s3 is None
+            else enable_s3 and s3_client is not None and s3_bucket is not None
+        )
+
         # Embedding cache
         self.embedding_cache = EmbeddingCache(
-            use_memory=enable_all,
-            use_redis=enable_all and redis_client is not None,
-            use_s3=enable_all and s3_client is not None,
+            use_memory=memory_enabled,
+            use_redis=redis_enabled,
+            use_s3=s3_enabled,
             redis_client=redis_client,
             s3_client=s3_client,
             s3_bucket=s3_bucket
@@ -670,9 +694,9 @@ class RAGCache:
 
         # Query cache
         self.query_cache = QueryCache(
-            use_exact_matching=enable_all,
-            use_fuzzy_matching=enable_all,
-            redis_client=redis_client
+            use_exact_matching=memory_enabled or redis_enabled,
+            use_fuzzy_matching=memory_enabled,
+            redis_client=redis_client if redis_enabled else None,
         )
 
     def get_embedding(
@@ -680,8 +704,13 @@ class RAGCache:
         text: str,
         model_name: str = "default"
     ) -> Optional[List[float]]:
-        """Get cached embedding"""
-        return self.embedding_cache.get(text, model_name)
+        """Get a cached embedding and record a learner-facing cache lookup."""
+        embedding = self.embedding_cache.get(text, model_name)
+        if embedding is None:
+            track_cache_miss(cache_type="embedding")
+        else:
+            track_cache_hit(cache_type="embedding")
+        return embedding
 
     def put_embedding(
         self,
@@ -698,18 +727,21 @@ class RAGCache:
         query_embedding: Optional[List[float]] = None,
         user_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Get cached query result (exact or fuzzy match), scoped to user_id"""
+        """Get a user-scoped cached result and record one lookup outcome."""
         # Try exact match first
         result = self.query_cache.get_exact(query, user_id)
         if result:
+            track_cache_hit(cache_type="query_result")
             return result
 
         # Try fuzzy match
         if query_embedding:
             result = self.query_cache.get_fuzzy(query, query_embedding, user_id)
             if result:
+                track_cache_hit(cache_type="query_result")
                 return result
 
+        track_cache_miss(cache_type="query_result")
         return None
 
     def put_query_result(

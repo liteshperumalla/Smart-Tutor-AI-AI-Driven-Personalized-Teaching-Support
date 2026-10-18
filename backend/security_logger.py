@@ -10,6 +10,7 @@ Centralized logging for security-related events to aid in:
 All security events are logged with structured data for easy parsing and analysis.
 """
 
+import os
 import logging
 import json
 from datetime import datetime, timezone
@@ -21,8 +22,13 @@ security_logger = logging.getLogger("security")
 security_logger.setLevel(logging.INFO)
 
 # Add file handler for security events
-security_handler = logging.FileHandler("logs/security_events.log")
-security_handler.setLevel(logging.INFO)
+try:
+    os.makedirs("logs", exist_ok=True)
+    security_handler = logging.FileHandler("logs/security_events.log")
+    security_handler.setLevel(logging.INFO)
+except (PermissionError, OSError):
+    security_handler = logging.StreamHandler()
+    security_handler.setLevel(logging.INFO)
 
 # Use JSON formatter for structured logging
 class SecurityLogFormatter(logging.Formatter):

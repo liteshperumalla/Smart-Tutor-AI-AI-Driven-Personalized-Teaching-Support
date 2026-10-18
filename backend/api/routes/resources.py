@@ -17,8 +17,24 @@ def get_resource_service():
 def list_resources(session=Depends(get_current_session)):
     """Return active resources grouped by category.
     Falls back to static catalog when the dynamic store is empty."""
+    _, user = session
     svc = get_resource_service()
-    grouped = svc.get_resources_by_category(active_only=True)
+    resources = svc.list_resources(include_inactive=False)
+    from backend.services.learning_service import get_learning_service
+    learning = get_learning_service()
+    visible = []
+    for resource in resources:
+        # Untagged entries are legacy INFO 5731 content. New records must be
+        # explicitly visible through the caller's course membership.
+        resource_course = resource.get("course_id") or "info-5731"
+        try:
+            learning.require_access(user["username"], user, resource_course)
+            visible.append(resource)
+        except HTTPException:
+            continue
+    grouped: dict = {}
+    for resource in visible:
+        grouped.setdefault(resource.get("category", "Uncategorized"), []).append(resource)
 
     if not grouped:
         # Fallback: serve static catalog in the original format
@@ -51,6 +67,9 @@ def download_resource(resource_id: str, session=Depends(get_current_session)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     if not resource.get("active", True):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not available")
+    _, user = session
+    from backend.services.learning_service import get_learning_service
+    get_learning_service().require_access(user["username"], user, resource.get("course_id") or "info-5731")
     if resource.get("type") != "file" or not resource.get("s3_key"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Resource is not a downloadable file")
 

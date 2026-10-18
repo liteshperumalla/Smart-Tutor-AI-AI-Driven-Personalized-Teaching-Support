@@ -12,7 +12,7 @@ interface PageShellProps {
 
 export function PageShell({
   children,
-  as = "main",
+  as = "section",
   className,
   contentClassName,
   noCard = false,

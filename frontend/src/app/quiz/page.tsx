@@ -7,12 +7,16 @@ import {
   QuizFolder,
   QuizQuestion,
   QuizHistoryEntry,
+  Course,
+  fetchCourses,
   fetchQuizFolders,
   fetchQuizHistory,
+  fetchStudyRecommendation,
   generateQuiz,
   submitQuiz,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
+import { useActiveCourse } from "@/components/active-course-provider";
 import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
@@ -20,6 +24,11 @@ import { toast } from "sonner";
 export default function QuizPage() {
   const { token } = useAuthToken();
   const [folders, setFolders] = useState<QuizFolder[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const { activeCourseId: courseId = "info-5731", setActiveCourseId: setCourseId } = useActiveCourse();
+  const [recommendedObjectiveId, setRecommendedObjectiveId] = useState<string | undefined>();
+  const [recommendedTitle, setRecommendedTitle] = useState<string>();
+  const [recommendedDifficulty, setRecommendedDifficulty] = useState<"easy" | "medium" | "hard">("medium");
   const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
   const [numQuestions, setNumQuestions] = useState(5);
   const [loadingFolders, setLoadingFolders] = useState(true);
@@ -48,9 +57,25 @@ export default function QuizPage() {
 
   useEffect(() => {
     if (!token) return;
+    fetchCourses(token)
+      .then((items) => {
+        setCourses(items);
+        const requestedCourse = new URLSearchParams(window.location.search).get("course");
+        if (requestedCourse && items.some((item) => item.id === requestedCourse)) setCourseId(requestedCourse);
+        else if (items.length > 0) setCourseId(items[0].id);
+      })
+      .catch(() => {});
+    const params = new URLSearchParams(window.location.search);
+    setRecommendedObjectiveId(params.get("objective") || undefined);
+    const difficulty = params.get("difficulty");
+    if (difficulty === "easy" || difficulty === "medium" || difficulty === "hard") setRecommendedDifficulty(difficulty);
+  }, [setCourseId, token]);
+
+  useEffect(() => {
+    if (!token || !courseId) return;
     let mounted = true;
     setLoadingFolders(true);
-    fetchQuizFolders(token)
+    fetchQuizFolders(token, courseId)
       .then((data) => {
         if (!mounted) return;
         const sortedFolders = sortFoldersByPath(data);
@@ -66,14 +91,23 @@ export default function QuizPage() {
       })
       .finally(() => mounted && setLoadingFolders(false));
 
-    fetchQuizHistory(token)
+    fetchQuizHistory(token, courseId)
       .then((res) => mounted && setHistory(res.results || []))
+      .catch(() => {});
+
+    fetchStudyRecommendation(token, courseId)
+      .then((recommendation) => {
+        if (!recommendation) return;
+        setRecommendedObjectiveId((current) => current || recommendation.objective_id);
+        setRecommendedTitle(recommendation.title);
+        setRecommendedDifficulty(recommendation.difficulty);
+      })
       .catch(() => {});
 
     return () => {
       mounted = false;
     };
-  }, [token]);
+  }, [token, courseId]);
 
   const resolvedFolderLabels = useMemo(() => {
     const lookup = new Map(folders.map((f) => [f.path, f.label]));
@@ -102,6 +136,9 @@ export default function QuizPage() {
         token,
         folders: selectedFolders,
         numQuestions,
+        courseId,
+        objectiveIds: recommendedObjectiveId ? [recommendedObjectiveId] : undefined,
+        difficulty: recommendedObjectiveId ? recommendedDifficulty : undefined,
       });
       setQuiz({
         quiz_id: payload.quiz_id,
@@ -203,10 +240,19 @@ export default function QuizPage() {
                 <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Create Your Quiz</h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">Select topics and number of questions</p>
+                <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Practice this course</h2>
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">Choose course materials, then practice with feedback.</p>
               </div>
             </div>
+
+            <label className="mb-6 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Active course
+              <select value={courseId} onChange={(event) => { setCourseId(event.target.value); setRecommendedObjectiveId(undefined); }} className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+                {courses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.title}</option>)}
+              </select>
+            </label>
+
+            {recommendedObjectiveId && <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100"><p className="font-semibold">Recommended practice{recommendedTitle ? `: ${recommendedTitle}` : ""}</p><p className="mt-1">This {recommendedDifficulty} set targets one objective and updates mastery from your item-level answers.</p></div>}
 
             {foldersError && (
               <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
@@ -214,8 +260,10 @@ export default function QuizPage() {
               </div>
             )}
 
+            <details className="mb-6 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" open={!recommendedObjectiveId}>
+              <summary className="cursor-pointer text-sm font-semibold text-zinc-800 dark:text-zinc-100">{recommendedObjectiveId ? "Customize this practice set" : "Choose practice materials"}</summary>
             {/* Folder Selection */}
-            <div className="mb-6">
+            <div className="mb-6 mt-5">
               <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
                 <Folder className="h-4 w-4" />
                 Select Topics
@@ -275,7 +323,7 @@ export default function QuizPage() {
             </div>
 
             {/* Question Count */}
-            <div className="mb-6">
+            <div className="mb-2">
               <label className="flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
                 <span className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
@@ -296,6 +344,7 @@ export default function QuizPage() {
                 <span>10</span>
               </div>
             </div>
+            </details>
 
             {actionError && (
               <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
@@ -317,7 +366,7 @@ export default function QuizPage() {
               ) : (
                 <>
                   <Sparkles className="h-5 w-5" />
-                  Generate Quiz
+                  {recommendedObjectiveId ? "Start recommended practice" : "Generate custom quiz"}
                 </>
               )}
             </button>
@@ -495,6 +544,7 @@ export default function QuizPage() {
                         <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-amber-900 dark:text-amber-200">{qResult.explanation}</p>
                       </div>
+                      {question.objective_id && <Link href={`/chat?course=${encodeURIComponent(courseId)}&mode=learn&objective=${encodeURIComponent(question.objective_id)}`} className="mt-2 inline-block text-sm font-semibold text-amber-800 underline dark:text-amber-200">Review this objective in Learn mode</Link>}
                     </div>
                   )}
 
