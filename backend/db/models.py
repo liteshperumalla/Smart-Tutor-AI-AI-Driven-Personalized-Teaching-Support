@@ -3,9 +3,13 @@
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Float, Index, Integer, String, UniqueConstraint, desc, text
+from sqlalchemy import DateTime, ForeignKey, Float, Index, Integer, JSON, String, UniqueConstraint, desc, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Portable JSON type: native JSONB on PostgreSQL, JSON on SQLite/other dialects
+JSONType = JSON().with_variant(JSONB, "postgresql")
+
 
 
 class Base(DeclarativeBase):
@@ -27,7 +31,7 @@ class UserRecord(Base):
         Integer(), server_default=text("0")
     )
     locked_until: Mapped[datetime | None] = mapped_column(DateTime())
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONType)
     version: Mapped[int] = mapped_column(Integer(), server_default=text("1"), default=1, nullable=False)
 
     __table_args__ = (Index("idx_users_email", "email"),)
@@ -51,12 +55,12 @@ class QuizResultRecord(Base):
     quiz_id: Mapped[str] = mapped_column(String(255), nullable=False)
     score: Mapped[int | None] = mapped_column(Integer())
     total_questions: Mapped[int | None] = mapped_column(Integer())
-    answers: Mapped[list | dict | None] = mapped_column(JSONB)
+    answers: Mapped[list | dict | None] = mapped_column(JSONType)
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(), server_default=text("CURRENT_TIMESTAMP")
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime())
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONType)
 
     __table_args__ = (
         Index("idx_quiz_results_username", "username"),
@@ -74,7 +78,7 @@ class CourseRecord(Base):
     code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     owner_username: Mapped[str | None] = mapped_column(String(255), ForeignKey("users.username", ondelete="SET NULL"))
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONType)
     created_at: Mapped[datetime | None] = mapped_column(DateTime(), server_default=text("CURRENT_TIMESTAMP"))
 
     # Relationships with eager loading (lazy="selectin") to prevent N+1 queries (Pattern 27)
@@ -108,7 +112,7 @@ class LearningObjectiveRecord(Base):
     course_id: Mapped[str] = mapped_column(String(64), ForeignKey("courses.id", ondelete="CASCADE"), nullable=False)
     module_id: Mapped[str] = mapped_column(String(128), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONType)
 
     __table_args__ = (Index("idx_learning_objectives_course", "course_id"),)
 
@@ -127,7 +131,7 @@ class MasteryRecord(Base):
     objective_id: Mapped[str] = mapped_column(String(128), ForeignKey("learning_objectives.id", ondelete="CASCADE"), nullable=False)
     score: Mapped[float] = mapped_column(Float(), nullable=False, server_default=text("0"))
     attempts: Mapped[int] = mapped_column(Integer(), nullable=False, server_default=text("0"))
-    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONType)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(), server_default=text("CURRENT_TIMESTAMP"))
     version: Mapped[int] = mapped_column(Integer(), server_default=text("1"), default=1, nullable=False)
 
@@ -135,3 +139,30 @@ class MasteryRecord(Base):
 
     objective: Mapped["LearningObjectiveRecord"] = relationship("LearningObjectiveRecord", back_populates="mastery_records", lazy="selectin")
     user: Mapped["UserRecord"] = relationship("UserRecord", lazy="selectin")
+
+
+class OutboxEventRecord(Base):
+    """Transactional Outbox event record (Pattern 114 & 115).
+    
+    Guarantees atomic persistence of domain events alongside entity state changes,
+    preventing dual-write discrepancies and enabling CDC streaming.
+    """
+    __tablename__ = "outbox_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    aggregate_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    aggregate_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONType, nullable=False)
+    headers: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING", server_default=text("'PENDING'"))
+    retry_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(), server_default=text("CURRENT_TIMESTAMP"), nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
+
+    __table_args__ = (
+        Index("idx_outbox_events_status_created", "status", "created_at"),
+        Index("idx_outbox_events_aggregate", "aggregate_type", "aggregate_id"),
+    )
+

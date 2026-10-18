@@ -19,6 +19,7 @@ resources:
   - ../backend/deployment.yaml
   - ../backend/service.yaml
   - ../backend/configmap.yaml
+  - ../ambassador/envoy-ambassador-config.yaml
   - ../backend/hpa.yaml
   - ../backend/pdb.yaml
   - ../frontend/deployment.yaml

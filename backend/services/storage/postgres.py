@@ -552,6 +552,60 @@ class PostgresStorageBackend(BaseStorageBackend):
             logger.error(f"Error deleting user {username}: {e}")
             return False
 
+    def emit_outbox_event(
+        self,
+        event_type: str,
+        aggregate_type: str,
+        aggregate_id: str,
+        payload: Dict[str, Any],
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Atomically record an event into outbox_events table (Pattern 114)."""
+        import uuid
+        try:
+            event_id = str(uuid.uuid4())
+            with self._get_cursor(read_only=False) as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO outbox_events (
+                        id, event_type, aggregate_type, aggregate_id, payload, headers, status, retry_count
+                    ) VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', 0)
+                    """,
+                    (
+                        event_id,
+                        event_type,
+                        aggregate_type,
+                        aggregate_id,
+                        json.dumps(payload),
+                        json.dumps(headers or {}),
+                    ),
+                )
+                logger.info(f"Emitted outbox event {event_id} ({event_type}) for {aggregate_type}:{aggregate_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Error emitting outbox event: {e}")
+            return False
+
+    def get_pending_outbox_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch pending outbox events (Pattern 114)."""
+        try:
+            with self._get_cursor(read_only=True) as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, event_type, aggregate_type, aggregate_id, payload, headers, status, retry_count, created_at
+                    FROM outbox_events
+                    WHERE status = 'PENDING'
+                    ORDER BY created_at ASC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error fetching pending outbox events: {e}")
+            return []
+
+
     def close(self):
         """Close all connections in primary and reader pools"""
         if self.pool:

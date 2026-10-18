@@ -17,6 +17,9 @@ from .event_schemas import (
     AppointmentScheduledEvent,
 )
 from .event_handlers import EventHandler, register_event_handler
+from .outbox import OutboxPublisher, get_outbox_publisher, record_outbox_event
+from .cdc import CDCEngine, CDCStreamConsumer, get_cdc_engine, get_cdc_consumer
+from .event_schemas import CDCEnvelope, CDCOperation, CDCSource
 
 __all__ = [
     'EventBus',
@@ -33,4 +36,15 @@ __all__ = [
     'AppointmentScheduledEvent',
     'EventHandler',
     'register_event_handler',
+    'OutboxPublisher',
+    'get_outbox_publisher',
+    'record_outbox_event',
+    'CDCEngine',
+    'CDCStreamConsumer',
+    'get_cdc_engine',
+    'get_cdc_consumer',
+    'CDCEnvelope',
+    'CDCOperation',
+    'CDCSource',
 ]
+

@@ -49,6 +49,9 @@ class EventType(str, Enum):
     HEALTH_CHECK_FAILED = "system.health_check_failed"
     CIRCUIT_BREAKER_OPENED = "system.circuit_breaker_opened"
 
+    # Change Data Capture (CDC) events
+    CDC_RECORD_CHANGED = "cdc.record_changed"
+
 
 class BaseEvent(BaseModel):
     """
@@ -563,3 +566,94 @@ class CircuitBreakerOpenedEvent(BaseEvent):
             },
             **kwargs
         )
+
+
+class CDCOperation(str, Enum):
+    """Change Data Capture (CDC) operation types following Debezium standards."""
+    CREATE = "c"
+    UPDATE = "u"
+    DELETE = "d"
+    READ = "r"
+
+
+class CDCSource(BaseModel):
+    """CDC source metadata identifying origin database and transaction."""
+    version: str = Field(default="2.4.0")
+    connector: str = Field(default="postgres-cdc")
+    db: str = Field(default="smart_tutor")
+    schema_name: str = Field(default="public", alias="schema")
+    table: str
+    tx_id: Optional[int] = None
+    lsn: Optional[int] = None
+    ts_ms: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
+
+    class Config:
+        populate_by_name = True
+
+
+class CDCEnvelope(BaseEvent):
+    """Debezium / CloudEvents compliant Change Data Capture event envelope.
+    
+    Contains 'before' and 'after' state representations, operation type,
+    and granular database transaction metadata.
+    """
+    type: str = EventType.CDC_RECORD_CHANGED
+    source: str = "postgres-cdc"
+    op: CDCOperation
+    before: Optional[Dict[str, Any]] = None
+    after: Optional[Dict[str, Any]] = None
+    cdc_source: CDCSource
+    ts_ms: int = Field(default_factory=lambda: int(datetime.now(timezone.utc).timestamp() * 1000))
+
+    def __init__(
+        self,
+        table: str,
+        op: CDCOperation | str,
+        before: Optional[Dict[str, Any]] = None,
+        after: Optional[Dict[str, Any]] = None,
+        cdc_source: Optional[CDCSource] = None,
+        **kwargs
+    ):
+        op_enum = CDCOperation(op) if isinstance(op, str) else op
+        src = cdc_source or CDCSource(table=table)
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        super().__init__(
+            subject=f"cdc/{src.table}",
+            data={
+                "op": op_enum.value,
+                "before": before,
+                "after": after,
+                "source": src.model_dump(by_alias=True),
+                "ts_ms": now_ms,
+            },
+            op=op_enum,
+            before=before,
+            after=after,
+            cdc_source=src,
+            ts_ms=now_ms,
+            **kwargs
+        )
+
+    def to_debezium_dict(self) -> Dict[str, Any]:
+        """Convert to standard Debezium 2.x JSON envelope format."""
+        return {
+            "schema": {
+                "type": "struct",
+                "fields": [
+                    {"type": "string", "optional": False, "field": "op"},
+                    {"type": "int64", "optional": False, "field": "ts_ms"},
+                    {"type": "struct", "optional": True, "field": "before"},
+                    {"type": "struct", "optional": True, "field": "after"},
+                    {"type": "struct", "optional": False, "field": "source"},
+                ],
+                "optional": False,
+                "name": f"smart_tutor.{self.cdc_source.schema_name}.{self.cdc_source.table}.Envelope",
+            },
+            "payload": {
+                "before": self.before,
+                "after": self.after,
+                "source": self.cdc_source.model_dump(by_alias=True),
+                "op": self.op.value,
+                "ts_ms": self.ts_ms,
+            },
+        }

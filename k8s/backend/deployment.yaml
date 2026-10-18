@@ -128,19 +128,56 @@ spec:
               add:
                 - NET_BIND_SERVICE
 
-          # VOLUME MOUNTS: For logs and temporary files
           volumeMounts:
             - name: logs
               mountPath: /app/logs
             - name: temp
               mountPath: /tmp
 
-      # VOLUMES: EmptyDir for logs and temp files
+        # AMBASSADOR PATTERN (Pattern 130): Co-located Egress Sidecar Proxy
+        - name: ambassador-proxy
+          image: envoyproxy/envoy:v1.28-latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: egress-llm
+              containerPort: 9001
+              protocol: TCP
+            - name: egress-vector
+              containerPort: 9002
+              protocol: TCP
+            - name: ambassador-adm
+              containerPort: 9901
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: ambassador-config
+              mountPath: /etc/envoy
+              readOnly: true
+
+      # VOLUMES: EmptyDir for logs/temp and ConfigMap for Ambassador sidecar
       volumes:
         - name: logs
           emptyDir: {}
         - name: temp
           emptyDir: {}
+        - name: ambassador-config
+          configMap:
+            name: ambassador-envoy-config
+
 
       # AFFINITY: Spread pods across nodes for HA
       affinity:
