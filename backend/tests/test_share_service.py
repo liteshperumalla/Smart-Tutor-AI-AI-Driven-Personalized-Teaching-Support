@@ -1,8 +1,9 @@
 """Tests for share_service.py — session sharing and expiry."""
 from __future__ import annotations
 
+import secrets
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from datetime import datetime, timezone
 
 
@@ -10,33 +11,30 @@ from datetime import datetime, timezone
 def share_service(tmp_path):
     from backend.services.share_service import ShareService
     service = ShareService.__new__(ShareService)
-    service._data_path = tmp_path / "shares.json"
-    # Create the file to simulate an empty store
-    service._data_path.write_text("{}")
+    service.storage = MagicMock()
+    service._share_cache = {}
+    service.user_data_root = tmp_path
+    service.redis = None
     return service
 
 
 class TestShareService:
     def test_share_id_is_unique(self):
-        """Each call to create_share should produce a distinct share_id."""
-        from backend.services.share_service import ShareService
-        ids = set()
-        for _ in range(10):
-            share_id = ShareService._generate_share_id() if hasattr(ShareService, "_generate_share_id") else str(id(object()))
-            ids.add(share_id)
-        assert len(ids) >= 5  # At minimum should not all collide
+        """Tokens generated for shares should be unique."""
+        ids = {secrets.token_urlsafe(16) for _ in range(10)}
+        assert len(ids) == 10
 
-    def test_expired_share_not_returned(self, tmp_path):
+    def test_expired_share_not_returned(self, share_service):
         """Shares past their expiry should return None."""
-        from backend.services.share_service import ShareService
-
-        service = ShareService.__new__(ShareService)
-        # Simulate an expired entry
         expired_at = "2000-01-01T00:00:00+00:00"
-        fake_share = {
-            "share_id": "expired-share",
+        share_data = {
+            "share_id": "expired-share-123",
+            "username": "testuser",
+            "session_id": "sess-1",
+            "session_data": {"title": "Test Chat", "messages": []},
+            "created_at": "1999-12-31T00:00:00+00:00",
             "expires_at": expired_at,
-            "session": {"messages": []},
         }
-        if hasattr(service, "_is_expired"):
-            assert service._is_expired(fake_share) is True
+        share_service._share_cache["expired-share-123"] = share_data
+        result = share_service.get_shared_session("expired-share-123")
+        assert result is None

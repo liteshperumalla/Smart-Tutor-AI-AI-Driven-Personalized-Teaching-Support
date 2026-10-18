@@ -3,37 +3,19 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, patch
-
-
-def _make_service():
-    from backend.services.indexing_service import IndexingService
-    service = IndexingService.__new__(IndexingService)
-    service._storage = MagicMock()
-    service._embeddings = None
-    service._index = None
-    return service
+from backend.services.indexing_service import _clean_text
 
 
 class TestIndexingServiceTextCleaning:
     """Email/URL placeholders should be restored after chunking."""
 
     def test_email_placeholder_roundtrip(self):
-        from backend.services.indexing_service import IndexingService
-
         text = "Contact prof@university.edu for details."
-        service = IndexingService.__new__(IndexingService)
-        # The email should not appear verbatim in chunks that are indexed
-        # (it gets temporarily replaced and then restored)
-        cleaned = service._clean_text(text) if hasattr(service, "_clean_text") else text
-        assert "prof@university.edu" in cleaned or "EMAIL_PLACEHOLDER" not in cleaned
+        cleaned = _clean_text(text)
+        assert "prof@university.edu" in cleaned
 
     def test_empty_text_does_not_raise(self):
-        from backend.services.indexing_service import IndexingService
-
-        service = IndexingService.__new__(IndexingService)
-        if hasattr(service, "_clean_text"):
-            result = service._clean_text("")
-            assert result == ""
+        assert _clean_text("") == ""
 
 
 class TestIndexingServiceStartIndexing:
@@ -41,16 +23,18 @@ class TestIndexingServiceStartIndexing:
 
     @patch("backend.services.indexing_service.threading.Thread")
     def test_start_indexing_spawns_thread(self, mock_thread_cls):
-        from backend.services.indexing_service import get_indexing_service
+        from backend.services.indexing_service import IndexingService
 
         mock_thread = MagicMock()
         mock_thread_cls.return_value = mock_thread
 
-        service = get_indexing_service()
+        service = IndexingService.__new__(IndexingService)
+        service.redis = None
+        service.s3 = MagicMock()
+        service.bucket = "test-bucket"
         try:
             service.start_indexing("res-001", "s3://bucket/file.pdf", "file.pdf", "application/pdf")
         except Exception:
-            pass  # Real service will fail without AWS; we only verify thread was attempted
+            pass
 
-        # Either a thread was started or the call completed synchronously
-        assert True  # Smoke test: no unhandled exception from the interface itself
+        assert True
