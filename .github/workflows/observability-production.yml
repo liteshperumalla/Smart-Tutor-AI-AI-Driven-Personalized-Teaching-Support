@@ -2,6 +2,13 @@ name: Production Observability Bootstrap
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'monitoring/**'
+      - 'docker-compose.observability.yml'
+      - '.github/workflows/observability-production.yml'
   schedule:
     # Weekdays only, 90 minutes after the 09:00 America/Chicago EC2 start
     # (see ec2-schedule.yml) so the app has finished booting. 15:30 UTC is
@@ -30,6 +37,8 @@ jobs:
       EC2_USER: ${{ secrets.EC2_USER }}
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      GRAFANA_CLOUD_API_TOKEN: ${{ secrets.GRAFANA_CLOUD_API_TOKEN || '' }}
+      GRAFANA_CLOUD_USER_ID: ${{ secrets.GRAFANA_CLOUD_USER_ID || '3689873' }}
       OBSERVABILITY_DIR: ${{ vars.EC2_OBSERVABILITY_DIR || '/home/ubuntu/smart-tutor-observability' }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
@@ -69,11 +78,19 @@ jobs:
       - name: Package observability files
         run: |
           set -euo pipefail
+          if [ -n "${GRAFANA_CLOUD_API_TOKEN:-}" ]; then
+            printf '%s' "${GRAFANA_CLOUD_API_TOKEN}" > monitoring/prometheus/grafana-cloud-token
+            chmod 644 monitoring/prometheus/grafana-cloud-token
+          elif [ ! -f monitoring/prometheus/grafana-cloud-token ]; then
+            touch monitoring/prometheus/grafana-cloud-token
+            chmod 644 monitoring/prometheus/grafana-cloud-token
+          fi
           tar -czf /tmp/observability-bundle.tgz \
             docker-compose.observability.yml \
             monitoring/alertmanager/alertmanager.yml \
             monitoring/prometheus/prometheus-ec2.yml \
             monitoring/prometheus/alerts.yml \
+            monitoring/prometheus/grafana-cloud-token \
             monitoring/grafana/dashboards \
             monitoring/grafana/datasources
 
@@ -114,6 +131,7 @@ jobs:
 
           tar -xzf observability-bundle.tgz
           rm -f observability-bundle.tgz
+          chmod -R a+r monitoring/
 
           command -v docker >/dev/null
           command -v curl >/dev/null
