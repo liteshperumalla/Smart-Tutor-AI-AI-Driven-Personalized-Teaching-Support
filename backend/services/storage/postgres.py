@@ -96,9 +96,6 @@ class PostgresStorageBackend(BaseStorageBackend):
         # boto3 cost or trip credential lookups at backend-init time.
         self._chat_backend = None
 
-        # Ensure schema backward-compatibility
-        self._ensure_schema()
-
         logger.info(
             f"PostgreSQL storage backend initialized (writer pool: {min_connections}-{max_connections})"
         )
@@ -745,4 +742,5 @@ def get_postgres_backend() -> PostgresStorageBackend:
             reader_host=config.POSTGRES_READER_HOST,
             reader_port=config.POSTGRES_READER_PORT,
         )
+        _postgres_backend._ensure_schema()
     return _postgres_backend
