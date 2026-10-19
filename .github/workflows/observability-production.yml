@@ -131,7 +131,8 @@ jobs:
 
           tar -xzf observability-bundle.tgz
           rm -f observability-bundle.tgz
-          chmod -R a+r monitoring/
+          chmod -R a+r monitoring/ 2>/dev/null || true
+          chmod 644 monitoring/prometheus/grafana-cloud-token 2>/dev/null || true
 
           command -v docker >/dev/null
           command -v curl >/dev/null
