@@ -17,6 +17,16 @@ global:
 rule_files:
   - 'alerts.yml'
 
+# Remote Write to Grafana Cloud / Managed Prometheus (Optional)
+# To forward all metrics directly to your Grafana Cloud or AWS Managed Prometheus account:
+# 1. Sign in to Grafana Cloud -> Prometheus -> "Send Metrics" / Settings
+# 2. Uncomment and provide your endpoint URL and credentials:
+# remote_write:
+#   - url: 'https://prometheus-prod-XX-prod-us-central-0.grafana.net/api/prom/push'
+#     basic_auth:
+#       username: '<GRAFANA_CLOUD_PROMETHEUS_USER_ID>'
+#       password: '<GRAFANA_CLOUD_API_TOKEN>'
+
 # Scrape configurations
 scrape_configs:
   # Prometheus itself

@@ -27,7 +27,7 @@ import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
   Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert,
-  ShieldCheck
+  ShieldCheck, Sparkles
 } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
@@ -51,6 +51,12 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "meta.llama3-3-70b-instruct-v1:0": "Llama 3.3 70B",
   "us.meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
   "meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
+  "us.anthropic.claude-5-5-sonnet-20261022-v1:0": "Claude 5.5 Sonnet",
+  "anthropic.claude-5-5-sonnet-20261022-v1:0": "Claude 5.5 Sonnet",
+  "us.anthropic.claude-5-5-haiku-20261022-v1:0": "Claude 5.5 Haiku",
+  "anthropic.claude-5-5-haiku-20261022-v1:0": "Claude 5.5 Haiku",
+  "openai.gpt-6-luna-2026": "GPT 6 Luna",
+  "gpt-6-luna": "GPT 6 Luna",
   "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "Claude 3.5 Sonnet",
   "anthropic.claude-3-5-sonnet-20241022-v2:0": "Claude 3.5 Sonnet",
   "us.anthropic.claude-3-5-haiku-20241022-v1:0": "Claude 3.5 Haiku",
@@ -59,6 +65,35 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "anthropic.claude-3-haiku-20240307-v1:0": "Claude 3 Haiku",
   "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
 };
+
+/**
+ * Company icon badge renderer for model selector and bubbles.
+ * Renders authentic logos for Meta, Anthropic, OpenAI, and smart Auto.
+ */
+function LLMCompanyIcon({ company, className = "h-4 w-4" }: { company?: string | null; className?: string }) {
+  if (company === "meta") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12.001 8.163c-1.87 0-3.477.923-4.57 2.368-1.077-1.44-2.668-2.368-4.52-2.368C1.3 8.163 0 9.877 0 12.445c0 3.12 2.378 5.762 5.485 5.762 1.93 0 3.612-1.002 4.708-2.552 1.078 1.55 2.76 2.552 4.69 2.552 3.107 0 5.485-2.643 5.485-5.762 0-2.568-1.3-4.282-3.899-4.282h-.468zm-7.089 7.64c-1.748 0-3.08-1.503-3.08-3.358 0-1.503.953-2.642 2.454-2.642 1.543 0 2.84 1.256 3.376 2.99-.44 1.79-1.458 3.01-2.75 3.01zm9.356 0c-1.293 0-2.31-1.22-2.75-3.01.536-1.734 1.833-2.99 3.376-2.99 1.5 0 2.454 1.139 2.454 2.642 0 1.855-1.332 3.358-3.08 3.358z" />
+      </svg>
+    );
+  }
+  if (company === "anthropic") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M13.827 3.5h3.694L24 20.5h-3.694l-1.477-3.693H11.35l-1.477 3.693H6.18L13.827 3.5zm3.62 10.435-1.782-4.455-1.782 4.455h3.564zM3.694 20.5H0L7.647 3.5h3.694L3.694 20.5z" />
+      </svg>
+    );
+  }
+  if (company === "openai") {
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M22.28 10.15a5.53 5.53 0 0 0-.46-4.42 5.6 5.6 0 0 0-4.04-2.73 5.54 5.54 0 0 0-4.75 1.13A5.55 5.55 0 0 0 8.65 3a5.59 5.59 0 0 0-4.43 2.61 5.53 5.53 0 0 0-.69 4.4 5.55 5.55 0 0 0-1.8 4.23 5.59 5.59 0 0 0 2.25 4.51 5.53 5.53 0 0 0 .46 4.42 5.6 5.6 0 0 0 4.04 2.73 5.54 5.54 0 0 0 4.75-1.13A5.55 5.55 0 0 0 17.63 23a5.59 5.59 0 0 0 4.43-2.61 5.53 5.53 0 0 0 .69-4.4 5.55 5.55 0 0 0 1.8-4.23 5.59 5.59 0 0 0-2.27-3.61zm-8.2 11.2a3.88 3.88 0 0 1-2.48-.9l.13-.08 4.14-2.39a.86.86 0 0 0 .43-.75v-5.85l1.75 1.01a.08.08 0 0 1 .04.07v4.75a3.9 3.9 0 0 1-4.01 4.14zM4.32 17.5a3.86 3.86 0 0 1-.46-2.61l.13.08 4.14 2.39a.87.87 0 0 0 .86 0l5.07-2.93v2.02a.08.08 0 0 1-.04.07l-4.11 2.38a3.9 3.9 0 0 1-5.69-1.4zM3.4 9.17a3.87 3.87 0 0 1 2.02-1.72v4.94a.86.86 0 0 0 .43.75l5.07 2.92-1.75 1.01a.08.08 0 0 1-.08 0l-4.12-2.38a3.9 3.9 0 0 1-1.57-5.52zm14.39 2.5-5.07-2.92 1.75-1.01a.08.08 0 0 1 .08 0l4.12 2.38a3.9 3.9 0 0 1-1.31 7.08v-4.78a.86.86 0 0 0-.43-.75zm2.49-3.23a3.87 3.87 0 0 1 .46 2.61l-.13-.08-4.14-2.39a.87.87 0 0 0-.86 0l-5.07 2.93V8.89a.08.08 0 0 1 .04-.07l4.11-2.38a3.9 3.9 0 0 1 5.69 1.4zm-7.61-4.63a3.88 3.88 0 0 1 2.48.9l-.13.08-4.14 2.39a.86.86 0 0 0-.43.75v5.85l-1.75-1.01a.08.08 0 0 1-.04-.07V7.95a3.9 3.9 0 0 1 4.01-4.14zM12 13.73l-2.48-1.43 2.48-1.43 2.48 1.43L12 13.73z" />
+      </svg>
+    );
+  }
+  return <Sparkles className={className} aria-hidden="true" />;
+}
 
 function getFriendlyUserName(
   user: { display_name?: string; full_name?: string; username?: string; email?: string } | null
@@ -163,6 +198,7 @@ function ChatWorkspaceContent() {
       modelId: null as string | null,
       isDefault: true,
       badge: "Smart",
+      company: "auto",
       family: null as string | null,
     },
     {
@@ -172,25 +208,38 @@ function ChatWorkspaceContent() {
       description: "Latest Meta open model, fast & highly capable",
       modelId: "us.meta.llama3-3-70b-instruct-v1:0",
       badge: "Default",
+      company: "meta",
       family: "default",
     },
     {
       id: "claude-sonnet",
-      name: "Claude 3.5 Sonnet",
-      shortName: "Sonnet 3.5",
-      description: "Most capable for complex reasoning & coding",
-      modelId: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+      name: "Claude 5.5 Sonnet",
+      shortName: "Sonnet 5.5",
+      description: "Next-gen reasoning, elite coding & complex analysis",
+      modelId: "us.anthropic.claude-5-5-sonnet-20261022-v1:0",
       badge: "Pro",
+      company: "anthropic",
       family: "pro",
     },
     {
       id: "claude-haiku",
-      name: "Claude 3.5 Haiku",
-      shortName: "Haiku 3.5",
+      name: "Claude 5.5 Haiku",
+      shortName: "Haiku 5.5",
       description: "Ultra-fast response time for everyday learning",
-      modelId: "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+      modelId: "us.anthropic.claude-5-5-haiku-20261022-v1:0",
       badge: "Fast",
+      company: "anthropic",
       family: "fast",
+    },
+    {
+      id: "gpt-6-luna",
+      name: "GPT 6 Luna",
+      shortName: "GPT 6 Luna",
+      description: "Next-gen OpenAI model for deep exploration & creativity",
+      modelId: "openai.gpt-6-luna-2026",
+      badge: "Luna",
+      company: "openai",
+      family: "pro",
     },
     ...(isAdmin ? [{
       id: "claude-opus",
@@ -199,6 +248,7 @@ function ChatWorkspaceContent() {
       description: "Most intelligent, admin-only",
       modelId: "us.anthropic.claude-opus-4-20250514-v1:0",
       badge: "Admin",
+      company: "anthropic",
       family: "admin",
     }] : []),
   ];
@@ -1624,18 +1674,19 @@ function ChatWorkspaceContent() {
                     <button
                       type="button"
                       onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                      className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium"
+                      className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium shadow-xs"
                       title="Select model"
                     >
+                      <LLMCompanyIcon company={currentModel.company} className="h-4 w-4 text-zinc-600 dark:text-zinc-300 flex-shrink-0" />
                       <span className="hidden sm:inline">{currentModel.shortName}</span>
-                      <ChevronDown className={`h-4 w-4 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform text-zinc-400 ${modelDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {/* Model Dropdown Menu */}
                     {modelDropdownOpen && (
-                      <div className="absolute bottom-full right-0 mb-2 w-72 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+                      <div className="absolute bottom-full right-0 mb-2 w-80 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
                         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
-                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">Models</p>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">Select Model</p>
                         </div>
                         <div className="py-2">
                           {LLM_MODELS.map((model) => {
@@ -1649,17 +1700,22 @@ function ChatWorkspaceContent() {
                                   setSelectedModel(model.id);
                                   setModelDropdownOpen(false);
                                 }}
-                                className={`w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
+                                className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
                                   selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
                                 }`}
                               >
-                                <div className="text-left">
-                                  <p className="text-sm font-medium text-zinc-900 dark:text-white">{model.name}</p>
-                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                    {quota ? `${quota.remaining}/${quota.limit} remaining` : model.description}
-                                  </p>
+                                <div className="flex items-center gap-3 text-left">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-600/50 flex-shrink-0">
+                                    <LLMCompanyIcon company={model.company} className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-zinc-900 dark:text-white leading-tight">{model.name}</p>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                                      {quota ? `${quota.remaining}/${quota.limit} remaining` : model.description}
+                                    </p>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                   {model.badge && (
                                     <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300 rounded">
                                       {model.badge}
@@ -1981,9 +2037,22 @@ function ChatBubble({
             {/* Auto-routed model chip */}
             {message.model_used && !message.agent && (
               <div className="mb-1.5">
-                <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
-                  via {MODEL_DISPLAY_NAMES[message.model_used] || "Auto"}
-                </span>
+                {(() => {
+                  const modelIdLower = (message.model_used || "").toLowerCase();
+                  const comp = modelIdLower.includes("llama")
+                    ? "meta"
+                    : modelIdLower.includes("claude")
+                    ? "anthropic"
+                    : modelIdLower.includes("gpt") || modelIdLower.includes("luna")
+                    ? "openai"
+                    : "auto";
+                  return (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                      <LLMCompanyIcon company={comp} className="h-3 w-3" />
+                      via {MODEL_DISPLAY_NAMES[message.model_used] || "Auto"}
+                    </span>
+                  );
+                })()}
               </div>
             )}
             <MarkdownContent

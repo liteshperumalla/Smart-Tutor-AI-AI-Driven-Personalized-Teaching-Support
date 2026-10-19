@@ -359,11 +359,41 @@ python /tmp/test_langfuse.py
 
 ---
 
+## 🚀 Langfuse v4 Architecture Upgrade
+
+The project has been upgraded to the **Langfuse v4 architecture**, which introduces an **Observations-First Data Model** built natively on OpenTelemetry:
+
+### 1. Observations-First Data Model
+Correlating attributes (`user_id`, `session_id`, `tags`, `metadata`) are now scoped to propagate down to all child observations and spans without manual repetitive assignment:
+
+```python
+from backend.langfuse_setup import propagate_attributes, traced_span
+
+# Attributes set at the context level automatically cascade to all child spans
+with propagate_attributes(user_id="alice", session_id="sess_123", tags=["prod", "rag"]):
+    # Child spans automatically inherit user_id, session_id, and tags
+    with traced_span(None, "retrieval_step") as span:
+        results = retriever.retrieve(query)
+```
+
+### 2. Streamlined Client & Decorators
+- Modern SDK client accessor: `get_client()` from `backend.langfuse_setup`.
+- Decorator tracing: `@observe` from `backend.langfuse_setup` with safe, fail-silent no-op fallback when tracing is disabled.
+- OpenTelemetry observation scopes: `start_as_current_observation(name, as_type="span")`.
+
+### 3. Smart Span Filtering
+Langfuse v4 applies smart span filtering to export only LLM and generative AI relevant traces (`gen_ai.*` and `langfuse-sdk` spans), minimizing noise and export overhead.
+
+### 4. Backward Compatibility
+All existing helper functions (`create_trace()`, `update_trace()`, `create_span()`, `traced_span()`) maintain seamless backward compatibility with existing agent and RAG workflows.
+
+---
+
 ## 📚 Resources
 
 ### Documentation
 - Langfuse Docs: https://langfuse.com/docs
-- Python SDK: https://langfuse.com/docs/sdk/python
+- Langfuse v4 Python SDK: https://langfuse.com/docs/sdk/python
 - LlamaIndex Integration: https://langfuse.com/docs/integrations/llama-index
 
 ### Support

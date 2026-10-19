@@ -1,4 +1,4 @@
-langfuse==2.60.5
+langfuse>=4.0.0
 # Security pins — override vulnerable transitive versions
 nltk>=3.9.3   # Zip Slip CVE fixed in 3.9.3
 pypdf>=6.7.2  # Infinite loop CVE fixed in 6.7.2

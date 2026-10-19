@@ -14,6 +14,16 @@ alerting:
 rule_files:
   - 'alerts.yml'
 
+# Remote Write to Grafana Cloud / Managed Prometheus (Optional)
+# To forward all metrics directly to your Grafana Cloud or AWS Managed Prometheus account:
+# 1. Sign in to Grafana Cloud -> Prometheus -> "Send Metrics" / Settings
+# 2. Uncomment and provide your endpoint URL and credentials:
+# remote_write:
+#   - url: 'https://prometheus-prod-XX-prod-us-central-0.grafana.net/api/prom/push'
+#     basic_auth:
+#       username: '<GRAFANA_CLOUD_PROMETHEUS_USER_ID>'
+#       password: '<GRAFANA_CLOUD_API_TOKEN>'
+
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
@@ -24,11 +34,20 @@ scrape_configs:
   - job_name: 'backend-api'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['smart-tutor-backend:8000']
+      - targets: ['smart-tutor-backend:8000', 'backend:8000']
         labels:
           service: 'backend-api'
           app: 'smart-ai-tutor'
     scrape_interval: 10s
+
+  - job_name: 'frontend'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['frontend:4000', 'smart-tutor-frontend:4000']
+        labels:
+          service: 'frontend'
+          app: 'smart-ai-tutor-ui'
+    scrape_interval: 30s
 
   - job_name: 'postgresql'
     static_configs:

@@ -21,6 +21,14 @@ class BedrockLLM:
     # Pricing per 1K tokens (as of December 2025)
     # Includes both direct model IDs and cross-region inference profile IDs (us./eu./ap. prefix)
     PRICING = {
+        # Claude 5.5 family
+        "anthropic.claude-5-5-sonnet-20261022-v1:0":      {"input": 0.0030,  "output": 0.0150},
+        "us.anthropic.claude-5-5-sonnet-20261022-v1:0":   {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-5-5-haiku-20261022-v1:0":       {"input": 0.0008,  "output": 0.0040},
+        "us.anthropic.claude-5-5-haiku-20261022-v1:0":    {"input": 0.0008,  "output": 0.0040},
+        # OpenAI models (GPT 6 Luna)
+        "openai.gpt-6-luna-2026":                         {"input": 0.0025,  "output": 0.0100},
+        "gpt-6-luna":                                     {"input": 0.0025,  "output": 0.0100},
         # Legacy Claude / Llama (still supported, moving to retirement in Bedrock)
         "anthropic.claude-3-5-sonnet-20241022-v2:0":      {"input": 0.0030,  "output": 0.0150},
         "us.anthropic.claude-3-5-sonnet-20241022-v2:0":   {"input": 0.0030,  "output": 0.0150},
@@ -165,8 +173,50 @@ class BedrockLLM:
             return self._generate_llama(
                 prompt, max_tokens, temperature, top_p, model_id=model_id, **kwargs
             )
+        elif "gpt" in model_id.lower() or "openai" in model_id.lower() or "luna" in model_id.lower():
+            return self._generate_openai(
+                prompt, max_tokens, temperature, system_prompt, model_id=model_id, **kwargs
+            )
         else:
             raise ValueError(f"Unsupported model: {model_id}")
+
+    def _generate_openai(
+        self,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        system_prompt: Optional[str],
+        model_id: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        """Generate using OpenAI client (e.g. GPT 6 Luna) or gracefully fall back to default Bedrock model."""
+        import os
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key=openai_key)
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                resp = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                if resp.choices and resp.choices[0].message:
+                    return resp.choices[0].message.content or ""
+            except Exception as exc:
+                logger.warning(f"[OpenAI] Call failed for {model_id} ({exc}); falling back to default Bedrock model")
+        else:
+            logger.info(f"[OpenAI] OPENAI_API_KEY not set for {model_id}; falling back to default Bedrock model")
+
+        # Fallback to default Bedrock model (Llama)
+        return self._generate_llama(
+            prompt, max_tokens, temperature, 0.9, model_id=config.BEDROCK_MODEL_ID, **kwargs
+        )
 
     def generate(
         self,
