@@ -44,7 +44,7 @@ normalize_url() {
   cleaned="${cleaned%/}"
   # If non-empty and missing scheme, infer based on hostname
   if [[ -n "$cleaned" && ! "$cleaned" =~ ^https?:// ]]; then
-    if [[ "$cleaned" =~ ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost|127\.0\.0\.1) ]]; then
+    if [[ "$cleaned" =~ ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+|localhost|127\.0\.0\.1)(:|/|#|\?|$) ]]; then
       cleaned="http://${cleaned}"
     else
       cleaned="https://${cleaned}"
@@ -160,8 +160,12 @@ main() {
     exit 2
   fi
 
-  for url in ${API_URL} ${APP_URL}; do
-    if [[ -n "$url" && ! "$url" =~ ^https?:// ]]; then
+  local targets=()
+  [[ -n "$API_URL" ]] && targets+=("$API_URL")
+  [[ -n "$APP_URL" ]] && targets+=("$APP_URL")
+
+  for url in "${targets[@]}"; do
+    if [[ ! "$url" =~ ^https?:// ]]; then
       fail "Synthetic probe URL must be a valid HTTP or HTTPS URL: $url"
       exit 2
     fi
@@ -193,7 +197,18 @@ main() {
     SYNTHETIC_PASS="${SYNTHETIC_TEST_PASSWORD:-}"
 
     if [[ -n "$SYNTHETIC_USERNAME" && -n "$SYNTHETIC_PASS" ]]; then
-      AUTH_BODY="{\"username\":\"${SYNTHETIC_USERNAME}\",\"password\":\"${SYNTHETIC_PASS}\"}"
+      if command -v jq >/dev/null 2>&1; then
+        AUTH_BODY=$(jq -nc --arg u "$SYNTHETIC_USERNAME" --arg p "$SYNTHETIC_PASS" '{"username": $u, "password": $p}')
+      elif command -v python3 >/dev/null 2>&1; then
+        AUTH_BODY=$(python3 -c 'import json, sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$SYNTHETIC_USERNAME" "$SYNTHETIC_PASS")
+      else
+        local esc_u esc_p
+        esc_u="${SYNTHETIC_USERNAME//\\/\\\\}"
+        esc_u="${esc_u//\"/\\\"}"
+        esc_p="${SYNTHETIC_PASS//\\/\\\\}"
+        esc_p="${esc_p//\"/\\\"}"
+        AUTH_BODY="{\"username\":\"${esc_u}\",\"password\":\"${esc_p}\"}"
+      fi
       probe "Auth /api/v1/auth/login" POST "${API_URL}/api/v1/auth/login" \
         -H "Content-Type: application/json" \
         -d "$AUTH_BODY"
