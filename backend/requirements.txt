@@ -265,9 +265,7 @@ kiwisolver==1.4.9
 kubernetes==33.1.0
     # via chromadb
 langfuse>=4.7.0
-    # via
-    #   -r backend/requirements.txt
-    #   llama-index-callbacks-langfuse
+    # via -r backend/requirements.txt
 langgraph>=0.2.0
     # via -r backend/requirements.txt
 neo4j>=5.24.0
@@ -291,8 +289,6 @@ llama-cloud-services==0.6.54
     #   llama-parse
 llama-index==0.14.10
     # via -r backend/requirements.txt
-llama-index-callbacks-langfuse==0.4.1
-    # via -r backend/requirements.txt
 llama-index-cli==0.5.3
     # via
     #   -r backend/requirements.txt
@@ -302,7 +298,6 @@ llama-index-core==0.14.10
     #   -r backend/requirements.txt
     #   llama-cloud-services
     #   llama-index
-    #   llama-index-callbacks-langfuse
     #   llama-index-cli
     #   llama-index-embeddings-huggingface
     #   llama-index-embeddings-openai
