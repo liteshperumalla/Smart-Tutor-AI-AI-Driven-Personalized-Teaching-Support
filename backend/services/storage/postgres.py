@@ -96,9 +96,41 @@ class PostgresStorageBackend(BaseStorageBackend):
         # boto3 cost or trip credential lookups at backend-init time.
         self._chat_backend = None
 
+        # Ensure schema backward-compatibility
+        self._ensure_schema()
+
         logger.info(
             f"PostgreSQL storage backend initialized (writer pool: {min_connections}-{max_connections})"
         )
+
+    def _ensure_schema(self) -> None:
+        """Ensure backward compatibility by auto-migrating core columns if missing."""
+        try:
+            with self._get_cursor(read_only=False) as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        id UUID DEFAULT gen_random_uuid(),
+                        username VARCHAR(255) PRIMARY KEY,
+                        email VARCHAR(255) UNIQUE NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        full_name VARCHAR(255),
+                        metadata JSONB,
+                        version INTEGER DEFAULT 1,
+                        is_locked BOOLEAN DEFAULT FALSE,
+                        locked_until TIMESTAMP,
+                        login_attempts INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_login TIMESTAMP
+                    );
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
+                    ALTER TABLE users ADD COLUMN IF NOT EXISTS login_attempts INTEGER DEFAULT 0;
+                """)
+                logger.info("Verified PostgreSQL users schema columns")
+        except Exception as exc:
+            logger.warning(f"Could not auto-apply schema updates: {exc}")
 
     @property
     def chat_storage(self):
@@ -188,18 +220,38 @@ class PostgresStorageBackend(BaseStorageBackend):
         """Get user by username (routed to read pool)"""
         try:
             with self._get_cursor(read_only=True) as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata,
-                        COALESCE(version, 1) AS version
-                    FROM users
-                    WHERE username = %s
-                    """,
-                    (username,)
-                )
-                user = cursor.fetchone()
+                try:
+                    cursor.execute(
+                        """
+                        SELECT
+                            username, email, password_hash, full_name,
+                            created_at, last_login, login_attempts, locked_until, metadata,
+                            COALESCE(version, 1) AS version
+                        FROM users
+                        WHERE username = %s
+                        """,
+                        (username,)
+                    )
+                    user = cursor.fetchone()
+                except Exception as query_err:
+                    if "version" in str(query_err).lower():
+                        cursor.connection.rollback()
+                        cursor.execute(
+                            """
+                            SELECT
+                                username, email, password_hash, full_name,
+                                created_at, last_login, login_attempts, locked_until, metadata
+                            FROM users
+                            WHERE username = %s
+                            """,
+                            (username,)
+                        )
+                        user = cursor.fetchone()
+                        if user:
+                            user = dict(user)
+                            user["version"] = 1
+                    else:
+                        raise
 
                 if user:
                     return self._enrich_user_dict(dict(user))
@@ -216,18 +268,38 @@ class PostgresStorageBackend(BaseStorageBackend):
             return None
         try:
             with self._get_cursor(read_only=True) as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata,
-                        COALESCE(version, 1) AS version
-                    FROM users
-                    WHERE email = %s
-                    """,
-                    (email,)
-                )
-                user = cursor.fetchone()
+                try:
+                    cursor.execute(
+                        """
+                        SELECT
+                            username, email, password_hash, full_name,
+                            created_at, last_login, login_attempts, locked_until, metadata,
+                            COALESCE(version, 1) AS version
+                        FROM users
+                        WHERE email = %s
+                        """,
+                        (email,)
+                    )
+                    user = cursor.fetchone()
+                except Exception as query_err:
+                    if "version" in str(query_err).lower():
+                        cursor.connection.rollback()
+                        cursor.execute(
+                            """
+                            SELECT
+                                username, email, password_hash, full_name,
+                                created_at, last_login, login_attempts, locked_until, metadata
+                            FROM users
+                            WHERE email = %s
+                            """,
+                            (email,)
+                        )
+                        user = cursor.fetchone()
+                        if user:
+                            user = dict(user)
+                            user["version"] = 1
+                    else:
+                        raise
 
                 if user:
                     return self._enrich_user_dict(dict(user))
@@ -250,19 +322,38 @@ class PostgresStorageBackend(BaseStorageBackend):
                     if meta_key in extras:
                         metadata[meta_key] = extras[meta_key]
 
-                cursor.execute(
-                    """
-                    INSERT INTO users (
-                        username, email, password_hash, full_name, metadata, version
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO users (
+                            username, email, password_hash, full_name, metadata, version
+                        )
+                        VALUES (%s, %s, %s, %s, %s, 1)
+                        RETURNING
+                            username, email, password_hash, full_name,
+                            created_at, last_login, login_attempts, locked_until, metadata, version
+                        """,
+                        (username, email, password_hash, full_name,
+                         psycopg2.extras.Json(metadata) if metadata else None)
                     )
-                    VALUES (%s, %s, %s, %s, %s, 1)
-                    RETURNING
-                        username, email, password_hash, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata, version
-                    """,
-                    (username, email, password_hash, full_name,
-                     psycopg2.extras.Json(metadata) if metadata else None)
-                )
+                except Exception as insert_err:
+                    if "version" in str(insert_err).lower():
+                        cursor.connection.rollback()
+                        cursor.execute(
+                            """
+                            INSERT INTO users (
+                                username, email, password_hash, full_name, metadata
+                            )
+                            VALUES (%s, %s, %s, %s, %s)
+                            RETURNING
+                                username, email, password_hash, full_name,
+                                created_at, last_login, login_attempts, locked_until, metadata
+                            """,
+                            (username, email, password_hash, full_name,
+                             psycopg2.extras.Json(metadata) if metadata else None)
+                        )
+                    else:
+                        raise
 
                 user = cursor.fetchone()
                 logger.info(f"Created user: {username}")
@@ -519,16 +610,31 @@ class PostgresStorageBackend(BaseStorageBackend):
         """List all users (without passwords, routed to read pool)"""
         try:
             with self._get_cursor(read_only=True) as cursor:
-                cursor.execute(
-                    """
-                    SELECT
-                        username, email, full_name,
-                        created_at, last_login, login_attempts, locked_until, metadata,
-                        COALESCE(version, 1) AS version
-                    FROM users
-                    ORDER BY created_at DESC
-                    """
-                )
+                try:
+                    cursor.execute(
+                        """
+                        SELECT
+                            username, email, full_name,
+                            created_at, last_login, login_attempts, locked_until, metadata,
+                            COALESCE(version, 1) AS version
+                        FROM users
+                        ORDER BY created_at DESC
+                        """
+                    )
+                except Exception as query_err:
+                    if "version" in str(query_err).lower():
+                        cursor.connection.rollback()
+                        cursor.execute(
+                            """
+                            SELECT
+                                username, email, full_name,
+                                created_at, last_login, login_attempts, locked_until, metadata
+                            FROM users
+                            ORDER BY created_at DESC
+                            """
+                        )
+                    else:
+                        raise
                 users = []
                 for row in cursor.fetchall():
                     user_dict = self._enrich_user_dict(dict(row))

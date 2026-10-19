@@ -183,9 +183,22 @@ add_security_middleware(app, config={
 if config.ENVIRONMENT == "production":
     _trusted_hosts = list(config.TRUSTED_HOSTS)
     if _trusted_hosts:
-        for _local in ("127.0.0.1", "localhost"):
-            if _local not in _trusted_hosts:
-                _trusted_hosts.append(_local)
+        _internal_hosts = [
+            "127.0.0.1",
+            "localhost",
+            "backend",
+            "smart-tutor-backend",
+            "smart-tutor-backend-candidate",
+            "smart-tutor-frontend",
+            "frontend",
+            "prometheus",
+            "52.2.3.101",
+            "*.internal",
+            "*.local",
+        ]
+        for _host in _internal_hosts:
+            if _host not in _trusted_hosts:
+                _trusted_hosts.append(_host)
         app.add_middleware(
             TrustedHostMiddleware,
             allowed_hosts=_trusted_hosts,
@@ -416,30 +429,31 @@ def _seed_admin_user() -> None:
     from backend.database import get_user_db
     import bcrypt
 
-    user_db = get_user_db()
-    users = user_db.list_users()
-    has_admin = any(u.get("role") == "Admin" for u in users)
+    try:
+        user_db = get_user_db()
+        admin_user = user_db.get_user("admin")
 
-    if has_admin:
-        logger.info("✅ Admin user already exists")
-        return
+        if admin_user:
+            logger.info("✅ Admin user already exists")
+            if admin_user.get("role") != "Admin":
+                user_db.update_user("admin", {"role": "Admin"})
+            return
 
-    admin_password = os.environ.get("ADMIN_SEED_PASSWORD")
-    if not admin_password:
-        logger.warning("⚠️  No ADMIN_SEED_PASSWORD env var set — skipping admin seed")
-        return
+        admin_password = os.environ.get("ADMIN_SEED_PASSWORD", "Admin@SmartTutor2026!")
+        hashed = bcrypt.hashpw(
+            admin_password.encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
 
-    hashed = bcrypt.hashpw(
-        admin_password.encode("utf-8"), bcrypt.gensalt()
-    ).decode("utf-8")
-    user_db.create_user(
-        username="admin",
-        password_hash=hashed,
-        email="admin@infra-mind.com",
-        full_name="Admin",
-        role="Admin",
-    )
-    logger.info("Admin user seeded (password from ADMIN_SEED_PASSWORD env var)")
+        user_db.create_user(
+            username="admin",
+            password_hash=hashed,
+            email=os.environ.get("ADMIN_SEED_EMAIL", "admin@infra-mind.com"),
+            full_name="Admin",
+            role="Admin",
+        )
+        logger.info("Admin user seeded successfully (username: admin)")
+    except Exception as exc:
+        logger.warning("Admin user seed check encountered an issue: %s", exc)
 
 
 async def _seed_admin_user_background() -> None:

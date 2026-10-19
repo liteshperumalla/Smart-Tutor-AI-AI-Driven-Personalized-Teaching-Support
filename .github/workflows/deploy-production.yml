@@ -53,9 +53,9 @@ jobs:
     env:
       NEXT_PUBLIC_API_BASE_URL: /api/backend
       BACKEND_API_BASE_URL: http://backend:8000
-      NEXT_PUBLIC_APP_BASE_URL: http://localhost:4000
-      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ci-google-client-id
-      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: http://localhost:4000/auth/google/callback
+      NEXT_PUBLIC_APP_BASE_URL: ${{ secrets.PRODUCTION_APP_URL || 'http://localhost:4000' }}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID || 'ci-google-client-id' }}
+      NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ secrets.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:4000/auth/google/callback' }}
     steps:
       - name: Resolve deployment target
         id: target
