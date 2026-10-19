@@ -34,7 +34,6 @@ export default function RootLayout({
 }>) {
   const navLinks = [
     { href: "/", label: "Home" },
-    { href: "/chat", label: "Chat" },
     { href: "/quiz", label: "Quiz" },
     { href: "/appointments", label: "Appointments" },
     { href: "/resources", label: "Resources" },

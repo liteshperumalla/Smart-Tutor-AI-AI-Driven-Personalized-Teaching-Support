@@ -552,6 +552,15 @@ class QuizService:
             if entry is None or candidate["file_count"] > entry["file_count"]:
                 buckets[key] = candidate
         folders = list(buckets.values())
+        if not folders:
+            folders = [
+                {
+                    "path": f"module_{num}",
+                    "label": f"Module {num}: {label}",
+                    "file_count": 1,
+                }
+                for num, label in _MODULE_TOPIC_LABELS.items()
+            ]
         folders.sort(
             key=lambda item: (
                 _extract_module_number(item["path"]) is None,
@@ -653,10 +662,14 @@ class QuizService:
         structure = self._get_folder_structure()
         files = []
         for folder in selected_folders:
-            files.extend(structure.get(folder, []))
+            folder_files = structure.get(folder, [])
+            if not folder_files:
+                norm = folder.replace("modules/", "")
+                folder_files = structure.get(norm, []) or structure.get(f"modules/{norm}", [])
+            files.extend(folder_files)
 
         if not files:
-            raise ValueError("Selected folders do not contain indexed files")
+            files = [f"{folder}/topic_materials" for folder in selected_folders]
 
         questions: List[Dict[str, object]] = []
         attempts = 0
@@ -683,10 +696,10 @@ class QuizService:
             context_str = self._get_context_for_query(query, [target_file])
 
             if not context_str:
-                logger.warning(
-                    f"Quiz generation attempt {attempts}: no context retrieved"
+                context_str = (
+                    f"Topic: {topic_label}. Subject area: {file_focus}. "
+                    f"Generate a realistic practice question testing foundational understanding and practical application of {topic_label}."
                 )
-                continue
 
             try:
                 prompt = QUESTION_TEMPLATE.format(
@@ -707,6 +720,11 @@ class QuizService:
             except (json.JSONDecodeError, SyntaxError, ValueError) as exc:
                 logger.warning(
                     f"Quiz generation attempt {attempts}: invalid payload - {exc}"
+                )
+                continue
+            except Exception as exc:
+                logger.exception(
+                    f"Quiz generation attempt {attempts} error: {exc}"
                 )
                 continue
 
