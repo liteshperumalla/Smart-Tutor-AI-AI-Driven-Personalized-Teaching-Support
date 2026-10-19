@@ -22,10 +22,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}
-  PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}
-
 jobs:
   synthetic-probes:
     name: Synthetic Monitor
@@ -37,18 +33,28 @@ jobs:
 
       - name: Select target environment URLs
         id: target
+        env:
+          TARGET_ENV: ${{ inputs.environment || 'production' }}
+          STAGING_API_URL: ${{ secrets.STAGING_API_URL || vars.STAGING_API_URL }}
+          STAGING_APP_URL: ${{ secrets.STAGING_APP_URL || vars.STAGING_APP_URL }}
+          PROD_API_URL: ${{ secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}
+          PROD_APP_URL: ${{ secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}
         run: |
-          target_env="${{ inputs.environment || 'production' }}"
-          echo "Selected target environment: $target_env"
-          if [ "$target_env" = "staging" ]; then
-            api_url="${{ secrets.STAGING_API_URL || vars.STAGING_API_URL || secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}"
-            app_url="${{ secrets.STAGING_APP_URL || vars.STAGING_APP_URL || secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}"
+          echo "Selected target environment: $TARGET_ENV"
+          if [ "$TARGET_ENV" = "staging" ]; then
+            api_url="$STAGING_API_URL"
+            app_url="$STAGING_APP_URL"
+            if [ -z "$api_url" ] && [ -z "$app_url" ]; then
+              echo "::warning::No staging URLs configured (STAGING_API_URL / STAGING_APP_URL)."
+            fi
           else
-            api_url="${{ secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}"
-            app_url="${{ secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}"
+            api_url="$PROD_API_URL"
+            app_url="$PROD_APP_URL"
           fi
-          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
-          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+          clean_api_url="$(printf '%s' "$api_url" | tr -d '\r\n')"
+          clean_app_url="$(printf '%s' "$app_url" | tr -d '\r\n')"
+          printf 'api_url=%s\n' "$clean_api_url" >> "$GITHUB_OUTPUT"
+          printf 'app_url=%s\n' "$clean_app_url" >> "$GITHUB_OUTPUT"
 
       - name: Make synthetic monitor executable
         run: chmod +x scripts/synthetic-monitor.sh
@@ -70,22 +76,26 @@ jobs:
         if: failure()
         env:
           SLACK_WEBHOOK: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI || secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -n "$SLACK_WEBHOOK" ]; then
             curl -s -X POST "$SLACK_WEBHOOK" \
               -H "Content-Type: application/json" \
-              -d "{\"text\": \"🚨 *Synthetic Monitor* FAILED — <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>\"}"
+              -d "{\"text\": \"🚨 *Synthetic Monitor* FAILED — <$RUN_URL|View Run>\"}"
           fi
 
       - name: Probe Summary
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          TARGET_ENV: ${{ inputs.environment || 'production' }}
         run: |
           {
             echo "## Synthetic Monitor Run"
             echo ""
             echo "| Item | Value |"
             echo "|------|-------|"
-            echo "| Status | \`${{ job.status }}\` |"
-            echo "| Target Environment | \`${{ inputs.environment || 'production' }}\` |"
+            echo "| Status | \`$JOB_STATUS\` |"
+            echo "| Target Environment | \`$TARGET_ENV\` |"
             echo "| Run time | \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\` |"
           } >> "$GITHUB_STEP_SUMMARY"
