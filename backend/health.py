@@ -273,14 +273,24 @@ class HealthChecker:
     # that shouldn't block a promotion on their own).
     CORE_COMPONENTS = {"database", "redis", "bedrock", "neo4j", "s3"}
 
+    _cached_detailed_health: Any = None
+    _cached_detailed_health_time: float = 0.0
+    _CACHE_TTL_SECONDS: float = 15.0
+
     @classmethod
-    def get_detailed_health(cls) -> Dict[str, Any]:
+    def get_detailed_health(cls, force_refresh: bool = False) -> Dict[str, Any]:
         """
-        Get comprehensive health status for all components
+        Get comprehensive health status for all components.
+        Caches results for 15 seconds to prevent latency spikes from sequential external checks.
 
         Returns:
             Dict with overall status and individual component health
         """
+        import time
+        now = time.time()
+        if not force_refresh and cls._cached_detailed_health and (now - cls._cached_detailed_health_time) < cls._CACHE_TTL_SECONDS:
+            return cls._cached_detailed_health
+
         checks = {
             "database": cls.check_database(),
             "redis": cls.check_redis(),
@@ -307,22 +317,25 @@ class HealthChecker:
         else:
             overall_status = "healthy"
 
-        return {
+        result = {
             "status": overall_status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "checks": checks,
             "unhealthy_components": unhealthy_components if unhealthy_components else None
         }
+        cls._cached_detailed_health = result
+        cls._cached_detailed_health_time = now
+        return result
 
     @classmethod
-    def get_simple_health(cls) -> Dict[str, str]:
+    def get_simple_health(cls, force_refresh: bool = False) -> Dict[str, str]:
         """
         Get simple health status (just overall status)
 
         Returns:
             Dict with status and timestamp
         """
-        detailed = cls.get_detailed_health()
+        detailed = cls.get_detailed_health(force_refresh=force_refresh)
 
         return {
             "status": detailed["status"],

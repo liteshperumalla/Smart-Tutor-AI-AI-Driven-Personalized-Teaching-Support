@@ -102,7 +102,8 @@ export default async function Home() {
                 const featured =
                   action.href === "/code" ||
                   action.href === "/chat" ||
-                  action.href === "/quiz";
+                  action.href === "/quiz" ||
+                  action.href === "/appointments";
                 return (
                   <Link
                     key={action.title}

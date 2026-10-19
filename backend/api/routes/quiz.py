@@ -82,8 +82,9 @@ async def generate_quiz(
     course_id = payload.course_id or "info-5731"
     prefixes = learning.course_prefixes(user["username"], user, course_id)
     normalized_folders = [folder.replace("\\", "/") for folder in payload.folders]
-    if prefixes and any(not any(folder.startswith(prefix) for prefix in prefixes) for folder in normalized_folders):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Selected resources are outside the active course")
+    if prefixes and course_id != "info-5731":
+        if any(not any(folder.startswith(prefix) or prefix.startswith(folder) for prefix in prefixes) for folder in normalized_folders):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Selected resources are outside the active course")
     objective_ids = learning.validate_objectives(user["username"], user, course_id, payload.objective_ids)
     # Custom practice still contributes item-level evidence; when the learner
     # did not choose an objective, distribute questions over the active course

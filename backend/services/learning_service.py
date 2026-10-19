@@ -91,7 +91,11 @@ class LearningService:
             course = self._course(data, course_id)
             membership = self._membership(data, username, course_id)
             if not membership and not self._is_admin(user):
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not enrolled in this course")
+                if course.get("open_enrollment"):
+                    membership = {"username": username, "course_id": course_id, "role": "student", "active": True, "enrolled_at": _iso()}
+                    data["memberships"][f"{username}:{course_id}"] = membership
+                else:
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not enrolled in this course")
             if roles and not self._is_admin(user):
                 if not membership or membership.get("role") not in set(roles):
                     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Instructor access required")

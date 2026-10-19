@@ -320,8 +320,9 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         logger.info("Prometheus metrics middleware initialized")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Extract endpoint from request
-        endpoint = request.url.path
+        # Extract endpoint from request, using route template when available
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", request.url.path) or request.url.path
         method = request.method
 
         # Skip metrics endpoint itself to avoid recursion

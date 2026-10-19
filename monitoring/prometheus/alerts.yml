@@ -96,9 +96,9 @@ groups:
           summary: "Critical API error rate"
           description: "API error rate is above 15% (current value: {{ $value }}%)"
 
-      # High API latency
+      # High API latency (standard REST endpoints)
       - alert: HighAPILatency
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 2
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint!~".*(chat|generate|stream|debug|explain|research|evaluate).*"}[5m])) by (le, endpoint)) > 2
         for: 5m
         labels:
           severity: warning
@@ -107,9 +107,9 @@ groups:
           summary: "High API latency on {{ $labels.endpoint }}"
           description: "P95 latency is above 2s (current value: {{ $value }}s)"
 
-      # Critical API latency
+      # Critical API latency (standard REST endpoints)
       - alert: CriticalAPILatency
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, endpoint)) > 5
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint!~".*(chat|generate|stream|debug|explain|research|evaluate).*"}[5m])) by (le, endpoint)) > 5
         for: 2m
         labels:
           severity: critical
@@ -117,6 +117,17 @@ groups:
         annotations:
           summary: "Critical API latency on {{ $labels.endpoint }}"
           description: "P95 latency is above 5s (current value: {{ $value }}s)"
+
+      # High Generative AI / LLM latency
+      - alert: HighLLMLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint=~".*(chat|generate|stream|debug|explain|research|evaluate).*"}[5m])) by (le, endpoint)) > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High LLM response latency on {{ $labels.endpoint }}"
+          description: "P95 LLM response time exceeds 30s (current value: {{ $value }}s)"
 
       # Backend service down
       - alert: BackendServiceDown

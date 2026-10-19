@@ -24,6 +24,8 @@ class BedrockLLM:
         # Legacy Claude / Llama (still supported, moving to retirement in Bedrock)
         "anthropic.claude-3-5-sonnet-20241022-v2:0":      {"input": 0.0030,  "output": 0.0150},
         "us.anthropic.claude-3-5-sonnet-20241022-v2:0":   {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-3-5-haiku-20241022-v1:0":       {"input": 0.0008,  "output": 0.0040},
+        "us.anthropic.claude-3-5-haiku-20241022-v1:0":    {"input": 0.0008,  "output": 0.0040},
         "anthropic.claude-3-haiku-20240307-v1:0":         {"input": 0.00025, "output": 0.00125},
         "us.anthropic.claude-3-haiku-20240307-v1:0":      {"input": 0.00025, "output": 0.00125},
         "meta.llama3-70b-instruct-v1:0":                  {"input": 0.00099, "output": 0.00099},
@@ -145,16 +147,85 @@ class BedrockLLM:
         Returns:
             Generated text response
         """
-        if "claude" in self.model_id.lower():
+    def _invoke_generate(
+        self,
+        model_id: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+        system_prompt: Optional[str],
+        **kwargs,
+    ) -> str:
+        if "claude" in model_id.lower():
             return self._generate_claude(
-                prompt, max_tokens, temperature, top_p, system_prompt, **kwargs
+                prompt, max_tokens, temperature, top_p, system_prompt, model_id=model_id, **kwargs
             )
-        elif "llama" in self.model_id.lower():
+        elif "llama" in model_id.lower():
             return self._generate_llama(
-                prompt, max_tokens, temperature, top_p, **kwargs
+                prompt, max_tokens, temperature, top_p, model_id=model_id, **kwargs
             )
         else:
-            raise ValueError(f"Unsupported model: {self.model_id}")
+            raise ValueError(f"Unsupported model: {model_id}")
+
+    def generate(
+        self,
+        prompt: str,
+        max_tokens: int = 2048,
+        temperature: float = 0.7,
+        top_p: float = 0.9,
+        system_prompt: Optional[str] = None,
+        **kwargs,
+    ) -> str:
+        """
+        Generate response using Bedrock model with automatic fallback.
+
+        Args:
+            prompt: User prompt/question
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature (0-1)
+            top_p: Nucleus sampling parameter
+            system_prompt: Optional system prompt
+            **kwargs: Additional model parameters
+
+        Returns:
+            Generated text response
+        """
+        try:
+            return self._invoke_generate(
+                self.model_id, prompt, max_tokens, temperature, top_p, system_prompt, **kwargs
+            )
+        except Exception as exc:
+            # If the model has a 'us.' prefix and failed, try without 'us.'
+            if self.model_id.startswith("us."):
+                alt_model = self.model_id[3:]
+                try:
+                    logger.warning(
+                        f"[Bedrock] Primary model {self.model_id} failed ({exc}). "
+                        f"Retrying with direct foundation model ID: {alt_model}"
+                    )
+                    return self._invoke_generate(
+                        alt_model, prompt, max_tokens, temperature, top_p, system_prompt, **kwargs
+                    )
+                except Exception as alt_exc:
+                    logger.warning(f"[Bedrock] Alt model {alt_model} also failed: {alt_exc}")
+
+            # Fallback to default model (e.g. Llama 70B) if primary failed
+            default_model = config.BEDROCK_MODEL_ID
+            if self.model_id != default_model:
+                try:
+                    logger.warning(
+                        f"[Bedrock] Model {self.model_id} failed ({exc}). "
+                        f"Falling back to default model {default_model}..."
+                    )
+                    return self._invoke_generate(
+                        default_model, prompt, max_tokens, temperature, top_p, system_prompt, **kwargs
+                    )
+                except Exception as fb_exc:
+                    logger.error(
+                        f"[Bedrock] Fallback to default model {default_model} failed: {fb_exc}"
+                    )
+            raise
 
     def _generate_claude(
         self,
@@ -163,10 +234,11 @@ class BedrockLLM:
         temperature: float,
         top_p: float,
         system_prompt: Optional[str],
+        model_id: Optional[str] = None,
         **kwargs,
     ) -> str:
         """Generate using Claude model"""
-
+        target_model = model_id or self.model_id
         messages = [{"role": "user", "content": prompt}]
 
         request_body = {
@@ -182,7 +254,7 @@ class BedrockLLM:
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id,
+                modelId=target_model,
                 body=json.dumps(request_body),
                 **self._guardrail_kwargs(),
             )
@@ -229,10 +301,16 @@ class BedrockLLM:
         )
 
     def _generate_llama(
-        self, prompt: str, max_tokens: int, temperature: float, top_p: float, **kwargs
+        self,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+        model_id: Optional[str] = None,
+        **kwargs,
     ) -> str:
         """Generate using Llama model"""
-
+        target_model = model_id or self.model_id
         formatted_prompt = self._format_llama_prompt(prompt)
 
         request_body = {
@@ -244,7 +322,7 @@ class BedrockLLM:
 
         try:
             response = self.client.invoke_model(
-                modelId=self.model_id,
+                modelId=target_model,
                 body=json.dumps(request_body),
                 **self._guardrail_kwargs(),
             )
@@ -347,8 +425,14 @@ class BedrockLLM:
                         yield text
 
         except Exception as e:
-            logger.error(f"[Bedrock] Streaming error: {e}", exc_info=True)
-            raise
+            logger.warning(f"[Bedrock] Streaming error ({e}); falling back to generate()...")
+            try:
+                yield self.generate(
+                    prompt, max_tokens, temperature, system_prompt=system_prompt, **kwargs
+                )
+            except Exception as fb_err:
+                logger.error(f"[Bedrock] Streaming fallback also failed: {fb_err}", exc_info=True)
+                raise e
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """

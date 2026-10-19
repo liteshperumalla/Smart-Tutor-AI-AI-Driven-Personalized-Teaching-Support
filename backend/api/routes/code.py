@@ -160,28 +160,31 @@ def _code_llm_model_id() -> str:
     """Resolve the code LLM model id, overridable via CODE_LLM_MODEL_ID."""
     return os.environ.get(
         "CODE_LLM_MODEL_ID",
-        "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
     )
 
 
 def _get_code_llm():
     """Get the code LLM instance using AWS Bedrock.
 
-    Uses Claude Sonnet 4.5 by default — best code model on Bedrock.
-    Override with CODE_LLM_MODEL_ID env var to pin a different model
-    (e.g. fall back to Llama for cost-sensitive workloads).
+    Uses Claude 3.5 Sonnet by default — best code model on Bedrock.
+    Falls back gracefully to default Bedrock model (Llama) if unavailable.
     """
     try:
         from backend.bedrock_llm import BedrockLLM
         from backend.config import config
 
         return BedrockLLM(model_id=_code_llm_model_id(), region=config.AWS_REGION)
-    except (ImportError, ValueError, RuntimeError):
-        logger.exception("Failed to initialize Bedrock LLM")
-        return None
     except Exception:
-        logger.exception("Unexpected error initializing Bedrock LLM")
-        return None
+        logger.exception("Failed to initialize Bedrock LLM with code model, attempting default model")
+        try:
+            from backend.bedrock_llm import BedrockLLM
+            from backend.config import config
+
+            return BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+        except Exception:
+            logger.exception("Unexpected error initializing fallback Bedrock LLM")
+            return None
 
 
 # Explicit safe builtins allowlist — no __import__, no open(), no os access.
@@ -493,6 +496,23 @@ async def generate_code(
         code = _extract_code(response.strip())
         return CodeGenerateResponse(code=code, language=payload.language)
     except Exception as e:
+        logger.exception("Code generation failed: %s", e)
+        # Attempt fallback to default Bedrock model
+        try:
+            from backend.bedrock_llm import BedrockLLM
+            from backend.config import config
+            if llm.model_id != config.BEDROCK_MODEL_ID:
+                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+                response = fallback_llm.generate(
+                    prompt=f"Request: {payload.prompt}\n\nCode:",
+                    system_prompt=system_prompt,
+                    max_tokens=2048,
+                    temperature=0.3,
+                )
+                code = _extract_code(response.strip())
+                return CodeGenerateResponse(code=code, language=payload.language)
+        except Exception as fb_err:
+            logger.exception("Fallback code generation also failed: %s", fb_err)
         raise HTTPException(status_code=500, detail="Code generation failed")
 
 
@@ -530,6 +550,22 @@ async def explain_code(
         cleaned_response = _clean_repeated_content(response.strip())
         return CodeExplainResponse(explanation=cleaned_response)
     except Exception as e:
+        logger.exception("Code explanation failed: %s", e)
+        try:
+            from backend.bedrock_llm import BedrockLLM
+            from backend.config import config
+            if llm.model_id != config.BEDROCK_MODEL_ID:
+                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+                response = fallback_llm.generate(
+                    prompt=f"Code:\n{payload.code}\n\nExplanation:",
+                    system_prompt=system_prompt,
+                    max_tokens=2048,
+                    temperature=0.3,
+                )
+                cleaned_response = _clean_repeated_content(response.strip())
+                return CodeExplainResponse(explanation=cleaned_response)
+        except Exception as fb_err:
+            logger.exception("Fallback code explanation also failed: %s", fb_err)
         raise HTTPException(
             status_code=500, detail="Code explanation failed"
         )
@@ -586,7 +622,35 @@ async def debug_code(
 
         return CodeDebugResponse(analysis=analysis, fixed_code=fixed_code)
     except Exception as e:
-        logger.exception("Debug code failed")
+        logger.exception("Debug code failed: %s", e)
+        try:
+            from backend.bedrock_llm import BedrockLLM
+            from backend.config import config
+            if llm.model_id != config.BEDROCK_MODEL_ID:
+                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+                response = fallback_llm.generate(
+                    prompt=f"Code:\n{payload.code}\n\nDebugging:",
+                    system_prompt=system_prompt,
+                    max_tokens=2048,
+                    temperature=0.3,
+                )
+                analysis = _clean_repeated_content(response.strip())
+                fixed_code = None
+                if "```" in analysis:
+                    parts = analysis.split("```")
+                    for i, part in enumerate(parts):
+                        if i % 2 == 1:
+                            lines = part.strip().split("\n")
+                            if lines[0].lower() in SUPPORTED_LANGUAGES or lines[0] == "":
+                                fixed_code = "\n".join(lines[1:] if lines[0] else lines)
+                            else:
+                                fixed_code = part.strip()
+                            break
+                if fixed_code:
+                    fixed_code = _extract_code(fixed_code)
+                return CodeDebugResponse(analysis=analysis, fixed_code=fixed_code)
+        except Exception as fb_err:
+            logger.exception("Fallback debug code also failed: %s", fb_err)
         raise HTTPException(status_code=500, detail="Code debugging failed")
 
 
@@ -634,6 +698,22 @@ async def chat_with_code_llm(
         cleaned_response = _clean_repeated_content(response.strip())
         return CodeChatResponse(response=cleaned_response)
     except Exception as e:
+        logger.exception("Code chat failed: %s", e)
+        try:
+            from backend.bedrock_llm import BedrockLLM
+            from backend.config import config
+            if llm.model_id != config.BEDROCK_MODEL_ID:
+                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+                response = fallback_llm.generate(
+                    prompt=f"{context}User: {payload.message}\nAssistant:",
+                    system_prompt=system_prompt,
+                    max_tokens=2048,
+                    temperature=0.7,
+                )
+                cleaned_response = _clean_repeated_content(response.strip())
+                return CodeChatResponse(response=cleaned_response)
+        except Exception as fb_err:
+            logger.exception("Fallback code chat also failed: %s", fb_err)
         raise HTTPException(status_code=500, detail="Chat request failed")
 
 
