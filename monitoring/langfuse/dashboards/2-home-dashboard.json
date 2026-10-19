@@ -1,0 +1,100 @@
+{
+  "id": "langfuse-home-dashboard",
+  "name": "Langfuse Home",
+  "description": "High-level system health, trace throughput, active user adoption, model traffic distribution, and key executive observability metrics",
+  "version": "4.0",
+  "schema_version": "v4",
+  "data_source": "langfuse_v4_observations",
+  "filters": [],
+  "metrics": [
+    {
+      "id": "total_traces",
+      "name": "Total Ingested Traces",
+      "aggregation": "COUNT",
+      "field": "trace_id",
+      "time_bucket": "1h",
+      "description": "Gross number of LLM and agent traces ingested"
+    },
+    {
+      "id": "request_throughput_qps",
+      "name": "Inference Request Throughput",
+      "formula": "COUNT(trace_id) / 60",
+      "unit": "req/min",
+      "description": "Live query processing velocity"
+    },
+    {
+      "id": "active_users_dau",
+      "name": "Daily Active Users (DAU)",
+      "aggregation": "COUNT_DISTINCT",
+      "field": "user_id",
+      "time_window": "24h",
+      "description": "Unique users generating LLM or agent interactions in past 24 hours"
+    },
+    {
+      "id": "system_error_rate",
+      "name": "System Error Rate",
+      "formula": "(COUNT(level = 'ERROR') / COUNT(*)) * 100",
+      "unit": "percent",
+      "target": "< 1.0%",
+      "description": "Percentage of traces failing with unhandled errors or upstream LLM exceptions"
+    },
+    {
+      "id": "model_traffic_distribution",
+      "name": "Model Traffic Share",
+      "aggregation": "COUNT",
+      "group_by": ["model_id"],
+      "models": [
+        "anthropic.claude-v5-5-sonnet",
+        "anthropic.claude-v5-5-haiku",
+        "openai.gpt-6-luna",
+        "meta.llama-3-3-70b-instruct"
+      ],
+      "description": "Volume share by underlying LLM model"
+    },
+    {
+      "id": "global_p95_latency",
+      "name": "Global Latency (P95)",
+      "aggregation": "PERCENTILE(95)",
+      "field": "duration_ms",
+      "unit": "ms",
+      "description": "95th percentile end-to-end response time across all pipelines"
+    },
+    {
+      "id": "total_cost_usd",
+      "name": "Total Spend (USD)",
+      "aggregation": "SUM",
+      "field": "calculated_cost_usd",
+      "unit": "$",
+      "description": "Aggregate cost of prompt and completion tokens across all providers"
+    }
+  ],
+  "panels": [
+    {
+      "title": "Core KPI Overview",
+      "type": "stat_row",
+      "cards": [
+        { "title": "Total Traces (24h)", "metric": "total_traces" },
+        { "title": "Active Users (DAU)", "metric": "active_users_dau" },
+        { "title": "System Error Rate", "metric": "system_error_rate", "thresholds": { "green": 0.5, "yellow": 1.0, "red": 2.0 } },
+        { "title": "P95 Response Time", "metric": "global_p95_latency", "unit": "ms" },
+        { "title": "Total LLM Spend (24h)", "metric": "total_cost_usd", "unit": "$" }
+      ]
+    },
+    {
+      "title": "Throughput & Request Velocity (Traces / Min)",
+      "type": "time_series_area",
+      "metric": "request_throughput_qps"
+    },
+    {
+      "title": "Model Share & Invocations",
+      "type": "bar_breakdown",
+      "metric": "model_traffic_distribution"
+    },
+    {
+      "title": "Real-time Trace Ingestion Stream",
+      "type": "trace_feed",
+      "columns": ["timestamp", "name", "user_id", "session_id", "model", "latency_ms", "cost_usd", "status"],
+      "limit": 50
+    }
+  ]
+}

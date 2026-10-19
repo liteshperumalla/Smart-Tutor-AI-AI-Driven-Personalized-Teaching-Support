@@ -1,0 +1,113 @@
+{
+  "id": "langfuse-cost-dashboard",
+  "name": "Langfuse Cost Dashboard",
+  "description": "Granular token accounting, provider cost tracking, model pricing allocation, feature burn rate, and financial FinOps governance",
+  "version": "4.0",
+  "schema_version": "v4",
+  "data_source": "langfuse_v4_observations",
+  "filters": [
+    { "field": "observation_type", "operator": "eq", "value": "generation" }
+  ],
+  "model_pricing_reference": {
+    "anthropic.claude-v5-5-sonnet": { "input_cost_per_m": 3.00, "output_cost_per_m": 15.00 },
+    "anthropic.claude-v5-5-haiku": { "input_cost_per_m": 0.80, "output_cost_per_m": 4.00 },
+    "openai.gpt-6-luna": { "input_cost_per_m": 2.00, "output_cost_per_m": 8.00 },
+    "meta.llama-3-3-70b-instruct": { "input_cost_per_m": 0.72, "output_cost_per_m": 0.72 },
+    "amazon.titan-embed-text-v2": { "input_cost_per_m": 0.02, "output_cost_per_m": 0.00 }
+  },
+  "metrics": [
+    {
+      "id": "cumulative_spend_usd",
+      "name": "Total Cumulative Spend",
+      "aggregation": "SUM",
+      "field": "calculated_cost_usd",
+      "unit": "$",
+      "description": "Total spend across all generations in selected time window"
+    },
+    {
+      "id": "daily_burn_rate_usd",
+      "name": "Daily Burn Rate",
+      "formula": "SUM(calculated_cost_usd) / DATEDIFF_DAYS",
+      "unit": "$/day",
+      "description": "Projected daily expenditure based on trailing activity"
+    },
+    {
+      "id": "cost_by_model",
+      "name": "Cost Breakdown by Model",
+      "aggregation": "SUM",
+      "field": "calculated_cost_usd",
+      "group_by": ["model_id"],
+      "unit": "$",
+      "description": "Dollar spend split by LLM architecture"
+    },
+    {
+      "id": "token_cost_split",
+      "name": "Input vs Output Spend",
+      "metrics": [
+        { "name": "Prompt Token Cost", "formula": "SUM(prompt_tokens * model_input_rate)" },
+        { "name": "Completion Token Cost", "formula": "SUM(completion_tokens * model_output_rate)" }
+      ],
+      "unit": "$",
+      "description": "Comparison of prompt ingestion cost vs completion synthesis cost"
+    },
+    {
+      "id": "cost_by_feature",
+      "name": "Cost by Product Feature",
+      "aggregation": "SUM",
+      "field": "calculated_cost_usd",
+      "group_by": ["tags"],
+      "features": ["chat-assistant", "code-sandbox", "quiz-generator", "rag-retrieval", "document-indexing"],
+      "unit": "$",
+      "description": "Financial allocation mapped to user-facing capabilities"
+    },
+    {
+      "id": "avg_cost_per_session",
+      "name": "Average Cost per User Session",
+      "formula": "SUM(calculated_cost_usd) / COUNT_DISTINCT(session_id)",
+      "unit": "$/session",
+      "description": "Unit economics: average dollar cost of one interactive student session"
+    },
+    {
+      "id": "top_spenders",
+      "name": "Top User Spend",
+      "aggregation": "SUM",
+      "field": "calculated_cost_usd",
+      "group_by": ["user_id"],
+      "sort": "DESC",
+      "limit": 10,
+      "description": "Top consuming accounts ranked by cumulative dollar spend"
+    }
+  ],
+  "panels": [
+    {
+      "title": "FinOps Summary Cards",
+      "type": "stat_row",
+      "cards": [
+        { "title": "Total Spend (Period)", "metric": "cumulative_spend_usd", "unit": "$" },
+        { "title": "Estimated Daily Burn", "metric": "daily_burn_rate_usd", "unit": "$/day" },
+        { "title": "Avg Cost / Session", "metric": "avg_cost_per_session", "unit": "$" }
+      ]
+    },
+    {
+      "title": "Cost by LLM Model",
+      "type": "stacked_bar_chart",
+      "metric": "cost_by_model"
+    },
+    {
+      "title": "Prompt vs Completion Cost Split",
+      "type": "pie_chart",
+      "metric": "token_cost_split"
+    },
+    {
+      "title": "Cost by Application Feature",
+      "type": "horizontal_bar_chart",
+      "metric": "cost_by_feature"
+    },
+    {
+      "title": "Top 10 Consuming Users / Workspaces",
+      "type": "table",
+      "metric": "top_spenders",
+      "columns": ["user_id", "total_spend_usd", "total_tokens", "session_count"]
+    }
+  ]
+}

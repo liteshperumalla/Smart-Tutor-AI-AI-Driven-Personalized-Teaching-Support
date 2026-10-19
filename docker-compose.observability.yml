@@ -7,6 +7,7 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus-ec2.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prometheus/grafana-cloud-token:/etc/prometheus/grafana-cloud-token:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

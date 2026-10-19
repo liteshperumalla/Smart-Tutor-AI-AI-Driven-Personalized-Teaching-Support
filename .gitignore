@@ -55,6 +55,8 @@ Thumbs.db
 .env.vercel
 *.key
 *.pem
+monitoring/prometheus/grafana-cloud-token
+!monitoring/prometheus/grafana-cloud-token.example
 
 # Cookie/session files
 cookies*.txt

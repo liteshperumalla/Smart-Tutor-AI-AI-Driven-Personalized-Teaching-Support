@@ -1,0 +1,113 @@
+{
+  "id": "langfuse-agent-dashboard",
+  "name": "Langfuse Agent Dashboard",
+  "description": "Comprehensive agent orchestration, multi-step execution, tool calls, reasoning turns, and failure analysis for Smart AI Tutor",
+  "version": "4.0",
+  "schema_version": "v4",
+  "data_source": "langfuse_v4_observations",
+  "filters": [
+    { "field": "observation_type", "operator": "in", "values": ["span", "generation", "agent_step"] },
+    { "field": "tags", "operator": "contains", "values": ["agent", "rag", "code-sandbox", "quiz"] }
+  ],
+  "metrics": [
+    {
+      "id": "agent_session_volume",
+      "name": "Total Agent Sessions",
+      "aggregation": "COUNT_DISTINCT",
+      "field": "session_id",
+      "time_bucket": "1h",
+      "description": "Number of unique agent-driven interactive sessions"
+    },
+    {
+      "id": "agent_success_rate",
+      "name": "Agent Run Success Rate",
+      "formula": "(COUNT(status = 'SUCCESS') / COUNT(*)) * 100",
+      "unit": "percent",
+      "target": ">= 99.0%",
+      "description": "Percentage of agent runs completing without unhandled tool or synthesis exceptions"
+    },
+    {
+      "id": "tool_call_breakdown",
+      "name": "Tool Execution Volume by Tool",
+      "aggregation": "COUNT",
+      "group_by": ["attributes.tool_name"],
+      "tools": [
+        "rag-retrieval",
+        "web-search-decision",
+        "web-search-execution",
+        "llm-synthesis",
+        "code-sandbox-eval",
+        "quiz-generation-pipeline"
+      ],
+      "description": "Distribution of tool invocations across all active agent runs"
+    },
+    {
+      "id": "agent_reasoning_turns",
+      "name": "Reasoning Steps per Session",
+      "aggregation": "AVG",
+      "field": "attributes.step_count",
+      "percentiles": [50, 90, 95, 99],
+      "description": "Average and tail number of recursive turns / tool executions per user session"
+    },
+    {
+      "id": "tool_latency_p95",
+      "name": "Tool Latency (P95)",
+      "aggregation": "PERCENTILE(95)",
+      "field": "duration_ms",
+      "group_by": ["attributes.tool_name"],
+      "unit": "ms",
+      "description": "95th percentile latency per tool invocation"
+    },
+    {
+      "id": "agent_fallback_rate",
+      "name": "Agent Fallback / Retry Rate",
+      "formula": "(COUNT(attributes.retry_count > 0) / COUNT(*)) * 100",
+      "unit": "percent",
+      "description": "Frequency of agent re-planning or retrying failed tool steps"
+    },
+    {
+      "id": "tool_error_distribution",
+      "name": "Tool Errors by Category",
+      "aggregation": "COUNT",
+      "field": "error_code",
+      "group_by": ["attributes.error_type", "attributes.tool_name"],
+      "description": "Categorized tool failures (timeout, upstream rate-limit, empty retrieval, syntax validation)"
+    }
+  ],
+  "panels": [
+    {
+      "title": "Agent Execution Overview",
+      "type": "stat_row",
+      "cards": [
+        { "title": "Active Agent Sessions (24h)", "metric": "agent_session_volume" },
+        { "title": "Agent Success Rate", "metric": "agent_success_rate", "thresholds": { "green": 99.0, "yellow": 95.0, "red": 0.0 } },
+        { "title": "Avg Reasoning Turns / Session", "metric": "agent_reasoning_turns" },
+        { "title": "Fallback / Retry Rate", "metric": "agent_fallback_rate", "thresholds": { "green": 2.0, "yellow": 5.0, "red": 10.0 } }
+      ]
+    },
+    {
+      "title": "Tool Execution Distribution",
+      "type": "donut_chart",
+      "metric": "tool_call_breakdown"
+    },
+    {
+      "title": "Tool Latency Breakdown (P50, P90, P99 ms)",
+      "type": "time_series_bar",
+      "metrics": ["tool_latency_p95"],
+      "group_by": "attributes.tool_name"
+    },
+    {
+      "title": "Agent Step Latency & Reasoning Depth Timeline",
+      "type": "scatter_timeline",
+      "x_axis": "timestamp",
+      "y_axis": "duration_ms",
+      "color_by": "attributes.step_count"
+    },
+    {
+      "title": "Agent Failure & Fallback Event Feed",
+      "type": "trace_table",
+      "columns": ["timestamp", "trace_id", "session_id", "tool_name", "error_message", "recovery_action"],
+      "filter": "level = 'ERROR' OR attributes.retry_count > 0"
+    }
+  ]
+}

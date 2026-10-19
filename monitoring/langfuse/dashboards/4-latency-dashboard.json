@@ -1,0 +1,110 @@
+{
+  "id": "langfuse-latency-dashboard",
+  "name": "Langfuse Latency Dashboard",
+  "description": "Multi-tier latency analytics, TTFT distribution, retrieval execution times, synthesis streaming velocity, and tail-latency SLA tracking",
+  "version": "4.0",
+  "schema_version": "v4",
+  "data_source": "langfuse_v4_observations",
+  "filters": [],
+  "metrics": [
+    {
+      "id": "e2e_latency_percentiles",
+      "name": "End-to-End Latency Percentiles",
+      "aggregation": "PERCENTILES",
+      "field": "duration_ms",
+      "percentiles": [50, 75, 90, 95, 99],
+      "unit": "ms",
+      "description": "Comprehensive percentile distribution for full user request-response lifecycles"
+    },
+    {
+      "id": "ttft_by_model",
+      "name": "Time to First Token (TTFT)",
+      "aggregation": "PERCENTILE(90)",
+      "field": "attributes.time_to_first_token_ms",
+      "group_by": ["model_id"],
+      "unit": "ms",
+      "target": "< 600ms",
+      "description": "90th percentile initial token streaming delay across configured LLMs"
+    },
+    {
+      "id": "generation_throughput_tps",
+      "name": "Tokens Generated per Second (TPS)",
+      "formula": "SUM(completion_tokens) / (SUM(duration_ms) / 1000)",
+      "group_by": ["model_id"],
+      "unit": "tokens/sec",
+      "description": "Effective generation speed during token synthesis"
+    },
+    {
+      "id": "vector_retrieval_latency",
+      "name": "ChromaDB / Vector Search Latency",
+      "aggregation": "PERCENTILE(95)",
+      "field": "duration_ms",
+      "filter": "name = 'rag-retrieval'",
+      "unit": "ms",
+      "target": "< 250ms",
+      "description": "95th percentile dense vector similarity retrieval time"
+    },
+    {
+      "id": "graph_retrieval_latency",
+      "name": "Neo4j Knowledge Graph Latency",
+      "aggregation": "PERCENTILE(95)",
+      "field": "duration_ms",
+      "filter": "name = 'graph-retrieval'",
+      "unit": "ms",
+      "target": "< 150ms",
+      "description": "95th percentile multi-hop graph traversal time"
+    },
+    {
+      "id": "web_search_latency",
+      "name": "External Web Search Latency (SerpAPI)",
+      "aggregation": "PERCENTILE(95)",
+      "field": "duration_ms",
+      "filter": "name = 'web-search-execution'",
+      "unit": "ms",
+      "target": "< 1200ms",
+      "description": "95th percentile SerpAPI web query execution time"
+    },
+    {
+      "id": "outlier_traces",
+      "name": "SLA Breach Traces (> 3000ms)",
+      "aggregation": "COUNT",
+      "filter": "duration_ms > 3000",
+      "unit": "traces",
+      "description": "Volume of traces violating the 3-second SLA threshold"
+    }
+  ],
+  "panels": [
+    {
+      "title": "Latency Percentile Highlights",
+      "type": "stat_row",
+      "cards": [
+        { "title": "P50 (Median) Response", "metric": "e2e_latency_percentiles", "percentile": 50, "unit": "ms" },
+        { "title": "P90 Response", "metric": "e2e_latency_percentiles", "percentile": 90, "unit": "ms" },
+        { "title": "P95 Response", "metric": "e2e_latency_percentiles", "percentile": 95, "unit": "ms" },
+        { "title": "P99 Tail Latency", "metric": "e2e_latency_percentiles", "percentile": 99, "unit": "ms", "thresholds": { "green": 2000, "yellow": 3000, "red": 5000 } }
+      ]
+    },
+    {
+      "title": "Latency Percentiles Over Time (P50, P90, P99)",
+      "type": "multi_line_chart",
+      "metric": "e2e_latency_percentiles",
+      "time_bucket": "5m"
+    },
+    {
+      "title": "Time to First Token (TTFT) by Model",
+      "type": "bar_chart",
+      "metric": "ttft_by_model"
+    },
+    {
+      "title": "Pipeline Component Breakdown (Vector vs Graph vs Web vs LLM)",
+      "type": "stacked_bar_breakdown",
+      "metrics": ["vector_retrieval_latency", "graph_retrieval_latency", "web_search_latency"]
+    },
+    {
+      "title": "Slow Traces & Outlier Log (> 3000ms)",
+      "type": "table",
+      "columns": ["timestamp", "trace_id", "user_id", "model", "duration_ms", "dominant_step", "error"],
+      "filter": "duration_ms > 3000"
+    }
+  ]
+}
