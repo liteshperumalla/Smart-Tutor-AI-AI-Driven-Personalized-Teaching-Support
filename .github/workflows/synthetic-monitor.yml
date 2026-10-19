@@ -70,6 +70,7 @@ jobs:
           ALERTMANAGER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI || secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
           SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
           SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          WORKFLOW_TRIGGER: ${{ github.event_name }}
         run: ./scripts/synthetic-monitor.sh
 
       - name: Report failure to Slack

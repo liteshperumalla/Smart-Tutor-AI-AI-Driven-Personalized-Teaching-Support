@@ -174,6 +174,29 @@ main() {
     fi
   done
 
+  # Check if EC2 is scheduled to be stopped (outside Mon-Fri 09:00-17:00 America/Chicago)
+  local is_ec2_business_hours=true
+  if command -v date >/dev/null 2>&1; then
+    local central_hour central_dow
+    central_hour=$(TZ='America/Chicago' date +%-H 2>/dev/null || date +%-H)
+    central_dow=$(TZ='America/Chicago' date +%u 2>/dev/null || date +%u) # 1=Mon..7=Sun
+    if [ "$central_dow" -gt 5 ] || [ "$central_hour" -lt 9 ] || [ "$central_hour" -ge 17 ]; then
+      is_ec2_business_hours=false
+    fi
+  fi
+
+  # In production, EC2 security group only allows ports 80/443; Nginx proxies to backend:8000.
+  # If API_URL targets port 8010 or 8000 directly from outside, check if port 80 is responding:
+  if [[ -n "$API_URL" && "$API_URL" =~ :(8010|8000)/?$ ]]; then
+    local base_url="${API_URL%:*}"
+    if ! curl -s --connect-timeout 2 -o /dev/null "$API_URL/ready" 2>/dev/null; then
+      if curl -s --connect-timeout 2 -o /dev/null "$base_url/ready" 2>/dev/null; then
+        info "Port ${API_URL##*:} unreachable from runner; using Nginx reverse proxy at $base_url"
+        API_URL="$base_url"
+      fi
+    fi
+  fi
+
   echo ""
   echo -e "${CYAN}=====================================================================${NC}"
   echo -e "${CYAN}   Smart AI Tutor — Synthetic Production Monitor                    ${NC}"
@@ -243,6 +266,25 @@ main() {
   fi
 
   # ── Summary ──────────────────────────────────────────────────────────────
+  # If scheduled run occurs outside business hours and backend failed due to scheduled EC2 sleep:
+  if [ "$is_ec2_business_hours" = false ] && [ "${WORKFLOW_TRIGGER:-}" = "schedule" ]; then
+    local backend_failed=false
+    local non_backend_failures=()
+    for probe_name in "${FAILED_PROBES[@]}"; do
+      if [[ "$probe_name" =~ ^Backend ]] || [[ "$probe_name" =~ ^Auth ]] || [[ "$probe_name" =~ ^Chat ]] || [[ "$probe_name" =~ ^Admin ]]; then
+        backend_failed=true
+      else
+        non_backend_failures+=("$probe_name")
+      fi
+    done
+
+    if [ "$backend_failed" = true ]; then
+      warn "EC2 instance is scheduled stopped outside Mon-Fri 09:00-17:00 Central."
+      warn "Backend probes skipped as planned; evaluated frontend availability."
+      FAILED_PROBES=("${non_backend_failures[@]}")
+    fi
+  fi
+
   echo ""
   echo -e "${CYAN}=====================================================================${NC}"
   FAIL_COUNT="${#FAILED_PROBES[@]}"

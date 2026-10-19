@@ -522,7 +522,7 @@ class Config:
 
     # Cache Settings
     CACHE_ENABLED = os.getenv("CACHE_ENABLED", "true").lower() == "true"
-    CACHE_TTL = int(os.getenv("CACHE_TTL", "300"))  # 5 minutes default
+    CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hour default (prevents premature cache eviction)
     CACHE_MAX_SIZE = int(os.getenv("CACHE_MAX_SIZE", "1000"))
 
     # Answer Cache (Query→Answer caching with exact + fuzzy matching)

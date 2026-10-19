@@ -28,7 +28,7 @@ class RedisCache:
         password: Optional[str] = None,
         ssl: Optional[bool] = None,
         max_connections: Optional[int] = None,
-        default_ttl: int = 300,
+        default_ttl: int = 3600,
     ):
         """
         Initialize Redis cache

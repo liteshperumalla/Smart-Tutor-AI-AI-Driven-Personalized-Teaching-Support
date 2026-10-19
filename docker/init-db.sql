@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_locked BOOLEAN DEFAULT FALSE,
     locked_until TIMESTAMP,
     login_attempts INTEGER DEFAULT 0,
+    version INTEGER DEFAULT 1,
 
     -- Timestamps
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

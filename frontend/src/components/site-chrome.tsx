@@ -693,41 +693,17 @@ export function SiteChrome({
         </div>
       </aside>
 
-      {/* Main content area with fixed footer */}
+      {/* Main content area */}
       <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-all duration-300 dark:bg-zinc-950 dark:text-white ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-64'}`}>
         {/* Scrollable content area */}
         {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
         <main className={
           isFullHeightRoute
-            ? "flex-1 flex flex-col overflow-hidden pt-14 pb-16 lg:pt-0"
-            : "flex-1 overflow-y-auto px-4 py-5 pt-[4.75rem] pb-20 sm:px-8 lg:pt-5"
+            ? "flex-1 flex flex-col overflow-hidden pt-14 lg:pt-0"
+            : "flex-1 overflow-y-auto px-4 py-5 pt-[4.75rem] pb-8 sm:px-8 lg:pt-5 lg:pb-8"
         }>
           {children}
         </main>
-
-        {/* Fixed Footer Nav — improved touch targets for mobile */}
-        <footer className={`fixed bottom-0 left-0 right-0 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 z-20 transition-all duration-300 ${sidebarCollapsed ? 'lg:left-0' : 'lg:left-64'}`}>
-          <nav aria-label="Site navigation" className="mx-auto max-w-6xl px-4 py-2 sm:px-6">
-            <div className="flex flex-nowrap items-center justify-center">
-              {visibleNavLinks
-                .filter((link) => ["/", "/chat", "/quiz", "/profile"].includes(link.href))
-                .map((link) => {
-                  const Icon = navIcons[link.href] || FolderOpen;
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      aria-label={link.label}
-                      className="flex flex-1 min-h-[44px] items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs uppercase tracking-[0.15em] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
-                    >
-                      <Icon className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                      <span className="hidden xl:inline" aria-hidden="true">{link.label}</span>
-                    </Link>
-                  );
-                })}
-            </div>
-          </nav>
-        </footer>
       </div>
 
       {/* Delete Chat Modal */}
