@@ -264,7 +264,7 @@ kiwisolver==1.4.9
     # via matplotlib
 kubernetes==33.1.0
     # via chromadb
-langfuse==2.60.5
+langfuse>=4.7.0
     # via
     #   -r backend/requirements.txt
     #   llama-index-callbacks-langfuse

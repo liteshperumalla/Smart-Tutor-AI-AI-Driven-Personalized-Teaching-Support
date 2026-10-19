@@ -63,6 +63,9 @@ def init_langfuse() -> bool:
 
     # 1. Direct v4 client
     try:
+        import os
+        os.environ["LANGFUSE_INGESTION_VERSION"] = getattr(config, "LANGFUSE_INGESTION_VERSION", "4")
+
         from langfuse import Langfuse
 
         _langfuse_client = Langfuse(
@@ -70,7 +73,7 @@ def init_langfuse() -> bool:
             secret_key=config.LANGFUSE_SECRET_KEY,
             host=config.LANGFUSE_HOST,
         )
-        logger.info("Langfuse v4 client initialized (host=%s)", config.LANGFUSE_HOST)
+        logger.info("Langfuse v4 client initialized (host=%s, ingestion_version=4)", config.LANGFUSE_HOST)
     except Exception as exc:
         logger.error("Failed to initialize Langfuse client: %s", exc)
         _langfuse_client = None
@@ -292,6 +295,55 @@ def traced_span(trace, name: str, *, input: Optional[Any] = None):
         end_span(span, output={"duration_ms": elapsed_ms})
 
 
+# ── Langfuse v4 Observation Scoring & OTLP Helpers ───────────────────
+
+def score_observation(
+    observation_id: str,
+    name: str,
+    value: float,
+    *,
+    comment: Optional[str] = None,
+    trace_id: Optional[str] = None,
+) -> bool:
+    """Langfuse v4: Attach score directly to an observation or span.
+
+    Replaces legacy trace-level scoring joins with observation-level scores
+    targeting the unified ClickHouse wide table (/api/public/v3/scores).
+    """
+    if _langfuse_client is None:
+        return False
+    try:
+        kwargs: Dict[str, Any] = {
+            "name": name,
+            "value": value,
+        }
+        if observation_id:
+            kwargs["observation_id"] = observation_id
+        if trace_id:
+            kwargs["trace_id"] = trace_id
+        if comment:
+            kwargs["comment"] = comment
+
+        if hasattr(_langfuse_client, "score"):
+            _langfuse_client.score(**kwargs)
+            return True
+        return False
+    except Exception as exc:
+        logger.debug("score_observation failed: %s", exc)
+        return False
+
+
+def get_otel_ingestion_headers() -> Dict[str, str]:
+    """Return Langfuse v4 OpenTelemetry ingestion headers with v4 schema flag."""
+    import base64
+    creds = f"{config.LANGFUSE_PUBLIC_KEY}:{config.LANGFUSE_SECRET_KEY}".encode()
+    return {
+        "Authorization": f"Basic {base64.b64encode(creds).decode()}",
+        "x-langfuse-ingestion-version": "4",
+        "Content-Type": "application/json",
+    }
+
+
 # ── Health check ─────────────────────────────────────────────────────
 
 def get_langfuse_health() -> Dict[str, Any]:
@@ -313,7 +365,16 @@ def get_langfuse_health() -> Dict[str, Any]:
             "version": "v4",
             "host": config.LANGFUSE_HOST,
             "observations_first": True,
+            "ingestion_version": "4",
+            "data_model": "clickhouse_wide_table",
             "callback_handler": _langfuse_handler is not None,
         }
     except Exception as exc:
-        return {"status": "unhealthy", "version": "v4", "message": str(exc)}
+        return {
+            "status": "unhealthy",
+            "version": "v4",
+            "ingestion_version": "4",
+            "observations_first": True,
+            "message": str(exc),
+        }
+

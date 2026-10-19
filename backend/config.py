@@ -458,6 +458,7 @@ class Config:
         else os.getenv("LANGFUSE_SECRET_KEY", "")
     )
     LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    LANGFUSE_INGESTION_VERSION = os.getenv("LANGFUSE_INGESTION_VERSION", "4")
 
     # PostHog Settings (analytics + LLM cost tracking)
     POSTHOG_ENABLED = os.getenv("POSTHOG_ENABLED", "true").lower() == "true"

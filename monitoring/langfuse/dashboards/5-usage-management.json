@@ -1,0 +1,103 @@
+{
+  "id": "langfuse-usage-management",
+  "name": "Langfuse Usage Management",
+  "description": "User tier quotas, token consumption volume, rate-limiting governance, context window saturation, and platform capacity planning",
+  "version": "4.0",
+  "schema_version": "v4",
+  "data_source": "langfuse_v4_observations",
+  "filters": [],
+  "user_tier_quotas": {
+    "free": { "tokens_per_day": 50000, "requests_per_min": 10 },
+    "student": { "tokens_per_day": 250000, "requests_per_min": 30 },
+    "pro": { "tokens_per_day": 1000000, "requests_per_min": 60 }
+  },
+  "metrics": [
+    {
+      "id": "gross_token_volume",
+      "name": "Gross Token Consumption",
+      "metrics": [
+        { "name": "Prompt Tokens", "aggregation": "SUM", "field": "prompt_tokens" },
+        { "name": "Completion Tokens", "aggregation": "SUM", "field": "completion_tokens" },
+        { "name": "Total Tokens", "aggregation": "SUM", "field": "total_tokens" }
+      ],
+      "time_bucket": "1h",
+      "description": "Hourly token consumption by direction"
+    },
+    {
+      "id": "tier_quota_utilization",
+      "name": "Tier Quota Utilization",
+      "formula": "SUM(total_tokens) / tier_allocated_tokens * 100",
+      "group_by": ["metadata.user_tier"],
+      "unit": "percent",
+      "description": "Average quota consumption percentage across user subscription tiers"
+    },
+    {
+      "id": "rate_limit_breaches",
+      "name": "Rate Limit & 429 Events",
+      "aggregation": "COUNT",
+      "filter": "error_code = 429 OR metadata.throttled = true",
+      "time_bucket": "5m",
+      "unit": "events",
+      "description": "Count of user requests rejected or throttled due to rate limits"
+    },
+    {
+      "id": "top_active_users",
+      "name": "Top 10 Token Consuming Users",
+      "aggregation": "SUM",
+      "field": "total_tokens",
+      "group_by": ["user_id", "metadata.user_tier"],
+      "sort": "DESC",
+      "limit": 10,
+      "description": "Highest consuming user accounts by cumulative tokens"
+    },
+    {
+      "id": "context_window_saturation",
+      "name": "Context Window Utilization (%)",
+      "formula": "(prompt_tokens / model_context_limit) * 100",
+      "percentiles": [50, 90, 99],
+      "unit": "percent",
+      "description": "Percentage of maximum model context capacity consumed per prompt"
+    },
+    {
+      "id": "redis_cache_savings",
+      "name": "Semantic Cache Hit Ratio",
+      "formula": "(COUNT(metadata.cache_hit = true) / COUNT(*)) * 100",
+      "unit": "percent",
+      "target": ">= 40.0%",
+      "description": "Percentage of queries served from cache, preventing LLM token consumption"
+    }
+  ],
+  "panels": [
+    {
+      "title": "Usage & Capacity Summary",
+      "type": "stat_row",
+      "cards": [
+        { "title": "Total Tokens (24h)", "metric": "gross_token_volume.Total Tokens" },
+        { "title": "Rate Limit Events (429)", "metric": "rate_limit_breaches", "thresholds": { "green": 0, "yellow": 5, "red": 20 } },
+        { "title": "Cache Hit Rate", "metric": "redis_cache_savings", "thresholds": { "green": 50.0, "yellow": 30.0, "red": 10.0 } },
+        { "title": "P90 Context Saturation", "metric": "context_window_saturation", "unit": "%" }
+      ]
+    },
+    {
+      "title": "Token Consumption Timeline (Prompt vs Completion)",
+      "type": "stacked_area_chart",
+      "metrics": ["gross_token_volume.Prompt Tokens", "gross_token_volume.Completion Tokens"]
+    },
+    {
+      "title": "Quota Utilization by Subscription Tier",
+      "type": "bar_chart",
+      "metric": "tier_quota_utilization"
+    },
+    {
+      "title": "Top 10 High Volume Users",
+      "type": "table",
+      "metric": "top_active_users",
+      "columns": ["user_id", "user_tier", "total_tokens", "prompt_tokens", "completion_tokens", "session_count"]
+    },
+    {
+      "title": "Throttling & 429 Incident Timeline",
+      "type": "time_series_bar",
+      "metric": "rate_limit_breaches"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-langfuse>=4.0.0
+langfuse>=4.7.0  # Langfuse v4 observations-first SDK
 # Security pins — override vulnerable transitive versions
 nltk>=3.9.3   # Zip Slip CVE fixed in 3.9.3
 pypdf>=6.7.2  # Infinite loop CVE fixed in 6.7.2
