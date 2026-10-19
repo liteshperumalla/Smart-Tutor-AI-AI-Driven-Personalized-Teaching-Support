@@ -160,14 +160,14 @@ def _code_llm_model_id() -> str:
     """Resolve the code LLM model id, overridable via CODE_LLM_MODEL_ID."""
     return os.environ.get(
         "CODE_LLM_MODEL_ID",
-        "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        "us.anthropic.claude-5-5-sonnet-20261022-v1:0",
     )
 
 
 def _get_code_llm():
     """Get the code LLM instance using AWS Bedrock.
 
-    Uses Claude 3.5 Sonnet by default — best code model on Bedrock.
+    Uses Claude 5.5 Sonnet by default — elite coding model on Bedrock.
     Falls back gracefully to default Bedrock model (Llama) if unavailable.
     """
     try:

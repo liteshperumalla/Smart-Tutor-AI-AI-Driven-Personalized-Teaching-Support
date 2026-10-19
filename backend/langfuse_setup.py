@@ -1,12 +1,18 @@
 """
-Centralized Langfuse Tracing Setup
+Centralized Langfuse Tracing Setup (Langfuse v4 Architecture)
 
-Provides idempotent initialization for both the LlamaIndex callback handler
-and the direct Langfuse client, plus safe helpers for trace/span lifecycle.
+Provides idempotent initialization for both the OpenTelemetry-native
+Langfuse v4 client, LlamaIndex callback handler, and safe observation helpers.
+
+Supports:
+  1. Langfuse v4 Observations-First Data Model: Correlating attributes
+     (user_id, session_id, tags, metadata) propagate to all child observations
+     via propagate_attributes().
+  2. OpenTelemetry span management via start_as_current_observation() and @observe.
+  3. Seamless backward compatibility for existing create_trace / traced_span calls.
 
 Every public function is wrapped in try/except and returns None/no-op when
-tracing is disabled or Langfuse is unavailable, following the _safe_write()
-pattern from the agent system.
+tracing is disabled or Langfuse is unavailable.
 """
 
 from __future__ import annotations
@@ -14,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from backend.config import config
 
@@ -29,11 +35,11 @@ _initialized = False
 # ── Initialization / Shutdown ────────────────────────────────────────
 
 def init_langfuse() -> bool:
-    """Idempotent Langfuse initialization.
+    """Idempotent Langfuse v4 initialization.
 
     Sets up:
-      1. The direct ``Langfuse`` client (for manual traces/spans).
-      2. The LlamaIndex callback handler (``Settings.callback_manager``),
+      1. The Langfuse v4 client (OpenTelemetry-native observations model).
+      2. The LlamaIndex callback handler (Settings.callback_manager),
          so all LlamaIndex operations (retrieve, synthesize) are auto-traced.
 
     Returns ``True`` if initialization succeeded, ``False`` otherwise.
@@ -55,7 +61,7 @@ def init_langfuse() -> bool:
         )
         return False
 
-    # 1. Direct client
+    # 1. Direct v4 client
     try:
         from langfuse import Langfuse
 
@@ -64,7 +70,7 @@ def init_langfuse() -> bool:
             secret_key=config.LANGFUSE_SECRET_KEY,
             host=config.LANGFUSE_HOST,
         )
-        logger.info("Langfuse client initialized")
+        logger.info("Langfuse v4 client initialized (host=%s)", config.LANGFUSE_HOST)
     except Exception as exc:
         logger.error("Failed to initialize Langfuse client: %s", exc)
         _langfuse_client = None
@@ -95,12 +101,12 @@ def init_langfuse() -> bool:
 
     ok = _langfuse_client is not None
     if ok:
-        logger.info("Langfuse tracing ready (host=%s)", config.LANGFUSE_HOST)
+        logger.info("Langfuse v4 tracing ready (host=%s)", config.LANGFUSE_HOST)
     return ok
 
 
 def shutdown_langfuse() -> None:
-    """Flush any pending Langfuse events.  Safe to call even if not initialized."""
+    """Flush any pending Langfuse events. Safe to call even if not initialized."""
     global _langfuse_client
     if _langfuse_client is None:
         return
@@ -118,9 +124,75 @@ def get_langfuse_client():
     return _langfuse_client
 
 
+def get_client():
+    """Langfuse v4 standard alias for get_langfuse_client()."""
+    return _langfuse_client
+
+
 def get_langfuse_handler():
     """Return the LlamaIndex callback handler singleton (or None)."""
     return _langfuse_handler
+
+
+# ── Langfuse v4 Observations-First Context Helpers ───────────────────
+
+@contextmanager
+def propagate_attributes(
+    *,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[List[str]] = None,
+):
+    """Langfuse v4 context manager to propagate observation attributes downward.
+
+    In v4, attributes set here automatically cascade to all child observations
+    and spans created within this scope.
+    """
+    if _langfuse_client is None:
+        yield None
+        return
+
+    try:
+        if hasattr(_langfuse_client, "propagate_attributes"):
+            with _langfuse_client.propagate_attributes(
+                user_id=user_id,
+                session_id=session_id,
+                metadata=metadata,
+                tags=tags,
+            ) as ctx:
+                yield ctx
+        else:
+            yield None
+    except Exception as exc:
+        logger.debug("propagate_attributes failed: %s", exc)
+        yield None
+
+
+def observe(*args, **kwargs) -> Callable:
+    """Langfuse v4 @observe decorator re-export with safe no-op fallback."""
+    try:
+        from langfuse.decorators import observe as _observe
+        return _observe(*args, **kwargs)
+    except Exception:
+        def _decorator(func):
+            return func
+        if len(args) == 1 and callable(args[0]) and not kwargs:
+            return args[0]
+        return _decorator
+
+
+@contextmanager
+def start_as_current_observation(name: str, as_type: str = "span", **kwargs):
+    """Langfuse v4 OpenTelemetry observation context manager with fallback."""
+    if _langfuse_client is not None and hasattr(_langfuse_client, "start_as_current_observation"):
+        try:
+            with _langfuse_client.start_as_current_observation(name=name, as_type=as_type, **kwargs) as obs:
+                yield obs
+            return
+        except Exception as exc:
+            logger.debug("start_as_current_observation failed: %s", exc)
+    yield None
 
 
 # ── Trace helpers ────────────────────────────────────────────────────
@@ -238,8 +310,10 @@ def get_langfuse_health() -> Dict[str, Any]:
         _langfuse_client.auth_check()
         return {
             "status": "healthy",
+            "version": "v4",
             "host": config.LANGFUSE_HOST,
+            "observations_first": True,
             "callback_handler": _langfuse_handler is not None,
         }
     except Exception as exc:
-        return {"status": "unhealthy", "message": str(exc)}
+        return {"status": "unhealthy", "version": "v4", "message": str(exc)}

@@ -383,8 +383,16 @@ async def send_message(
 
             # Approximate cost in USD based on model pricing (per 1K tokens)
             _PRICING = {
+                "us.meta.llama3-3-70b-instruct-v1:0":     (0.00072, 0.00072),
+                "meta.llama3-3-70b-instruct-v1:0":        (0.00072, 0.00072),
                 "meta.llama3-70b-instruct-v1:0":          (0.00265, 0.00350),
                 "us.meta.llama3-1-70b-instruct-v1:0":     (0.00265, 0.00350),
+                "us.anthropic.claude-5-5-sonnet-20261022-v1:0": (0.00300, 0.01500),
+                "anthropic.claude-5-5-sonnet-20261022-v1:0":    (0.00300, 0.01500),
+                "us.anthropic.claude-5-5-haiku-20261022-v1:0":  (0.00080, 0.00400),
+                "anthropic.claude-5-5-haiku-20261022-v1:0":     (0.00080, 0.00400),
+                "openai.gpt-6-luna-2026":                       (0.00250, 0.01000),
+                "gpt-6-luna":                                   (0.00250, 0.01000),
                 "us.anthropic.claude-3-5-sonnet-20241022-v2:0": (0.00300, 0.01500),
                 "us.anthropic.claude-3-haiku-20240307-v1:0":    (0.00025, 0.00125),
                 "amazon.titan-embed-text-v2:0":            (0.00020, 0.00000),
