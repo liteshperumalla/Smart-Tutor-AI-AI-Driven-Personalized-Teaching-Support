@@ -23,17 +23,32 @@ permissions:
   contents: read
 
 env:
-  PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL }}
-  PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+  PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}
+  PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}
 
 jobs:
   synthetic-probes:
-    name: Synthetic Monitor (Production)
+    name: Synthetic Monitor
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select target environment URLs
+        id: target
+        run: |
+          target_env="${{ inputs.environment || 'production' }}"
+          echo "Selected target environment: $target_env"
+          if [ "$target_env" = "staging" ]; then
+            api_url="${{ secrets.STAGING_API_URL || vars.STAGING_API_URL || secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}"
+            app_url="${{ secrets.STAGING_APP_URL || vars.STAGING_APP_URL || secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}"
+          else
+            api_url="${{ secrets.PRODUCTION_API_URL || vars.PRODUCTION_API_URL }}"
+            app_url="${{ secrets.PRODUCTION_APP_URL || vars.PRODUCTION_APP_URL }}"
+          fi
+          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
 
       - name: Make synthetic monitor executable
         run: chmod +x scripts/synthetic-monitor.sh
@@ -41,18 +56,20 @@ jobs:
       - name: Run synthetic probes
         id: probes
         env:
-          PRODUCTION_API_URL: ${{ secrets.PRODUCTION_API_URL }}
-          PRODUCTION_APP_URL: ${{ secrets.PRODUCTION_APP_URL }}
+          PRODUCTION_API_URL: ${{ steps.target.outputs.api_url }}
+          PRODUCTION_APP_URL: ${{ steps.target.outputs.app_url }}
           SYNTHETIC_TEST_USERNAME: ${{ secrets.SYNTHETIC_TEST_USERNAME }}
           SYNTHETIC_TEST_PASSWORD: ${{ secrets.SYNTHETIC_TEST_PASSWORD }}
           SYNTHETIC_ADMIN_TOKEN: ${{ secrets.SYNTHETIC_ADMIN_TOKEN }}
-          ALERTMANAGER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL }}
+          ALERTMANAGER_SLACK_WEBHOOK_URL: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI || secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
+          SLACK_WEBHOOK_URL_SMART_TUTOR_AI: ${{ secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI }}
+          SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS: ${{ secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
         run: ./scripts/synthetic-monitor.sh
 
       - name: Report failure to Slack
         if: failure()
         env:
-          SLACK_WEBHOOK: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK: ${{ secrets.ALERTMANAGER_SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK_URL_SMART_TUTOR_AI || secrets.SLACK_WEBHOOK_URL_APP_DEV_ANALYTICS }}
         run: |
           if [ -n "$SLACK_WEBHOOK" ]; then
             curl -s -X POST "$SLACK_WEBHOOK" \
@@ -69,7 +86,6 @@ jobs:
             echo "| Item | Value |"
             echo "|------|-------|"
             echo "| Status | \`${{ job.status }}\` |"
-            echo "| API URL | \`${PRODUCTION_API_URL:-not configured}\` |"
-            echo "| App URL | \`${PRODUCTION_APP_URL:-not configured}\` |"
+            echo "| Target Environment | \`${{ inputs.environment || 'production' }}\` |"
             echo "| Run time | \`$(date -u '+%Y-%m-%dT%H:%M:%SZ')\` |"
           } >> "$GITHUB_STEP_SUMMARY"
