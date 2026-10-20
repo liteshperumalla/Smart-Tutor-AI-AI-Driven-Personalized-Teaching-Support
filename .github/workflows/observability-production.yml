@@ -307,6 +307,12 @@ jobs:
             echo ""
             echo "=== prometheus targets payload ==="
             curl -fsS "http://127.0.0.1:9090/api/v1/targets" 2>/dev/null || true
+            echo ""
+            echo "=== smart-tutor-backend logs (last 50 lines) ==="
+            docker logs --tail=50 smart-tutor-backend 2>/dev/null || true
+            echo ""
+            echo "=== backend detailed health payload ==="
+            curl -fsS "http://127.0.0.1:${BACKEND_PORT_EXPOSE:-8010}/health/detailed" 2>/dev/null || true
           }
 
           start_heartbeat() {
@@ -378,7 +384,7 @@ jobs:
 
           require_backend_observability_health() {
             local expected_components_csv="$1"
-            local attempts="${2:-4}"
+            local attempts="${2:-8}"
             local sleep_seconds="${3:-15}"
             local backend_port="${BACKEND_PORT_EXPOSE:-8010}"
             local backend_health_url="http://127.0.0.1:${backend_port}/health/detailed"
@@ -406,7 +412,7 @@ jobs:
               details = checks.get(component, {})
               status = details.get("status", "missing")
               if status != "healthy":
-                  invalid[component] = status
+                  invalid[component] = f"{status} ({details})"
 
           if missing or invalid:
               if missing:

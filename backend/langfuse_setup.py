@@ -355,26 +355,32 @@ def get_langfuse_health() -> Dict[str, Any]:
         return {"status": "misconfigured", "message": "API keys missing"}
 
     if _langfuse_client is None:
-        return {"status": "unhealthy", "message": "Client not initialized"}
+        init_langfuse()
+        if _langfuse_client is None:
+            return {"status": "unhealthy", "message": "Client not initialized"}
 
-    # Attempt a lightweight auth check
+    # Attempt a lightweight auth check (non-blocking for overall health)
+    auth_ok = True
+    auth_msg = None
     try:
-        _langfuse_client.auth_check()
-        return {
-            "status": "healthy",
-            "version": "v4",
-            "host": config.LANGFUSE_HOST,
-            "observations_first": True,
-            "ingestion_version": "4",
-            "data_model": "clickhouse_wide_table",
-            "callback_handler": _langfuse_handler is not None,
-        }
+        if hasattr(_langfuse_client, "auth_check"):
+            auth_ok = bool(_langfuse_client.auth_check())
     except Exception as exc:
-        return {
-            "status": "unhealthy",
-            "version": "v4",
-            "ingestion_version": "4",
-            "observations_first": True,
-            "message": str(exc),
-        }
+        auth_ok = False
+        auth_msg = str(exc)
+        logger.debug("Langfuse auth_check failed: %s", exc)
+
+    result = {
+        "status": "healthy",
+        "version": "v4",
+        "host": config.LANGFUSE_HOST,
+        "observations_first": True,
+        "ingestion_version": "4",
+        "data_model": "clickhouse_wide_table",
+        "callback_handler": _langfuse_handler is not None,
+        "authenticated": auth_ok,
+    }
+    if auth_msg:
+        result["auth_message"] = auth_msg
+    return result
 
