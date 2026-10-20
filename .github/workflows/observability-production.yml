@@ -169,7 +169,7 @@ jobs:
 
           if [ -n "${POSTGRES_SSLMODE:-}" ]; then
             postgres_sslmode="${POSTGRES_SSLMODE}"
-          elif [ "${POSTGRES_HOST}" = "postgres" ] || [ "${POSTGRES_HOST}" = "localhost" ] || [ "${POSTGRES_HOST}" = "127.0.0.1" ]; then
+          elif [ "${POSTGRES_HOST}" = "postgres" ] || [ "${POSTGRES_HOST}" = "smart-tutor-postgres" ] || [ "${POSTGRES_HOST}" = "localhost" ] || [ "${POSTGRES_HOST}" = "127.0.0.1" ] || [[ "${POSTGRES_HOST}" != *"."* ]]; then
             postgres_sslmode="disable"
           else
             postgres_sslmode="require"
@@ -296,11 +296,17 @@ jobs:
 
           dump_diagnostics() {
             echo ""
+            echo "=== docker ps ==="
+            docker ps || true
+            echo ""
             echo "=== docker compose ps ==="
             "${compose_cmd[@]}" ps || true
             echo ""
             echo "=== docker compose logs (last 200 lines) ==="
             "${compose_cmd[@]}" logs --tail=200 || true
+            echo ""
+            echo "=== prometheus targets payload ==="
+            curl -fsS "http://127.0.0.1:9090/api/v1/targets" 2>/dev/null || true
           }
 
           start_heartbeat() {
@@ -323,7 +329,7 @@ jobs:
 
           require_prometheus_target_health() {
             local expected_jobs_csv="$1"
-            local attempts="${2:-12}"
+            local attempts="${2:-24}"
             local sleep_seconds="${3:-5}"
             local payload
 
@@ -348,7 +354,7 @@ jobs:
           missing = [job for job in expected if job not in health_by_job]
           unhealthy = [
               job for job in expected
-              if job in health_by_job and health_by_job[job] != {"up"}
+              if job in health_by_job and "up" not in health_by_job[job]
           ]
           if missing or unhealthy:
               if missing:

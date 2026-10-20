@@ -40,7 +40,7 @@ scrape_configs:
   - job_name: 'backend-api'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['smart-tutor-backend:8000', 'backend:8000']
+      - targets: ['smart-tutor-backend:8000']
         labels:
           service: 'backend-api'
           app: 'smart-ai-tutor'
