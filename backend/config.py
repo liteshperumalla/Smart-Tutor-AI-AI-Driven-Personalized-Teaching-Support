@@ -127,7 +127,7 @@ class Config:
 
     # JWT Settings - with AWS Secrets Manager support
     JWT_SECRET_KEY = (
-        _app_secrets.get("jwt_secret_key")
+        (_app_secrets.get("jwt_secret_key") or os.getenv("JWT_SECRET_KEY", SECRET_KEY))
         if _app_secrets
         else os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     )  # Separate key for JWT signing
@@ -234,7 +234,7 @@ class Config:
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
     # Redis AUTH token from Secrets Manager or environment
     REDIS_PASSWORD = (
-        _app_secrets.get("redis_auth_token")
+        (_app_secrets.get("redis_auth_token") or os.getenv("REDIS_PASSWORD", ""))
         if _app_secrets
         else os.getenv("REDIS_PASSWORD", "")
     )
@@ -439,7 +439,7 @@ class Config:
     # Web Search Settings - with AWS Secrets Manager support
     WEB_SEARCH_ENABLED = os.getenv("WEB_SEARCH_ENABLED", "true").lower() == "true"
     SERPAPI_API_KEY = (
-        _app_secrets.get("serpapi_api_key")
+        (_app_secrets.get("serpapi_api_key") or os.getenv("SERPAPI_API_KEY", ""))
         if _app_secrets
         else os.getenv("SERPAPI_API_KEY", "")
     )
@@ -448,16 +448,16 @@ class Config:
     # Langfuse Settings (for monitoring) - with AWS Secrets Manager support
     LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
     LANGFUSE_PUBLIC_KEY = (
-        _app_secrets.get("langfuse_public_key")
+        (_app_secrets.get("langfuse_public_key") or os.getenv("LANGFUSE_PUBLIC_KEY", ""))
         if _app_secrets
         else os.getenv("LANGFUSE_PUBLIC_KEY", "")
-    )
+    ).strip().strip("'\"")
     LANGFUSE_SECRET_KEY = (
-        _app_secrets.get("langfuse_secret_key")
+        (_app_secrets.get("langfuse_secret_key") or os.getenv("LANGFUSE_SECRET_KEY", ""))
         if _app_secrets
         else os.getenv("LANGFUSE_SECRET_KEY", "")
-    )
-    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    ).strip().strip("'\"")
+    LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com").strip().strip("'\"")
     LANGFUSE_INGESTION_VERSION = os.getenv("LANGFUSE_INGESTION_VERSION", "4")
 
     # PostHog Settings (analytics + LLM cost tracking)
@@ -471,12 +471,12 @@ class Config:
 
     # Google OAuth Settings - with AWS Secrets Manager support
     GOOGLE_OAUTH_CLIENT_ID = (
-        _app_secrets.get("google_oauth_client_id")
+        (_app_secrets.get("google_oauth_client_id") or os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""))
         if _app_secrets
         else os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
     )
     GOOGLE_OAUTH_CLIENT_SECRET = (
-        _app_secrets.get("google_oauth_client_secret")
+        (_app_secrets.get("google_oauth_client_secret") or os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""))
         if _app_secrets
         else os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
     )
