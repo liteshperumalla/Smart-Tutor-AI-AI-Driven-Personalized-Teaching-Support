@@ -10,7 +10,7 @@ This directory contains all project documentation organized by category.
 | [AWS](./aws/) | AWS infrastructure and migration | [AWS Deployment](./aws/COMPLETE_AWS_DEPLOYMENT.md) |
 | [Deployment](./deployment/) | Deployment guides and checklists | [Deployment Guide](./deployment/DEPLOYMENT_GUIDE.md) |
 | [Security](./security/) | Security implementation docs | [Security Overview](./security/README-SECURITY.md) |
-| [Architecture](./architecture/) | System design and architecture | [Architecture Deliverables](./architecture/FINAL_ARCHITECTURE_DELIVERABLES.md) |
+| [Architecture](./architecture/) | System design and diagrams | [System diagram](./architecture/system-architecture.svg), [RAG pipeline](./architecture/rag-pipeline.svg) |
 | [RAG](./rag/) | RAG pipeline and LLM evaluation | [RAG Architecture](./rag/RAG_ARCHITECTURE_ANALYSIS.md) |
 | [Development](./development/) | Phase-by-phase improvements | [Phase 1](./development/PHASE1_IMPROVEMENTS.md) |
 
@@ -21,7 +21,6 @@ This directory contains all project documentation organized by category.
 ```
 docs/
 ├── INDEX.md                 # This file
-├── README.md                # Project overview
 ├── guides/                  # Getting started guides
 │   ├── QUICK_START.md
 │   ├── HOW_TO_RUN.md
@@ -59,7 +58,10 @@ docs/
 │   ├── MICROSERVICES_IMPLEMENTATION_SUMMARY.md
 │   ├── PLATFORM_ENGINEERING_AUDIT.md
 │   ├── PLATFORM_ENGINEERING_COMPLETE_SUMMARY.md
-│   └── BACKEND_IMPROVEMENTS.md
+│   ├── BACKEND_IMPROVEMENTS.md
+│   ├── system-architecture.svg   # README diagram (generated)
+│   ├── rag-pipeline.svg          # README diagram (generated)
+│   └── src/                      # diagram generators: python docs/architecture/src/*.py
 ├── rag/                     # RAG & LLM documentation
 │   ├── RAG_ARCHITECTURE_ANALYSIS.md
 │   ├── RAG_COMPLETE_IMPLEMENTATION.md
@@ -75,18 +77,10 @@ docs/
 │   ├── PHASE2_IMPROVEMENTS.md
 │   ├── PHASE3_IMPROVEMENTS.md
 │   └── PHASE4_AWS_BEDROCK_MIGRATION.md
-├── status-reports/          # Historical status reports
-│   ├── MASTER_SUMMARY.md
-│   ├── FINAL_STATUS_REPORT.md
-│   ├── INDEX_ALL_IMPLEMENTATIONS.md
-│   ├── README_COMPLETE.md
-│   ├── IMPROVEMENTS_README.md
-│   ├── MIGRATION_AND_RS256_UPGRADE.md
-│   ├── FRONTEND_COMPATIBILITY_REPORT.md
-│   ├── COMPLETE_SUMMARY.md
-│   └── DEMO_TEST_SUMMARY.md
 ├── runbooks/                # Operational runbooks
-└── archive/                 # Archived documentation
+├── reports/                 # Project report (PDF)
+│   └── smart-tutor-ai-project-report.pdf
+└── archive/                 # Archived documentation, old status reports, v1 RAG diagram
 ```
 
 ---

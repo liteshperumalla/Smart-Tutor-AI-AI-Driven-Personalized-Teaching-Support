@@ -665,7 +665,7 @@ class Config:
         ).lower()
         == "true"
     )
-    DRIFT_BASELINE_PATH = os.getenv("DRIFT_BASELINE_PATH", "./drift_baseline.json")
+    DRIFT_BASELINE_PATH = os.getenv("DRIFT_BASELINE_PATH", "./data/drift_baseline.json")
 
     # Reproducibility manifest
     REPRODUCIBILITY_ENABLED = (
