@@ -68,7 +68,7 @@ jobs:
               --json workflowName,status \
               --jq '.[] | select(.status == "in_progress" or .status == "queued") | .workflowName' 2>/dev/null || true)"
             if [ -n "${active_runs}" ]; then
-              critical_workflows="Production Deploy|Production Observability Bootstrap|Synthetic Production Monitor|Post-Deploy Smoke Tests|Database Migrations|Rollback Production|CI Pipeline"
+              critical_workflows="Production Deploy|Staging Deploy|Production Observability Bootstrap|Synthetic Production Monitor|Post-Deploy Smoke Tests|Database Migrations|Rollback Production|CI Pipeline"
               matched="$(echo "${active_runs}" | grep -E "${critical_workflows}" || true)"
               if [ -n "${matched}" ]; then
                 echo "Active workflows currently in progress or queued:"

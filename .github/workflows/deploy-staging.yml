@@ -1,6 +1,12 @@
 name: Staging Deploy
 
+# Staging runs as separate containers on the production EC2 instance
+# (smart-tutor-staging-backend on port 8110, own data dir, CPU/RAM capped).
+# Deploy a PR by adding the "deploy:staging" label; new pushes to a labelled
+# PR redeploy it, and removing the label or closing the PR tears staging down.
 on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, reopened, closed]
   workflow_run:
     workflows: ["CI Pipeline"]
     types: [completed]
@@ -8,18 +14,25 @@ on:
   workflow_dispatch:
     inputs:
       git_ref:
-        description: Protected branch to deploy (staging deploys only from develop)
+        description: Branch, tag or SHA to deploy to staging
         required: true
-        default: develop
-        type: choice
-        options:
-          - develop
+        default: main
 
 env:
   PYTHON_VERSION: "3.11"
   NODE_VERSION: "20.20.2"
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
+  # Same instance as production; the "staging" environment can override any
+  # of these secrets if a dedicated staging host is added later.
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+  EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+  EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+  EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+  EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+  EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
 
 concurrency:
   group: staging-deploy
@@ -35,7 +48,12 @@ jobs:
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'develop') ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       ((github.event.action == 'labeled' && github.event.label.name == 'deploy:staging') ||
+        ((github.event.action == 'synchronize' || github.event.action == 'reopened') &&
+         contains(github.event.pull_request.labels.*.name, 'deploy:staging'))))
     timeout-minutes: 120
     permissions:
       contents: read
@@ -54,20 +72,26 @@ jobs:
           WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           INPUT_GIT_REF: ${{ inputs.git_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
-          if [ "${EVENT_NAME}" = "workflow_run" ]; then
-            checkout_ref="${WORKFLOW_HEAD_SHA}"
-            deploy_ref="develop"
-          else
-            if [ "${INPUT_GIT_REF}" != "develop" ]; then
-              echo "::error::Manual staging deployments are restricted to the protected develop branch."
-              exit 1
-            fi
-            checkout_ref="develop"
-            deploy_ref="develop"
-          fi
+          case "${EVENT_NAME}" in
+            workflow_run)
+              checkout_ref="${WORKFLOW_HEAD_SHA}"
+              deploy_ref="develop"
+              ;;
+            pull_request)
+              checkout_ref="${PR_HEAD_SHA}"
+              deploy_ref="PR #${PR_NUMBER} (${PR_HEAD_REF})"
+              ;;
+            *)
+              checkout_ref="${INPUT_GIT_REF}"
+              deploy_ref="${INPUT_GIT_REF}"
+              ;;
+          esac
 
           echo "checkout_ref=${checkout_ref}" >> "$GITHUB_OUTPUT"
           echo "deploy_ref=${deploy_ref}" >> "$GITHUB_OUTPUT"
@@ -80,20 +104,20 @@ jobs:
 
       - name: Validate required staging secrets
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
-          EC2_SSH_FINGERPRINT: ${{ secrets.EC2_SSH_FINGERPRINT }}
         run: |
           set -euo pipefail
 
           missing=()
-          for name in EC2_HOST EC2_USER EC2_SSH_KEY EC2_KNOWN_HOSTS EC2_SSH_FINGERPRINT NEXT_PUBLIC_APP_BASE_URL NEXT_PUBLIC_GOOGLE_CLIENT_ID NEXT_PUBLIC_GOOGLE_REDIRECT_URI; do
+          for name in EC2_USER EC2_SSH_KEY NEXT_PUBLIC_APP_BASE_URL NEXT_PUBLIC_GOOGLE_CLIENT_ID NEXT_PUBLIC_GOOGLE_REDIRECT_URI; do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")
             fi
           done
+          if [ -z "${EC2_HOST:-}" ] && [ -z "${EC2_INSTANCE_ID:-}" ] && [ -z "${EC2_INSTANCE_NAME:-}" ]; then
+            missing+=("EC2_HOST or EC2_INSTANCE_ID/EC2_INSTANCE_NAME")
+          fi
 
           if [ "${#missing[@]}" -gt 0 ]; then
             echo "::error::Missing required staging deployment secrets: ${missing[*]}"
@@ -114,6 +138,14 @@ jobs:
             echo "::error::Staging builds must not use placeholder Google OAuth configuration."
             exit 1
           fi
+
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
+
+      - name: Resolve EC2 target (shared with production)
+        id: ec2-target
+        run: scripts/ci/resolve_ec2_target.sh
 
       - name: Generate version tag
         id: version
@@ -164,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
-          archive_path="backend-image-${{ steps.version.outputs.version }}.tar.gz"
+          archive_path="${RUNNER_TEMP}/backend-image-${{ steps.version.outputs.version }}.tar.gz"
 
           docker save "${backend_image}" | gzip -1 > "${archive_path}"
           ls -lh "${archive_path}"
@@ -194,57 +226,62 @@ jobs:
       - name: Transfer backend image bundle to staging EC2
         id: transfer_backend_image
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
           ARCHIVE_PATH: ${{ steps.export_backend_image.outputs.archive_path }}
           ARCHIVE_NAME: ${{ steps.export_backend_image.outputs.archive_name }}
         run: |
           set -euo pipefail
 
           key_file="$(mktemp)"
-          known_hosts_file="$(mktemp)"
           printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
-          printf '%s\n' "${EC2_KNOWN_HOSTS}" > "${known_hosts_file}"
           chmod 600 "${key_file}"
 
-          remote_archive="/tmp/${ARCHIVE_NAME}"
+          # Distinct name so it can't collide with a production bundle in /tmp.
+          remote_archive="/tmp/staging-${ARCHIVE_NAME}"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
-            "set -euo pipefail;
-             rm -f /tmp/backend-image-*.tar.gz /tmp/backend-image-*.tar /tmp/drone-scp-* /tmp/*.tmp 2>/dev/null || true;
-             docker image prune -af >/dev/null 2>&1 || true;
-             docker container prune -f >/dev/null 2>&1 || true;
-             docker builder prune -af >/dev/null 2>&1 || true;
-             df -h / /tmp || true"
+          ssh_ok=false
+          for attempt in 1 2 3; do
+            if ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+              ssh_ok=true
+              break
+            fi
+            echo "SSH attempt ${attempt}/3 failed; re-verifying EC2 state and ingress..."
+            scripts/ci/resolve_ec2_target.sh || true
+            sleep 5
+          done
+          if [ "${ssh_ok}" != "true" ]; then
+            echo "::error::Unable to reach the EC2 host over SSH."
+            exit 1
+          fi
 
-          scp -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
+          # Only clear staging leftovers: production may be mid-deploy on this host.
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+            "rm -f /tmp/staging-backend-image-*.tar.gz 2>/dev/null || true; df -h / /tmp || true"
 
-          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${known_hosts_file}" -o LogLevel=ERROR -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
-            -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
-            "set -euo pipefail;
-             test -f '${remote_archive}';
-             ls -lh '${remote_archive}';
-             df -h / /tmp || true"
+          scp "${ssh_opts[@]}" -i "${key_file}" "${ARCHIVE_PATH}" "${EC2_USER}@${EC2_HOST}:${remote_archive}"
 
-          rm -f "${key_file}" "${known_hosts_file}"
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+            "set -euo pipefail; test -f '${remote_archive}'; ls -lh '${remote_archive}'"
+
+          rm -f "${key_file}"
 
       - name: Deploy backend to staging EC2
         id: deploy_backend
         uses: appleboy/ssh-action@v1.0.3
         env:
           BACKEND_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}
-          BACKEND_IMAGE_ARCHIVE: /tmp/${{ steps.export_backend_image.outputs.archive_name }}
+          BACKEND_IMAGE_ARCHIVE: /tmp/staging-${{ steps.export_backend_image.outputs.archive_name }}
+          STAGING_MEMORY_LIMIT: ${{ vars.STAGING_MEMORY_LIMIT || '1g' }}
+          STAGING_CPU_LIMIT: ${{ vars.STAGING_CPU_LIMIT || '1.0' }}
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          fingerprint: ${{ secrets.EC2_SSH_FINGERPRINT }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,STAGING_MEMORY_LIMIT,STAGING_CPU_LIMIT
           script: |
             set -euo pipefail
 
@@ -256,6 +293,16 @@ jobs:
             STAGING_BACKEND_CONTAINER="smart-tutor-staging-backend"
             STAGING_CANDIDATE_CONTAINER="smart-tutor-staging-backend-candidate"
             STAGING_BACKEND_PORT="8110"
+            # Never mount production's data dirs: staging must not touch prod users or indexes.
+            STAGING_DATA_DIR="/home/ubuntu/smart-tutor-staging-data"
+            mkdir -p "${STAGING_DATA_DIR}/logs" "${STAGING_DATA_DIR}/user_data" "${STAGING_DATA_DIR}/chroma_db"
+            # Cap staging so it can't starve the production containers it shares the host with.
+            STAGING_LIMITS=(--memory "${STAGING_MEMORY_LIMIT:-1g}" --cpus "${STAGING_CPU_LIMIT:-1.0}")
+
+            if [ ! -f "${STAGING_ENV_FILE}" ]; then
+              echo "::error::Missing ${STAGING_ENV_FILE} on the host. Create it with staging-only settings (separate DB/Redis/S3 prefixes, ENVIRONMENT=staging); do not copy the production env file."
+              exit 1
+            fi
 
             docker_with_timeout() {
               local seconds="$1"
@@ -278,9 +325,8 @@ jobs:
               docker stop "${STAGING_BACKEND_CONTAINER}" 2>/dev/null || true
               docker rm "${STAGING_BACKEND_CONTAINER}" 2>/dev/null || true
 
-              echo "=== Pruning unused Docker data before load ==="
-              docker image prune -af || true
-              docker builder prune -af || true
+              echo "=== Pruning dangling Docker data before load ==="
+              docker image prune -f || true
             }
 
             docker_load_backend_image() {
@@ -381,9 +427,10 @@ jobs:
               --health-timeout 3s \
               --health-start-period 10s \
               --health-retries 3 \
-              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
-              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
-              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "${STAGING_LIMITS[@]}" \
+              -v "${STAGING_DATA_DIR}/logs:/app/logs" \
+              -v "${STAGING_DATA_DIR}/user_data:/app/user_data" \
+              -v "${STAGING_DATA_DIR}/chroma_db:/app/chroma_db" \
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
 
@@ -408,9 +455,10 @@ jobs:
               --health-start-period 10s \
               --health-retries 3 \
               -p "${STAGING_BACKEND_PORT}:8000" \
-              -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
-              -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
-              -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+              "${STAGING_LIMITS[@]}" \
+              -v "${STAGING_DATA_DIR}/logs:/app/logs" \
+              -v "${STAGING_DATA_DIR}/user_data:/app/user_data" \
+              -v "${STAGING_DATA_DIR}/chroma_db:/app/chroma_db" \
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
 
@@ -423,8 +471,12 @@ jobs:
             docker rm -f "${STAGING_CANDIDATE_CONTAINER}" 2>/dev/null || true
             rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
 
-            echo "=== Pruning all unused images/layers ==="
-            docker image prune -af || true
+            echo "=== Pruning dangling images ==="
+            docker image prune -f || true
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Deployment summary
         if: always()
@@ -446,11 +498,57 @@ jobs:
             echo "| Backend bundle transfer | \`${{ steps.transfer_backend_image.outcome }}\` |"
             echo "| Frontend image build | \`${{ steps.build_frontend_image.outcome }}\` |"
             echo "| Backend staging deploy | \`${{ steps.deploy_backend.outcome }}\` |"
-            echo "| Frontend preview deploy | Vercel Git integration |"
+            echo "| Staging backend | \`smart-tutor-staging-backend\` on port 8110 of the production EC2 |"
+            echo "| Frontend preview deploy | Vercel Git integration (PR preview) |"
             echo ""
             echo "Stages:"
             echo "- Backend image build and smoke test"
             echo "- Frontend image build"
-            echo "- Vercel Git integration publishes the frontend preview from develop"
-            echo "- Staging EC2 backend replacement"
+            echo "- Vercel Git integration publishes the frontend preview for the branch"
+            echo "- Staging backend replacement on the shared EC2 (isolated data dir, CPU/RAM capped)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  teardown-staging:
+    name: Tear Down Staging
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+    # Free the shared production host when a staged PR is unlabelled or closed.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.action == 'unlabeled' && github.event.label.name == 'deploy:staging') ||
+       (github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'deploy:staging')))
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
+
+      - name: Resolve EC2 target (shared with production)
+        id: ec2-target
+        run: scripts/ci/resolve_ec2_target.sh
+
+      - name: Stop staging containers
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.ec2-target.outputs.host }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            docker rm -f smart-tutor-staging-backend smart-tutor-staging-backend-candidate 2>/dev/null || true
+            rm -f /tmp/staging-backend-image-*.tar.gz 2>/dev/null || true
+            docker image prune -f >/dev/null 2>&1 || true
+            echo "Staging containers removed."
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
