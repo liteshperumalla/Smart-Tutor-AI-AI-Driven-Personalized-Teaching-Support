@@ -188,7 +188,9 @@ jobs:
         run: |
           set -euo pipefail
           backend_image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}"
-          archive_path="backend-image-${{ steps.version.outputs.version }}.tar.gz"
+          # Write outside the checkout: `vercel deploy` uploads the repo root,
+          # and this bundle is far over Vercel's 100 MB per-file limit.
+          archive_path="${RUNNER_TEMP}/backend-image-${{ steps.version.outputs.version }}.tar.gz"
 
           docker save "${backend_image}" | gzip -1 > "${archive_path}"
           ls -lh "${archive_path}"
@@ -221,7 +223,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          npm install --global vercel@latest
+          npm install --global vercel@65.0.0
           vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
           deployment_url="$(vercel deploy --prod --yes --token="$VERCEL_TOKEN" | tail -n 1 | perl -pe 's/\r$//')"
           if [ -z "$deployment_url" ]; then
@@ -239,25 +241,42 @@ jobs:
 
       - name: Cleanup old Vercel production deployments
         if: ${{ steps.vercel_deploy.outputs.deployment_url != '' }}
+        continue-on-error: true
         env:
           DEPLOYMENT_URL: ${{ steps.vercel_deploy.outputs.deployment_url }}
+          # Keep the newest N READY production deployments (including the one
+          # just created) so Vercel Instant Rollback still has targets.
+          VERCEL_KEEP_DEPLOYMENTS: ${{ vars.VERCEL_KEEP_DEPLOYMENTS || '3' }}
         run: |
           set -euo pipefail
 
-          deployments_json="$(vercel list --environment=production --status=READY --format json --token="$VERCEL_TOKEN")"
-          deploy_count="$(echo "$deployments_json" | jq 'length')"
-          if [ "$deploy_count" -le 1 ]; then
+          api="https://api.vercel.com"
+          auth=(-H "Authorization: Bearer ${VERCEL_TOKEN}")
+          current_host="${DEPLOYMENT_URL#https://}"
+
+          deployments_json="$(curl -fsS "${auth[@]}" \
+            "${api}/v6/deployments?projectId=${VERCEL_PROJECT_ID}&teamId=${VERCEL_ORG_ID}&target=production&state=READY&limit=100")"
+
+          # Newest first; never delete the deployment this run just created.
+          mapfile -t stale < <(echo "$deployments_json" | jq -r \
+            --arg current "$current_host" --argjson keep "$VERCEL_KEEP_DEPLOYMENTS" '
+              .deployments
+              | sort_by(-.created)
+              | map(select(.url != $current))
+              | .[($keep - 1):]
+              | .[] | "\(.uid) \(.url)"')
+
+          echo "Active deployment: ${current_host} (keeping newest ${VERCEL_KEEP_DEPLOYMENTS})"
+          if [ "${#stale[@]}" -eq 0 ]; then
             echo "No old production deployments to remove."
             exit 0
           fi
 
-          echo "Keeping active deployment: $DEPLOYMENT_URL"
-
-          echo "$deployments_json" | jq -r '.[].url' | while read -r url; do
-            if [ -n "$url" ] && [ "$url" != "$DEPLOYMENT_URL" ]; then
-              echo "Removing old deployment: $url"
-              vercel remove "$url" --yes --token="$VERCEL_TOKEN" || true
-            fi
+          for entry in "${stale[@]}"; do
+            uid="${entry%% *}"; url="${entry#* }"
+            echo "Removing old deployment: ${url}"
+            curl -fsS -X DELETE "${auth[@]}" "${api}/v13/deployments/${uid}?teamId=${VERCEL_ORG_ID}" >/dev/null \
+              || echo "::warning::Failed to remove ${url}"
           done
 
       - name: Transfer backend image bundle to EC2
