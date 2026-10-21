@@ -107,6 +107,7 @@ def init_langfuse(force: bool = False) -> bool:
         _init_error = f"{type(exc).__name__}: {exc}"
         logger.error("Failed to initialize Langfuse client: %s", exc)
         _langfuse_client = None
+        _initialized = False
 
     # 2. LlamaIndex callback handler
     try:
