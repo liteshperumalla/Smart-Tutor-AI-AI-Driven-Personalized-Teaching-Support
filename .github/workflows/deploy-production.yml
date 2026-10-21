@@ -11,6 +11,15 @@ on:
         description: Git ref to deploy
         required: true
         default: main
+      components:
+        description: What to deploy (CI-triggered runs always deploy both)
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - backend
+          - frontend
 
 env:
   PYTHON_VERSION: "3.11"
@@ -41,6 +50,8 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       deploy_ref: ${{ steps.target.outputs.deploy_ref }}
       promote_gitops: ${{ steps.target.outputs.promote_gitops }}
+      components: ${{ steps.target.outputs.components }}
+      frontend_deploy: ${{ steps.vercel_deploy.outcome || 'skipped' }}
     if: >-
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
@@ -64,16 +75,27 @@ jobs:
           WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           INPUT_GIT_REF: ${{ inputs.git_ref }}
+          INPUT_COMPONENTS: ${{ inputs.components }}
         run: |
           set -euo pipefail
 
           if [ "${EVENT_NAME}" = "workflow_run" ]; then
             checkout_ref="${WORKFLOW_HEAD_SHA}"
             deploy_ref="${WORKFLOW_HEAD_BRANCH}"
+            components="both"
           else
             checkout_ref="${INPUT_GIT_REF}"
             deploy_ref="${INPUT_GIT_REF}"
+            components="${INPUT_COMPONENTS:-both}"
           fi
+
+          case "${components}" in
+            both)     deploy_backend=true;  deploy_frontend=true ;;
+            backend)  deploy_backend=true;  deploy_frontend=false ;;
+            frontend) deploy_backend=false; deploy_frontend=true ;;
+            *) echo "::error::Unknown components value: ${components}"; exit 1 ;;
+          esac
+          echo "Deploying: ${components} (backend=${deploy_backend}, frontend=${deploy_frontend})"
 
           case "${deploy_ref}" in
             main|refs/heads/main)
@@ -87,6 +109,9 @@ jobs:
           echo "checkout_ref=${checkout_ref}" >> "$GITHUB_OUTPUT"
           echo "deploy_ref=${deploy_ref}" >> "$GITHUB_OUTPUT"
           echo "promote_gitops=${promote_gitops}" >> "$GITHUB_OUTPUT"
+          echo "components=${components}" >> "$GITHUB_OUTPUT"
+          echo "deploy_backend=${deploy_backend}" >> "$GITHUB_OUTPUT"
+          echo "deploy_frontend=${deploy_frontend}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -95,6 +120,7 @@ jobs:
           fetch-depth: 1
 
       - name: Validate required deployment secrets
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         env:
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
@@ -117,16 +143,18 @@ jobs:
           fi
 
       - name: Install AWS CLI
-        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        if: ${{ steps.target.outputs.deploy_backend == 'true' && env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
         # Pinned to v1.0.7 SHA per CodeRabbit / supply-chain hygiene. Tags are
         # mutable; SHA pins prevent a repointed tag from injecting untrusted code.
         uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
 
       - name: Resolve production EC2 target
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: ec2-target
         run: scripts/ci/resolve_ec2_target.sh
 
       - name: Validate optional Vercel configuration
+        if: ${{ steps.target.outputs.deploy_frontend == 'true' }}
         run: |
           set -euo pipefail
 
@@ -159,6 +187,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & push backend image
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: build_backend_image
         uses: docker/build-push-action@v5
         with:
@@ -172,6 +201,7 @@ jobs:
           cache-to: type=gha,mode=min,scope=backend-image
 
       - name: Smoke test backend image
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: smoke_test_backend_image
         run: |
           set -euo pipefail
@@ -184,6 +214,7 @@ jobs:
             python -c "from pathlib import Path; import fastapi, uvicorn; import langgraph; from backend.api.main import app; dataset = Path('/app/backend/rag/tests/test_dataset.json'); assert dataset.exists(), f'missing evaluation dataset: {dataset}'; assert dataset.stat().st_size > 0, f'empty evaluation dataset: {dataset}'; print(f'backend image runtime import check passed: {app.title} | dataset={dataset}')"
 
       - name: Export backend image bundle
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: export_backend_image
         run: |
           set -euo pipefail
@@ -199,6 +230,7 @@ jobs:
           echo "archive_name=$(basename "${archive_path}")" >> "$GITHUB_OUTPUT"
 
       - name: Build & push frontend image
+        if: ${{ steps.target.outputs.deploy_frontend == 'true' }}
         id: build_frontend_image
         uses: docker/build-push-action@v5
         with:
@@ -219,7 +251,7 @@ jobs:
 
       - name: Deploy frontend to Vercel
         id: vercel_deploy
-        if: ${{ env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
+        if: ${{ steps.target.outputs.deploy_frontend == 'true' && env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -280,6 +312,7 @@ jobs:
           done
 
       - name: Transfer backend image bundle to EC2
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: transfer_backend_image
         env:
           EC2_HOST: ${{ steps.ec2-target.outputs.host }}
@@ -332,6 +365,7 @@ jobs:
           rm -f "${key_file}"
 
       - name: Deploy backend to EC2
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         id: deploy_backend
         uses: appleboy/ssh-action@v1.0.3
         env:
@@ -626,7 +660,7 @@ jobs:
             docker_with_timeout 10m docker image prune -af || true
 
       - name: Revoke temporary SSH ingress
-        if: always()
+        if: ${{ always() && steps.target.outputs.deploy_backend == 'true' }}
         run: scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Deployment summary
@@ -639,6 +673,7 @@ jobs:
             echo "|------|-------|"
             echo "| Workflow trigger | \`${{ github.event_name }}\` |"
             echo "| Deploy ref | \`${{ steps.target.outputs.deploy_ref }}\` |"
+            echo "| Components | \`${{ steps.target.outputs.components }}\` |"
             echo "| Commit | \`${{ steps.version.outputs.sha }}\` |"
             echo "| Release version | \`${{ steps.version.outputs.version }}\` |"
             echo "| Backend image | \`ghcr.io/${{ env.IMAGE_NAME }}-backend:${{ steps.version.outputs.version }}\` |"
@@ -673,6 +708,7 @@ jobs:
     if: >-
       needs.build-and-deploy.result == 'success' &&
       needs.build-and-deploy.outputs.promote_gitops == 'true' &&
+      needs.build-and-deploy.outputs.components == 'both' &&
       github.actor != 'github-actions[bot]' &&
       vars.ENABLE_GITOPS_PRODUCTION == 'true'
     permissions:
@@ -747,7 +783,7 @@ jobs:
       verbiage: Deploy
       message: |
         ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
-        Deployment is live on production EC2.
+        Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
@@ -771,7 +807,7 @@ jobs:
       verbiage: Deploy
       message: |
         ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
-        Deployment completed and promoted via GitOps.
+        Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
