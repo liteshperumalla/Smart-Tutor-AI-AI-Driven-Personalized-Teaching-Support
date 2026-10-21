@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1000" viewBox="0 0 1400 1000" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">Smart Tutor AI — RAG pipeline</title><desc id="d">Offline ingestion of INFO 5731 course materials into an S3 vector store, and the online per-message pipeline from the chat UI through retrieval, Bedrock generation, grounding and streaming.</desc>
+<defs><marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker><marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#10b981"/></marker><marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/></marker><marker id="arrow-violet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8b5cf6"/></marker></defs>
+<rect x="0.5" y="0.5" width="1399" height="999" rx="18" fill="#ffffff" stroke="#e2e8f0"/>
+<text x="700.0" y="46" font-size="26" font-weight="800" fill="#0f172a" text-anchor="middle">Smart Tutor AI — RAG Pipeline</text>
+<text x="700.0" y="70" font-size="14" font-weight="400" fill="#64748b" text-anchor="middle">Grounded answers from INFO 5731 course materials · AWS Bedrock · S3 vector store · SSE streaming</text>
+<rect x="30" y="92" width="1340" height="158" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="48" y="118" font-size="13" font-weight="700" fill="#0f172a">① Ingestion<tspan font-size="12" font-weight="400" fill="#64748b">   offline · scripts/s3-vectors</tspan></text>
+<rect x="60" y="136" width="220" height="88" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+<rect x="60" y="146" width="4" height="68" rx="2" fill="#10b981"/>
+<text x="76" y="162" font-size="14" font-weight="700" fill="#065f46" text-anchor="start">Course corpus</text>
+<text x="76" y="182" font-size="12" font-weight="400" fill="#475569" text-anchor="start">11 modules of INFO 5731</text>
+<text x="76" y="199" font-size="12" font-weight="400" fill="#475569" text-anchor="start">slides · PDFs · notebooks · videos</text>
+<rect x="325" y="136" width="220" height="88" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+<rect x="325" y="146" width="4" height="68" rx="2" fill="#10b981"/>
+<text x="341" y="162" font-size="14" font-weight="700" fill="#065f46" text-anchor="start">Parse + OCR</text>
+<text x="341" y="182" font-size="12" font-weight="400" fill="#475569" text-anchor="start">LlamaIndex readers</text>
+<text x="341" y="199" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Tesseract for scanned PDFs</text>
+<rect x="590" y="136" width="220" height="88" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+<rect x="590" y="146" width="4" height="68" rx="2" fill="#10b981"/>
+<text x="606" y="162" font-size="14" font-weight="700" fill="#065f46" text-anchor="start">Chunk</text>
+<text x="606" y="182" font-size="12" font-weight="400" fill="#475569" text-anchor="start">~512-token chunks</text>
+<text x="606" y="199" font-size="12" font-weight="400" fill="#475569" text-anchor="start">page / slide metadata kept</text>
+<rect x="855" y="136" width="220" height="88" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+<rect x="855" y="146" width="4" height="68" rx="2" fill="#10b981"/>
+<text x="871" y="162" font-size="14" font-weight="700" fill="#065f46" text-anchor="start">Embed</text>
+<text x="871" y="182" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Amazon Titan Text v2</text>
+<text x="871" y="199" font-size="12" font-weight="400" fill="#475569" text-anchor="start">1,024-dim vectors</text>
+<rect x="1120" y="136" width="220" height="88" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="1.6"/>
+<rect x="1120" y="146" width="4" height="68" rx="2" fill="#ef4444"/>
+<text x="1136" y="162" font-size="14" font-weight="700" fill="#7f1d1d" text-anchor="start">S3 vector store</text>
+<text x="1136" y="182" font-size="12" font-weight="400" fill="#475569" text-anchor="start">s3://smart-ai-tutor-docs</text>
+<text x="1136" y="199" font-size="12" font-weight="400" fill="#475569" text-anchor="start">chunks/ + vector_index/</text>
+<path d="M280 180.0 H323" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<path d="M545 180.0 H588" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<path d="M810 180.0 H853" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<path d="M1075 180.0 H1118" fill="none" stroke="#10b981" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<rect x="30" y="272" width="1340" height="470" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="48" y="298" font-size="13" font-weight="700" fill="#0f172a">② Query<tspan font-size="12" font-weight="400" fill="#64748b">   online · every chat message (POST /chat/sessions/{id}/messages)</tspan></text>
+<rect x="60" y="314" width="220" height="88" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<rect x="60" y="324" width="4" height="68" rx="2" fill="#3b82f6"/>
+<text x="76" y="340" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="start">Chat UI</text>
+<text x="76" y="360" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Next.js 16 · React 19</text>
+<text x="76" y="377" font-size="12" font-weight="400" fill="#475569" text-anchor="start">model picker per message</text>
+<rect x="325" y="314" width="220" height="88" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<rect x="325" y="324" width="4" height="68" rx="2" fill="#3b82f6"/>
+<text x="341" y="340" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="start">Vercel API proxy</text>
+<text x="341" y="360" font-size="12" font-weight="400" fill="#475569" text-anchor="start">/api/backend/* → EC2</text>
+<text x="341" y="377" font-size="12" font-weight="400" fill="#475569" text-anchor="start">friendly 503 off-hours</text>
+<rect x="590" y="314" width="220" height="88" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<rect x="590" y="324" width="4" height="68" rx="2" fill="#3b82f6"/>
+<text x="606" y="340" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="start">FastAPI (SSE)</text>
+<text x="606" y="360" font-size="12" font-weight="400" fill="#475569" text-anchor="start">JWT cookies · CSRF</text>
+<text x="606" y="377" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Redis rate limiting</text>
+<rect x="855" y="314" width="220" height="88" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<rect x="855" y="324" width="4" height="68" rx="2" fill="#3b82f6"/>
+<text x="871" y="340" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="start">Route</text>
+<text x="871" y="360" font-size="12" font-weight="400" fill="#475569" text-anchor="start">greeting short-circuit</text>
+<text x="871" y="377" font-size="12" font-weight="400" fill="#475569" text-anchor="start">LangGraph agents (flag)</text>
+<rect x="1120" y="314" width="220" height="88" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="1120" y="324" width="4" height="68" rx="2" fill="#f59e0b"/>
+<text x="1136" y="340" font-size="14" font-weight="700" fill="#78350f" text-anchor="start">Answer cache</text>
+<text x="1136" y="360" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Redis · fuzzy match ≥0.95</text>
+<text x="1136" y="377" font-size="12" font-weight="400" fill="#475569" text-anchor="start">TTL 1 h</text>
+<rect x="1290" y="323" width="42" height="18" rx="9" fill="#ffffff" stroke="#f59e0b"/>
+<text x="1311.0" y="336" font-size="10.5" font-weight="600" fill="#78350f" text-anchor="middle">flag</text>
+<path d="M280 358.0 H323" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M545 358.0 H588" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M810 358.0 H853" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M1075 358.0 H1118" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<rect x="60" y="466" width="220" height="88" rx="10" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="60" y="476" width="4" height="68" rx="2" fill="#22c55e"/>
+<text x="76" y="492" font-size="14" font-weight="700" fill="#14532d" text-anchor="start">Query enhancement</text>
+<text x="76" y="512" font-size="12" font-weight="400" fill="#475569" text-anchor="start">rewrite + expansion</text>
+<text x="76" y="529" font-size="12" font-weight="400" fill="#475569" text-anchor="start">original kept for prompt</text>
+<rect x="230" y="475" width="42" height="18" rx="9" fill="#ffffff" stroke="#22c55e"/>
+<text x="251.0" y="488" font-size="10.5" font-weight="600" fill="#14532d" text-anchor="middle">flag</text>
+<rect x="325" y="466" width="220" height="88" rx="10" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6"/>
+<rect x="325" y="476" width="4" height="68" rx="2" fill="#22c55e"/>
+<text x="341" y="492" font-size="14" font-weight="700" fill="#14532d" text-anchor="start">Vector search</text>
+<text x="341" y="512" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Titan query embedding</text>
+<text x="341" y="529" font-size="12" font-weight="400" fill="#475569" text-anchor="start">cosine top-k over S3 index</text>
+<rect x="590" y="466" width="220" height="88" rx="10" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="590" y="476" width="4" height="68" rx="2" fill="#22c55e"/>
+<text x="606" y="492" font-size="14" font-weight="700" fill="#14532d" text-anchor="start">Cross-encoder rerank</text>
+<text x="606" y="512" font-size="12" font-weight="400" fill="#475569" text-anchor="start">ms-marco-MiniLM-L-12</text>
+<text x="606" y="529" font-size="12" font-weight="400" fill="#475569" text-anchor="start">top-k → best 3</text>
+<rect x="760" y="475" width="42" height="18" rx="9" fill="#ffffff" stroke="#22c55e"/>
+<text x="781.0" y="488" font-size="10.5" font-weight="600" fill="#14532d" text-anchor="middle">flag</text>
+<rect x="855" y="466" width="220" height="88" rx="10" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6"/>
+<rect x="855" y="476" width="4" height="68" rx="2" fill="#22c55e"/>
+<text x="871" y="492" font-size="14" font-weight="700" fill="#14532d" text-anchor="start">Web fallback</text>
+<text x="871" y="512" font-size="12" font-weight="400" fill="#475569" text-anchor="start">only if course context is weak</text>
+<text x="871" y="529" font-size="12" font-weight="400" fill="#475569" text-anchor="start">SerpAPI → DuckDuckGo</text>
+<rect x="1120" y="466" width="220" height="88" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.6"/>
+<rect x="1120" y="476" width="4" height="68" rx="2" fill="#8b5cf6"/>
+<text x="1136" y="492" font-size="14" font-weight="700" fill="#4c1d95" text-anchor="start">Prompt assembly</text>
+<text x="1136" y="512" font-size="12" font-weight="400" fill="#475569" text-anchor="start">numbered [Source n] context</text>
+<text x="1136" y="529" font-size="12" font-weight="400" fill="#475569" text-anchor="start">course or web QA template</text>
+<path d="M280 510.0 H323" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M545 510.0 H588" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M810 510.0 H853" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M1075 510.0 H1118" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<rect x="60" y="618" width="220" height="88" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.6"/>
+<rect x="60" y="628" width="4" height="68" rx="2" fill="#8b5cf6"/>
+<text x="76" y="644" font-size="14" font-weight="700" fill="#4c1d95" text-anchor="start">LLM synthesis</text>
+<text x="76" y="664" font-size="12" font-weight="400" fill="#475569" text-anchor="start">AWS Bedrock · streaming</text>
+<text x="76" y="681" font-size="12" font-weight="400" fill="#475569" text-anchor="start">Llama 3.3 · Claude 5.5 · GPT 6</text>
+<rect x="325" y="618" width="220" height="88" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="325" y="628" width="4" height="68" rx="2" fill="#8b5cf6"/>
+<text x="341" y="644" font-size="14" font-weight="700" fill="#4c1d95" text-anchor="start">Self-RAG check</text>
+<text x="341" y="664" font-size="12" font-weight="400" fill="#475569" text-anchor="start">is the answer grounded?</text>
+<text x="341" y="681" font-size="12" font-weight="400" fill="#475569" text-anchor="start">adds a disclaimer if not</text>
+<rect x="495" y="627" width="42" height="18" rx="9" fill="#ffffff" stroke="#8b5cf6"/>
+<text x="516.0" y="640" font-size="10.5" font-weight="600" fill="#4c1d95" text-anchor="middle">flag</text>
+<rect x="590" y="618" width="220" height="88" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="6 4"/>
+<rect x="590" y="628" width="4" height="68" rx="2" fill="#f59e0b"/>
+<text x="606" y="644" font-size="14" font-weight="700" fill="#78350f" text-anchor="start">Cache write-back</text>
+<text x="606" y="664" font-size="12" font-weight="400" fill="#475569" text-anchor="start">course answers only</text>
+<text x="606" y="681" font-size="12" font-weight="400" fill="#475569" text-anchor="start">web answers never cached</text>
+<rect x="760" y="627" width="42" height="18" rx="9" fill="#ffffff" stroke="#f59e0b"/>
+<text x="781.0" y="640" font-size="10.5" font-weight="600" fill="#78350f" text-anchor="middle">flag</text>
+<rect x="855" y="618" width="220" height="88" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
+<rect x="855" y="628" width="4" height="68" rx="2" fill="#64748b"/>
+<text x="871" y="644" font-size="14" font-weight="700" fill="#1e293b" text-anchor="start">Trace + metrics</text>
+<text x="871" y="664" font-size="12" font-weight="400" fill="#475569" text-anchor="start">latency · tokens · cost</text>
+<text x="871" y="681" font-size="12" font-weight="400" fill="#475569" text-anchor="start">per-stage spans</text>
+<rect x="1120" y="618" width="220" height="88" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<rect x="1120" y="628" width="4" height="68" rx="2" fill="#3b82f6"/>
+<text x="1136" y="644" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="start">Stream to user</text>
+<text x="1136" y="664" font-size="12" font-weight="400" fill="#475569" text-anchor="start">SSE tokens + citations</text>
+<text x="1136" y="681" font-size="12" font-weight="400" fill="#475569" text-anchor="start">links back to source pages</text>
+<path d="M280 662.0 H323" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M545 662.0 H588" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M810 662.0 H853" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M1075 662.0 H1118" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M1230.0 402 V428 H170.0 V464" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<rect x="820.8" y="416" width="38.4" height="18" rx="9" fill="#ffffff" stroke="#475569"/>
+<text x="840.0" y="429" font-size="11" font-weight="600" fill="#475569" text-anchor="middle">miss</text>
+<path d="M1230.0 554 V580 H170.0 V616" fill="none" stroke="#475569" stroke-width="1.8" stroke-linejoin="round" marker-end="url(#arrow-gray)"/>
+<path d="M1120 206 H1097.5 V448 H435.0 V464" fill="none" stroke="#10b981" stroke-width="1.8" stroke-dasharray="6 5" stroke-linejoin="round" marker-end="url(#arrow-teal)"/>
+<rect x="898.9" y="436" width="157.2" height="18" rx="9" fill="#ffffff" stroke="#10b981"/>
+<text x="977.5" y="449" font-size="11" font-weight="600" fill="#10b981" text-anchor="middle">index cached in memory</text>
+<path d="M1340 358.0 H1352 V662.0 H1342" fill="none" stroke="#f59e0b" stroke-width="1.8" stroke-dasharray="6 5" stroke-linejoin="round" marker-end="url(#arrow-amber)"/>
+<rect x="1336.1" y="498.0" width="31.799999999999997" height="18" rx="9" fill="#ffffff" stroke="#f59e0b"/>
+<text x="1352" y="511.0" font-size="11" font-weight="600" fill="#f59e0b" text-anchor="middle">hit</text>
+<rect x="30" y="764" width="1340" height="128" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="48" y="790" font-size="13" font-weight="700" fill="#0f172a">③ Observability &amp; evaluation<tspan font-size="12" font-weight="400" fill="#64748b">   every stage is traced</tspan></text>
+<rect x="60.0" y="808" width="310" height="52" rx="10" fill="#f8fafc" stroke="#64748b"/>
+<text x="74.0" y="830" font-size="13" font-weight="700" fill="#1e293b" text-anchor="start">Langfuse v4</text>
+<text x="74.0" y="848" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">rag-retrieval · web-search · llm-synthesis spans</text>
+<rect x="383.3" y="808" width="310" height="52" rx="10" fill="#f8fafc" stroke="#64748b"/>
+<text x="397.3" y="830" font-size="13" font-weight="700" fill="#1e293b" text-anchor="start">PostHog</text>
+<text x="397.3" y="848" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">$ai_generation · llm_response_streamed · flags</text>
+<rect x="706.6" y="808" width="310" height="52" rx="10" fill="#f8fafc" stroke="#64748b"/>
+<text x="720.6" y="830" font-size="13" font-weight="700" fill="#1e293b" text-anchor="start">Prometheus + Grafana</text>
+<text x="720.6" y="848" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">/metrics · SLO alerts → Alertmanager → Slack</text>
+<rect x="1029.9" y="808" width="310" height="52" rx="10" fill="#f8fafc" stroke="#64748b"/>
+<text x="1043.9" y="830" font-size="13" font-weight="700" fill="#1e293b" text-anchor="start">Scheduled RAG evaluation</text>
+<text x="1043.9" y="848" font-size="11.5" font-weight="400" fill="#475569" text-anchor="start">weekday LLM-judge: correctness · context recall</text>
+<rect x="60" y="918" width="34" height="18" rx="5" fill="#ffffff" stroke="#64748b"/>
+<text x="102" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">always on</text>
+<rect x="190" y="918" width="34" height="18" rx="5" fill="#ffffff" stroke="#64748b" stroke-dasharray="5 3"/>
+<text x="232" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">feature-flagged (backend/config.py, PostHog flags)</text>
+<rect x="600" y="919" width="16" height="16" rx="4" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+<text x="622" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">ingestion</text>
+<rect x="707" y="919" width="16" height="16" rx="4" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.6"/>
+<text x="729" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">app / API</text>
+<rect x="814" y="919" width="16" height="16" rx="4" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6"/>
+<text x="836" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">retrieval</text>
+<rect x="921" y="919" width="16" height="16" rx="4" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.6"/>
+<text x="943" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">generation</text>
+<rect x="1035" y="919" width="16" height="16" rx="4" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.6"/>
+<text x="1057" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">cache</text>
+<rect x="1114" y="919" width="16" height="16" rx="4" fill="#fef2f2" stroke="#ef4444" stroke-width="1.6"/>
+<text x="1136" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">storage</text>
+<rect x="1207" y="919" width="16" height="16" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1.6"/>
+<text x="1229" y="932" font-size="12" font-weight="400" fill="#475569" text-anchor="start">observability</text>
+<text x="1360" y="978" font-size="11" font-weight="400" fill="#94a3b8" text-anchor="end">Source: docs/architecture/src/rag_pipeline.py · Oct 2026</text>
+</svg>

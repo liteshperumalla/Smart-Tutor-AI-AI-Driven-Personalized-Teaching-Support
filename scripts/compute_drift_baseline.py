@@ -2,7 +2,7 @@
 Compute drift baseline statistics from known query datasets.
 
 Usage:
-  python scripts/compute_drift_baseline.py --out ./drift_baseline.json
+  python scripts/compute_drift_baseline.py --out ./data/drift_baseline.json
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def _compute_stats(values: List[int]) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", default="./drift_baseline.json")
+    parser.add_argument("--out", default="./data/drift_baseline.json")
     args = parser.parse_args()
 
     queries = list(_iter_queries())

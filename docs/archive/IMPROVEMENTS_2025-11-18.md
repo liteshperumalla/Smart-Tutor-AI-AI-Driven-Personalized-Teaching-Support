@@ -204,7 +204,7 @@ REDIS_SSL=false
 
 **Step 3: Verify**
 ```bash
-python check_monitoring.py
+python scripts/check_monitoring.py
 # Look for: "Backend: redis" under Cache section
 ```
 
@@ -281,11 +281,11 @@ features = monitoring.get_feature_status()
 
 #### 3.2 Monitoring CLI Tool
 
-New script: `check_monitoring.py`
+New script: `scripts/check_monitoring.py`
 
 **Usage**:
 ```bash
-python check_monitoring.py
+python scripts/check_monitoring.py
 ```
 
 **Output Sections**:
@@ -366,7 +366,7 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 
 **Step 3: Verify**
 ```bash
-python check_monitoring.py
+python scripts/check_monitoring.py
 # Look for: "LANGFUSE: HEALTHY"
 ```
 
@@ -466,7 +466,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 ### 1. Quick Health Check
 
 ```bash
-python check_monitoring.py
+python scripts/check_monitoring.py
 ```
 
 **Expected Output**:
@@ -587,7 +587,7 @@ Improvement: 4.5s → 3.27s = 27% faster
 
 **Check**:
 ```bash
-python check_monitoring.py | grep -A 20 "Phase 3"
+python scripts/check_monitoring.py | grep -A 20 "Phase 3"
 ```
 
 **Solutions**:
@@ -612,7 +612,7 @@ python check_monitoring.py | grep -A 20 "Phase 3"
 
 **Check**:
 ```bash
-python check_monitoring.py | grep "hit_rate"
+python scripts/check_monitoring.py | grep "hit_rate"
 ```
 
 **Solutions**:
@@ -624,7 +624,7 @@ python check_monitoring.py | grep "hit_rate"
 
 **Check**:
 ```bash
-python check_monitoring.py | grep -A 5 "LANGFUSE"
+python scripts/check_monitoring.py | grep -A 5 "LANGFUSE"
 ```
 
 **Solutions**:
@@ -690,7 +690,7 @@ Once Phase 3 is validated:
 For issues or questions:
 
 1. Check this documentation
-2. Run `python check_monitoring.py` for diagnostics
+2. Run `python scripts/check_monitoring.py` for diagnostics
 3. Review logs: `tail -100 logs/app.log`
 4. Check evaluation logs: `tail -100 logs/rag_evaluation.jsonl`
 

@@ -3,8 +3,8 @@ _archive
 _legacy
 .DS_Store
 Ollama.app
-Smart_Tutor_AI__Personalized_Teaching_Support__1_.pdf
-RAG Architecture.drawio
+docs/reports
+docs/architecture/archive
 backend
 chaos-engineering
 chroma_db
