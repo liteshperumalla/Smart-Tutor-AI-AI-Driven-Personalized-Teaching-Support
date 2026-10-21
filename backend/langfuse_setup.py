@@ -30,11 +30,12 @@ logger = logging.getLogger(__name__)
 _langfuse_client = None
 _langfuse_handler = None
 _initialized = False
+_init_error: Optional[str] = None
 
 
 # ── Initialization / Shutdown ────────────────────────────────────────
 
-def init_langfuse() -> bool:
+def init_langfuse(force: bool = False) -> bool:
     """Idempotent Langfuse v4 initialization.
 
     Sets up:
@@ -44,18 +45,28 @@ def init_langfuse() -> bool:
 
     Returns ``True`` if initialization succeeded, ``False`` otherwise.
     """
-    global _langfuse_client, _langfuse_handler, _initialized
+    global _langfuse_client, _langfuse_handler, _initialized, _init_error
 
-    if _initialized:
+    if _initialized and not force:
         return _langfuse_client is not None
-
-    _initialized = True  # Mark as attempted even if it fails
 
     if not config.LANGFUSE_ENABLED:
         logger.info("Langfuse tracing is disabled (LANGFUSE_ENABLED=false)")
         return False
 
-    if not config.LANGFUSE_PUBLIC_KEY or not config.LANGFUSE_SECRET_KEY:
+    public_key = getattr(config, "LANGFUSE_PUBLIC_KEY", "") or ""
+    secret_key = getattr(config, "LANGFUSE_SECRET_KEY", "") or ""
+    host = getattr(config, "LANGFUSE_HOST", "https://cloud.langfuse.com") or "https://cloud.langfuse.com"
+
+    if isinstance(public_key, str):
+        public_key = public_key.strip().strip("'\"")
+    if isinstance(secret_key, str):
+        secret_key = secret_key.strip().strip("'\"")
+    if isinstance(host, str):
+        host = host.strip().strip("'\"")
+
+    if not public_key or not secret_key:
+        _init_error = "API keys missing or empty in configuration"
         logger.warning(
             "Langfuse is enabled but keys are missing — tracing will be disabled"
         )
@@ -65,16 +76,35 @@ def init_langfuse() -> bool:
     try:
         import os
         os.environ["LANGFUSE_INGESTION_VERSION"] = getattr(config, "LANGFUSE_INGESTION_VERSION", "4")
+        if public_key:
+            os.environ["LANGFUSE_PUBLIC_KEY"] = public_key
+        if secret_key:
+            os.environ["LANGFUSE_SECRET_KEY"] = secret_key
+        if host:
+            os.environ["LANGFUSE_HOST"] = host
+            os.environ["LANGFUSE_BASE_URL"] = host
 
         from langfuse import Langfuse
 
-        _langfuse_client = Langfuse(
-            public_key=config.LANGFUSE_PUBLIC_KEY,
-            secret_key=config.LANGFUSE_SECRET_KEY,
-            host=config.LANGFUSE_HOST,
-        )
-        logger.info("Langfuse v4 client initialized (host=%s, ingestion_version=4)", config.LANGFUSE_HOST)
+        try:
+            client = Langfuse(
+                public_key=public_key,
+                secret_key=secret_key,
+                base_url=host,
+            )
+        except (TypeError, ValueError):
+            client = Langfuse(
+                public_key=public_key,
+                secret_key=secret_key,
+                host=host,
+            )
+
+        _langfuse_client = client
+        _initialized = True
+        _init_error = None
+        logger.info("Langfuse v4 client initialized (host=%s, ingestion_version=4)", host)
     except Exception as exc:
+        _init_error = f"{type(exc).__name__}: {exc}"
         logger.error("Failed to initialize Langfuse client: %s", exc)
         _langfuse_client = None
 
@@ -87,9 +117,9 @@ def init_langfuse() -> bool:
         from llama_index.core.callbacks import CallbackManager
 
         handler = create_langfuse_handler(
-            public_key=config.LANGFUSE_PUBLIC_KEY,
-            secret_key=config.LANGFUSE_SECRET_KEY,
-            host=config.LANGFUSE_HOST,
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host,
         )
         Settings.callback_manager = CallbackManager([handler])
         _langfuse_handler = handler
@@ -104,7 +134,7 @@ def init_langfuse() -> bool:
 
     ok = _langfuse_client is not None
     if ok:
-        logger.info("Langfuse v4 tracing ready (host=%s)", config.LANGFUSE_HOST)
+        logger.info("Langfuse v4 tracing ready (host=%s)", host)
     return ok
 
 
@@ -348,16 +378,30 @@ def get_otel_ingestion_headers() -> Dict[str, str]:
 
 def get_langfuse_health() -> Dict[str, Any]:
     """Return a status dict suitable for admin/health endpoints."""
+    global _init_error
     if not config.LANGFUSE_ENABLED:
         return {"status": "disabled", "message": "LANGFUSE_ENABLED=false"}
 
-    if not config.LANGFUSE_PUBLIC_KEY or not config.LANGFUSE_SECRET_KEY:
+    public_key = getattr(config, "LANGFUSE_PUBLIC_KEY", "") or ""
+    secret_key = getattr(config, "LANGFUSE_SECRET_KEY", "") or ""
+    if isinstance(public_key, str):
+        public_key = public_key.strip().strip("'\"")
+    if isinstance(secret_key, str):
+        secret_key = secret_key.strip().strip("'\"")
+
+    if not public_key or not secret_key:
         return {"status": "misconfigured", "message": "API keys missing"}
 
     if _langfuse_client is None:
-        init_langfuse()
-        if _langfuse_client is None:
-            return {"status": "unhealthy", "message": "Client not initialized"}
+        init_langfuse(force=True)
+
+    if _langfuse_client is None:
+        return {
+            "status": "unhealthy",
+            "message": f"Client not initialized: {_init_error or 'Unknown initialization error'}",
+            "version": "v4",
+            "host": getattr(config, "LANGFUSE_HOST", "https://cloud.langfuse.com"),
+        }
 
     # Attempt a lightweight auth check (non-blocking for overall health)
     auth_ok = True

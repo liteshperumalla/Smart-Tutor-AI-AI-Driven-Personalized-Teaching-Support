@@ -131,6 +131,34 @@ class TestLangfuseV4(unittest.TestCase):
             self.assertEqual(health["ingestion_version"], "4")
             self.assertEqual(health["data_model"], "clickhouse_wide_table")
 
+    def test_get_langfuse_health_retry_and_init_error(self):
+        """Health triggers init_langfuse(force=True) and surfaces _init_error if initialization fails."""
+        with patch("backend.langfuse_setup.config.LANGFUSE_ENABLED", True), \
+             patch("backend.langfuse_setup.config.LANGFUSE_PUBLIC_KEY", "pk-lf-test"), \
+             patch("backend.langfuse_setup.config.LANGFUSE_SECRET_KEY", "sk-lf-test"), \
+             patch("backend.langfuse_setup._langfuse_client", None), \
+             patch("backend.langfuse_setup.init_langfuse", side_effect=lambda force=False: False), \
+             patch("backend.langfuse_setup._init_error", "MockInitException: connection refused"):
+            health = get_langfuse_health()
+            self.assertEqual(health["status"], "unhealthy")
+            self.assertIn("Client not initialized", health["message"])
+            self.assertIn("MockInitException", health["message"])
+
+    def test_init_langfuse_strips_quotes_and_whitespace(self):
+        """init_langfuse handles whitespace and quotes cleanly."""
+        with patch("backend.langfuse_setup.config.LANGFUSE_ENABLED", True), \
+             patch("backend.langfuse_setup.config.LANGFUSE_PUBLIC_KEY", " 'pk-lf-clean' "), \
+             patch("backend.langfuse_setup.config.LANGFUSE_SECRET_KEY", ' "sk-lf-clean" '), \
+             patch("backend.langfuse_setup.config.LANGFUSE_HOST", ' "https://cloud.langfuse.com" '), \
+             patch("langfuse.Langfuse") as mock_langfuse_cls:
+            mock_client = MagicMock()
+            mock_langfuse_cls.return_value = mock_client
+            with patch("backend.langfuse_setup._langfuse_client", None), \
+                 patch("backend.langfuse_setup._initialized", False):
+                ok = init_langfuse(force=True)
+                self.assertTrue(ok)
+                mock_langfuse_cls.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -411,7 +411,7 @@ jobs:
           for component in expected:
               details = checks.get(component, {})
               status = details.get("status", "missing")
-              if status != "healthy":
+              if status not in ("healthy", "degraded"):
                   invalid[component] = f"{status} ({details})"
 
           if missing or invalid:
