@@ -185,7 +185,7 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 kubernetes==33.1.0
     # via chromadb
-langfuse>=4.7.0
+langfuse==4.15.6
     # via -r requirements.in
 llama-cloud==0.1.35
     # via
@@ -316,6 +316,8 @@ opentelemetry-exporter-otlp-proto-common==1.39.0
     # via opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-exporter-otlp-proto-grpc==1.39.0
     # via chromadb
+opentelemetry-exporter-otlp-proto-http==1.39.0
+    # via langfuse
 opentelemetry-proto==1.39.0
     # via
     #   opentelemetry-exporter-otlp-proto-common

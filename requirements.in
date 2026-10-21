@@ -1,4 +1,5 @@
-langfuse>=4.7.0  # Langfuse v4 observations-first SDK
+langfuse==4.15.6  # Langfuse v4 SDK; 4.16+/5.x require opentelemetry-sdk>=1.45 (we pin 1.39)
+opentelemetry-exporter-otlp-proto-http==1.39.0  # pulled in by langfuse; keep in lockstep with opentelemetry-sdk
 # Security pins — override vulnerable transitive versions
 nltk>=3.9.3   # Zip Slip CVE fixed in 3.9.3
 pypdf>=6.7.2  # Infinite loop CVE fixed in 6.7.2
