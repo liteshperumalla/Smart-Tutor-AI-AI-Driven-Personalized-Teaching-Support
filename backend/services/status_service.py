@@ -6,6 +6,7 @@ import datetime
 import json
 import logging
 import os
+import threading
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -76,17 +77,53 @@ def _load_docstore_stats_cached(docstore_mtime: int) -> Dict[str, Any]:
 
 _S3_KB_STATS_CACHE: Dict[str, Any] = {}
 _S3_KB_STATS_TTL = 300  # Cache for 5 minutes
+_S3_KB_STATS_REFRESH_LOCK = threading.Lock()
 
 
 def _get_s3_knowledge_base_stats() -> Dict[str, Any]:
     """Get knowledge base stats from S3 when using S3-based vector storage.
-    Cached for 5 minutes to avoid slow S3 pagination on every request.
+
+    Cached for 5 minutes. Once warm, an expired entry is served stale while a
+    background thread re-paginates the bucket, so request latency (e.g.
+    /home/overview) never pays for the full S3 listing. Only the very first
+    call in a process blocks.
     """
     now = time.time()
     cached = _S3_KB_STATS_CACHE.get("data")
-    if cached and (now - _S3_KB_STATS_CACHE.get("ts", 0)) < _S3_KB_STATS_TTL:
+    if cached:
+        if (now - _S3_KB_STATS_CACHE.get("ts", 0)) >= _S3_KB_STATS_TTL:
+            _trigger_s3_kb_stats_refresh()
         return cached
 
+    with _S3_KB_STATS_REFRESH_LOCK:
+        cached = _S3_KB_STATS_CACHE.get("data")
+        if cached:
+            return cached
+        return _refresh_s3_knowledge_base_stats()
+
+
+def _trigger_s3_kb_stats_refresh() -> None:
+    """Start a background refresh unless one is already running."""
+    if not _S3_KB_STATS_REFRESH_LOCK.acquire(blocking=False):
+        return
+
+    def _run() -> None:
+        try:
+            _refresh_s3_knowledge_base_stats()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Background S3 KB stats refresh failed: %s", exc)
+        finally:
+            _S3_KB_STATS_REFRESH_LOCK.release()
+
+    try:
+        threading.Thread(target=_run, name="s3-kb-stats-refresh", daemon=True).start()
+    except Exception as exc:
+        _S3_KB_STATS_REFRESH_LOCK.release()
+        logger.warning("Unable to start background S3 KB stats refresh: %s", exc)
+
+
+def _refresh_s3_knowledge_base_stats() -> Dict[str, Any]:
+    """Paginate the S3 bucket and store fresh stats in the cache."""
     stats: Dict[str, Any] = {
         "document_count": 0,
         "source_count": 0,
