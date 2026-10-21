@@ -278,7 +278,18 @@ jobs:
           remote_archive="/tmp/${ARCHIVE_NAME}"
           ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+          ssh_ok=false
+          for attempt in 1 2 3; do
+            if ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+              ssh_ok=true
+              break
+            fi
+            echo "SSH attempt ${attempt}/3 failed; re-verifying production EC2 state and ingress..."
+            scripts/ci/resolve_ec2_target.sh || true
+            sleep 5
+          done
+
+          if [ "${ssh_ok}" != "true" ]; then
             echo "::error::Unable to reach production EC2 over SSH. Verify the resolved host, instance state, and security group ingress for GitHub-hosted runners on port 22."
             exit 1
           fi

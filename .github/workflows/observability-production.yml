@@ -107,7 +107,18 @@ jobs:
           remote_grafana_password="$(printf '%q' "${GRAFANA_ADMIN_PASSWORD}")"
           ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=2 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -o TCPKeepAlive=yes)
 
-          if ! ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+          ssh_ok=false
+          for attempt in 1 2 3; do
+            if ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "printf 'ssh-ok\n'"; then
+              ssh_ok=true
+              break
+            fi
+            echo "SSH attempt ${attempt}/3 failed; re-verifying production EC2 state and ingress..."
+            scripts/ci/resolve_ec2_target.sh || true
+            sleep 5
+          done
+
+          if [ "${ssh_ok}" != "true" ]; then
             if [ "${{ github.event_name }}" = "schedule" ] && [ "$(printf '%s' "${OBSERVABILITY_REQUIRE_EC2_SSH}" | tr '[:upper:]' '[:lower:]')" != "true" ]; then
               echo "::warning::Production EC2 is not reachable over SSH from the GitHub runner. Skipping scheduled observability bootstrap without failing the workflow."
               echo "skipped_reason=ec2_ssh_unreachable" >> "$GITHUB_OUTPUT"

@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ec2-schedule
@@ -46,6 +47,8 @@ jobs:
         # injection (flagged by run-shell-injection SAST rules).
         env:
           MANUAL_ACTION: ${{ github.event.inputs.action }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           if [ -n "$MANUAL_ACTION" ]; then
@@ -56,6 +59,25 @@ jobs:
               echo "desired=stopped" >> "$GITHUB_OUTPUT"
             fi
             exit 0
+          fi
+
+          # Safeguard: Do not stop EC2 if deployment, maintenance, or monitoring
+          # workflows are currently running or queued in GitHub Actions.
+          if command -v gh >/dev/null 2>&1 && [ -n "${GH_TOKEN:-}" ]; then
+            active_runs="$(gh run list --repo "${GITHUB_REPO}" \
+              --json workflowName,status \
+              --jq '.[] | select(.status == "in_progress" or .status == "queued") | .workflowName' 2>/dev/null || true)"
+            if [ -n "${active_runs}" ]; then
+              critical_workflows="Production Deploy|Production Observability Bootstrap|Synthetic Production Monitor|Post-Deploy Smoke Tests|Database Migrations|Rollback Production|CI Pipeline"
+              matched="$(echo "${active_runs}" | grep -E "${critical_workflows}" || true)"
+              if [ -n "${matched}" ]; then
+                echo "Active workflows currently in progress or queued:"
+                echo "${matched}"
+                echo "Preserving running EC2 state to avoid terminating active operations."
+                echo "desired=running" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
           fi
 
           NOW="$(TZ='America/Chicago' date '+%A %Y-%m-%d %H:%M %Z')"
