@@ -34,11 +34,16 @@ jobs:
         # ec2-schedule.yml stops the production instance outside Mon-Fri
         # 09:00-17:00 America/Chicago, so off-hours probes always fail with
         # "connection refused" and page Slack for an intentional shutdown.
-        # Scheduled runs skip outside that window, with a 30-minute grace
-        # after start (the 15-min reconciler can fire late) and 15 minutes
-        # before stop. Manual dispatches always probe.
+        # Scheduled runs skip outside that window (30-minute grace after
+        # start, 15 minutes before stop) and, because the 15-min reconciler
+        # can fire an hour or more late, also skip while the instance is not
+        # actually running yet. Manual dispatches always probe.
         env:
           EVENT_NAME: ${{ github.event_name }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+          EC2_INSTANCE_ID: i-0c35826b951e9dd6f
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" != "schedule" ]; then
@@ -48,12 +53,22 @@ jobs:
           DOW="$(TZ='America/Chicago' date +%u)"
           MINUTE_OF_DAY=$(( 10#$(TZ='America/Chicago' date +%H) * 60 + 10#$(TZ='America/Chicago' date +%M) ))
           echo "Central time: $(TZ='America/Chicago' date '+%A %H:%M %Z')"
-          if [ "$DOW" -le 5 ] && [ "$MINUTE_OF_DAY" -ge $(( 9 * 60 + 30 )) ] && [ "$MINUTE_OF_DAY" -lt $(( 17 * 60 - 15 )) ]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          else
+          if ! { [ "$DOW" -le 5 ] && [ "$MINUTE_OF_DAY" -ge $(( 9 * 60 + 30 )) ] && [ "$MINUTE_OF_DAY" -lt $(( 17 * 60 - 15 )) ]; }; then
             echo "Outside EC2 business hours — production is intentionally stopped; skipping probes."
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && command -v aws >/dev/null 2>&1; then
+            STATE="$(aws ec2 describe-instances --instance-ids "$EC2_INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].State.Name' --output text 2>/dev/null || echo unknown)"
+            echo "EC2 instance state: $STATE"
+            if [ "$STATE" != "running" ] && [ "$STATE" != "unknown" ]; then
+              echo "::warning::EC2 instance is '$STATE' inside business hours (ec2-schedule reconciler may be running late); skipping probes."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         if: steps.window.outputs.skip != 'true'

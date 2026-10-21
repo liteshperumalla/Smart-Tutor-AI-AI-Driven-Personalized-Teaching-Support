@@ -117,9 +117,9 @@ def _trigger_s3_kb_stats_refresh() -> None:
 
     try:
         threading.Thread(target=_run, name="s3-kb-stats-refresh", daemon=True).start()
-    except Exception:
+    except Exception as exc:
         _S3_KB_STATS_REFRESH_LOCK.release()
-        raise
+        logger.warning("Unable to start background S3 KB stats refresh: %s", exc)
 
 
 def _refresh_s3_knowledge_base_stats() -> Dict[str, Any]:
