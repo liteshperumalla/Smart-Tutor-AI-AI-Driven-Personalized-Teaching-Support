@@ -312,6 +312,34 @@ jobs:
 
           rm -f "${key_file}"
 
+      - name: Deploy code-runner sandbox to EC2
+        id: deploy_code_runner
+        # Non-blocking: if the runner can't start, the backend still deploys and
+        # the code page reports "sandbox unavailable" instead of running code.
+        continue-on-error: true
+        env:
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          key_file="$(mktemp)"
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
+
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "mkdir -p ~/code-runner-src"
+          scp "${ssh_opts[@]}" -i "${key_file}" \
+            sandbox/code-runner/Dockerfile sandbox/code-runner/runner.py scripts/ci/deploy_code_runner.sh \
+            "${EC2_USER}@${EC2_HOST}:code-runner-src/"
+          ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" \
+            "RUNNER_SRC=\$HOME/code-runner-src bash ~/code-runner-src/deploy_code_runner.sh"
+          rm -f "${key_file}"
+
+      - name: Note code-runner deploy failure
+        if: ${{ steps.deploy_code_runner.outcome == 'failure' }}
+        run: echo "::warning::Code-runner sandbox failed to deploy; running code will be unavailable until the next deploy. See the 'Deploy code-runner sandbox to EC2' step."
+
       - name: Deploy backend to EC2
         id: deploy_backend
         uses: appleboy/ssh-action@v1.0.3
@@ -350,6 +378,24 @@ jobs:
             else
               echo "No BEDROCK_GUARDRAIL_ID repo variable set -- guardrail enforcement stays disabled."
             fi
+
+            echo "=== Syncing code sandbox settings into smart-tutor.env ==="
+            sed -i '/^ENABLE_CODE_EXECUTION=/d; /^CODE_RUNNER_URL=/d' ~/smart-tutor.env
+            if docker inspect --format '{{.State.Running}}' smart-tutor-code-runner 2>/dev/null | grep -qx true; then
+              echo "ENABLE_CODE_EXECUTION=true" >> ~/smart-tutor.env
+              echo "CODE_RUNNER_URL=http://smart-tutor-code-runner:8080" >> ~/smart-tutor.env
+              echo "Code sandbox enabled (smart-tutor-code-runner)"
+            else
+              echo "ENABLE_CODE_EXECUTION=false" >> ~/smart-tutor.env
+              echo "Code runner not running -- code execution stays disabled."
+            fi
+
+            # The backend reaches the runner over the internal-only sandbox network.
+            attach_sandbox_network() {
+              if docker network inspect smart-tutor-sandbox >/dev/null 2>&1; then
+                docker network connect smart-tutor-sandbox "$1" 2>/dev/null || true
+              fi
+            }
 
             echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
             sed -i '/^TRUSTED_HOSTS=/d' ~/smart-tutor.env
@@ -477,6 +523,7 @@ jobs:
                 -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
                 "$BACKEND_IMAGE" \
                 uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+              attach_sandbox_network smart-tutor-backend
             }
 
             get_container_health() {
@@ -575,6 +622,7 @@ jobs:
               -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
               "$BACKEND_IMAGE" \
               uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 --workers 1
+            attach_sandbox_network smart-tutor-backend-candidate
 
             echo "=== Waiting for candidate backend readiness ==="
             if ! wait_for_backend_ready \

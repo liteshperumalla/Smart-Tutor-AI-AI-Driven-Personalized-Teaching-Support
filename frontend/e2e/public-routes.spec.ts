@@ -21,8 +21,16 @@ test.describe('Public application routes', () => {
   test('does not render protected admin content for an anonymous visitor', async ({ page }) => {
     await page.goto('/admin')
 
-    await expect(page).toHaveURL(/\/$/)
-    await expect(page.getByRole('heading', { name: 'Smart AI Tutor' })).toBeVisible()
+    // The route proxy sends signed-out visitors to sign in, then back here.
+    await expect(page).toHaveURL(/\/login\?next=%2Fadmin$/)
+    await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
     await expect(page.getByText('Admin Panel')).not.toBeVisible()
+  })
+
+  test('sends anonymous visitors on other app pages to sign in', async ({ page }) => {
+    for (const path of ['/profile', '/feedback', '/resources', '/appointments']) {
+      await page.goto(path)
+      await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(path)}$`))
+    }
   })
 })

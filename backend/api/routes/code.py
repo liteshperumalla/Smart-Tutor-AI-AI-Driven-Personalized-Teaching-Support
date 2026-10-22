@@ -1,7 +1,8 @@
 """Code sandbox API routes for code execution and LLM assistance.
 
 This module provides endpoints for:
-- Code generation using AWS Bedrock Llama 3.2
+- Running student code in the isolated code-runner service (sandbox/code-runner)
+- Code generation using AWS Bedrock
 - Code explanation and debugging
 - Code-related chat assistance
 """
@@ -11,14 +12,9 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
-import traceback
-import io
-import contextlib
-import subprocess
-import tempfile
 import os
 
-from ..dependencies import get_current_user, get_admin_session, get_rate_limiter_dep
+from ..dependencies import get_current_user, get_rate_limiter_dep
 from backend.rate_limiter import limiter, PerUserRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -187,278 +183,82 @@ def _get_code_llm():
             return None
 
 
-# Explicit safe builtins allowlist — no __import__, no open(), no os access.
-# Anything not in this dict raises NameError inside exec().
-_SAFE_BUILTINS: dict = {
-    "__build_class__": __build_class__,
-    "__name__": "__main__",
-    "print": print,
-    "range": range, "len": len, "int": int, "str": str,
-    "list": list, "dict": dict, "tuple": tuple, "set": set,
-    "frozenset": frozenset, "bool": bool, "float": float,
-    "complex": complex, "bytes": bytes, "bytearray": bytearray,
-    "sum": sum, "min": min, "max": max, "abs": abs,
-    "round": round, "divmod": divmod, "pow": pow,
-    "hex": hex, "oct": oct, "bin": bin,
-    "enumerate": enumerate, "zip": zip, "map": map,
-    "filter": filter, "sorted": sorted, "reversed": reversed,
-    "any": any, "all": all,
-    "isinstance": isinstance, "issubclass": issubclass, "type": type,
-    "repr": repr, "hash": hash, "id": id,
-    "Exception": Exception, "ValueError": ValueError,
-    "TypeError": TypeError, "KeyError": KeyError,
-    "IndexError": IndexError, "AttributeError": AttributeError,
-    "RuntimeError": RuntimeError, "StopIteration": StopIteration,
-    "True": True, "False": False, "None": None,
-}
+# Student code never runs in this process. It is forwarded to the isolated
+# code-runner container (sandbox/code-runner), which has no secrets, no
+# internet, a read-only filesystem and per-run CPU/memory/time limits.
+RUNNABLE_LANGUAGES = {"python", "javascript", "java"}
 
 
-def _execute_python_code(code: str) -> tuple[str, bool]:
-    """Execute Python code in a restricted sandbox.
-
-    Uses an explicit safe-builtins allowlist so submitted code cannot
-    call __import__, open(), os.system(), or any other dangerous built-in.
-
-    Args:
-        code: Python code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    output = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(output):
-            exec(code, {"__builtins__": _SAFE_BUILTINS})
-        return output.getvalue(), True
-    except SyntaxError:
-        return f"Syntax Error:\n{traceback.format_exc()}", False
-    except (NameError, TypeError, ValueError, AttributeError):
-        return f"Runtime Error:\n{traceback.format_exc()}", False
-    except Exception:
-        return f"Error during execution:\n{traceback.format_exc()}", False
+def _format_runner_result(result: dict) -> tuple[str, bool]:
+    """Turn the runner's JSON into the (output, success) shown in the UI."""
+    stdout = result.get("stdout") or ""
+    stderr = result.get("stderr") or ""
+    exit_code = result.get("exit_code")
+    parts = [stdout.rstrip("\n")] if stdout else []
+    if stderr:
+        label = "Compilation Error" if result.get("stage") == "compile" else "Error"
+        parts.append(f"{label}:\n{stderr.rstrip()}")
+    if result.get("timed_out"):
+        parts.append("⏱ Stopped: the program ran longer than the 10-second limit.")
+    elif exit_code is not None and exit_code < 0:
+        parts.append("⛔ Stopped: the program hit the sandbox's CPU, memory or output limit.")
+    if result.get("truncated"):
+        parts.append("✂ Output truncated at 64 KB.")
+    success = exit_code == 0 and not result.get("timed_out")
+    output = "\n\n".join(p for p in parts if p) or "(no output)"
+    return output, success
 
 
-def _execute_javascript_code(code: str) -> tuple[str, bool]:
-    """Execute JavaScript code using Node.js.
+def _run_in_sandbox(code: str, language: str) -> tuple[str, bool]:
+    """POST the code to the code-runner service and format its result."""
+    import requests
+    from backend.config import config as _cfg
 
-    Args:
-        code: JavaScript code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as tmp:
-        tmp.write(code)
-        tmp_path = tmp.name
-    try:
-        result = subprocess.run(
-            ["node", tmp_path], capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            return result.stdout or "(no output)", True
-        return f"Error:\n{result.stderr}", False
-    except subprocess.TimeoutExpired:
-        return "Error: Execution timed out (10 seconds)", False
-    except FileNotFoundError:
-        return "Error: Node.js is not installed or not in PATH", False
-    except OSError:
-        return "Error: Unable to execute JavaScript (system error)", False
-    except Exception:
-        return f"Error running JavaScript:\n{traceback.format_exc()}", False
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-
-
-def _execute_java_code(code: str) -> tuple[str, bool]:
-    """Execute Java code.
-
-    Args:
-        code: Java code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    class_name = "Main"
-    if f"class {class_name}" not in code:
-        code = f"public class {class_name} {{\npublic static void main(String[] args) {{\n{code}\n}}\n}}"
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        java_file = os.path.join(tmpdir, f"{class_name}.java")
-        with open(java_file, "w") as f:
-            f.write(code)
-        try:
-            compile_proc = subprocess.run(
-                ["javac", java_file], capture_output=True, text=True, timeout=10
-            )
-            if compile_proc.returncode != 0:
-                return f"Compilation Error:\n{compile_proc.stderr}", False
-
-            run_proc = subprocess.run(
-                ["java", "-cp", tmpdir, class_name],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if run_proc.returncode == 0:
-                return run_proc.stdout or "(no output)", True
-            return f"Runtime Error:\n{run_proc.stderr}", False
-        except subprocess.TimeoutExpired:
-            return "Error: Execution timed out (10 seconds)", False
-        except FileNotFoundError:
-            return "Error: Java is not installed or not in PATH", False
-        except OSError:
-            return "Error: Unable to execute Java (system error)", False
-        except Exception:
-            return f"Error running Java:\n{traceback.format_exc()}", False
-
-
-def _execute_typescript_code(code: str) -> tuple[str, bool]:
-    """Execute TypeScript code using ts-node or compile to JS first.
-
-    Args:
-        code: TypeScript code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as tmp:
-        tmp.write(code)
-        ts_path = tmp.name
-    try:
-        result = subprocess.run(
-            ["npx", "ts-node", ts_path], capture_output=True, text=True, timeout=15
-        )
-        if result.returncode == 0:
-            return result.stdout or "(no output)", True
-        return f"Error:\n{result.stderr}", False
-    except subprocess.TimeoutExpired:
-        return "Error: Execution timed out (15 seconds)", False
-    except FileNotFoundError:
-        return "Error: Node.js/TypeScript is not installed or not in PATH", False
-    except OSError:
-        return "Error: Unable to execute TypeScript (system error)", False
-    except Exception:
-        return f"Error running TypeScript:\n{traceback.format_exc()}", False
-    finally:
-        try:
-            os.remove(ts_path)
-        except OSError:
-            pass
-
-
-def _execute_cpp_code(code: str) -> tuple[str, bool]:
-    """Execute C++ code using g++ compiler.
-
-    Args:
-        code: C++ code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    with tempfile.TemporaryDirectory() as tmpdir:
-        cpp_file = os.path.join(tmpdir, "main.cpp")
-        with open(cpp_file, "w") as f:
-            f.write(code)
-        try:
-            compile_proc = subprocess.run(
-                ["g++", cpp_file, "-o", os.path.join(tmpdir, "main")],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if compile_proc.returncode != 0:
-                return f"Compilation Error:\n{compile_proc.stderr}", False
-
-            run_proc = subprocess.run(
-                [os.path.join(tmpdir, "main")],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if run_proc.returncode == 0:
-                return run_proc.stdout or "(no output)", True
-            return f"Runtime Error:\n{run_proc.stderr}", False
-        except subprocess.TimeoutExpired:
-            return "Error: Execution timed out (10 seconds)", False
-        except FileNotFoundError:
-            return "Error: g++ is not installed or not in PATH", False
-        except OSError:
-            return "Error: Unable to execute C++ (system error)", False
-        except Exception:
-            return f"Error running C++:\n{traceback.format_exc()}", False
-
-
-def _execute_go_code(code: str) -> tuple[str, bool]:
-    """Execute Go code using go run.
-
-    Args:
-        code: Go code string to execute.
-
-    Returns:
-        Tuple of (output, success).
-    """
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".go", delete=False) as tmp:
-        tmp.write(code)
-        go_path = tmp.name
-    try:
-        result = subprocess.run(
-            ["go", "run", go_path], capture_output=True, text=True, timeout=15
-        )
-        if result.returncode == 0:
-            return result.stdout or "(no output)", True
-        return f"Error:\n{result.stderr}", False
-    except subprocess.TimeoutExpired:
-        return "Error: Execution timed out (15 seconds)", False
-    except FileNotFoundError:
-        return "Error: Go is not installed or not in PATH", False
-    except OSError:
-        return "Error: Unable to execute Go (system error)", False
-    except Exception:
-        return f"Error running Go:\n{traceback.format_exc()}", False
-    finally:
-        try:
-            os.remove(go_path)
-        except OSError:
-            pass
-
-
-def _execute_code(code: str, language: str) -> tuple[str, bool]:
-    """Execute code in the specified language."""
-    if language == "python":
-        return _execute_python_code(code)
-    elif language == "javascript":
-        return _execute_javascript_code(code)
-    elif language == "java":
-        return _execute_java_code(code)
-    elif language == "typescript":
-        return _execute_typescript_code(code)
-    elif language == "cpp":
-        return _execute_cpp_code(code)
-    elif language == "go":
-        return _execute_go_code(code)
-    else:
-        return "Unsupported language.", False
+    response = requests.post(
+        f"{_cfg.CODE_RUNNER_URL.rstrip('/')}/run",
+        json={"language": language, "code": code},
+        timeout=_cfg.CODE_RUNNER_TIMEOUT_SECONDS,
+    )
+    if response.status_code == 429:
+        raise HTTPException(status_code=429, detail="The code sandbox is busy. Try again in a few seconds.")
+    if response.status_code == 413:
+        raise HTTPException(status_code=413, detail="That program is too large to run (64 KB limit).")
+    response.raise_for_status()
+    return _format_runner_result(response.json())
 
 
 @router.post("/execute", response_model=CodeExecuteResponse)
+@limiter.limit("60/hour")
 async def execute_code(
-    request: CodeExecuteRequest,
-    session=Depends(get_admin_session),
+    request: Request,
+    payload: CodeExecuteRequest,
+    user: dict = Depends(get_current_user),
+    rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
-    """Execute code in the specified language. Admin-only."""
+    """Run code in the isolated sandbox. Available to any signed-in user."""
+    import asyncio
+    import requests
     from backend.config import config as _cfg
-    if not _cfg.ENABLE_CODE_EXECUTION:
+
+    if not _cfg.ENABLE_CODE_EXECUTION or not _cfg.CODE_RUNNER_URL:
         raise HTTPException(
-            status_code=403,
-            detail="Code execution is disabled on this server. Set ENABLE_CODE_EXECUTION=true to enable.",
+            status_code=503,
+            detail="Running code isn't available on this server right now. You can still generate, explain and debug code.",
         )
-    output, success = _execute_code(request.code, request.language)
-    return CodeExecuteResponse(
-        output=output, success=success, error=None if success else output
-    )
+    if payload.language not in RUNNABLE_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Running {payload.language} isn't supported yet. Supported: Python, JavaScript, Java.",
+        )
+    await rate_limiter.check_rate_limit(request, limit=60, window=3600, scope="code_execute")
+    try:
+        output, success = await asyncio.to_thread(_run_in_sandbox, payload.code, payload.language)
+    except HTTPException:
+        raise
+    except requests.RequestException:
+        logger.exception("Code runner request failed")
+        raise HTTPException(status_code=503, detail="The code sandbox is unavailable. Please try again shortly.")
+    return CodeExecuteResponse(output=output, success=success, error=None if success else output)
 
 
 @router.post("/generate", response_model=CodeGenerateResponse)

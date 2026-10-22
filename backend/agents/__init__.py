@@ -75,6 +75,7 @@ def run_agent_pipeline(
     session_id: Optional[str] = None,
     model_id: Optional[str] = None,
     source_prefixes: Optional[List[str]] = None,
+    answer_instructions: Optional[str] = None,
 ) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
     """Run the full multi-agent pipeline and return (stream_generator, sources).
 
@@ -179,11 +180,18 @@ def run_agent_pipeline(
         prep = prepare_quiz_helper(initial_state)
         finalize = lambda txt: finalize_quiz_helper(initial_state, txt)
 
+    # Learning-mode instructions shape only the generation prompt; retrieval,
+    # routing and logging above all used the student's question alone.
+    if answer_instructions and prep is not None:
+        prep["prompt"] = f"{answer_instructions}\n\n{prep['prompt']}"
+
     # ── 4.0 Answer cache: skip the LLM entirely on identical recent queries.
     # On a hit we still must run finalize + _log_post_stream so the knowledge
     # graph, interaction log, and Langfuse stay coherent with what the user
     # actually saw.
-    cached_response = _chat_cache_get(user_id, agent_name, query, model_id)
+    # Moded answers bypass the cache: the key holds only the question.
+    use_cache = not answer_instructions
+    cached_response = _chat_cache_get(user_id, agent_name, query, model_id) if use_cache else None
     if cached_response:
         if finalize is not None:
             try:
@@ -265,7 +273,8 @@ def run_agent_pipeline(
                 finalize(full_response)
             except Exception as exc:
                 logger.warning("Agent finalize hook failed: %s", exc)
-        _chat_cache_put(user_id, agent_name, query, model_id, full_response)
+        if use_cache:
+            _chat_cache_put(user_id, agent_name, query, model_id, full_response)
         generation_elapsed_local = time.time() - generation_started_at
         elapsed_ms_local = int((time.time() - start_time) * 1000)
         _log_post_stream(

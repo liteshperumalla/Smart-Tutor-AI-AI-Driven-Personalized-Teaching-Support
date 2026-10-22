@@ -729,7 +729,9 @@ async function request<T>(
     const message = await res
       .json()
       .catch(() => ({ detail: res.statusText }));
-    throw new Error(message.detail || `Request failed with ${res.status}`);
+    const error = new Error(message.detail || `Request failed with ${res.status}`) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
 
   return (await res.json()) as T;
@@ -737,6 +739,28 @@ async function request<T>(
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/health");
+}
+
+/**
+ * End the server session: the backend revokes the refresh token and clears
+ * the HttpOnly auth cookies. Resolves even if the session was already gone
+ * (401/403), so callers can always continue to a signed-out state.
+ */
+/**
+ * Revoke the session server-side and clear its HttpOnly cookies.
+ * 401/403 mean the server no longer accepts this session, so there is nothing
+ * left to revoke and the caller may finish signing out. Network errors and 5xx
+ * are rethrown: the cookies may still be valid, so the caller must not pretend
+ * the user is signed out.
+ */
+export async function logout(): Promise<void> {
+  try {
+    await request<unknown>("/auth/logout", { method: "POST", body: "{}", timeoutMs: 8000 });
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    if (status === 401 || status === 403) return;
+    throw error;
+  }
 }
 
 export async function fetchHomeOverview(): Promise<HomeOverview> {
@@ -2306,6 +2330,8 @@ export async function executeCode({
     path: "/code/execute",
     body: { code, language },
     token,
+    // Sandbox runs are capped at 10 s each, plus Java compile time and queueing.
+    timeoutMs: 45000,
   });
 }
 
