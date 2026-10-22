@@ -165,6 +165,8 @@ export type ChatMessageDTO = {
   agent?: string;
   route_reason?: string;
   model_used?: string;
+  // The model the student picked; differs from model_used after a fallback.
+  model_requested?: string;
   attachments?: ChatAttachment[];
 };
 

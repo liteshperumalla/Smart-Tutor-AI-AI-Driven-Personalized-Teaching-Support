@@ -9,6 +9,7 @@ import json
 from typing import Optional, Dict, Any, Generator
 from datetime import datetime
 from backend.config import config
+from backend.model_usage import record_model_used
 from backend.logger import get_logger
 from botocore.config import Config
 
@@ -200,13 +201,17 @@ class BedrockLLM:
                 if system_prompt:
                     messages.append({"role": "system", "content": system_prompt})
                 messages.append({"role": "user", "content": prompt})
+                # Call the model the selector offers, not a hardcoded one.
+                openai_model = config.OPENAI_CHAT_MODEL
                 resp = client.chat.completions.create(
-                    model="gpt-4o",
+                    model=openai_model,
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
                 if resp.choices and resp.choices[0].message:
+                    # Record the selector's ID so the answer matches what was picked.
+                    record_model_used(model_id or self.model_id)
                     return resp.choices[0].message.content or ""
             except Exception as exc:
                 logger.warning(f"[OpenAI] Call failed for {model_id} ({exc}); falling back to default Bedrock model")
@@ -332,6 +337,7 @@ class BedrockLLM:
                 f"cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            record_model_used(target_model)
             return response_body["content"][0]["text"]
 
         except Exception as e:
@@ -406,6 +412,7 @@ class BedrockLLM:
                 f"[Bedrock Llama] ~{input_tokens} in + ~{output_tokens} out, cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            record_model_used(target_model)
             return generated_text
 
         except Exception as e:
@@ -462,6 +469,7 @@ class BedrockLLM:
             )
 
             intervened = False
+            recorded = False
             for event in response["body"]:
                 chunk = json.loads(event["chunk"]["bytes"])
 
@@ -472,6 +480,9 @@ class BedrockLLM:
                 if chunk["type"] == "content_block_delta":
                     text = chunk["delta"].get("text", "")
                     if text:
+                        if not recorded:
+                            record_model_used(self.model_id)
+                            recorded = True
                         yield text
 
         except Exception as e:

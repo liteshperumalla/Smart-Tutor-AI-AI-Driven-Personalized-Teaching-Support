@@ -33,16 +33,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const navLinks = [
-    { href: "/", label: "Home" },
-    { href: "/quiz", label: "Quiz" },
-    { href: "/appointments", label: "Appointments" },
-    { href: "/resources", label: "Resources" },
-    { href: "/about", label: "About" },
-    { href: "/feedback", label: "Feedback" },
-    { href: "/profile", label: "Profile" },
-    { href: "/instructor", label: "Teaching", instructorOnly: true },
-    { href: "/evaluation", label: "Evaluation", adminOnly: true },
-    { href: "/admin", label: "Admin", adminOnly: true },
+    // "main" links sit at the top of the sidebar, "manage" in a labelled
+    // group under them, "more" in the footer. Profile is the user card.
+    { href: "/", label: "Home", section: "main" as const },
+    { href: "/chat", label: "Chat", section: "main" as const },
+    { href: "/quiz", label: "Quiz", section: "main" as const },
+    { href: "/resources", label: "Resources", section: "main" as const },
+    { href: "/appointments", label: "Appointments", section: "main" as const },
+    { href: "/instructor", label: "Teaching", section: "manage" as const, instructorOnly: true },
+    { href: "/evaluation", label: "Evaluation", section: "manage" as const, adminOnly: true },
+    { href: "/admin", label: "Admin", section: "manage" as const, adminOnly: true },
+    { href: "/about", label: "About", section: "more" as const },
+    { href: "/feedback", label: "Feedback", section: "more" as const },
   ];
 
   return (

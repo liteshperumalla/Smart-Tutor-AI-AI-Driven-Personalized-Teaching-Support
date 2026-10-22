@@ -22,7 +22,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
-import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
+import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionSelected, dispatchChatSessionsUpdated } from "@/lib/events";
 import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
@@ -192,8 +192,23 @@ function ChatWorkspaceContent() {
     } catch { /* ignore fetch errors */ }
   }, []);
 
+  // Models the server will accept for this user (null until loaded). The
+  // selector hides the rest, e.g. GPT 6 Luna when no OpenAI key is configured.
+  const [offeredModelIds, setOfferedModelIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    fetch(`${getApiBaseUrl()}/chat/models`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { models?: Array<{ model_id: string }> } | null) => {
+        if (!cancelled && data?.models) setOfferedModelIds(new Set(data.models.map((m) => m.model_id)));
+      })
+      .catch(() => { /* keep the full list; the server still validates the choice */ });
+    return () => { cancelled = true; };
+  }, [isLoggedIn]);
+
   // Available LLM models (admin-only models appended conditionally)
-  const LLM_MODELS = [
+  const ALL_LLM_MODELS = [
     {
       id: "auto",
       name: "Auto",
@@ -257,7 +272,14 @@ function ChatWorkspaceContent() {
     }] : []),
   ];
 
+  const LLM_MODELS = ALL_LLM_MODELS.filter(
+    (m) => m.modelId === null || offeredModelIds === null || offeredModelIds.has(m.modelId)
+  );
   const currentModel = LLM_MODELS.find(m => m.id === selectedModel) || LLM_MODELS[0];
+  // A model that is no longer offered falls back to Auto rather than failing every send.
+  useEffect(() => {
+    if (currentModel.id !== selectedModel) setSelectedModel(currentModel.id);
+  }, [currentModel.id, selectedModel]);
 
   // Speech recognition ref (using any to avoid TypeScript issues with Web Speech API)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -482,6 +504,11 @@ function ChatWorkspaceContent() {
     () => sessions.find((session) => session.id === selectedSessionId) || null,
     [sessions, selectedSessionId]
   );
+
+  // Let the sidebar highlight the open chat.
+  useEffect(() => {
+    dispatchChatSessionSelected(selectedSessionId);
+  }, [selectedSessionId]);
 
   useEffect(() => {
     if (activeSession?.course_id) setActiveCourseId(activeSession.course_id);
@@ -2084,10 +2111,13 @@ function ChatBubble({
                 )}
               </div>
             )}
-            {/* Auto-routed model chip */}
+            {/* Model that actually answered (persisted with the message) */}
             {message.model_used && !message.agent && (
               <div className="mb-1.5">
                 {(() => {
+                  const usedName = MODEL_DISPLAY_NAMES[message.model_used] || message.model_used;
+                  const requested = message.model_requested;
+                  const fellBack = Boolean(requested && requested !== message.model_used);
                   const modelIdLower = (message.model_used || "").toLowerCase();
                   const comp = modelIdLower.includes("llama")
                     ? "meta"
@@ -2097,9 +2127,19 @@ function ChatBubble({
                     ? "openai"
                     : "auto";
                   return (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                        fellBack
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                          : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                      ].join(" ")}
+                      title={fellBack ? `${MODEL_DISPLAY_NAMES[requested!] || requested} was unavailable, so ${usedName} answered.` : undefined}
+                    >
                       <LLMCompanyIcon company={comp} className="h-3 w-3" />
-                      via {MODEL_DISPLAY_NAMES[message.model_used] || "Auto"}
+                      {fellBack
+                        ? `${MODEL_DISPLAY_NAMES[requested!] || requested} unavailable · answered by ${usedName}`
+                        : `via ${usedName}`}
                     </span>
                   );
                 })()}

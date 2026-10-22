@@ -13,6 +13,10 @@ class ChatMessage:
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     sources: Optional[List[dict]] = None
     attachments: Optional[List[dict]] = None
+    # Model that produced an assistant message, and the one the student picked
+    # (None = Auto). They differ when the requested model was unavailable.
+    model_used: Optional[str] = None
+    model_requested: Optional[str] = None
 
     def to_dict(self) -> dict:
         d = {
@@ -23,6 +27,10 @@ class ChatMessage:
         }
         if self.attachments:
             d["attachments"] = self.attachments
+        if self.model_used:
+            d["model_used"] = self.model_used
+        if self.model_requested:
+            d["model_requested"] = self.model_requested
         return d
 
     @classmethod
@@ -49,6 +57,8 @@ class ChatMessage:
             timestamp=ts,
             sources=data.get("sources"),
             attachments=data.get("attachments"),
+            model_used=data.get("model_used"),
+            model_requested=data.get("model_requested"),
         )
 
 
