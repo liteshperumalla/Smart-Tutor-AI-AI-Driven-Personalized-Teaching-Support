@@ -156,7 +156,7 @@ def _code_llm_model_id() -> str:
     """Resolve the code LLM model id, overridable via CODE_LLM_MODEL_ID."""
     return os.environ.get(
         "CODE_LLM_MODEL_ID",
-        "us.anthropic.claude-5-5-sonnet-20261022-v1:0",
+        "us.anthropic.claude-sonnet-5-5",
     )
 
 

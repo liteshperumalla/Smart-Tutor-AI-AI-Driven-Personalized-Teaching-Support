@@ -9,9 +9,9 @@
     { "field": "observation_type", "operator": "eq", "value": "generation" }
   ],
   "model_pricing_reference": {
-    "anthropic.claude-v5-5-sonnet": { "input_cost_per_m": 3.00, "output_cost_per_m": 15.00 },
-    "anthropic.claude-v5-5-haiku": { "input_cost_per_m": 0.80, "output_cost_per_m": 4.00 },
-    "openai.gpt-6-luna": { "input_cost_per_m": 2.00, "output_cost_per_m": 8.00 },
+    "us.anthropic.claude-sonnet-5-5": { "input_cost_per_m": 3.00, "output_cost_per_m": 15.00 },
+    "us.anthropic.claude-haiku-5-5": { "input_cost_per_m": 0.80, "output_cost_per_m": 4.00 },
+    "us.openai.gpt-6-luna": { "input_cost_per_m": 2.00, "output_cost_per_m": 8.00 },
     "meta.llama-3-3-70b-instruct": { "input_cost_per_m": 0.72, "output_cost_per_m": 0.72 },
     "amazon.titan-embed-text-v2": { "input_cost_per_m": 0.02, "output_cost_per_m": 0.00 }
   },

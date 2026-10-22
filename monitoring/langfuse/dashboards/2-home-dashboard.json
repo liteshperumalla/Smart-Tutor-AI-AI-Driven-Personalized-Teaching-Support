@@ -44,9 +44,9 @@
       "aggregation": "COUNT",
       "group_by": ["model_id"],
       "models": [
-        "anthropic.claude-v5-5-sonnet",
-        "anthropic.claude-v5-5-haiku",
-        "openai.gpt-6-luna",
+        "us.anthropic.claude-sonnet-5-5",
+        "us.anthropic.claude-haiku-5-5",
+        "us.openai.gpt-6-luna",
         "meta.llama-3-3-70b-instruct"
       ],
       "description": "Volume share by underlying LLM model"
