@@ -612,10 +612,13 @@ class Config:
         os.getenv("EVAL_PRODUCTION_SAMPLE_LOOKBACK_HOURS", "168")  # 7 days
     )
 
-    # Code Execution Feature Flag — off by default, must be explicitly enabled
-    # Set ENABLE_CODE_EXECUTION=true only in environments where sandboxed execution
-    # is intentionally exposed (e.g. a dedicated code-assistant deployment).
+    # Code execution — off by default. Student code never runs in the backend:
+    # it is sent to the isolated code-runner container (sandbox/code-runner),
+    # so enabling this also requires CODE_RUNNER_URL. Production sets both in
+    # deploy-production.yml after starting the runner.
     ENABLE_CODE_EXECUTION: bool = os.getenv("ENABLE_CODE_EXECUTION", "false").lower() == "true"
+    CODE_RUNNER_URL: str = os.getenv("CODE_RUNNER_URL", "")
+    CODE_RUNNER_TIMEOUT_SECONDS: float = float(os.getenv("CODE_RUNNER_TIMEOUT_SECONDS", "40"))
 
     # HTTPS Enforcement
     ENFORCE_HTTPS = (

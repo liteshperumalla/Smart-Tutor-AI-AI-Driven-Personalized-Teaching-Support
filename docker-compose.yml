@@ -138,8 +138,10 @@ services:
       - HF_HOME=/app/.cache
       - TRANSFORMERS_CACHE=/app/.cache/huggingface
       - OLLAMA_HOST=http://ollama:11434
-      # SECURITY: Code execution disabled by default — enable only in isolated sandbox
-      - ENABLE_CODE_EXECUTION=false
+      # Student code runs only in the isolated code-runner service below,
+      # never in this container.
+      - ENABLE_CODE_EXECUTION=true
+      - CODE_RUNNER_URL=http://code-runner:8080
       # NEO4J_URI comes from .env (pointing to Neo4j Desktop via host.docker.internal)
       # For local development, uncomment these:
       # - POSTGRES_HOST=postgres
@@ -172,6 +174,7 @@ services:
       - ./Evaluation_files:/app/Evaluation_files
     networks:
       - smart-tutor-network
+      - sandbox
     restart: unless-stopped
     # SECURITY: Add security hardening
     security_opt:
@@ -397,9 +400,33 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # Isolated runner for the code sandbox: no secrets, no volumes, no internet
+  # (internal network shared only with the backend), read-only, unprivileged.
+  code-runner:
+    build:
+      context: ./sandbox/code-runner
+    container_name: smart-tutor-code-runner
+    networks:
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1
+    pids_limit: 256
+    restart: unless-stopped
+
 networks:
   smart-tutor-network:
     driver: bridge
+  sandbox:
+    internal: true
 
 volumes:
   postgres_data:
