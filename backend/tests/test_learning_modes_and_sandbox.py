@@ -95,6 +95,26 @@ def test_chat_service_passes_instructions_to_rag(monkeypatch):
     assert seen["answer_instructions"] == "Mode: REVIEW. x"
 
 
+def test_agent_path_keeps_instructions_out_of_retrieval(monkeypatch):
+    from backend.services import chat_service as svc
+    from backend import agents, posthog_tracker
+
+    seen = {}
+
+    def fake_pipeline(**kwargs):
+        seen.update(kwargs)
+        return iter([]), []
+
+    monkeypatch.setattr(agents, "run_agent_pipeline", fake_pipeline)
+    monkeypatch.setattr(
+        posthog_tracker, "feature_enabled", lambda _user, flag, default=False: flag == "agent-system-enabled"
+    )
+    svc.ChatService().stream_response("what is recursion?", user_id="u", answer_instructions="Mode: LEARN. x")
+    # Retrieval and routing see the student's question; the mode goes to the prompt.
+    assert seen["query"] == "what is recursion?"
+    assert seen["answer_instructions"] == "Mode: LEARN. x"
+
+
 # ── Code sandbox ─────────────────────────────────────────────────────────
 
 

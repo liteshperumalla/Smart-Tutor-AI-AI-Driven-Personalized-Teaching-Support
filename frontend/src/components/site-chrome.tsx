@@ -222,7 +222,16 @@ export function SiteChrome({
     if (token) {
       // Clearing client state alone left the HttpOnly session cookies in
       // place, so every page still authenticated after "Sign out".
-      await logout();
+      try {
+        await logout();
+      } catch {
+        // The server didn't confirm (offline or 5xx): the cookies may still
+        // be live, so stay signed in rather than fake a sign-out.
+        toast.error("Couldn't sign you out. Check your connection and try again.", {
+          action: { label: "Retry", onClick: () => void handleAuthClick() },
+        });
+        return;
+      }
       clearAuthToken();
       // Full reload (not router.replace) so no signed-in data survives in
       // React state or the client router cache.

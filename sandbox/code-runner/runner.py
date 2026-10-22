@@ -11,8 +11,11 @@ This process adds per-run limits on top of that:
   * an address-space limit for Python (JVM/V8 are capped by their own flags)
   * a process-count limit (fork bombs) and a wall-clock timeout that
     kills the whole process group
-  * output capped while streaming (the run is killed once it overflows),
-    and a small cap on concurrent runs
+  * output capped while streaming (the run is killed once it overflows)
+  * after every run, its process group is killed; inside the container
+    (RUNNER_SWEEP_STRAYS=1) runs are serialised and every other process the
+    runner uid can signal is killed too, so a backgrounded or setsid'd child
+    can never outlive its run or watch the next one
 
 API (stdlib only, no third-party dependencies):
   GET  /healthz  -> {"status": "ok"}
@@ -40,7 +43,11 @@ MAX_OUTPUT_BYTES = int(os.getenv("RUNNER_MAX_OUTPUT_BYTES", str(64 * 1024)))
 WALL_TIMEOUT_S = float(os.getenv("RUNNER_WALL_TIMEOUT_S", "10"))
 CPU_LIMIT_S = int(os.getenv("RUNNER_CPU_LIMIT_S", "8"))
 PY_MEMORY_BYTES = int(os.getenv("RUNNER_PY_MEMORY_MB", "256")) * 1024 * 1024
-MAX_CONCURRENT = int(os.getenv("RUNNER_MAX_CONCURRENT", "2"))
+# Only set in the container image: kill(-1) on a host would hit unrelated processes.
+SWEEP_STRAYS = os.getenv("RUNNER_SWEEP_STRAYS") == "1"
+# Runs share one uid, so the post-run sweep requires one run at a time.
+MAX_CONCURRENT = 1 if SWEEP_STRAYS else int(os.getenv("RUNNER_MAX_CONCURRENT", "2"))
+QUEUE_WAIT_S = float(os.getenv("RUNNER_QUEUE_WAIT_S", "20"))
 MAX_PROCS = int(os.getenv("RUNNER_MAX_PROCS", "128"))
 WORK_ROOT = os.getenv("RUNNER_WORK_ROOT", tempfile.gettempdir())
 
@@ -108,6 +115,7 @@ def _run(cmd: list[str], cwd: str, stdin: str, memory_bytes: int | None, timeout
             break
         time.sleep(0.02)
     proc.wait()
+    _reap_leftovers(proc.pid)
     for reader in readers:
         reader.join(timeout=2)
     truncated = overflow.is_set()
@@ -119,6 +127,22 @@ def _run(cmd: list[str], cwd: str, stdin: str, memory_bytes: int | None, timeout
         "duration_ms": int((time.monotonic() - started) * 1000),
         "truncated": truncated,
     }
+
+
+def _reap_leftovers(pgid: int) -> None:
+    """Kill whatever the run left behind, even after a normal exit."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)  # backgrounded children still in the run's group
+    except (ProcessLookupError, PermissionError):
+        pass
+    if SWEEP_STRAYS:
+        # Children that setsid()'d out of the group. kill(-1) skips this server
+        # and PID 1 (the --init reaper); runs are serialised, so nothing else
+        # under this uid is legitimate.
+        try:
+            os.kill(-1, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 def run_code(language: str, code: str, stdin: str = "") -> dict:
@@ -156,6 +180,21 @@ def run_code(language: str, code: str, stdin: str = "") -> dict:
                 "timed_out": False, "duration_ms": 0, "truncated": False}
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
+        if SWEEP_STRAYS:
+            _clear_work_root()
+
+
+def _clear_work_root() -> None:
+    """Delete anything a run wrote outside its work dir (e.g. a planted
+    /tmp/node_modules that a later run's require() would resolve)."""
+    for entry in os.scandir(WORK_ROOT):
+        if entry.is_dir(follow_symlinks=False):
+            shutil.rmtree(entry.path, ignore_errors=True)
+        else:
+            try:
+                os.unlink(entry.path)
+            except OSError:
+                pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -194,7 +233,7 @@ class Handler(BaseHTTPRequestHandler):
         if len(code.encode("utf-8")) > MAX_CODE_BYTES:
             self._send(413, {"error": f"code exceeds {MAX_CODE_BYTES // 1024} KB"})
             return
-        if not _slots.acquire(blocking=False):
+        if not _slots.acquire(timeout=QUEUE_WAIT_S):
             self._send(429, {"error": "runner busy, try again in a few seconds"})
             return
         try:

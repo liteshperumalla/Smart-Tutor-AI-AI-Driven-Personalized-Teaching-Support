@@ -406,6 +406,7 @@ services:
     build:
       context: ./sandbox/code-runner
     container_name: smart-tutor-code-runner
+    init: true
     networks:
       - sandbox
     read_only: true

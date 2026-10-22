@@ -198,12 +198,10 @@ class ChatService:
 
         if use_agents:
             from backend.agents import run_agent_pipeline
-            # The agent graph has no separate instruction channel, so the
-            # learning-mode instructions travel with the question.
-            agent_query = f"{answer_instructions}\n\n{query}" if answer_instructions else query
             generator, sources = run_agent_pipeline(
-                query=agent_query, user_id=user_id,
+                query=query, user_id=user_id,
                 session_id=session_id, model_id=routed_model_id, source_prefixes=source_prefixes,
+                answer_instructions=answer_instructions,
             )
             return generator, sources, routed_model_id
 

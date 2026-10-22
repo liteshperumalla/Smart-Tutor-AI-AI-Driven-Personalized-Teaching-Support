@@ -10,6 +10,10 @@ RUN apt-get update \
 
 COPY runner.py /srv/runner.py
 
+# Serialise runs and kill stray processes after each one (see runner.py).
+# Start the container with --init so orphans are reaped.
+ENV RUNNER_SWEEP_STRAYS=1
+
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \

@@ -40,6 +40,7 @@ else
   # No --env-file and no volumes: the runner holds no secrets and no app data.
   docker run -d \
     --name "$CONTAINER" \
+    --init \
     --restart unless-stopped \
     --network "$NETWORK" \
     --read-only \

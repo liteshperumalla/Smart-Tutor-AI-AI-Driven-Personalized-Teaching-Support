@@ -123,6 +123,10 @@ function ChatWorkspaceContent() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [composerText, setComposerText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  // Fresh-chat sends create the session first; the ref blocks a second send
+  // within the same tick, the state disables the composer meanwhile.
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const startingChatRef = useRef(false);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
@@ -520,7 +524,7 @@ function ChatWorkspaceContent() {
 
   async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !isLoggedIn || !composerText.trim() || isStreaming) {
+    if (!token || !isLoggedIn || !composerText.trim() || isStreaming || startingChatRef.current) {
       return;
     }
 
@@ -528,17 +532,25 @@ function ChatWorkspaceContent() {
     // making the student find "New chat" first.
     let sessionId = selectedSessionId;
     if (!sessionId) {
+      startingChatRef.current = true;
+      setIsStartingChat(true);
       try {
         const created = await createChatSession({ token, title: undefined, courseId: activeCourseId });
         sessionId = created.id;
         setSessions((prev) => [{ ...created, messages: created.messages || [] }, ...prev.filter((s) => s.id !== created.id)]);
         setSelectedSessionId(created.id);
-        dispatchChatSessionsUpdated();
+        // No sessions-updated event here: its refresh would replace this
+        // session with the server copy before the message is persisted. The
+        // post-stream refresh announces it.
       } catch (error) {
         const msg = error instanceof Error ? error.message : "Failed to start a new chat";
         setStreamError(msg);
         toast.error(msg);
         return;
+      } finally {
+        // Streaming takes over synchronously below, so the composer stays disabled.
+        startingChatRef.current = false;
+        setIsStartingChat(false);
       }
     }
 
@@ -1498,7 +1510,7 @@ function ChatWorkspaceContent() {
                     recognitionRef.current?.stop();
                     setIsListening(false);
                     // Submit if there's text
-                    if (composerText.trim() && activeSession) {
+                    if (composerText.trim()) {
                       const fakeEvent = { preventDefault: () => {} } as React.FormEvent<HTMLFormElement>;
                       handleSendMessage(fakeEvent);
                     }
@@ -1690,14 +1702,14 @@ function ChatWorkspaceContent() {
                 {/* Input */}
                 <input
                   type="text"
-                  placeholder={isLoggedIn ? "Ask anything..." : "Sign in to start chatting"}
+                  placeholder={!isLoggedIn ? "Sign in to start chatting" : isStartingChat ? "Starting a new chat..." : "Ask anything..."}
                   value={composerText}
-                  disabled={!isLoggedIn || isStreaming}
+                  disabled={!isLoggedIn || isStreaming || isStartingChat}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
-                      if (composerText.trim() && !isStreaming) {
+                      if (composerText.trim() && !isStreaming && !isStartingChat) {
                         handleSendMessage(event as unknown as React.FormEvent<HTMLFormElement>);
                       }
                     }
@@ -1777,7 +1789,7 @@ function ChatWorkspaceContent() {
                   <button
                     type="button"
                     onClick={handleToggleDictation}
-                    disabled={!isLoggedIn || isStreaming}
+                    disabled={!isLoggedIn || isStreaming || isStartingChat}
                     className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label={isListening ? "Stop dictation" : "Start dictation"}
                   >
@@ -1786,7 +1798,7 @@ function ChatWorkspaceContent() {
                   {/* Send Button */}
                   <button
                     type="submit"
-                    disabled={!isLoggedIn || isStreaming || !composerText.trim()}
+                    disabled={!isLoggedIn || isStreaming || isStartingChat || !composerText.trim()}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Send message"
                   >
