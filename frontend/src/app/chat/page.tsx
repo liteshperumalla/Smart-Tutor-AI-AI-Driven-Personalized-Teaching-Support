@@ -152,7 +152,7 @@ function ChatWorkspaceContent() {
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [webSearchEnabled, setWebSearchEnabled] = useState(true); // On by default
   const [selectedStyle, setSelectedStyle] = useState("normal");
-  const [learningMode, setLearningMode] = useState<"ask" | "learn" | "practice" | "review">("ask");
+  const [learningMode, setLearningMode] = useState<LearningMode>("ask");
   const [courses, setCourses] = useState<Course[]>([]);
   const { activeCourseId = "info-5731", setActiveCourseId } = useActiveCourse();
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
@@ -501,10 +501,13 @@ function ChatWorkspaceContent() {
     }
   }
 
-  function updateActiveSessionMessages(updater: (messages: ChatMessageDTO[]) => ChatMessageDTO[]) {
+  function updateActiveSessionMessages(
+    updater: (messages: ChatMessageDTO[]) => ChatMessageDTO[],
+    sessionId: string | null = selectedSessionId,
+  ) {
     setSessions((prev) =>
       prev.map((session) =>
-        session.id === selectedSessionId
+        session.id === sessionId
           ? {
               ...session,
               messages: updater(session.messages || []),
@@ -517,8 +520,26 @@ function ChatWorkspaceContent() {
 
   async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !isLoggedIn || !selectedSessionId || !composerText.trim() || isStreaming) {
+    if (!token || !isLoggedIn || !composerText.trim() || isStreaming) {
       return;
+    }
+
+    // First message in a fresh chat: create the session on send instead of
+    // making the student find "New chat" first.
+    let sessionId = selectedSessionId;
+    if (!sessionId) {
+      try {
+        const created = await createChatSession({ token, title: undefined, courseId: activeCourseId });
+        sessionId = created.id;
+        setSessions((prev) => [{ ...created, messages: created.messages || [] }, ...prev.filter((s) => s.id !== created.id)]);
+        setSelectedSessionId(created.id);
+        dispatchChatSessionsUpdated();
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : "Failed to start a new chat";
+        setStreamError(msg);
+        toast.error(msg);
+        return;
+      }
     }
 
     const content = composerText.trim();
@@ -554,7 +575,7 @@ function ChatWorkspaceContent() {
       timestamp: new Date().toISOString(),
     };
 
-    updateActiveSessionMessages((messages) => [...messages, userMessage, assistantMessage]);
+    updateActiveSessionMessages((messages) => [...messages, userMessage, assistantMessage], sessionId);
     setUploadedFiles([]);
     setIsStreaming(true);
 
@@ -565,7 +586,7 @@ function ChatWorkspaceContent() {
       const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
 
       const response = await fetch(
-        `${apiBaseUrl}/chat/sessions/${selectedSessionId}/messages`,
+        `${apiBaseUrl}/chat/sessions/${sessionId}/messages`,
         {
           method: "POST",
           headers: {
@@ -598,7 +619,7 @@ function ChatWorkspaceContent() {
         const mins = Math.ceil((detail.retry_after || 3600) / 60);
         toast.error(`${detail.model_family || "Model"} limit reached. Resets in ${mins}m. Try a different model.`);
         // Remove the placeholder assistant message
-        updateActiveSessionMessages((messages) => messages.slice(0, -1));
+        updateActiveSessionMessages((messages) => messages.slice(0, -1), sessionId);
         setIsStreaming(false);
         fetchModelQuota();
         return;
@@ -619,7 +640,7 @@ function ChatWorkspaceContent() {
           const secs = err.detail?.retry_after || 60;
           toast.error(`LLM unavailable. Retrying in ${secs}s — the service may be overloaded.`);
         }
-        updateActiveSessionMessages((messages) => messages.slice(0, -1));
+        updateActiveSessionMessages((messages) => messages.slice(0, -1), sessionId);
         setIsStreaming(false);
         return;
       }
@@ -664,7 +685,7 @@ function ChatWorkspaceContent() {
         const latestModelUsed = modelUsed;
         setSessions((prev) =>
           prev.map((session) =>
-            session.id === selectedSessionId
+            session.id === sessionId
               ? {
                   ...session,
                   messages: session.messages.map((message, index, arr) =>
@@ -699,7 +720,7 @@ function ChatWorkspaceContent() {
       toast.error(errMessage);
       setSessions((prev) =>
         prev.map((session) =>
-          session.id === selectedSessionId
+          session.id === sessionId
             ? {
                 ...session,
                 messages: session.messages.map((message, index, arr) =>
@@ -1503,27 +1524,44 @@ function ChatWorkspaceContent() {
                 onRemoveFile={removeUploadedFile}
               />
 
-              {/* Active options indicator */}
-              {(webSearchEnabled || selectedStyle !== 'normal' || learningMode !== 'ask') && (
-                <div className="flex items-center gap-2 mb-2 px-2">
-                  <label className="sr-only" htmlFor="learning-mode">Learning mode</label>
-                  <select id="learning-mode" value={learningMode} onChange={(event) => setLearningMode(event.target.value as typeof learningMode)} className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300">
-                    <option value="ask">Ask</option><option value="learn">Learn</option><option value="practice">Practice</option><option value="review">Review</option>
-                  </select>
-                  {courses.length > 1 && <><label className="sr-only" htmlFor="active-course">Active course</label><select id="active-course" value={activeCourseId} onChange={(event) => setActiveCourseId(event.target.value)} className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-800">{courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}</select></>}
-                  {webSearchEnabled && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs">
-                      <Globe className="h-3 w-3" />
-                      Web search
-                    </span>
-                  )}
-                  {selectedStyle !== 'normal' && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
-                      {currentStyle.name}
-                    </span>
-                  )}
+              {/* Learning mode + active options. Always visible so the mode
+                  can be changed even with web search off. */}
+              <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
+                <div role="radiogroup" aria-label="Learning mode" className="inline-flex rounded-full border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+                  {LEARNING_MODES.map((mode) => (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={learningMode === mode.id}
+                      title={mode.hint}
+                      onClick={() => setLearningMode(mode.id)}
+                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        learningMode === mode.id
+                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+                          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      }`}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
+                  {LEARNING_MODES.find((mode) => mode.id === learningMode)?.hint}
+                </span>
+                {courses.length > 1 && <><label className="sr-only" htmlFor="active-course">Active course</label><select id="active-course" value={activeCourseId} onChange={(event) => setActiveCourseId(event.target.value)} className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-800">{courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}</select></>}
+                {webSearchEnabled && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs">
+                    <Globe className="h-3 w-3" />
+                    Web search
+                  </span>
+                )}
+                {selectedStyle !== 'normal' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
+                    {currentStyle.name}
+                  </span>
+                )}
+              </div>
 
               <div className="flex items-center gap-2 sm:gap-3 rounded-full border border-zinc-200 bg-zinc-100 px-3 sm:px-4 py-2 focus-within:border-zinc-300 focus-within:bg-white transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-800">
                 {/* Plus Menu Button (Left side) */}
@@ -1652,14 +1690,14 @@ function ChatWorkspaceContent() {
                 {/* Input */}
                 <input
                   type="text"
-                  placeholder={isLoggedIn ? (activeSession ? "Ask anything..." : "Create a session to start") : "Sign in to start chatting"}
+                  placeholder={isLoggedIn ? "Ask anything..." : "Sign in to start chatting"}
                   value={composerText}
-                  disabled={!isLoggedIn || !activeSession || isStreaming}
+                  disabled={!isLoggedIn || isStreaming}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                       event.preventDefault();
-                      if (activeSession && composerText.trim() && !isStreaming) {
+                      if (composerText.trim() && !isStreaming) {
                         handleSendMessage(event as unknown as React.FormEvent<HTMLFormElement>);
                       }
                     }
@@ -1739,7 +1777,7 @@ function ChatWorkspaceContent() {
                   <button
                     type="button"
                     onClick={handleToggleDictation}
-                    disabled={!isLoggedIn || !activeSession || isStreaming}
+                    disabled={!isLoggedIn || isStreaming}
                     className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label={isListening ? "Stop dictation" : "Start dictation"}
                   >
@@ -1748,7 +1786,7 @@ function ChatWorkspaceContent() {
                   {/* Send Button */}
                   <button
                     type="submit"
-                    disabled={!isLoggedIn || !activeSession || isStreaming || !composerText.trim()}
+                    disabled={!isLoggedIn || isStreaming || !composerText.trim()}
                     className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Send message"
                   >
@@ -2693,6 +2731,16 @@ function FileViewerModal({
     </div>
   );
 }
+
+type LearningMode = "ask" | "learn" | "practice" | "review";
+
+// Mirrors LEARNING_MODE_INSTRUCTIONS in backend/api/routes/chat.py.
+const LEARNING_MODES: { id: LearningMode; label: string; hint: string }[] = [
+  { id: "ask", label: "Ask", hint: "Direct answer with sources" },
+  { id: "learn", label: "Learn", hint: "Step-by-step lesson with a worked example" },
+  { id: "practice", label: "Practice", hint: "Practice questions, answers at the end" },
+  { id: "review", label: "Review", hint: "Revision summary and flashcards" },
+];
 
 export default function ChatWorkspace() {
   return (

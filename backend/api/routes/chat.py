@@ -4,7 +4,7 @@ import os
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Literal, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_current_session, get_rate_limiter_dep
@@ -133,12 +133,39 @@ class AttachmentInfo(BaseModel):
     isImage: bool = False
 
 
+# How each chat mode shapes the tutor's answer. "ask" is a direct answer.
+# Applied to the generation prompt only; retrieval still searches the
+# student's own question (see utils.generate_response_stream_and_sources).
+LEARNING_MODE_INSTRUCTIONS = {
+    "learn": (
+        "Mode: LEARN. Teach this like a patient tutor. Start with the core idea in plain "
+        "language, then build it up step by step with one short worked example drawn from "
+        "the course material. Finish with a single check-for-understanding question for the "
+        "student, and do not answer it."
+    ),
+    "practice": (
+        "Mode: PRACTICE. Do not simply give the answer. Create 3 practice questions on this "
+        "topic, grounded in the course material, going from easier to harder and mixing "
+        "conceptual and applied questions. After the questions, add a section titled "
+        "'Answers & hints' with a concise answer or hint for each, so the student can try first."
+    ),
+    "review": (
+        "Mode: REVIEW. Help the student revise. Give a compact summary: the key concepts as "
+        "bullet points, important definitions or formulas, common mistakes to avoid, and end "
+        "with 3 quick flashcards in the form 'Q: … → A: …'."
+    ),
+}
+
+
 class SendMessageRequest(BaseModel):
     """Request body for sending a chat message."""
     query: str = Field(..., min_length=1, max_length=10000)
     model_id: Optional[str] = Field(None, description="AWS Bedrock model ID to use")
     web_search_enabled: bool = Field(default=True)
     response_style: Optional[str] = Field(default=None)
+    learning_mode: Optional[Literal["ask", "learn", "practice", "review"]] = Field(
+        default=None, description="Chat mode chosen in the composer"
+    )
     uploaded_only: bool = Field(default=False)
     uploaded_file_ids: Optional[List[str]] = None
     attachments: Optional[List[AttachmentInfo]] = None
@@ -247,6 +274,7 @@ async def send_message(
             "message_length":  len(query),
             "model_requested": model_id or "auto",
             "response_style":  payload.response_style,
+            "learning_mode":   payload.learning_mode or "ask",
             "uploaded_only":   payload.uploaded_only,
             "has_file_ids":    bool(payload.uploaded_file_ids),
         },
@@ -332,6 +360,7 @@ async def send_message(
             user_id=user["username"],
             session_id=session_id,
             model_id=model_id,
+            answer_instructions=LEARNING_MODE_INSTRUCTIONS.get(payload.learning_mode or "ask"),
         )
     except CircuitBreakerOpenError as e:
         raise HTTPException(

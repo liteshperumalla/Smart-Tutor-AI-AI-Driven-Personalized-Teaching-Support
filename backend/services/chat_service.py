@@ -167,6 +167,7 @@ class ChatService:
         model_id: Optional[str] = None,
         source_prefixes: Optional[list[str]] = None,
         allow_web_search: bool = True,
+        answer_instructions: Optional[str] = None,
     ):
         from backend.config import config as app_config
         import logging
@@ -197,8 +198,11 @@ class ChatService:
 
         if use_agents:
             from backend.agents import run_agent_pipeline
+            # The agent graph has no separate instruction channel, so the
+            # learning-mode instructions travel with the question.
+            agent_query = f"{answer_instructions}\n\n{query}" if answer_instructions else query
             generator, sources = run_agent_pipeline(
-                query=query, user_id=user_id,
+                query=agent_query, user_id=user_id,
                 session_id=session_id, model_id=routed_model_id, source_prefixes=source_prefixes,
             )
             return generator, sources, routed_model_id
@@ -207,6 +211,7 @@ class ChatService:
             query, user_id=user_id, session_id=session_id, model_id=routed_model_id,
             source_prefixes=source_prefixes,
             allow_web_search=allow_web_search,
+            answer_instructions=answer_instructions,
         )
         return generator, sources, routed_model_id
 
