@@ -616,9 +616,6 @@ class Config:
     # it is sent to the isolated code-runner container (sandbox/code-runner),
     # so enabling this also requires CODE_RUNNER_URL. Production sets both in
     # deploy-production.yml after starting the runner.
-    # OpenAI model behind the "GPT 6 Luna" option (offered only when
-    # OPENAI_API_KEY is set). Set this to the exact API model name.
-    OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-6-luna")
     ENABLE_CODE_EXECUTION: bool = os.getenv("ENABLE_CODE_EXECUTION", "false").lower() == "true"
     CODE_RUNNER_URL: str = os.getenv("CODE_RUNNER_URL", "")
     CODE_RUNNER_TIMEOUT_SECONDS: float = float(os.getenv("CODE_RUNNER_TIMEOUT_SECONDS", "40"))

@@ -16,18 +16,18 @@ from backend.csrf_protection import csrf_protect
 from backend.services.models import ChatMessage, ChatSession
 
 STUDENT = {"username": "model-tester", "role": "Student"}
-SONNET = "us.anthropic.claude-5-5-sonnet-20261022-v1:0"
+SONNET = "us.anthropic.claude-sonnet-5-5"
+HAIKU = "us.anthropic.claude-haiku-5-5"
 OPUS = "us.anthropic.claude-opus-4-20250514-v1:0"
-LUNA = "openai.gpt-6-luna-2026"
+LUNA = "us.openai.gpt-6-luna"
 LLAMA = "us.meta.llama3-3-70b-instruct-v1:0"
 
 
 # ── Validation ──────────────────────────────────────────────────────────
 
 
-def test_auto_and_offered_models_are_accepted(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    for model_id in (None, "", LLAMA, SONNET):
+def test_auto_and_offered_models_are_accepted():
+    for model_id in (None, "", LLAMA, SONNET, HAIKU, LUNA):
         validate_model_choice(model_id, is_admin=False)
     validate_model_choice(OPUS, is_admin=True)
 
@@ -45,22 +45,18 @@ def test_other_models_are_rejected(model_id, is_admin, status):
     assert exc.value.status_code == status
 
 
-def test_openai_model_needs_a_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    with pytest.raises(ModelChoiceError):
-        validate_model_choice(LUNA, is_admin=False)
-    assert LUNA not in {m["model_id"] for m in available_chat_models(False)}
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    validate_model_choice(LUNA, is_admin=False)
-    assert LUNA in {m["model_id"] for m in available_chat_models(False)}
+def test_retired_ids_are_rejected():
+    # IDs the selector used before they were checked against the AWS model cards.
+    for old in ("us.anthropic.claude-5-5-sonnet-20261022-v1:0", "openai.gpt-6-luna-2026"):
+        with pytest.raises(ModelChoiceError):
+            validate_model_choice(old, is_admin=False)
 
 
-def test_students_are_not_offered_admin_models(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+def test_students_are_not_offered_admin_models():
     student = {m["model_id"] for m in available_chat_models(False)}
     admin = {m["model_id"] for m in available_chat_models(True)}
     assert OPUS not in student and OPUS in admin
-    assert {LLAMA, SONNET} <= student
+    assert student == {LLAMA, SONNET, HAIKU, LUNA}
 
 
 # ── Route ───────────────────────────────────────────────────────────────
@@ -143,11 +139,10 @@ def test_route_rejects_admin_model_for_students(client_with):
     assert service.calls == []  # never reached the LLM
 
 
-def test_models_endpoint_lists_what_the_user_may_pick(client_with, monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+def test_models_endpoint_lists_what_the_user_may_pick(client_with):
     client = client_with(_FallbackChatService(answered_by=LLAMA))
     ids = {m["model_id"] for m in client.get("/chat/models").json()["models"]}
-    assert OPUS not in ids and LUNA not in ids and SONNET in ids
+    assert ids == {LLAMA, SONNET, HAIKU, LUNA}
 
 
 def test_model_fields_round_trip_through_storage():
@@ -161,27 +156,48 @@ def test_model_fields_round_trip_through_storage():
 
 
 class _FakeBedrock:
-    """invoke_model fails for every model except ``works``."""
+    """invoke_model / converse fail for every model except ``works``."""
 
-    def __init__(self, works):
+    def __init__(self, works, stream=("Hel", "lo")):
         self.works = works
+        self.stream = stream
         self.tried = []
+        self.bodies = []
+        self.converse_calls = []
+
+    def _check(self, model_id):
+        self.tried.append(model_id)
+        if model_id != self.works:
+            raise RuntimeError(f"{model_id} unavailable")
 
     def invoke_model(self, modelId, body, **kwargs):
-        self.tried.append(modelId)
-        if modelId != self.works:
-            raise RuntimeError(f"{modelId} unavailable")
+        self._check(modelId)
+        self.bodies.append(json.loads(body))
         if "llama" in modelId:
             payload = {"generation": "from llama"}
         else:
             payload = {"content": [{"text": "from claude"}], "usage": {}}
         return {"body": io.BytesIO(json.dumps(payload).encode())}
 
+    def converse(self, **request):
+        self._check(request["modelId"])
+        self.converse_calls.append(request)
+        content = [{"reasoningContent": {"reasoningText": {"text": "thinking"}}}, {"text": "from converse"}]
+        return {"output": {"message": {"content": content}}, "usage": {"inputTokens": 3, "outputTokens": 2}}
+
+    def converse_stream(self, **request):
+        self._check(request["modelId"])
+        self.converse_calls.append(request)
+        events = [{"contentBlockDelta": {"delta": {"reasoningContent": {"text": "thinking"}}}}]
+        events += [{"contentBlockDelta": {"delta": {"text": t}}} for t in self.stream]
+        return {"stream": events + [{"messageStop": {"stopReason": "end_turn"}}]}
+
 
 def _client(model_id, fake, monkeypatch):
     monkeypatch.setattr(bedrock_llm.boto3, "client", lambda *a, **k: fake)
     monkeypatch.setattr(config, "BEDROCK_MODEL_ID", LLAMA)
     monkeypatch.setattr(config, "ENABLE_COST_TRACKING", False, raising=False)
+    monkeypatch.setattr(config, "BEDROCK_GUARDRAIL_ID", "", raising=False)
     return bedrock_llm.BedrockLLM(model_id=model_id)
 
 
@@ -194,34 +210,44 @@ def test_bedrock_fallback_is_recorded(monkeypatch):
     assert usage["model"] == LLAMA
 
 
-def test_bedrock_primary_model_is_recorded(monkeypatch):
-    llm = _client(SONNET, _FakeBedrock(works=SONNET), monkeypatch)
+@pytest.mark.parametrize("model_id", [SONNET, HAIKU])
+def test_claude_request_sends_temperature_without_top_p(monkeypatch, model_id):
+    fake = _FakeBedrock(works=model_id)
+    llm = _client(model_id, fake, monkeypatch)
     usage = model_usage.start_tracking()
-    assert llm.generate("q") == "from claude"
-    assert usage["model"] == SONNET
+    assert llm.generate("q", temperature=0.3) == "from claude"
+    body = fake.bodies[-1]
+    assert body["temperature"] == 0.3 and "top_p" not in body
+    assert usage["model"] == model_id
 
 
-def test_openai_uses_configured_model_name(monkeypatch):
-    sent = {}
-
-    class _Completions:
-        def create(self, **kwargs):
-            sent.update(kwargs)
-            msg = type("M", (), {"content": "from openai"})()
-            return type("R", (), {"choices": [type("C", (), {"message": msg})()]})()
-
-    class _OpenAI:
-        def __init__(self, **kwargs):
-            self.chat = type("Chat", (), {"completions": _Completions()})()
-
-    import sys
-    import types
-
-    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=_OpenAI))
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(config, "OPENAI_CHAT_MODEL", "gpt-6-luna")
-    llm = _client(LUNA, _FakeBedrock(works=LLAMA), monkeypatch)
+def test_luna_runs_on_bedrock_converse(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)  # not needed any more
+    fake = _FakeBedrock(works=LUNA)
+    llm = _client(LUNA, fake, monkeypatch)
     usage = model_usage.start_tracking()
-    assert llm.generate("q") == "from openai"
-    assert sent["model"] == "gpt-6-luna"  # not the old hardcoded gpt-4o
+    assert llm.generate("q", system_prompt="be brief") == "from converse"  # reasoning dropped
+    request = fake.converse_calls[-1]
+    assert request["modelId"] == LUNA
+    assert request["system"] == [{"text": "be brief"}]
+    assert "temperature" not in request["inferenceConfig"]
     assert usage["model"] == LUNA
+
+
+@pytest.mark.parametrize("model_id", [LLAMA, LUNA])
+def test_llama_and_luna_stream_token_by_token(monkeypatch, model_id):
+    fake = _FakeBedrock(works=model_id)
+    llm = _client(model_id, fake, monkeypatch)
+    usage = model_usage.start_tracking()
+    assert list(llm.stream_generate("q")) == ["Hel", "lo"]
+    assert usage["model"] == model_id
+    if model_id == LLAMA:  # Converse applies the chat template; keep the tutor persona
+        assert fake.converse_calls[-1]["system"] == [{"text": bedrock_llm.BedrockLLM.LLAMA_SYSTEM_PROMPT}]
+
+
+def test_failed_stream_falls_back_and_records_the_fallback(monkeypatch):
+    fake = _FakeBedrock(works=LLAMA)
+    llm = _client(LUNA, fake, monkeypatch)
+    usage = model_usage.start_tracking()
+    assert "".join(llm.stream_generate("q")) == "from llama"
+    assert usage["model"] == LLAMA

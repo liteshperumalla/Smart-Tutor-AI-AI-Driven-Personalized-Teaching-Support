@@ -47,7 +47,7 @@ The mission control overview for executive health, throughput, and active user a
 * **Model Traffic Share**: Volume split between:
   * **Claude 5.5 Sonnet** (`anthropic.claude-v5-5-sonnet`)
   * **Claude 5.5 Haiku** (`anthropic.claude-v5-5-haiku`)
-  * **GPT-6 Luna** (`openai.gpt-6-luna`)
+  * **GPT-6 Luna** (`us.openai.gpt-6-luna`)
   * **Llama 3.3 70B** (`meta.llama-3-3-70b-instruct`)
 * **P95 Global Latency**: High-percentile end-to-end response time.
 * **Total Spend ($ USD)**: Real-time spend counter across all LLM inference.

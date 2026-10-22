@@ -7,7 +7,6 @@ by editing the payload. ``available_chat_models`` is what the selector shows.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -18,15 +17,15 @@ class ChatModel:
     model_id: str
     label: str
     admin_only: bool = False
-    # Name of an env var that must be set for the model to be callable.
-    requires_env: Optional[str] = None
 
 
+# Bedrock US cross-Region inference profile IDs, from the AWS model cards.
+# All of them run on the app's Bedrock credentials (GPT-6 Luna included).
 CHAT_MODELS: List[ChatModel] = [
     ChatModel("us.meta.llama3-3-70b-instruct-v1:0", "Llama 3.3 70B"),
-    ChatModel("us.anthropic.claude-5-5-sonnet-20261022-v1:0", "Claude 5.5 Sonnet"),
-    ChatModel("us.anthropic.claude-5-5-haiku-20261022-v1:0", "Claude 5.5 Haiku"),
-    ChatModel("openai.gpt-6-luna-2026", "GPT 6 Luna", requires_env="OPENAI_API_KEY"),
+    ChatModel("us.anthropic.claude-sonnet-5-5", "Claude Sonnet 5.5"),
+    ChatModel("us.anthropic.claude-haiku-5-5", "Claude Haiku 5.5"),
+    ChatModel("us.openai.gpt-6-luna", "GPT-6 Luna"),
     ChatModel("us.anthropic.claude-opus-4-20250514-v1:0", "Claude Opus 4", admin_only=True),
 ]
 
@@ -44,15 +43,11 @@ def is_admin_user(user: dict) -> bool:
     return user.get("role") == "Admin" or bool((user.get("metadata") or {}).get("is_admin"))
 
 
-def _configured(model: ChatModel) -> bool:
-    return not model.requires_env or bool(os.getenv(model.requires_env))
-
-
 def available_chat_models(is_admin: bool) -> List[dict]:
     return [
         {"model_id": m.model_id, "label": m.label, "admin_only": m.admin_only}
         for m in CHAT_MODELS
-        if (is_admin or not m.admin_only) and _configured(m)
+        if is_admin or not m.admin_only
     ]
 
 
@@ -65,8 +60,6 @@ def validate_model_choice(model_id: Optional[str], is_admin: bool) -> None:
         raise ModelChoiceError(400, f"Unknown model '{model_id}'.")
     if model.admin_only and not is_admin:
         raise ModelChoiceError(403, f"{model.label} is only available to admins.")
-    if not _configured(model):
-        raise ModelChoiceError(400, f"{model.label} is not enabled on this server.")
 
 
 def model_label(model_id: Optional[str]) -> str:
