@@ -13,7 +13,7 @@ which the production deploy starts like this (see `scripts/ci/deploy_code_runner
 | Resources | 768 MB RAM (no swap), 1 CPU, 256 PIDs |
 | Per run | 10 s wall clock, 8 s CPU, 1 MB file writes, 64 open files, 64 KB output, 256 MB address space for Python; at most 2 concurrent runs |
 
-Languages: Python 3.11, JavaScript (Node), Java 17.
+Languages: Python 3.11, JavaScript (Node), Java 17 (single-file source launcher: `java Main.java`).
 
 Local test:
 

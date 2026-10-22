@@ -45,7 +45,7 @@ MAX_PROCS = int(os.getenv("RUNNER_MAX_PROCS", "128"))
 WORK_ROOT = os.getenv("RUNNER_WORK_ROOT", tempfile.gettempdir())
 
 _slots = threading.BoundedSemaphore(MAX_CONCURRENT)
-_JAVA_PUBLIC_CLASS = re.compile(r"public\s+(?:final\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)")
+_JAVA_CLASS_DECL = re.compile(r"\bclass\s+[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _limits(memory_bytes: int | None):
@@ -137,24 +137,19 @@ def run_code(language: str, code: str, stdin: str = "") -> dict:
             return _run(["node", "--max-old-space-size=128", path], workdir, stdin, None, WALL_TIMEOUT_S)
 
         if language == "java":
-            match = _JAVA_PUBLIC_CLASS.search(code)
-            if match:
-                class_name = match.group(1)
-            else:
-                class_name = "Main"
+            # Single-file source launcher (Java 11+): `java Main.java` compiles in
+            # memory and runs the first top-level class, whatever it is named.
+            # So the file name and command line are fixed and never derived
+            # from student code.
+            if not _JAVA_CLASS_DECL.search(code):
                 code = f"public class Main {{\n  public static void main(String[] args) throws Exception {{\n{code}\n  }}\n}}\n"
-            path = os.path.join(workdir, f"{class_name}.java")
+            path = os.path.join(workdir, "Main.java")
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(code)
             jvm = ["-Xmx192m", "-Xss1m", "-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1", "-Xshare:auto"]
-            started = time.monotonic()
-            compiled = _run(["javac", "-J-Xmx256m", "-d", workdir, path], workdir, "", None, WALL_TIMEOUT_S)
-            if compiled["exit_code"] != 0 or compiled["timed_out"]:
-                compiled["stage"] = "compile"
-                return compiled
-            remaining = max(1.0, WALL_TIMEOUT_S - (time.monotonic() - started))
-            result = _run(["java", *jvm, "-cp", workdir, class_name], workdir, stdin, None, remaining)
-            result["duration_ms"] += compiled["duration_ms"]
+            result = _run(["java", *jvm, path], workdir, stdin, None, WALL_TIMEOUT_S)
+            if result["exit_code"] != 0 and "error: compilation failed" in result["stderr"]:
+                result["stage"] = "compile"
             return result
 
         return {"stdout": "", "stderr": f"Unsupported language: {language}", "exit_code": 2,
