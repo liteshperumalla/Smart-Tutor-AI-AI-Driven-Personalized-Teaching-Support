@@ -98,8 +98,23 @@ jobs:
             echo "=== Containers ==="
             docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
-            echo "=== Backend ready ==="
-            curl -fsS http://127.0.0.1:8010/ready >/dev/null
+            # The instance may have just been started by resolve_ec2_target.sh
+            # (it is stopped outside business hours), so give the backend
+            # time to boot before probing it.
+            echo "=== Backend ready (waiting up to 180s) ==="
+            for attempt in $(seq 1 36); do
+              if curl -fsS --max-time 5 http://127.0.0.1:8010/ready >/dev/null 2>&1; then
+                echo "ready after attempt ${attempt}"
+                break
+              fi
+              if [ "${attempt}" -eq 36 ]; then
+                echo "Backend not ready after 180s"
+                docker ps --format 'table {{.Names}}\t{{.Status}}'
+                docker logs --tail 80 smart-tutor-backend || true
+                exit 1
+              fi
+              sleep 5
+            done
 
             echo "=== Backend health ==="
             curl -fsS http://127.0.0.1:8010/health >/dev/null
@@ -152,10 +167,10 @@ jobs:
             echo "| Public API URL | \`${{ env.PUBLIC_API_URL || 'not configured' }}\` |"
             echo ""
             echo "Executed checks:"
-            echo "- Localhost backend `/ready`"
-            echo "- Localhost backend `/health`"
-            echo "- In-container backend `/ready`"
-            echo "- In-container backend `/metrics`"
+            echo '- Localhost backend `/ready`'
+            echo '- Localhost backend `/health`'
+            echo '- In-container backend `/ready`'
+            echo '- In-container backend `/metrics`'
             if [ -n "${PUBLIC_APP_URL}" ] || [ -n "${PUBLIC_API_URL}" ]; then
               echo "- External public URL smoke checks"
             else
