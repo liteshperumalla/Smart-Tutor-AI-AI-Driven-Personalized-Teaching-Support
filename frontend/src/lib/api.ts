@@ -739,6 +739,19 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/health");
 }
 
+/**
+ * End the server session: the backend revokes the refresh token and clears
+ * the HttpOnly auth cookies. Resolves even if the session was already gone
+ * (401/403), so callers can always continue to a signed-out state.
+ */
+export async function logout(): Promise<void> {
+  try {
+    await request<unknown>("/auth/logout", { method: "POST", body: "{}", timeoutMs: 8000 });
+  } catch (error) {
+    console.warn("Logout request failed; continuing with client sign-out", error);
+  }
+}
+
 export async function fetchHomeOverview(): Promise<HomeOverview> {
   return request<HomeOverview>("/home/overview", { timeoutMs: 8000 });
 }
@@ -2306,6 +2319,8 @@ export async function executeCode({
     path: "/code/execute",
     body: { code, language },
     token,
+    // Sandbox runs are capped at 10 s each, plus Java compile time and queueing.
+    timeoutMs: 45000,
   });
 }
 

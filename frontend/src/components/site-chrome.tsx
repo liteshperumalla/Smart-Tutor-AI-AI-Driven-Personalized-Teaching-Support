@@ -17,7 +17,9 @@ import {
   pinChatSession,
   archiveChatSession,
   fetchCourses,
+  logout,
 } from "@/lib/api";
+import { clearAuthToken } from "@/lib/auth";
 import { loginPathFor } from "@/lib/safe-next";
 import { dispatchChatSessionsUpdated } from "@/lib/events";
 import { CHAT_SESSIONS_UPDATED_EVENT } from "@/lib/events";
@@ -74,7 +76,7 @@ export function SiteChrome({
   navLinks: NavLink[];
   children: React.ReactNode;
 }) {
-  const { token, setToken } = useAuthToken({ redirectTo: undefined });
+  const { token } = useAuthToken({ redirectTo: undefined });
   const { user, isAdmin } = useUser();
   const { theme, setTheme, hasHydrated: themeHasHydrated } = useTheme();
   const pathname = usePathname();
@@ -215,11 +217,16 @@ export function SiteChrome({
 
   const sessionMenuDeleteIconClass = "h-4 w-4 flex-shrink-0";
 
-  const handleAuthClick = () => {
+  const handleAuthClick = async () => {
     if (!hasHydrated) return;
     if (token) {
-      setToken(null);
-      router.replace("/login");
+      // Clearing client state alone left the HttpOnly session cookies in
+      // place, so every page still authenticated after "Sign out".
+      await logout();
+      clearAuthToken();
+      // Full reload (not router.replace) so no signed-in data survives in
+      // React state or the client router cache.
+      window.location.replace("/login");
     } else {
       router.push("/login");
     }
