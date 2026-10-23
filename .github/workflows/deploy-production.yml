@@ -366,6 +366,7 @@ jobs:
 
       - name: Deploy code-runner sandbox to EC2
         id: deploy_code_runner
+        if: ${{ steps.target.outputs.deploy_backend == 'true' }}
         # Non-blocking: if the runner can't start, the backend still deploys and
         # the code page reports "sandbox unavailable" instead of running code.
         continue-on-error: true
