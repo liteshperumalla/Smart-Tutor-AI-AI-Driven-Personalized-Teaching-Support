@@ -54,11 +54,12 @@ export default function AdminDashboard() {
   }
 
   // Items someone has to act on. They turn amber only while non-zero, so a
-  // quiet day reads as quiet instead of a wall of coloured tiles.
+  // quiet day reads as quiet instead of a wall of coloured tiles. Reported
+  // messages is a running total (reviewing a report doesn't lower it), so it
+  // sits under Usage.
   const attention = [
     { label: "Pending feedback", value: stats?.new_feedback ?? 0, icon: MessageSquare, href: "/admin/feedback" },
     { label: "Pending appointments", value: stats?.pending_appointments ?? 0, icon: CalendarDays, href: "/admin/appointments" },
-    { label: "Reported messages", value: stats?.total_message_reports ?? 0, icon: Flag, href: "/admin/feedback" },
   ];
 
   const usage = [
@@ -68,6 +69,7 @@ export default function AdminDashboard() {
     { label: "Unhelpful votes", value: stats?.total_message_dislikes ?? 0, icon: ThumbsDown },
     { label: "Shared chats", value: stats?.total_chat_shares ?? 0, icon: Share2 },
     { label: "Feedback received", value: stats?.total_feedback ?? 0, icon: TrendingUp },
+    { label: "Reported messages", value: stats?.total_message_reports ?? 0, icon: Flag },
     { label: "Announcements", value: stats?.active_announcements ?? 0, icon: Megaphone },
     { label: "Admins", value: stats?.admin_users ?? 0, icon: ShieldAlert },
   ];
@@ -101,7 +103,7 @@ export default function AdminDashboard() {
         <h3 id="admin-attention" className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
           Needs attention
         </h3>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           {attention.map(({ label, value, icon: Icon, href }) => {
             const pending = value > 0;
             return (
@@ -143,7 +145,7 @@ export default function AdminDashboard() {
         <h3 id="admin-usage" className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
           Usage
         </h3>
-        <div className="mt-3 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-4 lg:grid-cols-3">
           {usage.map(({ label, value, icon: Icon }) => (
             <div
               key={label}

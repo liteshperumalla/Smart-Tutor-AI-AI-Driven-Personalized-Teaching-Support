@@ -61,6 +61,9 @@ export default function ResourcesPage() {
   const { token } = useAuthToken();
   const [categories, setCategories] = useState<CategoryMap>({});
   const [fileResources, setFileResources] = useState<Resource[]>([]);
+  // Typed links keep a description that `categories` drops; keyed by URL so
+  // search can match it.
+  const [linkDescriptions, setLinkDescriptions] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploads, setUploads] = useState<ResearchUpload[]>([]);
@@ -77,6 +80,11 @@ export default function ResourcesPage() {
         // Collect file-type resources from the full list
         const files = (data.resources ?? []).filter((r: Resource) => r.type === "file");
         setFileResources(files);
+        const descriptions: Record<string, string> = {};
+        for (const r of data.resources ?? []) {
+          if (r.type === "link" && r.url && r.description) descriptions[r.url] = r.description;
+        }
+        setLinkDescriptions(descriptions);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load resources"))
       .finally(() => setLoading(false));
@@ -125,7 +133,7 @@ export default function ResourcesPage() {
   const visibleUploads = showFiles ? uploads.filter((u) => matches(u.file_name)) : [];
   const visibleLinkEntries = showLinks
     ? categoryEntries
-        .map(([name, links]) => [name, links.filter((l) => matches(l.title, name))] as const)
+        .map(([name, links]) => [name, links.filter((l) => matches(l.title, linkDescriptions[l.url], name))] as const)
         .filter(([, links]) => links.length > 0)
     : [];
 
@@ -208,7 +216,7 @@ export default function ResourcesPage() {
       )}
 
       {noMatches && (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
+        <div role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
           <Search className="h-8 w-8 text-zinc-300 dark:text-zinc-600" aria-hidden="true" />
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Nothing matches your search.</p>
           <button
