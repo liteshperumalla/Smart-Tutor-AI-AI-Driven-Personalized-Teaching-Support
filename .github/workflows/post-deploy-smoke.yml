@@ -102,18 +102,27 @@ jobs:
             # (it is stopped outside business hours), so give the backend
             # time to boot before probing it.
             echo "=== Backend ready (waiting up to 180s) ==="
-            for attempt in $(seq 1 36); do
-              if curl -fsS --max-time 5 http://127.0.0.1:8010/ready >/dev/null 2>&1; then
-                echo "ready after attempt ${attempt}"
-                break
-              fi
-              if [ "${attempt}" -eq 36 ]; then
+            # Wall-clock deadline: each probe and sleep is capped to the time
+            # left, so slow probes cannot stretch the wait past 180s.
+            deadline=$(( $(date +%s) + 180 ))
+            attempt=0
+            while :; do
+              attempt=$(( attempt + 1 ))
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "${remaining}" -le 0 ]; then
                 echo "Backend not ready after 180s"
                 docker ps --format 'table {{.Names}}\t{{.Status}}'
                 docker logs --tail 80 smart-tutor-backend || true
                 exit 1
               fi
-              sleep 5
+              if curl -fsS --max-time $(( remaining < 5 ? remaining : 5 )) http://127.0.0.1:8010/ready >/dev/null 2>&1; then
+                echo "ready after attempt ${attempt}"
+                break
+              fi
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "${remaining}" -gt 0 ]; then
+                sleep $(( remaining < 5 ? remaining : 5 ))
+              fi
             done
 
             echo "=== Backend health ==="
