@@ -130,9 +130,10 @@ export default function AppointmentsPage() {
                 </div>
               </div>
 
-              {/* Appointment Details Row */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
+              {/* Appointment Details Row — Reason gets the wider column so
+                  its longer options aren't cut off. */}
+              <div className="grid gap-4 md:grid-cols-5">
+                <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
                     <Users className="h-4 w-4 inline mr-1.5" />
                     Meet With
@@ -145,7 +146,7 @@ export default function AppointmentsPage() {
                     <option>Teaching Assistant (TA)</option>
                   </select>
                 </div>
-                <div>
+                <div className="md:col-span-3">
                   <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
                     <MessageSquare className="h-4 w-4 inline mr-1.5" />
                     Reason

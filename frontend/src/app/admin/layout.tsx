@@ -79,9 +79,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </span>
       </div>
 
-      {/* Admin Navigation Tabs — horizontally scrollable on small screens */}
-      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white/70 dark:border-zinc-800 dark:bg-zinc-900/60">
-        <nav className="flex gap-1 p-2 min-w-max sm:flex-wrap sm:min-w-0">
+      {/* Admin Navigation Tabs — one row that scrolls sideways instead of
+          wrapping into a ragged second line. */}
+      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white/70 [scrollbar-width:thin] dark:border-zinc-800 dark:bg-zinc-900/60">
+        <nav aria-label="Admin sections" className="flex min-w-max gap-1 p-2">
           {adminNav.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -92,6 +93,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? "page" : undefined}
                 className={[
                   "flex min-h-[40px] items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition whitespace-nowrap sm:px-4",
                   isActive

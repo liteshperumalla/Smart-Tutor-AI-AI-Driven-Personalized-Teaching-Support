@@ -117,7 +117,8 @@ export default function FeedbackPage() {
         </div>
       )}
 
-      {/* Type Selector */}
+      {/* Type Selector — the active option gets a ring and a solid surface
+          so it stands out from the track in both themes. */}
       <div className="flex gap-3 mb-6 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800">
         <button
           type="button"
@@ -125,9 +126,10 @@ export default function FeedbackPage() {
             setFeedbackType('feedback');
             setFormState({ loading: false, error: null, success: false });
           }}
+          aria-pressed={feedbackType === 'feedback'}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
             feedbackType === 'feedback'
-              ? 'bg-white dark:bg-zinc-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+              ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >
@@ -140,9 +142,10 @@ export default function FeedbackPage() {
             setFeedbackType('bug');
             setFormState({ loading: false, error: null, success: false });
           }}
+          aria-pressed={feedbackType === 'bug'}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
             feedbackType === 'bug'
-              ? 'bg-white dark:bg-zinc-700 text-red-600 dark:text-red-400 shadow-sm'
+              ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600 [&>svg]:text-red-600 dark:[&>svg]:text-red-400'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
           }`}
         >

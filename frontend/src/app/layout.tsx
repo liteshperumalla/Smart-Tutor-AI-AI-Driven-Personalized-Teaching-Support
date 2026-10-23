@@ -49,7 +49,6 @@ export default function RootLayout({
     { href: "/resources", label: "Resources", section: "main" as const },
     { href: "/appointments", label: "Appointments", section: "main" as const },
     { href: "/instructor", label: "Teaching", section: "manage" as const, instructorOnly: true },
-    { href: "/evaluation", label: "Evaluation", section: "manage" as const, adminOnly: true },
     { href: "/admin", label: "Admin", section: "manage" as const, adminOnly: true },
     { href: "/about", label: "About", section: "more" as const },
     { href: "/feedback", label: "Feedback", section: "more" as const },

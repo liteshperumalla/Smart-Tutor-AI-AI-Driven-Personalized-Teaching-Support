@@ -723,3 +723,26 @@ body.theme-dark ::selection {
 body.theme-dark .focus-ring {
   ring-offset-color: #0f172a;
 }
+
+/* Respect the OS "reduce motion" setting: entrance animations, floating
+   decorations and hover lifts become instant. Spinners keep turning (slowly)
+   so loading states still read as loading. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  [class*="hover:-translate-y"]:hover {
+    transform: none !important;
+  }
+}
