@@ -155,6 +155,8 @@ jobs:
 
       - name: Validate optional Vercel configuration
         if: ${{ steps.target.outputs.deploy_frontend == 'true' }}
+        env:
+          DEPLOY_BACKEND: ${{ steps.target.outputs.deploy_backend }}
         run: |
           set -euo pipefail
 
@@ -164,6 +166,12 @@ jobs:
           fi
 
           if [ "${vercel_configured}" -eq 0 ]; then
+            # A frontend-only run has nothing else to deploy, so missing
+            # Vercel secrets must fail it rather than "succeed" doing nothing.
+            if [ "${DEPLOY_BACKEND}" != "true" ]; then
+              echo "::error::Frontend-only deploy requested but Vercel deploy secrets are not fully configured. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID."
+              exit 1
+            fi
             echo "::warning::Vercel deploy secrets are not fully configured. Frontend deploy will be skipped. Set VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID to enable."
           fi
 
@@ -252,7 +260,9 @@ jobs:
       - name: Deploy frontend to Vercel
         id: vercel_deploy
         if: ${{ steps.target.outputs.deploy_frontend == 'true' && env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != '' }}
-        continue-on-error: true
+        # Non-blocking only while a backend deploy is still to come; a
+        # frontend-only run must fail when its one deploy fails.
+        continue-on-error: ${{ steps.target.outputs.deploy_backend == 'true' }}
         run: |
           set -euo pipefail
           npm install --global vercel@65.0.0
