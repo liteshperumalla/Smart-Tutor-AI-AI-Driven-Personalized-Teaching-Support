@@ -99,17 +99,9 @@ class LLMOpsLogger:
         except Exception as exc:
             logger.warning("LLMOps JSONL write failed: %s", exc)
 
-        # Prometheus
-        try:
-            from backend.metrics import track_llm_call
-            track_llm_call(
-                model=rec.model,
-                latency_seconds=latency_ms / 1000,
-                output_chars=output_chars,
-                status="success" if success else "error",
-            )
-        except Exception as exc:
-            logger.warning("LLMOps Prometheus update failed: %s", exc)
+        # Prometheus LLM metrics (requests, latency, real tokens, cost) are
+        # recorded once per call by BedrockLLM, for every route; recording
+        # them here as well would double-count chat.
 
         # PostHog — async batched, never blocks the response
         try:

@@ -2470,7 +2470,7 @@ export function EvaluationContent() {
                   { label: "Total Interactions", value: agentMetrics.total_agent_interactions, icon: Activity, color: "text-blue-500" },
                   { label: "Unique Users", value: agentMetrics.unique_users, icon: Users, color: "text-green-500" },
                   { label: "Avg Response Time", value: `${agentMetrics.avg_response_time_ms}ms`, icon: Clock, color: "text-amber-500" },
-                  { label: "Routing Accuracy", value: `${agentMetrics.routing_accuracy?.positive_after_route ?? 0}%`, icon: Target, color: "text-purple-500" },
+                  { label: "Routing Accuracy", value: agentMetrics.routing_accuracy?.positive_after_route == null ? "No ratings yet" : `${agentMetrics.routing_accuracy.positive_after_route}%`, icon: Target, color: "text-purple-500" },
                 ].map((card) => (
                   <div key={card.label} className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                     <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-1">

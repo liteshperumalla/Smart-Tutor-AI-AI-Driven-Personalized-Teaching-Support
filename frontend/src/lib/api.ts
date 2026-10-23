@@ -2941,7 +2941,8 @@ export type AgentMetrics = {
   response_time_by_agent: Record<string, number>;
   daily_usage: Array<{ date: string; count: number; unique_users: number }>;
   top_query_types: Array<{ type: string; count: number }>;
-  routing_accuracy: { positive_after_route: number; negative_after_route: number };
+  // null until at least one routed interaction has positive/negative sentiment.
+  routing_accuracy: { positive_after_route: number | null; negative_after_route: number | null; rated_interactions: number };
   error?: string;
 };
 
@@ -2970,8 +2971,9 @@ function normalizeAgentMetrics(metrics?: Partial<AgentMetrics> | null): AgentMet
         }))
       : [],
     routing_accuracy: {
-      positive_after_route: Number(metrics?.routing_accuracy?.positive_after_route ?? 0),
-      negative_after_route: Number(metrics?.routing_accuracy?.negative_after_route ?? 0),
+      positive_after_route: metrics?.routing_accuracy?.positive_after_route == null ? null : Number(metrics.routing_accuracy.positive_after_route),
+      negative_after_route: metrics?.routing_accuracy?.negative_after_route == null ? null : Number(metrics.routing_accuracy.negative_after_route),
+      rated_interactions: Number(metrics?.routing_accuracy?.rated_interactions ?? 0),
     },
     error: metrics?.error,
   };

@@ -91,6 +91,10 @@ async def generate_quiz(
     # objectives instead of falling back to aggregate-only scoring.
     if not objective_ids:
         objective_ids = [item["id"] for item in learning.objectives(user["username"], user, course_id)]
+    import time as _time
+    from backend.metrics import track_rag_query
+
+    _started = _time.monotonic()
     try:
         quiz = quiz_service.generate_quiz(
             user_id=user["username"],
@@ -100,6 +104,7 @@ async def generate_quiz(
             objective_ids=objective_ids,
             difficulty=payload.difficulty,
         )
+        track_rag_query("quiz", _time.monotonic() - _started)
         learning.register_quiz_items(course_id, str(quiz["quiz_id"]), list(quiz.get("questions", [])))
         posthog_tracker.capture(
             distinct_id=user["username"],
@@ -114,8 +119,10 @@ async def generate_quiz(
         )
         return quiz
     except QuizGenerationError as exc:
+        track_rag_query("quiz", _time.monotonic() - _started, status="error")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except ValueError as exc:
+        track_rag_query("quiz", _time.monotonic() - _started, status="error")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
 
 

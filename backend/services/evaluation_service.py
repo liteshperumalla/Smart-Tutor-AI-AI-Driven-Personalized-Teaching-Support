@@ -539,6 +539,19 @@ class EvaluationService:
             r["generation_metrics"] for r in results if r.get("generation_metrics")
         ]
 
+        # Publish the latest run's retrieval quality to the Prometheus gauges
+        # the RAG dashboard reads.
+        if retrieval_metrics:
+            try:
+                from backend.metrics import update_retrieval_quality
+
+                update_retrieval_quality(
+                    recall_at_3=avg_metric(retrieval_metrics, "recall_at_3"),
+                    precision_at_3=avg_metric(retrieval_metrics, "precision_at_3"),
+                )
+            except Exception:
+                pass
+
         analysis = {
             "total_tests": len(results),
             "avg_response_time": round(statistics.mean(times), 3) if times else 0.0,

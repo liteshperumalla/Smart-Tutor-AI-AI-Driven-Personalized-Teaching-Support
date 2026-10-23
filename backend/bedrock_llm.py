@@ -6,6 +6,7 @@ supporting Claude 3.5 Sonnet and other Bedrock models.
 
 import boto3
 import json
+import time
 from typing import Optional, Dict, Any, Generator
 from datetime import datetime
 from backend.config import config
@@ -14,6 +15,16 @@ from backend.logger import get_logger
 from botocore.config import Config
 
 logger = get_logger(__name__)
+
+
+class _LLMCall:
+    """Timing and the Langfuse generation for one Bedrock call."""
+
+    __slots__ = ("t0", "generation")
+
+    def __init__(self, t0: float, generation: Any = None):
+        self.t0 = t0
+        self.generation = generation
 
 
 class BedrockLLM:
@@ -228,9 +239,14 @@ class BedrockLLM:
     ) -> str:
         """Generate with the Converse API (used for OpenAI models on Bedrock)."""
         target_model = model_id or self.model_id
-        response = self.client.converse(
-            **self._converse_request(target_model, prompt, max_tokens, temperature, system_prompt)
-        )
+        started = self._begin_call(target_model, prompt)
+        try:
+            response = self.client.converse(
+                **self._converse_request(target_model, prompt, max_tokens, temperature, system_prompt)
+            )
+        except Exception:
+            self._record_usage(target_model, started, status="error")
+            raise
         if response.get("stopReason") == "guardrail_intervened":
             self._check_guardrail_intervention({"amazon-bedrock-guardrailAction": "INTERVENED"}, prompt)
         # Reasoning models also return reasoningContent blocks; keep only the answer text.
@@ -245,6 +261,7 @@ class BedrockLLM:
         self.total_cost += cost
         if config.ENABLE_COST_TRACKING:
             self._log_cost(input_tokens, output_tokens, cost, prompt[:100])
+        self._record_usage(target_model, started, input_tokens, output_tokens)
         record_model_used(target_model)
         return text
 
@@ -256,21 +273,40 @@ class BedrockLLM:
         system_prompt: Optional[str],
     ) -> Generator[str, None, None]:
         """Stream with ConverseStream (Llama and OpenAI models)."""
-        response = self.client.converse_stream(
-            **self._converse_request(self.model_id, prompt, max_tokens, temperature, system_prompt)
-        )
-        recorded = False
-        for event in response["stream"]:
-            delta = event.get("contentBlockDelta", {}).get("delta", {})
-            text = delta.get("text")  # reasoning deltas carry no "text"
-            if text:
-                if not recorded:
-                    record_model_used(self.model_id)
-                    recorded = True
-                yield text
-            stop = event.get("messageStop", {}).get("stopReason")
-            if stop == "guardrail_intervened":
-                self._check_guardrail_intervention({"amazon-bedrock-guardrailAction": "INTERVENED"}, prompt)
+        started = self._begin_call(self.model_id, prompt)
+        usage: Dict[str, int] = {}
+        status = "cancelled"  # stays so only if the client stops reading
+        try:
+            response = self.client.converse_stream(
+                **self._converse_request(self.model_id, prompt, max_tokens, temperature, system_prompt)
+            )
+            recorded = False
+            for event in response["stream"]:
+                delta = event.get("contentBlockDelta", {}).get("delta", {})
+                text = delta.get("text")  # reasoning deltas carry no "text"
+                if text:
+                    if not recorded:
+                        record_model_used(self.model_id)
+                        recorded = True
+                    yield text
+                stop = event.get("messageStop", {}).get("stopReason")
+                if stop == "guardrail_intervened":
+                    self._check_guardrail_intervention({"amazon-bedrock-guardrailAction": "INTERVENED"}, prompt)
+                # The closing metadata event carries the real token usage.
+                usage = event.get("metadata", {}).get("usage", usage)
+            status = "success"
+        except Exception:
+            status = "error"
+            raise
+        finally:
+            # Also runs when the client disconnects mid-stream (GeneratorExit).
+            self._record_usage(
+                self.model_id,
+                started,
+                usage.get("inputTokens", 0),
+                usage.get("outputTokens", 0),
+                status=status,
+            )
 
     def generate(
         self,
@@ -357,6 +393,7 @@ class BedrockLLM:
         if system_prompt:
             request_body["system"] = system_prompt
 
+        started = self._begin_call(target_model, prompt)
         try:
             response = self.client.invoke_model(
                 modelId=target_model,
@@ -367,11 +404,12 @@ class BedrockLLM:
             response_body = json.loads(response["body"].read())
             self._check_guardrail_intervention(response_body, prompt)
 
-            # Extract tokens and calculate cost
+            # Extract tokens and calculate cost (priced for the model that
+            # actually answered, which differs from self.model_id on fallback)
             usage = response_body.get("usage", {})
             input_tokens = usage.get("input_tokens", 0)
             output_tokens = usage.get("output_tokens", 0)
-            cost = self._calculate_cost(input_tokens, output_tokens)
+            cost = self._calculate_cost(input_tokens, output_tokens, target_model)
 
             # Update totals
             self.total_input_tokens += input_tokens
@@ -387,10 +425,12 @@ class BedrockLLM:
                 f"cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            self._record_usage(target_model, started, input_tokens, output_tokens)
             record_model_used(target_model)
             return response_body["content"][0]["text"]
 
         except Exception as e:
+            self._record_usage(target_model, started, status="error")
             logger.error(f"[Bedrock] Generation error: {e}", exc_info=True)
             raise
 
@@ -425,6 +465,7 @@ class BedrockLLM:
             "top_p": top_p,
         }
 
+        started = self._begin_call(target_model, prompt)
         try:
             response = self.client.invoke_model(
                 modelId=target_model,
@@ -435,19 +476,14 @@ class BedrockLLM:
             response_body = json.loads(response["body"].read())
             self._check_guardrail_intervention(response_body, prompt)
 
-            # Debug: Log the actual response structure
-            logger.info(
-                f"[Bedrock Llama] Response body keys: {list(response_body.keys())}"
-            )
-            logger.info(f"[Bedrock Llama] Full response: {response_body}")
-
             # Llama response format
             generated_text = response_body.get("generation", "")
 
-            # Estimate tokens (Llama doesn't provide usage stats)
-            input_tokens = len(prompt.split())
-            output_tokens = len(generated_text.split())
-            cost = self._calculate_cost(input_tokens, output_tokens)
+            # Bedrock reports Llama token counts; fall back to a word-count
+            # estimate only if they are missing.
+            input_tokens = response_body.get("prompt_token_count") or len(prompt.split())
+            output_tokens = response_body.get("generation_token_count") or len(generated_text.split())
+            cost = self._calculate_cost(input_tokens, output_tokens, target_model)
 
             # Update totals
             self.total_input_tokens += input_tokens
@@ -461,10 +497,12 @@ class BedrockLLM:
                 f"[Bedrock Llama] ~{input_tokens} in + ~{output_tokens} out, cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            self._record_usage(target_model, started, input_tokens, output_tokens)
             record_model_used(target_model)
             return generated_text
 
         except Exception as e:
+            self._record_usage(target_model, started, status="error")
             logger.error(f"[Bedrock Llama] Generation error: {e}", exc_info=True)
             raise
 
@@ -521,6 +559,9 @@ class BedrockLLM:
         if system_prompt:
             request_body["system"] = system_prompt
 
+        started = self._begin_call(self.model_id, prompt)
+        tokens = {"in": 0, "out": 0}
+        stream_status = "cancelled"  # stays so only if the client stops reading
         try:
             response = self.client.invoke_model_with_response_stream(
                 modelId=self.model_id,
@@ -537,6 +578,18 @@ class BedrockLLM:
                     intervened = True
                     self._check_guardrail_intervention(chunk, prompt)
 
+                # Token usage: message_start carries input tokens,
+                # message_delta the running output count, and Bedrock's
+                # closing invocation metrics carry both.
+                if chunk.get("type") == "message_start":
+                    tokens["in"] = chunk.get("message", {}).get("usage", {}).get("input_tokens", tokens["in"])
+                elif chunk.get("type") == "message_delta":
+                    tokens["out"] = chunk.get("usage", {}).get("output_tokens", tokens["out"])
+                metrics = chunk.get("amazon-bedrock-invocationMetrics")
+                if metrics:
+                    tokens["in"] = metrics.get("inputTokenCount", tokens["in"])
+                    tokens["out"] = metrics.get("outputTokenCount", tokens["out"])
+
                 if chunk["type"] == "content_block_delta":
                     text = chunk["delta"].get("text", "")
                     if text:
@@ -544,8 +597,11 @@ class BedrockLLM:
                             record_model_used(self.model_id)
                             recorded = True
                         yield text
+            stream_status = "success"
 
         except Exception as e:
+            self._record_usage(self.model_id, started, tokens["in"], tokens["out"], status="error")
+            started = None  # recorded; the finally below must not count it twice
             logger.warning(f"[Bedrock] Streaming error ({e}); falling back to generate()...")
             try:
                 yield self.generate(
@@ -554,6 +610,68 @@ class BedrockLLM:
             except Exception as fb_err:
                 logger.error(f"[Bedrock] Streaming fallback also failed: {fb_err}", exc_info=True)
                 raise e
+        finally:
+            # Completed streams and client disconnects (GeneratorExit) land here.
+            if started is not None:
+                self._record_usage(self.model_id, started, tokens["in"], tokens["out"], status=stream_status)
+
+    def _begin_call(self, model_id: str, prompt: str) -> _LLMCall:
+        """Start timing a call and open its Langfuse generation.
+
+        The LlamaIndex callback's generations carry no model or usage, so
+        this generation is what Langfuse cost, token and model charts read.
+        """
+        generation = None
+        try:
+            from backend.langfuse_setup import get_langfuse_client
+
+            client = get_langfuse_client()
+            if client is not None:
+                generation = client.start_observation(
+                    name="bedrock-generation",
+                    as_type="generation",
+                    model=model_id,
+                    input=prompt[:4000] if isinstance(prompt, str) else None,
+                )
+        except Exception as e:  # tracing must never break generation
+            logger.debug(f"[Bedrock] Langfuse generation skipped: {e}")
+        return _LLMCall(time.monotonic(), generation)
+
+    def _record_usage(
+        self,
+        model_id: str,
+        started: _LLMCall,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        status: str = "success",
+    ) -> None:
+        """Send one call's latency, tokens and cost to Prometheus and Langfuse."""
+        cost = self._calculate_cost(input_tokens, output_tokens, model_id)
+        try:
+            from backend.metrics import record_llm_usage
+
+            record_llm_usage(
+                model=model_id,
+                latency_seconds=time.monotonic() - started.t0,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                status=status,
+            )
+        except Exception as e:  # metrics must never break generation
+            logger.debug(f"[Bedrock] usage metrics skipped: {e}")
+        if started.generation is not None:
+            try:
+                started.generation.update(
+                    usage_details={"input": input_tokens, "output": output_tokens},
+                    cost_details={"total": cost},
+                    level="ERROR" if status == "error" else "DEFAULT",
+                    status_message=None if status == "success" else status,
+                )
+                started.generation.end()
+            except Exception as e:
+                logger.debug(f"[Bedrock] Langfuse generation update skipped: {e}")
+            started.generation = None
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int, model_id: Optional[str] = None) -> float:
         """

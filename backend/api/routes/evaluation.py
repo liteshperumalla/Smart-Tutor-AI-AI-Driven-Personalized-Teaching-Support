@@ -1564,19 +1564,37 @@ def get_aws_metrics(
                 start_time = start_time - timedelta(days=1)
 
         try:
+            # Bedrock publishes these per ModelId; a query with no dimensions
+            # matches no series and always returned 0. List the per-model
+            # series and combine them: counts are summed, latency averaged.
             cw_metrics = {}
             for metric_name in ["Invocations", "InputTokenCount", "OutputTokenCount", "InvocationLatency"]:
-                response = cloudwatch.get_metric_statistics(
-                    Namespace="AWS/Bedrock",
-                    MetricName=metric_name,
-                    Dimensions=[],  # aggregate across all models
-                    StartTime=start_time,
-                    EndTime=end_time,
-                    Period=86400,
-                    Statistics=["Sum"],
+                is_latency = metric_name == "InvocationLatency"
+                total = 0.0
+                latency_points = []
+                paginator = cloudwatch.get_paginator("list_metrics")
+                for page in paginator.paginate(Namespace="AWS/Bedrock", MetricName=metric_name):
+                    for series in page.get("Metrics", []):
+                        if [d["Name"] for d in series.get("Dimensions", [])] != ["ModelId"]:
+                            continue  # skip other dimension sets to avoid double counting
+                        response = cloudwatch.get_metric_statistics(
+                            Namespace="AWS/Bedrock",
+                            MetricName=metric_name,
+                            Dimensions=series["Dimensions"],
+                            StartTime=start_time,
+                            EndTime=end_time,
+                            Period=86400,
+                            Statistics=["Average"] if is_latency else ["Sum"],
+                        )
+                        for d in response.get("Datapoints", []):
+                            if is_latency:
+                                latency_points.append(d.get("Average", 0))
+                            else:
+                                total += d.get("Sum", 0)
+                cw_metrics[metric_name] = (
+                    int(sum(latency_points) / len(latency_points)) if is_latency and latency_points
+                    else int(total)
                 )
-                datapoints = response.get("Datapoints", [])
-                cw_metrics[metric_name] = int(sum(d.get("Sum", 0) for d in datapoints))
 
             metrics["services"]["cloudwatch"] = {
                 "status": "active",

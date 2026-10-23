@@ -5,6 +5,7 @@ Provides embedding generation using AWS Bedrock Titan models.
 
 import boto3
 import json
+import time
 from typing import List, Optional
 import numpy as np
 from llama_index.core.embeddings import BaseEmbedding
@@ -12,6 +13,37 @@ from backend.config import config
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# Titan Text Embeddings V2 on-demand price, USD per 1,000 input tokens.
+TITAN_EMBED_V2_PRICE_PER_1K = 0.00002
+
+
+def _record_embedding_metrics(
+    model_id: str, duration: float, tokens: int, error_type: Optional[str] = None
+) -> None:
+    """Send one embedding call to Prometheus. Never raises."""
+    try:
+        from backend import metrics
+
+        status = "error" if error_type else "success"
+        metrics.track_embedding_request(model_id, duration, status=status)
+        if error_type:
+            metrics.track_embedding_error(model_id, error_type)
+            return
+        metrics.track_tokens("bedrock_embedding", input_tokens=tokens)
+        metrics.track_rag_cost("bedrock_embedding", tokens / 1000 * TITAN_EMBED_V2_PRICE_PER_1K)
+    except Exception:
+        pass
+
+
+def _record_embedding_cache(hit: bool) -> None:
+    try:
+        from backend import metrics
+
+        (metrics.track_cache_hit if hit else metrics.track_cache_miss)("embedding")
+    except Exception:
+        pass
 
 
 class BedrockEmbeddings:
@@ -115,9 +147,11 @@ class BedrockEmbeddings:
             if cached is not None:
                 embeddings.append(cached)
                 cache_hits += 1
+                _record_embedding_cache(hit=True)
                 continue
 
             cache_misses += 1
+            _record_embedding_cache(hit=False)
             try:
                 embedding = self._encode_single(text)
                 self._cache_embedding(text_hash, embedding)
@@ -160,6 +194,7 @@ class BedrockEmbeddings:
             "normalize": self.normalize,
         }
 
+        started = time.monotonic()
         try:
             response = self.client.invoke_model(
                 modelId=self.model_id, body=json.dumps(request_body)
@@ -168,13 +203,18 @@ class BedrockEmbeddings:
             response_body = json.loads(response["body"].read())
             embedding = response_body.get("embedding", [])
 
-            # Update stats
+            # Titan reports the real input token count.
+            tokens = response_body.get("inputTextTokenCount") or len(text.split())
             self.total_requests += 1
-            self.total_tokens += len(text.split())  # Rough estimate
+            self.total_tokens += tokens
+            _record_embedding_metrics(self.model_id, time.monotonic() - started, tokens)
 
             return embedding
 
         except Exception as e:
+            _record_embedding_metrics(
+                self.model_id, time.monotonic() - started, 0, error_type=type(e).__name__
+            )
             logger.error(f"Bedrock embedding error: {e}")
             raise
 

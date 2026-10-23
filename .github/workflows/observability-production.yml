@@ -568,6 +568,23 @@ jobs:
             echo "- Daily runs require both Langfuse and PostHog to be enabled and healthy."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  grafana-cloud-dashboards:
+    # Independent of the EC2 job: Grafana Cloud is reachable even when the
+    # instance is stopped outside service hours.
+    name: Sync Dashboards To Grafana Cloud
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GRAFANA_CLOUD_STACK_URL: ${{ vars.GRAFANA_CLOUD_STACK_URL || secrets.GRAFANA_CLOUD_STACK_URL || '' }}
+      GRAFANA_CLOUD_DASHBOARD_TOKEN: ${{ secrets.GRAFANA_CLOUD_DASHBOARD_TOKEN || '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Upload dashboards
+        run: python3 scripts/ci/sync_grafana_cloud_dashboards.py
+
   notify-observability-smart-tutor-ai:
     name: Notify Observability Deploy (#smart-tutor-ai)
     needs: [observability]
