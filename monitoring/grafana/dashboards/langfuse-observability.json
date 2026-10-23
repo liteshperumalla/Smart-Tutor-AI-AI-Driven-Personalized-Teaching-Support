@@ -183,8 +183,8 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint=~\"/api/v1/chat.*|/api/v1/search.*\"}[5m])) by (le, handler)) * 1000",
-          "legendFormat": "{{handler}}",
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint=~\"/api/v1/chat.*|/api/v1/search.*\"}[5m])) by (le, endpoint)) * 1000",
+          "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
       ]

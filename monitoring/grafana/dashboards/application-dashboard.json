@@ -87,7 +87,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "rate(http_requests_total[5m])",
+          "expr": "sum by (method, endpoint) (rate(http_requests_total[5m]))",
           "refId": "A",
           "legendFormat": "{{method}} {{endpoint}}"
         }
