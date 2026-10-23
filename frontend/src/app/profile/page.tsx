@@ -36,7 +36,7 @@ function formatDate(value?: string) {
 
 export default function ProfilePage() {
   const { token, setToken } = useAuthToken();
-  const { setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +99,11 @@ export default function ProfilePage() {
         setProfileForm({
           display_name: data.user.display_name || "",
           phone_number: data.user.phone_number || "",
-          theme: data.user.theme === "dark" ? "dark" : "light",
+          // Show the theme the app is actually using. Applying the saved
+          // profile value here used to flip the whole app (usually to light)
+          // every time this page opened, overriding the sidebar toggle.
+          theme,
         });
-        setTheme(data.user.theme === "dark" ? "dark" : "light");
         setNotes(data.notes || "");
         setError(null);
       })
@@ -118,7 +120,14 @@ export default function ProfilePage() {
     return () => {
       isMounted = false;
     };
-  }, [token, setTheme]);
+    // Load once per session token; later theme changes are synced below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  // Keep the form's theme field in step with the sidebar toggle.
+  useEffect(() => {
+    setProfileForm((prev) => (prev.theme === theme ? prev : { ...prev, theme }));
+  }, [theme]);
 
   useEffect(() => {
     if (!token) return;
@@ -410,23 +419,23 @@ export default function ProfilePage() {
         </article>
 
         <article className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-white">Account overview</h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Signed in as {profile.user.username}</p>
+              <p className="truncate text-sm text-zinc-500 dark:text-zinc-400">Signed in as {profile.user.username}</p>
             </div>
-            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] ${profile.user.role === "Admin" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400" : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"}`}>
+            <span className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.15em] ${profile.user.role === "Admin" ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400" : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"}`}>
               {profile.user.role}
             </span>
           </div>
           <dl className="mt-4 space-y-2 text-sm text-zinc-600 dark:text-zinc-400">
-            <div className="flex justify-between">
-              <dt className="text-zinc-500 dark:text-zinc-400">Email</dt>
-              <dd className="font-medium text-zinc-900 dark:text-white">{profile.user.email || "Not set"}</dd>
+            <div className="flex justify-between gap-4">
+              <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">Email</dt>
+              <dd className="min-w-0 truncate text-right font-medium text-zinc-900 dark:text-white">{profile.user.email || "Not set"}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-zinc-500 dark:text-zinc-400">Last login</dt>
-              <dd className="font-medium text-zinc-900 dark:text-white">{formattedLastLogin}</dd>
+            <div className="flex justify-between gap-4">
+              <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">Last login</dt>
+              <dd className="min-w-0 truncate text-right font-medium text-zinc-900 dark:text-white">{formattedLastLogin}</dd>
             </div>
           </dl>
           <div className="mt-6 flex items-center gap-4">

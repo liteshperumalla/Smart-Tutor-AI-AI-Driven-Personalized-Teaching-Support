@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
@@ -20,6 +20,14 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Headings. Loaded through next/font so it is self-hosted with the build; the
+// old Fontshare @import never reached the bundled CSS.
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -48,8 +56,10 @@ export default function RootLayout({
   ];
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    // Font variables sit on <html> because globals.css composes them into
+    // --font-display / --font-body on :root.
+    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}>
+      <body className="antialiased">
         {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
             an OS-dark or previously-chosen-dark user doesn't flash a light screen.
             Mirrors theme-context.tsx (same storage key + initial logic). */}

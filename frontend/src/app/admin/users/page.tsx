@@ -40,6 +40,13 @@ export default function AdminUsersPage() {
 
   const handleRoleChange = async (username: string, newRole: string) => {
     if (!token) return;
+    // Granting or removing admin rights is a one-click select; confirm it
+    // first (the select is controlled, so cancelling leaves the old role).
+    const message =
+      newRole === "Admin"
+        ? `Make ${username} an Admin? Admins can manage every user, course and setting.`
+        : `Remove admin rights from ${username}?`;
+    if (!window.confirm(message)) return;
     setActionLoading(username);
     try {
       await updateUserRole(token, username, newRole);
@@ -118,8 +125,8 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Username</th>
               <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Email</th>
               <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Role</th>
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Created</th>
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Last Login</th>
+              <th className="hidden px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400 xl:table-cell">Created</th>
+              <th className="hidden px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400 xl:table-cell">Last Login</th>
               <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
             </tr>
           </thead>
@@ -132,7 +139,7 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 font-medium text-zinc-900 dark:text-white">
                   {user.username}
                 </td>
-                <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
+                <td className="max-w-[16rem] truncate px-4 py-3 text-zinc-600 dark:text-zinc-400" title={user.email || undefined}>
                   {user.email || "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -152,12 +159,13 @@ export default function AdminUsersPage() {
                     <option value="Admin">Admin</option>
                   </select>
                 </td>
-                <td className="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
+                {/* Dates hide below xl so Role and Actions stay on screen next to the sidebar. */}
+                <td className="hidden px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400 xl:table-cell">
                   {user.created_at
                     ? new Date(user.created_at).toLocaleDateString()
                     : "—"}
                 </td>
-                <td className="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
+                <td className="hidden px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400 xl:table-cell">
                   {user.last_login
                     ? new Date(user.last_login).toLocaleDateString()
                     : "Never"}

@@ -12,7 +12,7 @@ function requestFor(path: string, cookies: Record<string, string> = {}) {
 
 describe("auth proxy", () => {
   it("keeps public pages open", () => {
-    for (const path of ["/", "/login", "/signup", "/about", "/password-reset/request", "/shared/abc123", "/auth/google/callback"]) {
+    for (const path of ["/", "/login", "/signup", "/about", "/help", "/password-reset/request", "/shared/abc123", "/auth/google/callback"]) {
       expect(isPublicPath(path)).toBe(true);
     }
   });
