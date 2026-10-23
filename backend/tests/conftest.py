@@ -17,6 +17,9 @@ os.environ["STORAGE_BACKEND"] = "filesystem"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["RATE_LIMIT_ENABLED"] = "false"  # Disable rate limiting in tests
 os.environ["SMTP_SERVER"] = ""  # Disable email sending in tests
+# Analytics off: config.py falls back to the production PostHog project key,
+# so test runs (locally and in CI) were sending events to production.
+os.environ["POSTHOG_ENABLED"] = "false"
 
 from backend.api.main import app
 from backend.database import get_user_db
