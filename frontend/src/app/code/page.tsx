@@ -201,7 +201,7 @@ export default function CodeSandboxPage() {
             Coding Agent
           </h1>
           <p className="mt-3 text-base sm:mt-4 sm:text-lg text-zinc-600 max-w-2xl dark:text-zinc-400">
-            Write, run, explain, and debug code with AI assistance powered by Meta Llama 3.1 70B
+            Write, run, explain, and debug code with an AI coding assistant.
           </p>
         </div>
       </header>

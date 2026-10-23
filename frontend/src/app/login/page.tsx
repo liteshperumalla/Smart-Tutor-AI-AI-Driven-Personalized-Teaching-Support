@@ -269,7 +269,7 @@ function LoginPageContent() {
           </button>
 
           <div className="space-y-3">
-            <div className="text-center text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+            <div className="text-center text-xs uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500">
               or continue with Google
             </div>
           <GoogleAuthButton intent="login" returnTo={returnTo} />

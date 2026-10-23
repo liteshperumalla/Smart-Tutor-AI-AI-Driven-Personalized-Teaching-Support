@@ -75,6 +75,8 @@ const navIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "/instructor": GraduationCap,
 };
 
+const STANDALONE_ROUTES = new Set(["/login", "/signup", "/password-setup", "/verify"]);
+
 export function SiteChrome({
   navLinks,
   children,
@@ -89,6 +91,10 @@ export function SiteChrome({
 
   // Routes that need full-height layout (no footer, no padding)
   const isFullHeightRoute = pathname === "/chat" || pathname.startsWith("/chat/");
+  // Sign-in flows are full-screen layouts of their own; the app sidebar only
+  // offers signed-out visitors links that redirect back to /login.
+  const isStandaloneRoute =
+    STANDALONE_ROUTES.has(pathname) || pathname.startsWith("/password-reset/");
   const [hasHydrated, setHasHydrated] = useState(false);
   const [recentSessions, setRecentSessions] = useState<ChatSessionDTO[]>([]);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
@@ -421,6 +427,8 @@ export function SiteChrome({
   const iconButtonClass =
     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white";
 
+  if (isStandaloneRoute) return <>{children}</>;
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* ── Mobile: backdrop overlay ── */}
@@ -689,11 +697,11 @@ export function SiteChrome({
       </aside>
 
       {/* Main content area */}
-      <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-[margin] duration-200 dark:bg-zinc-950 dark:text-white ${rail ? "lg:ml-16" : "lg:ml-64"}`}>
+      <div className={`flex min-w-0 flex-1 flex-col bg-zinc-50 text-zinc-900 transition-[margin] duration-200 dark:bg-zinc-950 dark:text-white ${rail ? "lg:ml-16" : "lg:ml-64"}`}>
         {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
         <main className={
           isFullHeightRoute
-            ? "flex-1 flex flex-col overflow-hidden pt-14 lg:pt-0"
+            ? "flex-1 flex min-w-0 flex-col overflow-hidden pt-14 lg:pt-0"
             : "flex-1 overflow-y-auto px-4 py-5 pt-[4.75rem] pb-8 sm:px-8 lg:pt-5 lg:pb-8"
         }>
           {children}

@@ -230,9 +230,9 @@ export function SourcesSidebar({
         className={`
           fixed right-0 top-0 bottom-0 z-50 w-96 max-w-[90vw]
           bg-white dark:bg-zinc-900
-          shadow-2xl border-l border-zinc-200 dark:border-zinc-700
+          border-l border-zinc-200 dark:border-zinc-700
           transform transition-transform duration-300 ease-in-out
-          ${isOpen ? "translate-x-0" : "translate-x-full"}
+          ${isOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
           flex flex-col
         `}
       >
