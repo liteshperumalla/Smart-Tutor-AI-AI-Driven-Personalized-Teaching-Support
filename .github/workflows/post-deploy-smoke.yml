@@ -98,8 +98,32 @@ jobs:
             echo "=== Containers ==="
             docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
 
-            echo "=== Backend ready ==="
-            curl -fsS http://127.0.0.1:8010/ready >/dev/null
+            # The instance may have just been started by resolve_ec2_target.sh
+            # (it is stopped outside business hours), so give the backend
+            # time to boot before probing it.
+            echo "=== Backend ready (waiting up to 180s) ==="
+            # Wall-clock deadline: each probe and sleep is capped to the time
+            # left, so slow probes cannot stretch the wait past 180s.
+            deadline=$(( $(date +%s) + 180 ))
+            attempt=0
+            while :; do
+              attempt=$(( attempt + 1 ))
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "${remaining}" -le 0 ]; then
+                echo "Backend not ready after 180s"
+                docker ps --format 'table {{.Names}}\t{{.Status}}'
+                docker logs --tail 80 smart-tutor-backend || true
+                exit 1
+              fi
+              if curl -fsS --max-time $(( remaining < 5 ? remaining : 5 )) http://127.0.0.1:8010/ready >/dev/null 2>&1; then
+                echo "ready after attempt ${attempt}"
+                break
+              fi
+              remaining=$(( deadline - $(date +%s) ))
+              if [ "${remaining}" -gt 0 ]; then
+                sleep $(( remaining < 5 ? remaining : 5 ))
+              fi
+            done
 
             echo "=== Backend health ==="
             curl -fsS http://127.0.0.1:8010/health >/dev/null
@@ -152,10 +176,10 @@ jobs:
             echo "| Public API URL | \`${{ env.PUBLIC_API_URL || 'not configured' }}\` |"
             echo ""
             echo "Executed checks:"
-            echo "- Localhost backend `/ready`"
-            echo "- Localhost backend `/health`"
-            echo "- In-container backend `/ready`"
-            echo "- In-container backend `/metrics`"
+            echo '- Localhost backend `/ready`'
+            echo '- Localhost backend `/health`'
+            echo '- In-container backend `/ready`'
+            echo '- In-container backend `/metrics`'
             if [ -n "${PUBLIC_APP_URL}" ] || [ -n "${PUBLIC_API_URL}" ]; then
               echo "- External public URL smoke checks"
             else
