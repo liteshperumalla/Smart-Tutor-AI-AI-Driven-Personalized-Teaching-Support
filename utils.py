@@ -814,8 +814,13 @@ def generate_response_stream_and_sources(
     model_id: Optional[str] = None,
     source_prefixes: Optional[List[str]] = None,
     allow_web_search: bool = True,
+    answer_instructions: Optional[str] = None,
 ):
     """Generate streaming response with sources
+
+    ``answer_instructions`` (e.g. a chat learning mode) shapes the answer only:
+    it is added to the synthesis prompt, never to the retrieval query, and
+    such answers bypass the answer cache.
 
     Args:
         query: The user's question
@@ -846,7 +851,7 @@ def generate_response_stream_and_sources(
             return greeting_stream(), []
 
         # Answer Cache: check for cached response before RAG retrieval
-        if config.ANSWER_CACHE_ENABLED:
+        if config.ANSWER_CACHE_ENABLED and not answer_instructions:
             cached = _check_answer_cache(query, user_id=user_id)
             if cached:
                 logging.info(f"Answer cache HIT for: {query[:60]}...")
@@ -1061,8 +1066,13 @@ def generate_response_stream_and_sources(
                 _ensure_response_llm_initialized()
 
             synth = get_response_synthesizer(**synth_kwargs)
+            synth_query = (
+                f"{answer_instructions}\n\nStudent question: {query}"
+                if answer_instructions
+                else query
+            )
             streaming_response_obj = synth.synthesize(
-                query=query,
+                query=synth_query,
                 nodes=nodes_for_prompt,
             )
             response_text_generator = streaming_response_obj.response_gen
@@ -1089,7 +1099,7 @@ def generate_response_stream_and_sources(
         # ungrounded-checked (see the Self-RAG skip above), so caching them
         # for up to ANSWER_CACHE_TTL risks serving stale "current events"
         # answers well past their freshness window.
-        if config.ANSWER_CACHE_ENABLED and not used_web_search:
+        if config.ANSWER_CACHE_ENABLED and not used_web_search and not answer_instructions:
             response_text_generator = _caching_generator(
                 response_text_generator, query, response_sources, user_id=user_id
             )

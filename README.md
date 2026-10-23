@@ -1,116 +1,130 @@
 # Smart Tutor AI
 
-> AI-driven personalized teaching companion for INFO 5731 at University of North Texas.
-> Grounding LLM responses in course materials using Retrieval-Augmented Generation.
+> An AI teaching assistant for **INFO 5731 (Computational Methods for Information Systems)** at the University of North Texas.
+> It answers questions from the course's own lectures, notebooks and readings using Retrieval-Augmented Generation (RAG), and cites the source of every answer.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-black?logo=vercel)](https://smart-ai-tutor.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-AWS_EC2-orange?logo=amazon-aws)](http://52.2.3.101)
-[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-blue?logo=github-actions)](https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support/actions)
-[![Code Review](https://img.shields.io/badge/Code_Review-CodeRabbit_AI-green)](https://coderabbit.ai)
+[![Backend](https://img.shields.io/badge/Backend-AWS_EC2-orange?logo=amazon-aws)](http://52.2.3.101/health)
+[![CI](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-blue?logo=github-actions)](https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support/actions)
+[![RAG eval](https://img.shields.io/badge/RAG_eval-7%2F7_passing-brightgreen)](#results)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 ---
 
-## Overview
+## Contents
 
-Smart Tutor AI solves the problem of generic, hallucination-prone LLM responses by grounding answers in course-specific materials. Students in INFO 5731 (Computational Methods for Information Systems) can ask questions about any lecture, code demo, or reading — and receive answers directly sourced from the course corpus.
-
-**The core problem:** Off-the-shelf LLMs confidently answer questions about course-specific content but frequently hallucinate or generalize. RAG constrains generation to indexed course materials, producing factually grounded responses.
-
----
-
-## Live Demo
-
-| Environment | URL |
-|---|---|
-| **Frontend (Vercel)** | https://smart-ai-tutor.vercel.app |
-| **Backend API** | http://52.2.3.101/health |
-| **API Docs** | http://52.2.3.101/docs |
-
-> Register an account to try the tutor. The knowledge base covers all 11 modules of INFO 5731 Spring 2025.
+- [Why](#why) · [Live demo](#live-demo) · [Architecture](#architecture) · [RAG pipeline](#rag-pipeline)
+- [Results](#results) · [Features](#features) · [Tech stack](#tech-stack) · [Quick start](#quick-start)
+- [Repository layout](#repository-layout) · [API](#api-reference) · [Security](#security) · [Deployment & operations](#deployment--operations)
 
 ---
 
-## RAG Pipeline
+## Why
 
-The system implements a four-stage pipeline to eliminate hallucinations:
+General-purpose LLMs answer course questions confidently but often get the details wrong. They don't know what *this* course taught, which notebook covered a topic, or how the instructor framed it. Smart Tutor AI limits generation to the indexed INFO 5731 corpus:
 
-![RAG pipeline architecture](docs/architecture/RAG_architecture.png)
+- **Grounded:** every answer is built from retrieved course chunks, and each one cites its source file, page or slide.
+- **Cheap to keep current:** there is no fine-tuning. When the syllabus changes, you re-index the new material.
+- **Honest when unsure:** a self-check flags answers the retrieved context doesn't support, and a web-search fallback only runs when the course material has nothing relevant.
 
-**Key design decision:** Rather than fine-tuning (costly, requires labeled data, drifts with syllabus updates), RAG allows zero-cost knowledge updates — just re-index new lecture slides.
+## Live demo
 
----
-
-## Results
-
-### Knowledge Base
-
-| Metric | Value |
+| | URL |
 |---|---|
-| Source documents | INFO 5731 corpus across 11 course modules |
-| Processing success rate | 100% (including OCR for scanned PDFs) |
-| Total vector chunks | 12,669 |
-| Embedding model | Amazon Titan (1,024-dim) |
-| Vector index size | ~55 MB (`s3://smart-ai-tutor-docs/vector_index/`) |
-| Supported formats | PDF, PPTX, DOCX, IPYNB, HTML, CSV, YouTube transcripts |
+| **App** (Vercel) | https://smart-ai-tutor.vercel.app |
+| **API health** | http://52.2.3.101/health |
+| **API docs** (Swagger) | http://52.2.3.101/docs |
 
-### Retrieval Quality
-
-Evaluated on 64 course-specific question-answer pairs:
-
-| Metric | Score |
-|---|---|
-| Response relevance ≥ 0.8 | 45.3% (29/64) |
-| Median relevance score | 0.70 / 1.0 |
-| Top cosine similarity score | 0.79 (Data Cascades query) |
-| Average retrieval similarity | 0.69 across test queries |
-
-### Live System Performance (Feb 2026)
-
-Measured against 20 real INFO 5731 exam-style questions on the deployed system:
-
-| Metric | Value |
-|---|---|
-| Response success rate | 13/20 (65%) |
-| Mean response latency | 23.5s |
-| Median latency | 22.2s |
-| P95 latency | 31.5s |
-| Average response length | 313 words |
-| LLM backend | AWS Bedrock Claude 3 Haiku |
-
-> **Note:** The 35% failure rate in this batch was caused by a session message-count limit (60 messages), not retrieval failure. Individual cold-start queries succeed consistently.
+> To keep costs down, the backend runs **Mon–Fri, 09:00–17:00 US Central**. Outside those hours the app shows a maintenance notice instead of errors. Register an account to try it; the knowledge base covers all 11 INFO 5731 modules.
 
 ---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Vercel (Frontend)                           │
-│            Next.js 16 · React 19 · Tailwind v4                  │
-│      /api/backend/* proxy → graceful 503 on scheduled downtime  │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTPS / streaming
-┌───────────────────────────▼─────────────────────────────────────┐
-│              FastAPI Backend (AWS EC2 · t3a.medium)              │
-│          JWT Auth · Rate Limiting · CSRF Protection             │
-└──────┬──────────┬──────────┬──────────┬──────────┬─────────────┘
-       │          │          │          │          │
-  ┌────▼────┐ ┌──▼──────┐ ┌─▼──────┐ ┌─▼──────┐ ┌▼──────────┐
-  │   RAG   │ │  Code   │ │  Auth  │ │ Agent  │ │  LLMOps   │
-  │Pipeline │ │Sandbox  │ │Service │ │ System │ │ + PostHog │
-  └────┬────┘ └──┬──────┘ └─┬──────┘ └─┬──────┘ └───────────┘
-       │         │          │          │
-  ┌────▼─────────▼──────────▼──────────▼────────────────────────┐
-  │                        Data Layer                           │
-  │  S3 (vectors)  PostgreSQL  DynamoDB  Redis  Neo4j Aura      │
-  └─────────────────────────────────────────────────────────────┘
-                            │
-  ┌─────────────────────────▼────────────────────────────────────┐
-  │                    AWS Bedrock                               │
-  │     Claude Haiku (chat)  ·  Titan Embeddings               │
-  └──────────────────────────────────────────────────────────────┘
-```
+![Smart Tutor AI system architecture](docs/architecture/system-architecture.svg)
+
+- **Frontend:** Next.js 16 on Vercel. Every API call goes through a same-origin proxy (`/api/backend/*`) to the backend.
+- **Backend:** FastAPI on a single scheduled AWS EC2 instance (`t3a.medium`, Elastic IP). Postgres, Redis and the Prometheus/Grafana stack run beside it in Docker.
+- **AI:** AWS Bedrock for generation (users can choose the model per message) and Titan embeddings. The vector index is stored in S3.
+- **Observability:** Langfuse traces every RAG stage, PostHog tracks product and LLM events, Prometheus feeds Grafana Cloud, and alerts go to Slack.
+- **Delivery:** GitHub Actions runs CI and security checks on every PR. When CI passes on `main`, a deploy rolls a new backend container onto EC2 by starting a candidate container, health-checking it, then swapping it in.
+
+## RAG pipeline
+
+![Smart Tutor AI RAG pipeline](docs/architecture/rag-pipeline.svg)
+
+| Stage | What happens | Where |
+|---|---|---|
+| Ingestion | Parse slides, PDFs (with OCR), notebooks, HTML, CSV and YouTube transcripts → ~512-token chunks → Titan v2 embeddings → S3 | `scripts/s3-vectors/`, `backend/s3_vector_store.py` |
+| Route | Greetings get a direct reply. When the `agent-system-enabled` flag is on, LangGraph agents (tutor, quiz helper, doubts, feedback, personalised) take over | `backend/services/chat_service.py`, `backend/agents/` |
+| Answer cache *(flag)* | Redis fuzzy match (≥0.95 similarity, 1 h TTL) returns repeated questions instantly | `utils.py`, `backend/rag/caching_layer.py` |
+| Query enhancement *(flag)* | Rewrites and expands the query for retrieval; the original question is still what goes to the LLM | `backend/rag/query_enhancement.py` |
+| Retrieve | Cosine top-k over the S3 index, with optional cross-encoder rerank (`ms-marco-MiniLM-L-12`) | `backend/s3_retriever.py`, `backend/rag/reranker.py` |
+| Web fallback | Only when course context is weak: SerpAPI, then DuckDuckGo | `utils.py` |
+| Generate | Numbered `[Source n]` context → Bedrock LLM, streamed | `utils.py`, `backend/llm_provider.py`, `backend/llm_router.py` |
+| Ground-check *(flag)* | Self-RAG checks support for the answer and appends a disclaimer if it isn't grounded | `backend/rag/self_rag.py` |
+| Stream | SSE tokens + clickable citations back to the UI | `backend/api/routes/chat.py` |
+
+A separate `/rag` endpoint (`backend/rag/service.py`) A/B tests an **enhanced** variant with BM25 + dense hybrid search (Reciprocal Rank Fusion) and HyDE against the baseline.
+
+---
+
+## Results
+
+### Continuous RAG evaluation
+
+The **Scheduled RAG Evaluation** workflow runs every weekday. It replays course questions from `Evaluation_files/evaluation_data.jsonl` (64 Q&A pairs) through the live production container, scores the answers with an LLM judge, and posts the results to Slack.
+
+| Metric (runs #198–#204, Oct 13–21 2026, 5 questions per run) | Value |
+|---|---|
+| Quality gate | **7 / 7 runs passed** |
+| Avg correctness (LLM judge, 0–1) | **0.68** (range 0.58–0.74) |
+| Avg context recall (0–1) | **0.73** (range 0.60–0.80) |
+| Latest run (#204, Oct 21) | correctness 0.70 · context recall 0.80 |
+
+### Live traffic (PostHog)
+
+| Metric | Value |
+|---|---|
+| Streamed responses, median latency | **11.0 s** |
+| Streamed responses, p95 latency | **15.8 s** |
+| Success rate | 5 / 5 |
+| Avg answer length | ~580 tokens |
+
+> These numbers come from a small sample (5 production responses on Oct 19 2026). The Feb 2026 benchmark below measured a p95 of 31.5 s on Claude 3 Haiku. Treat the comparison as directional until there is more traffic.
+
+### Knowledge base
+
+| Metric | Value |
+|---|---|
+| Coverage | All 11 INFO 5731 modules |
+| Vector chunks | 12,669 |
+| Embeddings | Amazon Titan Text v2, 1,024-dim |
+| Index size | ~55 MB (`s3://smart-ai-tutor-docs/vector_index/`) |
+| Ingestion success | 100% (including OCR for scanned PDFs) |
+
+### Engineering
+
+| Metric | Value |
+|---|---|
+| Backend tests | 186 (184 pass, 2 skipped) in CI |
+| CI checks per PR | 22: unit, contract, e2e, migrations, SAST, Semgrep, CodeQL, DAST, dependency + secret scanning |
+| Code review | CodeRabbit + an AI review workflow on every PR |
+
+<details>
+<summary>Historical baseline (Feb 2026)</summary>
+
+Offline evaluation on 64 course question-answer pairs:
+
+| Metric | Score |
+|---|---|
+| Response relevance ≥ 0.8 | 45.3% (29/64) |
+| Median relevance score | 0.70 |
+| Average retrieval similarity | 0.69 |
+
+Live benchmark on 20 exam-style questions (Claude 3 Haiku): mean latency 23.5 s, p95 31.5 s, 13/20 successful. The failures came from a 60-message session limit, not from retrieval.
+
+</details>
 
 ---
 
@@ -118,228 +132,179 @@ Measured against 20 real INFO 5731 exam-style questions on the deployed system:
 
 | Feature | Description |
 |---|---|
-| **RAG Chat** | Course-grounded Q&A with source citations, streaming responses |
-| **Code Sandbox** | AI-powered code generation, explanation, and debugging (Python/JS/Java) |
-| **Quiz Generator** | Automated MCQ and open-ended quiz generation from lecture materials |
-| **Agent System** | Multi-agent routing (tutor, quiz helper, feedback, doubts, personalised agents) via LangGraph |
-| **Knowledge Graph** | Neo4j Aura-backed concept relationship graph, with scheduled auto-resume of paused instances |
-| **Collaborative Sharing** | Shareable chat links with 24-hour expiry |
-| **LLMOps Dashboard** | Prompt versioning, latency tracking, satisfaction metrics |
-| **PostHog Analytics** | Event taxonomy, LLM cost tracking, feature flags |
-| **File Upload** | Direct document ingestion and indexing from the UI |
-| **Prometheus Metrics** | `/metrics` endpoint with LLM request/latency/token counters |
-| **Cost-optimized uptime** | EC2 scheduled to Mon–Fri 9–5 CT with a graceful in-app maintenance notice off-hours |
+| **RAG chat** | Course-grounded Q&A with streaming answers, source citations and a per-message model picker |
+| **Code sandbox** | Generate, explain and debug code (Python / JS / Java) |
+| **Quiz generator** | MCQ and open-ended quizzes from lecture material |
+| **Agent system** | LangGraph routing to tutor, quiz-helper, doubts, feedback and personalised agents (feature-flagged) |
+| **Knowledge graph** | Neo4j Aura concept graph and agent memory, auto-resumed when Aura pauses |
+| **Research & resources** | Citation extraction, curated resources, office-hours appointments |
+| **Sharing** | Shareable chat links with 24-hour expiry |
+| **LLMOps dashboard** | Prompt versions, latency, cost and satisfaction for admins |
+| **Cost-aware uptime** | Business-hours EC2 schedule with a graceful maintenance mode |
 
----
+## Tech stack
 
-## Tech Stack
-
-| Component | Technology |
+| Layer | Technology |
 |---|---|
-| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS v4, Lucide React |
-| Backend | FastAPI (Python 3.11), Uvicorn |
-| LLM | AWS Bedrock (Claude Haiku, Llama 3) with circuit breaker + complexity routing |
-| Embeddings | Amazon Titan (1,024-dim) |
-| Vector Store | LlamaIndex + custom S3 vector store (`backend/s3_vector_store.py`) |
-| Graph DB | Neo4j Aura (managed; Aura API auto-resume) |
-| Relational DB | PostgreSQL (users, sessions) |
-| Session Store | DynamoDB |
-| Cache | Redis |
-| Observability | Prometheus + Grafana, PostHog, Langfuse |
-| Infrastructure | Docker, AWS EC2 (t3a.medium), Vercel, AWS Secrets Manager |
-| CI/CD | GitHub Actions, CodeRabbit AI |
+| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS 4, Vercel |
+| Backend | FastAPI, Python 3.11, Uvicorn, LlamaIndex, LangGraph |
+| LLMs (AWS Bedrock) | Llama 3.3 70B (default), Claude 5.5 Sonnet, Claude 5.5 Haiku, Claude Opus 4, GPT 6 Luna, with a circuit breaker and complexity routing |
+| Embeddings & vectors | Amazon Titan Text v2 (1,024-dim), custom S3 vector store |
+| Data | PostgreSQL, Redis, Neo4j Aura, S3, DynamoDB (hybrid storage option) |
+| Observability | Langfuse v4, PostHog, Prometheus, Grafana (+ Grafana Cloud), Alertmanager → Slack, CloudWatch Logs |
+| Infra & delivery | Docker, AWS EC2, Secrets Manager, GHCR, GitHub Actions; Terraform, Helm and Kubernetes manifests for a cluster deployment |
 
 ---
 
-## Quick Start
+## Quick start
 
-### Prerequisites
-
-- Docker 24+ and Docker Compose V2
-- AWS credentials with Bedrock access (Claude + Titan Embeddings)
-- Node.js 20 (`>=20.9.0 <21`, see `.nvmrc`) — frontend dev only
-
-### Run Locally
+**Prerequisites:** Docker 24+ with Compose v2, AWS credentials with Bedrock access (Claude/Llama + Titan), and Node.js 20 (see `.nvmrc`) for frontend work.
 
 ```bash
 git clone https://github.com/liteshperumalla/Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support.git
 cd Smart-Tutor-AI-AI-Driven-Personalized-Teaching-Support
-cp .env.example .env   # fill in AWS credentials and SECRET_KEY
+cp .env.example .env        # add AWS credentials and SECRET_KEY
 docker compose up -d
 ```
-
-### Access Points
 
 | Service | URL |
 |---|---|
 | Frontend | http://localhost:4000 |
-| Backend API | http://localhost:8010 |
-| API Docs (Swagger) | http://localhost:8010/docs |
-| Health Check | http://localhost:8010/health |
-| Metrics | http://localhost:8010/metrics |
+| Backend API / Swagger | http://localhost:8010 · http://localhost:8010/docs |
+| Health / metrics | http://localhost:8010/health · http://localhost:8010/metrics |
 
-### Required Environment Variables
+Minimal `.env`:
 
 ```bash
-# AWS Bedrock
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 AWS_REGION=us-east-1
-
-# Application
 SECRET_KEY=<random-64-char-string>
 DATABASE_URL=postgresql://user:pass@localhost:5432/smart_tutor
 REDIS_URL=redis://localhost:6380
 ```
 
----
+RAG features such as `ENHANCED_RAG_ENABLED`, `RERANKING_ENABLED`, `ANSWER_CACHE_ENABLED` and `AGENT_SYSTEM_ENABLED` are off by default. `.env.example` documents every flag.
 
-## Project Structure
-
-```
-smart-tutor-ai/
-├── backend/
-│   ├── api/
-│   │   ├── routes/             # 17 routers: auth, chat, code, quiz, admin, evaluation,
-│   │   │                       #   research, resources, appointments, feedback, profile,
-│   │   │                       #   files, home, health, rag, ws_chat
-│   │   ├── dependencies.py     # auth, rate limiting, admin-session guards
-│   │   └── main.py             # FastAPI app factory
-│   ├── agents/                 # LangGraph multi-agent system
-│   │   ├── graph.py, router.py # graph wiring + intent routing
-│   │   ├── tutor_agent.py, doubts_agent.py, quiz_helper_agent.py,
-│   │   │                       #   feedback_agent.py, personalised_agent.py
-│   │   ├── neo4j_client.py     # Aura driver + auto-resume on connectivity errors
-│   │   └── streaming.py        # __AGENT_META__ streaming protocol
-│   ├── rag/                    # retrieval pipeline: hybrid_search, reranker, hyde,
-│   │                           #   self_rag, semantic_chunker, query_enhancement, evaluation
-│   ├── cloud/ · db/ · events/ · content/   # provider adapters, DB layer, events, static content
-│   ├── config.py               # singleton config (env + AWS Secrets Manager)
-│   ├── s3_vector_store.py      # custom S3 vector store (build/search/serialize)
-│   ├── s3_retriever.py         # LlamaIndex-compatible S3 retriever (+ reranking)
-│   ├── llm_provider.py · llm_router.py · circuit_breaker.py   # Bedrock + routing + resilience
-│   ├── llmops.py · posthog_tracker.py · langfuse_setup.py     # observability
-│   └── prompt_registry.py      # versioned prompt store
-├── frontend/                   # Next.js 16 App Router
-│   └── src/
-│       ├── app/                # pages: chat, code, quiz, evaluation, admin, research,
-│       │   │                   #   appointments, feedback, profile, resources, about, auth/*
-│       │   └── api/backend/    # proxy route → EC2 backend (classified 503 on downtime)
-│       ├── components/         # site-chrome, chat/*, maintenance-banner, page-hero, …
-│       ├── context/ · hooks/ · types/
-│       └── lib/                # api.ts, api-client.ts, auth.ts, maintenance.ts, events.ts
-├── .github/workflows/          # CI, Production Deploy, ec2-schedule, neo4j-aura-resume
-├── scripts/                    # ops + s3-vectors (index rebuild), aws, ci helpers
-├── monitoring/                 # prometheus, grafana, alertmanager, slo, finops
-├── terraform/ · k8s/ · helm/ · gitops/   # IaC, manifests, Helm chart, ArgoCD
-├── chaos-engineering/ · e2e/   # chaos experiments, Playwright end-to-end tests
-├── docs/                       # adr, architecture, deployment runbooks, development
-├── docker/ · Dockerfile · docker-compose*.yml
-└── Makefile · pyproject.toml · requirements.txt
-```
+Common tasks: `make test` (all tests), `make lint`, `make typecheck`, `make security`, `make env-check`.
 
 ---
 
-## API Reference
+## Repository layout
+
+```
+.
+├── backend/                 FastAPI app
+│   ├── api/routes/          18 routers: auth, chat (SSE), code, quiz, rag, research, files, admin, health, …
+│   ├── agents/              LangGraph multi-agent system + Neo4j client
+│   ├── rag/                 hybrid search, HyDE, reranker, self-RAG, caching, query enhancement, eval
+│   ├── services/ db/ cloud/ events/
+│   ├── s3_vector_store.py   custom S3 vector store · s3_retriever.py LlamaIndex retriever
+│   ├── llm_provider.py      Bedrock models · llm_router.py complexity routing · circuit_breaker.py
+│   └── langfuse_setup.py    tracing · posthog_tracker.py · llmops.py · prompt_registry.py
+├── frontend/                Next.js 16 app (pages, components, /api/backend proxy, Jest tests)
+├── utils.py                 core RAG streaming pipeline used by chat (imported by backend services)
+├── data/                    course modules, announcements, resources, drift baseline
+├── Evaluation_files/        evaluation datasets (64 Q&A pairs) and human-evaluation results
+├── e2e/                     Playwright end-to-end tests
+├── scripts/                 ops, S3 vector index build, CI helpers, synthetic monitor
+├── monitoring/              Prometheus rules, Grafana dashboards, Alertmanager, SLOs
+├── terraform/ k8s/ helm/ gitops/   infrastructure as code and cluster deployment
+├── chaos-engineering/ compliance/  resilience experiments, compliance policies
+├── docker/                  nginx, entrypoint, DB init · docker-compose*.yml at the root
+├── docs/                    architecture (+ diagram sources), ADRs, runbooks, guides, reports
+└── .github/workflows/       CI, deploys, schedules, monitoring, evaluation, security
+```
+
+The diagrams in this README are generated from code. To regenerate them:
 
 ```bash
-# Authentication
-POST /auth/signup            # Register (email verification required)
-POST /auth/login             # Login → HttpOnly JWT cookies
-
-# Chat (streaming SSE)
-POST /chat/sessions                          # Create session
-POST /chat/sessions/{id}/messages            # Send message (streaming)
-POST /chat/sessions/{id}/share               # Share with 24h expiry
-GET  /chat/share/{share_id}                  # Public shared session
-
-# Code Sandbox
-POST /code/generate          # Generate code from prompt
-POST /code/explain           # Explain code snippet
-POST /code/debug             # Debug with suggestions
-POST /code/chat              # Coding assistant conversation
-
-# Learning tools
-POST /quiz/generate          # Generate a quiz from course materials
-POST /research/citations     # Extract citations from a query
-GET  /resources              # Curated learning resources
-GET  /appointments           # Office-hours / appointment scheduling
-POST /feedback               # Submit feedback
-GET  /home/overview          # Landing-page system status (public)
-
-# Admin (requires admin role)
-GET  /admin/llmops                  # LLMOps logs
-GET  /admin/prompts                 # List prompt versions
-POST /admin/prompts/{name}          # Create/update prompt
-GET  /admin/agent-metrics           # Agent system analytics (Neo4j-backed)
-GET  /admin/knowledge-graph-metrics # Knowledge graph stats (Neo4j Aura)
+python docs/architecture/src/rag_pipeline.py
+python docs/architecture/src/system_architecture.py
 ```
 
-> Interactive Swagger docs: `http://52.2.3.101/docs` (or `/docs` locally).
-
 ---
+
+## API reference
+
+```bash
+# Auth
+POST /auth/signup                        # register (email verification)
+POST /auth/login                         # HttpOnly JWT cookies
+
+# Chat (SSE streaming)
+POST /chat/sessions                      # create session
+POST /chat/sessions/{id}/messages        # ask a question (streams tokens + sources)
+POST /chat/sessions/{id}/share           # share link, 24 h expiry
+GET  /chat/share/{share_id}              # public shared session
+
+# Code sandbox
+POST /code/generate | /code/explain | /code/debug | /code/chat
+
+# Learning tools
+POST /quiz/generate                      # quiz from course materials
+POST /research/citations                 # citations for a query
+GET  /resources                          # curated resources
+GET  /appointments                       # office hours
+POST /feedback                           # feedback
+GET  /home/overview                      # landing-page status (public)
+
+# Admin (admin role)
+GET  /admin/llmops                       # LLMOps logs
+GET  /admin/prompts                      # prompt versions
+POST /admin/prompts/{name}               # create/update prompt
+GET  /admin/agent-metrics                # agent analytics
+GET  /admin/knowledge-graph-metrics      # Neo4j stats
+```
+
+Full interactive docs: `/docs` on any running backend.
 
 ## Security
 
-- **Authentication:** RS256 JWT tokens via HttpOnly cookies, refresh token rotation
-- **CSRF Protection:** Double-submit cookie pattern on all state-changing endpoints
-- **Rate Limiting:** Per-user and per-IP via SlowAPI, Redis-backed
-- **Input Validation:** Pydantic models, path traversal prevention, XSS sanitization
-- **Code Execution:** Disabled by default; sandboxed with pattern detection when enabled
-- **Secrets Management:** AWS Secrets Manager in production, `.env` fallback in dev
+- **Auth:** RS256 JWTs in HttpOnly cookies with refresh-token rotation.
+- **CSRF:** double-submit cookie on every state-changing endpoint.
+- **Rate limiting:** per user and per IP (SlowAPI, Redis-backed).
+- **Input safety:** Pydantic validation, path-traversal checks, XSS sanitisation, file-type validation.
+- **Code execution:** off by default; sandboxed with pattern detection when enabled.
+- **Secrets:** AWS Secrets Manager in production, `.env` in development.
+- **Supply chain:** CodeQL, Semgrep, SAST, DAST, Trivy, dependency and secret scanning in CI, plus a daily scheduled security scan.
 
 ---
 
-## Deployment
+## Deployment & operations
 
-The backend runs on AWS EC2 (`t3a.medium`, Elastic IP `52.2.3.101`); the frontend is on Vercel. Deploys are automated: a push to `main` runs the **CI Pipeline**, which on success triggers the **Production Deploy** workflow (`.github/workflows/deploy-production.yml`) to roll a new container onto EC2 over SSH.
-
-```bash
-# Trigger a deploy
-git push origin main          # CI Pipeline → Production Deploy (GitHub Actions)
-
-# Check service health
-curl http://52.2.3.101/health
-
-# View backend logs (on the instance)
-docker logs -f smart-tutor-backend
-```
-
-**Cost-optimized scheduling.** To cut the always-on compute bill, the instance is stopped outside **Mon–Fri 09:00–17:00 America/Chicago** by `.github/workflows/ec2-schedule.yml` (DST-aware, with a `workflow_dispatch` manual start/stop override). The Elastic IP and `restart=unless-stopped` containers mean the stack auto-recovers on the morning boot; off-hours, the frontend shows a graceful maintenance notice instead of errors (`frontend/src/lib/maintenance.ts`).
-
-See [`docs/deployment/`](docs/deployment/) for full production runbooks.
-
----
-
-## Evaluation
-
-RAG quality evaluation scripts are in `backend/rag/tests/`:
+| Workflow | What it does |
+|---|---|
+| **CI Pipeline** | Every PR and push: tests, contract/e2e, migrations, security scans |
+| **Production Deploy** | After CI passes on `main`: build + smoke-test images, push to GHCR, roll the backend onto EC2 (candidate → health check → swap), deploy the frontend to Vercel |
+| **EC2 Schedule** | Starts/stops EC2 for Mon–Fri 09:00–17:00 CT (DST-aware), and never stops it mid-deploy |
+| **Synthetic Production Monitor** | Probes the live API during business hours and alerts Slack on failure |
+| **Scheduled RAG Evaluation** | Weekday LLM-judge quality gate against production |
+| **Production Observability Bootstrap** | Deploys Prometheus, Grafana and Alertmanager on EC2 and checks Langfuse/PostHog |
+| **Security scans · Neo4j Aura resume** | Daily scans; keeps the Aura graph from staying paused |
 
 ```bash
-# Run comprehensive evaluation against live system
-python backend/rag/tests/run_comprehensive_evaluation.py --variant production
-
-# Baseline evaluation
-python backend/rag/tests/run_evaluation.py
+git push origin main                 # CI → Production Deploy
+curl http://52.2.3.101/health        # health check
+docker logs -f smart-tutor-backend   # on the instance
 ```
 
-Evaluation data and results are in [`Evaluation_files/`](Evaluation_files/).
+Runbooks are in [`docs/runbooks/`](docs/runbooks/) and [`docs/deployment/`](docs/deployment/). The full docs index is [`docs/INDEX.md`](docs/INDEX.md).
 
 ---
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/amazing-feature`
-3. Commit with conventional commits: `git commit -m 'feat: add amazing feature'`
-4. Open a Pull Request — every PR gets automatic CodeRabbit AI review
+1. Create a branch: `git checkout -b feat/your-change`
+2. Use conventional commits: `feat: …`, `fix: …`, `docs: …`
+3. Open a PR. CodeRabbit and the CI suite review it automatically.
 
----
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE).
 
 ---
 
-*Built for INFO 5731 — Computational Methods for Information Systems · University of North Texas · Spring 2025*
+<sub>Built for INFO 5731 — Computational Methods for Information Systems · University of North Texas.</sub>
