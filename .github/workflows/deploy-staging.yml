@@ -24,12 +24,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: liteshperumalla/smart-tutor-ai-ai-driven-personalized-teaching-support
   # Same instance as production; the "staging" environment can override any
-  # of these secrets if a dedicated staging host is added later.
+  # of these if a dedicated staging host is added later. The AWS and EC2
+  # secrets are set per job (below), not here, so they stay scoped to the
+  # jobs that use them.
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
-  EC2_HOST: ${{ secrets.EC2_HOST || '' }}
-  EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
   EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
   EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
   EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
@@ -64,6 +62,10 @@ jobs:
       NEXT_PUBLIC_APP_BASE_URL: ${{ secrets.STAGING_APP_URL }}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
       NEXT_PUBLIC_GOOGLE_REDIRECT_URI: ${{ secrets.STAGING_GOOGLE_OAUTH_REDIRECT_URI }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
     steps:
       - name: Resolve deployment target
         id: target
@@ -522,9 +524,14 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 1
 
@@ -537,7 +544,7 @@ jobs:
         run: scripts/ci/resolve_ec2_target.sh
 
       - name: Stop staging containers
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
