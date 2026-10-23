@@ -44,3 +44,6 @@ frontend/node_modules
 frontend/test-api.html
 frontend/test-chat-api.html
 frontend/tsconfig.tsbuildinfo
+# Docker image bundles exported by CI (far above Vercel's 100 MB file limit)
+*.tar.gz
+backend-image-*
