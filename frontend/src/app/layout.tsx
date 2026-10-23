@@ -65,7 +65,6 @@ export default function RootLayout({
               <AnnouncementToaster />
               <MaintenanceBanner />
               <ActiveCourseProvider>
-                <MaintenanceBanner />
                 <SiteChrome navLinks={navLinks}>{children}</SiteChrome>
               </ActiveCourseProvider>
             </ThemeProvider>
