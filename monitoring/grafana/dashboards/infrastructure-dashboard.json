@@ -460,7 +460,7 @@
       },
       "targets": [
         {
-          "expr": "(pg_stat_database_numbackends / pg_settings_max_connections) * 100",
+          "expr": "(sum by (instance) (pg_stat_database_numbackends) / on (instance) max by (instance) (pg_settings_max_connections)) * 100",
           "refId": "A"
         }
       ],

@@ -21,6 +21,7 @@ from prometheus_client import (
 )
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Match
 from starlette.types import ASGIApp
 import time
 from typing import Callable, Optional
@@ -304,6 +305,25 @@ def set_app_info(version: str, environment: str):
 # Prometheus Metrics Middleware
 # ============================================================================
 
+def _route_template(request: Request) -> str:
+    """Return the matched route's path template (e.g. /chat/sessions/{session_id}).
+
+    scope["route"] is only set once the router runs inside call_next, so the
+    route is matched here. Using the raw URL path instead would create one
+    series per session/user ID and break every by-endpoint dashboard panel.
+    A path matched with the wrong method (405) keeps its template; unmatched
+    paths (404 scans) share one label to keep cardinality bounded.
+    """
+    partial = None
+    for route in request.app.router.routes:
+        match, _ = route.matches(request.scope)
+        if match == Match.FULL:
+            return getattr(route, "path", request.url.path)
+        if match == Match.PARTIAL and partial is None:
+            partial = getattr(route, "path", None)
+    return partial or "unmatched"
+
+
 class PrometheusMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware to automatically instrument HTTP requests with Prometheus metrics.
@@ -320,9 +340,7 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         logger.info("Prometheus metrics middleware initialized")
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Extract endpoint from request, using route template when available
-        route = request.scope.get("route")
-        endpoint = getattr(route, "path", request.url.path) or request.url.path
+        endpoint = _route_template(request)
         method = request.method
 
         # Skip metrics endpoint itself to avoid recursion
