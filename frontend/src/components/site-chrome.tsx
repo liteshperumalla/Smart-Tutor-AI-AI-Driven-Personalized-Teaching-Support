@@ -689,9 +689,14 @@ export function SiteChrome({
                 {link.label}
               </Link>
             ))}
-            <a href="mailto:support@smartaitutor.com" className="hover:text-zinc-900 dark:hover:text-white">
+            <Link
+              href="/help"
+              onClick={() => setMobileNavOpen(false)}
+              aria-current={isActive("/help") ? "page" : undefined}
+              className={isActive("/help") ? "font-semibold text-zinc-900 dark:text-white" : "hover:text-zinc-900 dark:hover:text-white"}
+            >
               Help
-            </a>
+            </Link>
           </div>
         </div>
       </aside>

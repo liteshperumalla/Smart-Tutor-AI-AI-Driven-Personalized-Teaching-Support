@@ -356,7 +356,7 @@ export default function QuizPage() {
             <button
               type="submit"
               disabled={isGenerating || selectedFolders.length === 0}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-semibold hover:from-purple-700 hover:to-indigo-700 transition disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
                 <>
@@ -370,6 +370,13 @@ export default function QuizPage() {
                 </>
               )}
             </button>
+            {!isGenerating && selectedFolders.length === 0 && (
+              <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400" role="status">
+                {recommendedObjectiveId
+                  ? "Open “Customize this practice set” and pick at least one topic to start."
+                  : "Pick at least one topic above to generate a quiz."}
+              </p>
+            )}
           </form>
         </div>
 

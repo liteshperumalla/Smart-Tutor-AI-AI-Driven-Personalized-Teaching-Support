@@ -2,7 +2,7 @@ import Link from "next/link";
 import { fetchHomeOverview, type HomeOverview } from "@/lib/api";
 import { PageShell } from "@/components/page-shell";
 import { KnowledgeBaseWidget } from "@/components/knowledge-base-widget";
-import { Bell, GraduationCap, FolderOpen, ExternalLink } from "lucide-react";
+import { Bell, GraduationCap, FolderOpen } from "lucide-react";
 
 const DEFAULT_OVERVIEW: HomeOverview = {
   announcements: [
@@ -184,9 +184,9 @@ export default async function Home() {
             />
 
             <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 flex-1 basis-48">
+                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
                     <FolderOpen className="h-4 w-4" />
                     Resources
                   </p>
@@ -196,9 +196,9 @@ export default async function Home() {
                 </div>
                 <Link
                   href="/resources"
-                  className="rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1"
+                  className="shrink-0 whitespace-nowrap rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1"
                 >
-                  Browse <ExternalLink className="h-3 w-3" />
+                  Browse <span aria-hidden="true">→</span>
                 </Link>
               </div>
             </article>

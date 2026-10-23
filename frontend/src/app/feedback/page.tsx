@@ -347,7 +347,7 @@ export default function FeedbackPage() {
             disabled={formState.loading}
             className={`w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
               feedbackType === 'feedback'
-                ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
+                ? 'bg-gradient-to-r from-emerald-600 to-indigo-600 text-white hover:from-emerald-700 hover:to-indigo-700'
                 : 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:from-red-700 hover:to-orange-700'
             }`}
           >
