@@ -175,6 +175,7 @@ function ChatWorkspaceContent() {
   const [learningMode, setLearningMode] = useState<LearningMode>("ask");
   const [courses, setCourses] = useState<Course[]>([]);
   const { activeCourseId = "info-5731", setActiveCourseId } = useActiveCourse();
+  const activeCourseCode = courses.find((course) => course.id === activeCourseId)?.code;
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
@@ -1757,11 +1758,11 @@ function ChatWorkspaceContent() {
                       }
                     }
                   }}
-                  className="flex-1 bg-transparent text-base text-zinc-900 outline-none placeholder:text-zinc-500 dark:text-white dark:placeholder:text-zinc-400 caret-zinc-900 dark:caret-white"
+                  className="min-w-0 flex-1 bg-transparent text-base text-zinc-900 outline-none placeholder:text-zinc-500 dark:text-white dark:placeholder:text-zinc-400 caret-zinc-900 dark:caret-white"
                 />
 
                 {/* Right side buttons */}
-                <div className="flex items-center gap-2">
+                <div className="flex flex-shrink-0 items-center gap-2">
                   {/* Model Selector Button */}
                   <div className="relative" ref={modelDropdownRef}>
                     <button
@@ -1856,7 +1857,9 @@ function ChatWorkspaceContent() {
           <div className="mt-2 flex flex-col items-center gap-1 select-none">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-              Every answer is grounded in your INFO 5731 corpus
+              {activeCourseCode
+                ? `Every answer is grounded in your ${activeCourseCode} materials`
+                : "Every answer is grounded in your course materials"}
             </span>
             <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
               AI is experimental and can make mistakes. Please double-check responses.

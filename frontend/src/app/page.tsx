@@ -97,7 +97,8 @@ export default async function Home() {
         {quickActions.length > 0 && (
           <section className="animate-fade-in-up">
             <h2 className="font-display text-2xl font-bold mb-6">Quick Actions</h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {/* Column count follows the card count so no card sits alone on a row. */}
+            <div className={`grid gap-6 md:grid-cols-2 ${quickActions.length % 4 === 0 ? "xl:grid-cols-4" : quickActions.length % 3 === 0 ? "lg:grid-cols-3" : ""}`}>
               {quickActions.map((action, i) => {
                 const featured =
                   action.href === "/code" ||
