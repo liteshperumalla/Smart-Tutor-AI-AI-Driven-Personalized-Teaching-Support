@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 _CACHEABLE_AGENTS = frozenset({"tutor_agent", "doubts_agent", "quiz_helper_agent"})
 
 
+def _avg_source_score(sources: List[Dict[str, Any]]) -> Optional[float]:
+    """Mean retrieval score of the sources, or None when none were scored."""
+    scores = [
+        s["score"] for s in sources
+        if isinstance(s, dict) and isinstance(s.get("score"), (int, float))
+    ]
+    return sum(scores) / len(scores) if scores else None
+
+
 def _chat_cache_key(
     user_id: str, agent_name: str, query: str, model_id: Optional[str]
 ) -> str:
@@ -367,6 +376,7 @@ def _log_post_stream(
                 "web_search_used": False,
             },
             num_retrieved=len(sources),
+            avg_relevance_score=_avg_source_score(sources),
             context_passages=[
                 s.get("chunk_text", "")[:500]
                 for s in sources[:5]
@@ -450,6 +460,8 @@ def _retrieve_rag_context(query: str, source_prefixes: Optional[List[str]] = Non
                 "page": node.metadata.get("page_number"),
                 "slide": node.metadata.get("slide_number"),
                 "chunk_text": text[:300] + "..." if len(text) > 300 else text,
+                # Retrieval similarity; feeds the live relevance metrics.
+                "score": round(float(n_ws.score), 4) if getattr(n_ws, "score", None) is not None else None,
             })
             context_parts.append(f"[Source {i}: {file_name}]\n{text}")
 

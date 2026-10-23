@@ -2,6 +2,8 @@
 
 This document details the configuration, underlying metrics, aggregation rules, and operational visualization for the five primary Langfuse dashboards deployed in Smart AI Tutor.
 
+> **Live dashboard.** The JSON files below are design specs; Langfuse cannot import them. The dashboard that exists in Langfuse is **Smart AI Tutor - Production LLM**, built through the Langfuse dashboards API by `scripts/ci/sync_langfuse_dashboards.py` (re-run it after changing its widget list). Its cost, token and model charts read the `bedrock-generation` observations that `backend/bedrock_llm.py` emits for every Bedrock call.
+
 ---
 
 ## 🧭 Dashboard Architecture & Index

@@ -367,6 +367,8 @@ async def send_message(
     # Records the model that actually answers, which differs from the
     # requested one when the Bedrock client falls back.
     usage = model_usage.start_tracking()
+    import time as _time_mod
+    _query_started = _time_mod.monotonic()  # RAG latency includes retrieval
     try:
         generator, sources, resolved_model_id = await asyncio.to_thread(
             chat_service.stream_response,
@@ -450,6 +452,17 @@ async def send_message(
             _cost_usd = round(
                 (_input_tokens / 1000 * _in_price) + (_output_tokens / 1000 * _out_price), 6
             )
+
+            # Prometheus: one RAG chat query (retrieval + generation, end to end)
+            try:
+                from backend.metrics import track_rag_query
+                track_rag_query(
+                    "chat",
+                    _time_mod.monotonic() - _query_started,
+                    status="error" if _stream_failed else "success",
+                )
+            except Exception:
+                pass
 
             # LLMOps: record call telemetry (fire-and-forget, never raises)
             record_llm_call(

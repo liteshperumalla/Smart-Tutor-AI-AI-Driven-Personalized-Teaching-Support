@@ -114,8 +114,9 @@ def test_agent_metrics_handles_null_feedback_aggregates(monkeypatch):
     assert metrics["total_agent_interactions"] == 2
     assert metrics["unique_users"] == 2
     assert metrics["avg_response_time_ms"] == 840
-    assert metrics["routing_accuracy"]["positive_after_route"] == 0
-    assert metrics["routing_accuracy"]["negative_after_route"] == 0
+    assert metrics["routing_accuracy"]["positive_after_route"] is None
+    assert metrics["routing_accuracy"]["negative_after_route"] is None
+    assert metrics["routing_accuracy"]["rated_interactions"] == 0
 
 
 def test_summary_stats_ignore_nullable_metric_values(tmp_path):

@@ -631,8 +631,9 @@ class AdminService:
             "daily_usage": [],
             "top_query_types": [],
             "routing_accuracy": {
-                "positive_after_route": 0,
-                "negative_after_route": 0,
+                "positive_after_route": None,
+                "negative_after_route": None,
+                "rated_interactions": 0,
             },
         }
         if error:
@@ -770,10 +771,11 @@ class AdminService:
             "routing_accuracy": {
                 "positive_after_route": round(pos / feedback_total * 100, 1)
                 if feedback_total
-                else 0,
+                else None,
                 "negative_after_route": round(neg / feedback_total * 100, 1)
                 if feedback_total
-                else 0,
+                else None,
+                "rated_interactions": feedback_total,
             },
             "source": "runtime_logs",
         }
@@ -866,9 +868,12 @@ class AdminService:
             pos = _coerce_int(fb_row.get("pos"))
             neg = _coerce_int(fb_row.get("neg"))
             fb_total = pos + neg
+            # None (not 0) when nothing has been rated, so the dashboard can
+            # say "no data" instead of reporting 0% accuracy.
             routing_acc = {
-                "positive_after_route": round(pos / fb_total * 100, 1) if fb_total else 0,
-                "negative_after_route": round(neg / fb_total * 100, 1) if fb_total else 0,
+                "positive_after_route": round(pos / fb_total * 100, 1) if fb_total else None,
+                "negative_after_route": round(neg / fb_total * 100, 1) if fb_total else None,
+                "rated_interactions": fb_total,
             }
 
             neo4j_metrics = {
