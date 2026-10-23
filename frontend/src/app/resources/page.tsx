@@ -7,7 +7,7 @@ import { fetchResources, fetchResearchUploads, getResourceDownloadUrl, ResearchU
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
 import { PageHero } from "@/components/page-hero";
-import { FolderOpen, ExternalLink, FileText, Download } from "lucide-react";
+import { FolderOpen, ExternalLink, FileText, Download, Search } from "lucide-react";
 
 type CategoryMap = Record<string, { title: string; url: string }[]>;
 
@@ -46,6 +46,14 @@ function SectionHeader({ label, count, unit }: { label: string; count: number; u
   );
 }
 
+type KindFilter = "all" | "files" | "links";
+
+const KIND_FILTERS: { id: KindFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "files", label: "Files" },
+  { id: "links", label: "Links" },
+];
+
 const ROW_CARD =
   "flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 shadow-sm transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900";
 
@@ -57,6 +65,8 @@ export default function ResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [uploads, setUploads] = useState<ResearchUpload[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<KindFilter>("all");
 
   useEffect(() => {
     if (!token) return;
@@ -106,8 +116,21 @@ export default function ResourcesPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const needle = query.trim().toLowerCase();
+  const matches = (...fields: (string | null | undefined)[]) =>
+    !needle || fields.some((f) => f?.toLowerCase().includes(needle));
+  const showFiles = kind !== "links";
+  const showLinks = kind !== "files";
+  const visibleFiles = showFiles ? fileResources.filter((r) => matches(r.title, r.description, r.file_name, r.category)) : [];
+  const visibleUploads = showFiles ? uploads.filter((u) => matches(u.file_name)) : [];
+  const visibleLinkEntries = showLinks
+    ? categoryEntries
+        .map(([name, links]) => [name, links.filter((l) => matches(l.title, name))] as const)
+        .filter(([, links]) => links.length > 0)
+    : [];
+
   // Group downloadable files by their category so each becomes a labeled section.
-  const filesByCategory = fileResources.reduce<Record<string, Resource[]>>((acc, r) => {
+  const filesByCategory = visibleFiles.reduce<Record<string, Resource[]>>((acc, r) => {
     const key = r.category || "Course materials";
     (acc[key] ||= []).push(r);
     return acc;
@@ -118,6 +141,9 @@ export default function ResourcesPage() {
   const totalFiles = fileResources.length + uploads.length;
   const totalDocs = totalFiles + totalLinks;
   const isEmpty = !loading && !error && totalDocs === 0;
+  const visibleCount =
+    visibleFiles.length + visibleUploads.length + visibleLinkEntries.reduce((n, [, links]) => n + links.length, 0);
+  const noMatches = !loading && !error && totalDocs > 0 && visibleCount === 0;
 
   return (
     <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
@@ -144,6 +170,58 @@ export default function ResourcesPage() {
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
           {error}
         </p>
+      )}
+
+      {/* Search and type filter */}
+      {!loading && totalDocs > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Search resources</span>
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by title, topic or file name"
+              className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-10 pr-4 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none transition focus:border-transparent focus:ring-2 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+            />
+          </label>
+          <div role="group" aria-label="Resource type" className="flex shrink-0 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+            {KIND_FILTERS.map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={kind === id}
+                onClick={() => setKind(id)}
+                className={[
+                  "rounded-lg px-3.5 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                  kind === id
+                    ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {noMatches && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
+          <Search className="h-8 w-8 text-zinc-300 dark:text-zinc-600" aria-hidden="true" />
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Nothing matches your search.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setKind("all");
+            }}
+            className="text-sm font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+          >
+            Clear filters
+          </button>
+        </div>
       )}
 
       {/* Loading state */}
@@ -190,7 +268,7 @@ export default function ResourcesPage() {
 
       {/* Curated external links, grouped by category */}
       {!loading &&
-        categoryEntries.map(([name, links]) => (
+        visibleLinkEntries.map(([name, links]) => (
           <section key={name} className="animate-fade-in-up">
             <SectionHeader label={name} count={links.length} unit={links.length === 1 ? "link" : "links"} />
             <div className="space-y-3">
@@ -216,11 +294,11 @@ export default function ResourcesPage() {
         ))}
 
       {/* Knowledge uploads */}
-      {!loading && uploads.length > 0 && (
+      {!loading && visibleUploads.length > 0 && (
         <section className="animate-fade-in-up">
-          <SectionHeader label="Uploads" count={uploads.length} unit={uploads.length === 1 ? "file" : "files"} />
+          <SectionHeader label="Uploads" count={visibleUploads.length} unit={visibleUploads.length === 1 ? "file" : "files"} />
           <div className="space-y-3">
-            {uploads.map((upload) => (
+            {visibleUploads.map((upload) => (
               <div key={upload.id} className={ROW_CARD}>
                 <FileBadge name={upload.file_name} />
                 <div className="min-w-0 flex-1">

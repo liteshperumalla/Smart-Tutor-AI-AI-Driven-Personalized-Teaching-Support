@@ -181,6 +181,7 @@ function ChatWorkspaceContent() {
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const isLoggedIn = token === "authenticated" && !!user;
 
@@ -1457,6 +1458,25 @@ function ChatWorkspaceContent() {
                 </>
               )}
             </p>
+            {/* Starters fill the composer (they don't send) so the student can
+                name their own topic first. They follow the selected mode. */}
+            <div className="mt-8 flex max-w-2xl flex-wrap justify-center gap-2" aria-label={`Suggested ${learningMode} prompts`}>
+              {MODE_STARTERS[learningMode].map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  disabled={isStreaming || isStartingChat}
+                  onClick={() => {
+                    setComposerText(starter);
+                    composerRef.current?.focus();
+                  }}
+                  className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 shadow-sm transition hover:border-emerald-400 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-emerald-500 dark:hover:text-white"
+                >
+                  {/* Open-ended starters end in a space for the student's topic. */}
+                  {starter.endsWith(" ") ? `${starter.trimEnd()} …` : starter}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -1745,6 +1765,7 @@ function ChatWorkspaceContent() {
 
                 {/* Input */}
                 <input
+                  ref={composerRef}
                   type="text"
                   placeholder={!isLoggedIn ? "Sign in to start chatting" : isStartingChat ? "Starting a new chat..." : "Ask anything..."}
                   value={composerText}
@@ -2816,6 +2837,29 @@ const LEARNING_MODES: { id: LearningMode; label: string; hint: string }[] = [
   { id: "practice", label: "Practice", hint: "Practice questions, answers at the end" },
   { id: "review", label: "Review", hint: "Revision summary and flashcards" },
 ];
+
+const MODE_STARTERS: Record<LearningMode, string[]> = {
+  ask: [
+    "What are the key ideas from this week's lecture?",
+    "Define the most important terms in the course readings",
+    "Which course materials cover ",
+  ],
+  learn: [
+    "Teach me this topic step by step: ",
+    "Walk me through a worked example of ",
+    "Explain from the basics, I'm stuck on ",
+  ],
+  practice: [
+    "Give me 5 practice questions on this week's material",
+    "Quiz me on the key definitions",
+    "Give me a harder problem on ",
+  ],
+  review: [
+    "Summarize this week's material for revision",
+    "Make flashcards for the key terms",
+    "What should I review before the exam?",
+  ],
+};
 
 export default function ChatWorkspace() {
   return (
