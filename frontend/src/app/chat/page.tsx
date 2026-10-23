@@ -22,7 +22,8 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
-import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
+import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionSelected, dispatchChatSessionsUpdated } from "@/lib/events";
+import { formatMessageTime } from "@/lib/message-time";
 import { PageShell } from "@/components/page-shell";
 import {
   MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
@@ -51,12 +52,16 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "meta.llama3-3-70b-instruct-v1:0": "Llama 3.3 70B",
   "us.meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
   "meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
-  "us.anthropic.claude-5-5-sonnet-20261022-v1:0": "Claude 5.5 Sonnet",
-  "anthropic.claude-5-5-sonnet-20261022-v1:0": "Claude 5.5 Sonnet",
-  "us.anthropic.claude-5-5-haiku-20261022-v1:0": "Claude 5.5 Haiku",
-  "anthropic.claude-5-5-haiku-20261022-v1:0": "Claude 5.5 Haiku",
-  "openai.gpt-6-luna-2026": "GPT 6 Luna",
-  "gpt-6-luna": "GPT 6 Luna",
+  "us.anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
+  "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
+  "us.anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
+  "anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
+  "us.openai.gpt-6-luna": "GPT-6 Luna",
+  "openai.gpt-6-luna": "GPT-6 Luna",
+  // IDs saved on older messages, before they were corrected to the AWS model cards.
+  "us.anthropic.claude-5-5-sonnet-20261022-v1:0": "Claude Sonnet 5.5",
+  "us.anthropic.claude-5-5-haiku-20261022-v1:0": "Claude Haiku 5.5",
+  "openai.gpt-6-luna-2026": "GPT-6 Luna",
   "us.anthropic.claude-3-5-sonnet-20241022-v2:0": "Claude 3.5 Sonnet",
   "anthropic.claude-3-5-sonnet-20241022-v2:0": "Claude 3.5 Sonnet",
   "us.anthropic.claude-3-5-haiku-20241022-v1:0": "Claude 3.5 Haiku",
@@ -65,6 +70,17 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "anthropic.claude-3-haiku-20240307-v1:0": "Claude 3 Haiku",
   "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
 };
+
+/** Message time: short label in the thread, full date and time on hover. */
+function MessageTime({ iso, className = "" }: { iso?: string; className?: string }) {
+  const formatted = formatMessageTime(iso);
+  if (!formatted) return null;
+  return (
+    <time dateTime={iso} title={formatted.full} className={`text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500 ${className}`}>
+      {formatted.label}
+    </time>
+  );
+}
 
 /**
  * Company icon badge renderer for model selector and bubbles.
@@ -192,8 +208,23 @@ function ChatWorkspaceContent() {
     } catch { /* ignore fetch errors */ }
   }, []);
 
+  // Models the server will accept for this user (null until loaded). The
+  // selector hides the rest, e.g. GPT 6 Luna when no OpenAI key is configured.
+  const [offeredModelIds, setOfferedModelIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    fetch(`${getApiBaseUrl()}/chat/models`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { models?: Array<{ model_id: string }> } | null) => {
+        if (!cancelled && data?.models) setOfferedModelIds(new Set(data.models.map((m) => m.model_id)));
+      })
+      .catch(() => { /* keep the full list; the server still validates the choice */ });
+    return () => { cancelled = true; };
+  }, [isLoggedIn]);
+
   // Available LLM models (admin-only models appended conditionally)
-  const LLM_MODELS = [
+  const ALL_LLM_MODELS = [
     {
       id: "auto",
       name: "Auto",
@@ -217,30 +248,30 @@ function ChatWorkspaceContent() {
     },
     {
       id: "claude-sonnet",
-      name: "Claude 5.5 Sonnet",
+      name: "Claude Sonnet 5.5",
       shortName: "Sonnet 5.5",
       description: "Next-gen reasoning, elite coding & complex analysis",
-      modelId: "us.anthropic.claude-5-5-sonnet-20261022-v1:0",
+      modelId: "us.anthropic.claude-sonnet-5-5",
       badge: "Pro",
       company: "anthropic",
       family: "pro",
     },
     {
       id: "claude-haiku",
-      name: "Claude 5.5 Haiku",
+      name: "Claude Haiku 5.5",
       shortName: "Haiku 5.5",
       description: "Ultra-fast response time for everyday learning",
-      modelId: "us.anthropic.claude-5-5-haiku-20261022-v1:0",
+      modelId: "us.anthropic.claude-haiku-5-5",
       badge: "Fast",
       company: "anthropic",
       family: "fast",
     },
     {
       id: "gpt-6-luna",
-      name: "GPT 6 Luna",
-      shortName: "GPT 6 Luna",
-      description: "Next-gen OpenAI model for deep exploration & creativity",
-      modelId: "openai.gpt-6-luna-2026",
+      name: "GPT-6 Luna",
+      shortName: "GPT-6 Luna",
+      description: "OpenAI's efficient GPT-6 model for quick, focused answers",
+      modelId: "us.openai.gpt-6-luna",
       badge: "Luna",
       company: "openai",
       family: "pro",
@@ -257,7 +288,14 @@ function ChatWorkspaceContent() {
     }] : []),
   ];
 
+  const LLM_MODELS = ALL_LLM_MODELS.filter(
+    (m) => m.modelId === null || offeredModelIds === null || offeredModelIds.has(m.modelId)
+  );
   const currentModel = LLM_MODELS.find(m => m.id === selectedModel) || LLM_MODELS[0];
+  // A model that is no longer offered falls back to Auto rather than failing every send.
+  useEffect(() => {
+    if (currentModel.id !== selectedModel) setSelectedModel(currentModel.id);
+  }, [currentModel.id, selectedModel]);
 
   // Speech recognition ref (using any to avoid TypeScript issues with Web Speech API)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -482,6 +520,11 @@ function ChatWorkspaceContent() {
     () => sessions.find((session) => session.id === selectedSessionId) || null,
     [sessions, selectedSessionId]
   );
+
+  // Let the sidebar highlight the open chat.
+  useEffect(() => {
+    dispatchChatSessionSelected(selectedSessionId);
+  }, [selectedSessionId]);
 
   useEffect(() => {
     if (activeSession?.course_id) setActiveCourseId(activeSession.course_id);
@@ -2021,14 +2064,17 @@ function ChatBubble({
           <div className="max-w-[85%] sm:max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
           </div>
-          {/* Copy and Edit buttons - visible on hover */}
-          {onStartEdit && (
-            <UserMessageActions
-              onCopy={handleCopyUserMessage}
-              onEdit={onStartEdit}
-              visible={isHovered}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {/* Copy and Edit buttons - visible on hover */}
+            {onStartEdit && (
+              <UserMessageActions
+                onCopy={handleCopyUserMessage}
+                onEdit={onStartEdit}
+                visible={isHovered}
+              />
+            )}
+            <MessageTime iso={message.timestamp} className="pr-1" />
+          </div>
         </div>
       </div>
     );
@@ -2084,10 +2130,13 @@ function ChatBubble({
                 )}
               </div>
             )}
-            {/* Auto-routed model chip */}
+            {/* Header: model that actually answered (persisted with the message) and time */}
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
             {message.model_used && !message.agent && (
-              <div className="mb-1.5">
-                {(() => {
+                (() => {
+                  const usedName = MODEL_DISPLAY_NAMES[message.model_used] || message.model_used;
+                  const requested = message.model_requested;
+                  const fellBack = Boolean(requested && requested !== message.model_used);
                   const modelIdLower = (message.model_used || "").toLowerCase();
                   const comp = modelIdLower.includes("llama")
                     ? "meta"
@@ -2097,14 +2146,25 @@ function ChatBubble({
                     ? "openai"
                     : "auto";
                   return (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                        fellBack
+                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                          : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                      ].join(" ")}
+                      title={fellBack ? `${MODEL_DISPLAY_NAMES[requested!] || requested} was unavailable, so ${usedName} answered.` : undefined}
+                    >
                       <LLMCompanyIcon company={comp} className="h-3 w-3" />
-                      via {MODEL_DISPLAY_NAMES[message.model_used] || "Auto"}
+                      {fellBack
+                        ? `${MODEL_DISPLAY_NAMES[requested!] || requested} unavailable · answered by ${usedName}`
+                        : `via ${usedName}`}
                     </span>
                   );
-                })()}
-              </div>
+                })()
             )}
+              <MessageTime iso={message.timestamp} />
+            </div>
             <MarkdownContent
               content={cleanContent}
               sources={message.sources}

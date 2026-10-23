@@ -27,11 +27,9 @@ limiter = Limiter(key_func=get_remote_address, enabled=_slowapi_enabled)
 # Model family mapping: substring in model ID → family tier
 MODEL_FAMILY_MAP = {
     "llama": "default",
-    "claude-5-5-haiku": "fast",
     "claude-3-5-haiku": "fast",
     "claude-3-haiku": "fast",
     "claude-haiku": "fast",  # covers claude-haiku-4-5 and later
-    "claude-5-5-sonnet": "pro",
     "claude-3-7-sonnet": "pro",
     "claude-3-5-sonnet": "pro",
     "claude-sonnet": "pro",

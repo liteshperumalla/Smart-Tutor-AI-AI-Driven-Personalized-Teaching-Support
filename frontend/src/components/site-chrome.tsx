@@ -21,8 +21,7 @@ import {
 } from "@/lib/api";
 import { clearAuthToken } from "@/lib/auth";
 import { loginPathFor } from "@/lib/safe-next";
-import { dispatchChatSessionsUpdated } from "@/lib/events";
-import { CHAT_SESSIONS_UPDATED_EVENT } from "@/lib/events";
+import { CHAT_SESSION_SELECTED_EVENT, CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
 import { DeleteChatModal } from "@/components/chat/delete-chat-modal";
 import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { SearchChatsModal } from "@/components/chat/search-chats-modal";
@@ -42,8 +41,6 @@ import {
   LogOut,
   Sun,
   Moon,
-  Clock,
-  Plus,
   PanelLeftClose,
   PanelLeft,
   Search,
@@ -51,9 +48,18 @@ import {
   Archive,
   ShieldAlert,
   GraduationCap,
+  Menu,
+  X,
+  SquarePen,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
-type NavLink = { href: string; label: string; icon?: React.ComponentType<{ className?: string }>; adminOnly?: boolean; instructorOnly?: boolean };
+type NavSection = "main" | "manage" | "more";
+type NavLink = { href: string; label: string; section?: NavSection; adminOnly?: boolean; instructorOnly?: boolean };
+
+const SIDEBAR_COLLAPSED_KEY = "sat-sidebar-collapsed";
 
 const navIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "/": Home,
@@ -92,15 +98,37 @@ export function SiteChrome({
   const [isDeleting, setIsDeleting] = useState(false);
   const [renameModalSession, setRenameModalSession] = useState<ChatSessionDTO | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [hasInstructorCourse, setHasInstructorCourse] = useState(false);
   const router = useRouter();
-  const year = new Date().getFullYear();
 
   useEffect(() => {
     setHasHydrated(true);
+    try {
+      setSidebarCollapsedState(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+    } catch {
+      // Storage blocked (private mode): fall back to the expanded sidebar.
+    }
+  }, []);
+
+  const setSidebarCollapsed = useCallback((collapsed: boolean) => {
+    setSidebarCollapsedState(collapsed);
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      // Not persisted; the choice still applies for this page view.
+    }
+  }, []);
+
+  useEffect(() => {
+    function handleSelected(event: Event) {
+      setActiveSessionId((event as CustomEvent<string | null>).detail ?? null);
+    }
+    window.addEventListener(CHAT_SESSION_SELECTED_EVENT, handleSelected);
+    return () => window.removeEventListener(CHAT_SESSION_SELECTED_EVENT, handleSelected);
   }, []);
 
   const loadSessions = useCallback(async () => {
@@ -358,6 +386,41 @@ export function SiteChrome({
     (link) => (!link.adminOnly || isAdmin) && (!link.instructorOnly || hasInstructorCourse)
   );
 
+  const isActive = (href: string) =>
+    pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+  const navSection = (section: NavSection) =>
+    visibleNavLinks.filter((link) => (link.section ?? "main") === section);
+  const userName = user ? user.display_name || user.full_name || user.username : "";
+  // The rail (collapsed) form only exists on desktop; the mobile drawer is always full.
+  const rail = sidebarCollapsed;
+
+  const renderNavLink = (link: NavLink) => {
+    const Icon = navIcons[link.href] || FolderOpen;
+    const active = isActive(link.href);
+    return (
+      <Link
+        key={link.href}
+        href={link.href}
+        onClick={() => setMobileNavOpen(false)}
+        aria-current={active ? "page" : undefined}
+        title={rail ? link.label : undefined}
+        className={[
+          "group flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors",
+          rail ? "lg:justify-center lg:px-0" : "",
+          active
+            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
+        ].join(" ")}
+      >
+        <Icon className="h-4 w-4 flex-shrink-0" />
+        <span className={rail ? "lg:sr-only" : ""}>{link.label}</span>
+      </Link>
+    );
+  };
+
+  const iconButtonClass =
+    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white";
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* ── Mobile: backdrop overlay ── */}
@@ -373,345 +436,260 @@ export function SiteChrome({
       <header className="fixed top-0 left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 lg:hidden">
         <button
           onClick={() => setMobileNavOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition"
+          className={iconButtonClass}
           aria-label="Open navigation"
           aria-expanded={mobileNavOpen}
         >
-          {/* Hamburger */}
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          <Menu className="h-5 w-5" />
         </button>
         <Link href="/" className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-white">
           <LogoMark size={26} />
           Smart AI Tutor
         </Link>
-        {/* Quick action: new chat */}
         <button
           onClick={handleCreateSession}
           disabled={isCreatingSession}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white transition disabled:opacity-50"
+          className={iconButtonClass}
           aria-label="New chat"
         >
-          <Plus className="h-5 w-5" />
+          <SquarePen className="h-5 w-5" />
         </button>
       </header>
 
-      {/* Sidebar Hover Zone (visible when collapsed) - shows button on hover */}
-      {sidebarCollapsed && (
-        <div className="fixed left-0 top-0 bottom-0 w-12 z-40 hidden lg:block group cursor-pointer">
-          {/* Button appears on hover with smooth transition */}
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="absolute left-3 top-4 p-2.5 rounded-xl bg-zinc-800/90 backdrop-blur-sm border border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-700 transition-all duration-300 shadow-xl opacity-0 group-hover:opacity-100 -translate-x-3 group-hover:translate-x-0"
-            aria-label="Expand sidebar"
-          >
-            <PanelLeft className="h-5 w-5" />
-          </button>
-        </div>
-      )}
-
-      {/* Fixed Sidebar — desktop: always mounted, mobile: slide-in drawer */}
-      <aside className={[
-        "fixed left-0 top-0 bottom-0 z-50 flex flex-shrink-0 flex-col border-r border-zinc-200 bg-white/90 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80 overflow-hidden",
-        // Mobile: slide in/out; always full width on small screens
-        "transition-transform duration-300 w-72",
-        "lg:transition-all lg:duration-300",
-        // Mobile open/close
-        mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full",
-        // Desktop: override mobile transform; respect collapse state
-        sidebarCollapsed ? "lg:translate-x-0 lg:w-0 lg:opacity-0" : "lg:translate-x-0 lg:w-64 lg:opacity-100",
-      ].join(" ")}>
-        <div className="px-6 py-6 flex items-center justify-between gap-2">
+      {/* Sidebar — desktop: full (w-64) or icon rail (w-16); mobile: slide-in drawer */}
+      <aside
+        aria-label="Main navigation"
+        className={[
+          "fixed left-0 top-0 bottom-0 z-50 flex w-72 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900",
+          "transition-[transform,width] duration-200",
+          mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full",
+          "lg:translate-x-0 lg:shadow-none",
+          rail ? "lg:w-16" : "lg:w-64",
+        ].join(" ")}
+      >
+        {/* Brand + collapse */}
+        <div className={["flex h-14 flex-shrink-0 items-center gap-2 px-3", rail ? "lg:justify-center lg:px-0" : "justify-between"].join(" ")}>
           <Link
             href="/"
             onClick={() => setMobileNavOpen(false)}
-            className="flex items-center gap-2.5 text-lg font-semibold text-zinc-900 dark:text-white whitespace-nowrap"
+            className={["flex min-w-0 items-center gap-2.5 px-1 text-base font-semibold text-zinc-900 dark:text-white", rail ? "lg:hidden" : ""].join(" ")}
           >
-            <LogoMark size={30} />
-            Smart AI Tutor
+            <LogoMark size={28} />
+            <span className="truncate">Smart AI Tutor</span>
           </Link>
-          {/* Desktop: collapse button; Mobile: close drawer button */}
+          {/* Mobile: close the drawer */}
+          <button onClick={() => setMobileNavOpen(false)} className={`${iconButtonClass} lg:hidden`} aria-label="Close navigation">
+            <X className="h-5 w-5" />
+          </button>
+          {/* Desktop: collapse to / expand from the icon rail */}
           <button
-            onClick={() => { setSidebarCollapsed(true); setMobileNavOpen(false); }}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-white dark:hover:bg-white/10 transition flex-shrink-0"
-            title="Close menu"
-            aria-label="Close navigation"
+            onClick={() => setSidebarCollapsed(!rail)}
+            className={`${iconButtonClass} hidden lg:flex`}
+            aria-label={rail ? "Expand sidebar" : "Collapse sidebar"}
+            title={rail ? "Expand sidebar" : "Collapse sidebar"}
           >
-            <PanelLeftClose className="h-5 w-5" />
+            {rail ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
           </button>
         </div>
 
-        {/* Admin Panel Link */}
-        {isLoggedIn && isAdmin && (
-          <div className="px-4 mb-3">
-            <Link
-              href="/admin"
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/50 transition-colors"
-            >
-              <ShieldAlert className="h-4 w-4" />
-              <span className="text-sm font-semibold">Admin Panel</span>
-            </Link>
-          </div>
-        )}
-
-        {/* New Chat and Search Buttons */}
+        {/* Primary actions */}
         {isLoggedIn && (
-          <div className="px-4 mb-4 space-y-2">
-            {/* New Chat Button */}
+          <div className={["flex flex-shrink-0 gap-1.5 px-3 pb-3", rail ? "lg:flex-col lg:items-center lg:px-0" : ""].join(" ")}>
             <button
               onClick={handleCreateSession}
               disabled={isCreatingSession}
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title={rail ? "New chat" : undefined}
+              aria-label="New chat"
+              className={[
+                "flex h-9 flex-1 items-center gap-2 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200",
+                rail ? "lg:w-9 lg:flex-none lg:justify-center lg:px-0" : "",
+              ].join(" ")}
             >
               {isCreatingSession ? (
-                <span className="h-4 w-4 inline-block animate-spin rounded-full border-2 border-zinc-400 border-t-transparent"></span>
+                <span className="h-4 w-4 inline-block animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+                <SquarePen className="h-4 w-4 flex-shrink-0" />
               )}
-              <span className="text-sm font-medium">{isCreatingSession ? "Creating..." : "New chat"}</span>
+              <span className={rail ? "lg:sr-only" : ""}>New chat</span>
             </button>
-
-            {/* Search Button */}
             <button
               onClick={() => setSearchModalOpen(true)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+              className={`${iconButtonClass} border border-zinc-200 dark:border-zinc-700`}
+              aria-label="Search chats"
+              title="Search chats"
             >
               <Search className="h-4 w-4" />
-              <span className="text-sm">Search chats</span>
             </button>
           </div>
         )}
 
-        <nav className="flex-1 px-4 flex flex-col min-h-0 overflow-hidden">
-          <div className="mb-4 grid gap-1">
-            {visibleNavLinks.map((link) => {
-              const Icon = navIcons[link.href] || FolderOpen;
-              const selected = pathname === link.href || (link.href !== "/" && pathname.startsWith(`${link.href}/`));
-              return <Link key={link.href} href={link.href} onClick={() => setMobileNavOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${selected ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900" : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"}`}><Icon className="h-4 w-4" />{link.label}</Link>;
-            })}
-          </div>
-          {!isLoggedIn && (
-            <div className="rounded-xl border border-dashed border-zinc-200 bg-white/70 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300">
-              <p className="font-semibold">You are not signed in yet.</p>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                Sign in to view your recent chats and history.
+        <nav className="flex min-h-0 flex-1 flex-col px-3 lg:overflow-hidden">
+          <div className="grid flex-shrink-0 gap-0.5">{navSection("main").map(renderNavLink)}</div>
+
+          {navSection("manage").length > 0 && (
+            <div className="mt-4 grid flex-shrink-0 gap-0.5">
+              <p className={["px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500", rail ? "lg:sr-only" : ""].join(" ")}>
+                Manage
               </p>
-              <button
-                type="button"
-                onClick={() => router.push("/login")}
-                className="mt-3 w-full rounded-xl border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900"
-              >
-                Sign in
-              </button>
+              {navSection("manage").map(renderNavLink)}
             </div>
           )}
+
+          {!isLoggedIn && !rail && (
+            <div className="mt-4 rounded-xl border border-dashed border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">
+              <p className="font-semibold">You are not signed in yet.</p>
+              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Sign in to see your chats.</p>
+            </div>
+          )}
+
+          {/* Recent chats take all remaining height and scroll on their own. */}
           {isLoggedIn && (
-            <div className="flex flex-col rounded-xl border border-zinc-200 bg-white/70 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/60 flex-1 min-h-0 overflow-hidden">
-              <div className="flex items-center justify-between flex-shrink-0">
-                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5" />
-                  Recent chats
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCreateSession}
-                  disabled={isCreatingSession}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-500 dark:hover:text-white dark:hover:bg-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={isCreatingSession ? "Creating..." : "New chat"}
-                >
-                  {isCreatingSession ? (
-                    <span className="h-4 w-4 inline-block animate-spin rounded-full border-2 border-zinc-400 border-t-transparent"></span>
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              {displayedSessions.length === 0 && (
-                <p className="mt-2 text-xs text-zinc-500">No sessions yet.</p>
+            <div className={["mt-4 flex min-h-0 flex-1 flex-col", rail ? "lg:hidden" : ""].join(" ")}>
+              <p className="flex-shrink-0 px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+                Recent chats
+              </p>
+              {displayedSessions.length === 0 ? (
+                <p className="px-2.5 py-1 text-xs text-zinc-500">No chats yet. Start one above.</p>
+              ) : (
+                <ul className={`-mx-1 min-h-0 flex-1 space-y-0.5 px-1 pb-2 ${menuSessionId ? "overflow-visible" : "overflow-y-auto"}`}>
+                  {displayedSessions.map((session) => {
+                    const title = session.title?.trim() || "New chat";
+                    const current = pathname === "/chat" && activeSessionId === session.id;
+                    const menuOpen = menuSessionId === session.id;
+                    return (
+                      <li key={session.id} className="relative" data-session-menu>
+                        <div
+                          className={[
+                            "group flex h-9 items-center rounded-lg pl-2.5 pr-1 text-sm transition-colors",
+                            current
+                              ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-white"
+                              : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
+                          ].join(" ")}
+                        >
+                          {session.is_pinned && <Pin className="mr-1.5 h-3 w-3 flex-shrink-0 text-zinc-400" aria-label="Pinned" />}
+                          <button
+                            type="button"
+                            onClick={() => handleSelectSession(session.id)}
+                            aria-current={current ? "page" : undefined}
+                            className="min-w-0 flex-1 truncate text-left outline-none focus-visible:underline"
+                          >
+                            {title}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMenuSessionId(menuOpen ? null : session.id)}
+                            className={[
+                              "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-white",
+                              // Visible on hover/focus, or always on touch screens.
+                              menuOpen ? "opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100",
+                            ].join(" ")}
+                            aria-label={`Options for ${title}`}
+                            aria-expanded={menuOpen}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {menuOpen && (
+                          <div className={sessionMenuPanelClass} role="menu">
+                            <button type="button" role="menuitem" onClick={() => handlePinSession(session)} className={sessionMenuItemClass}>
+                              <Pin className={sessionMenuIconClass} />
+                              <span>{session.is_pinned ? "Unpin" : "Pin chat"}</span>
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => handleRenameSession(session)} className={sessionMenuItemClass}>
+                              <Pencil className={sessionMenuIconClass} />
+                              <span>Rename</span>
+                            </button>
+                            <button type="button" role="menuitem" onClick={() => handleArchiveSession(session)} className={sessionMenuItemClass}>
+                              <Archive className={sessionMenuIconClass} />
+                              <span>Archive</span>
+                            </button>
+                            <div className={["my-1 border-t", isDark ? "border-white/10" : "border-zinc-200"].join(" ")} />
+                            <button type="button" role="menuitem" onClick={() => handleDeleteSession(session)} className={sessionMenuDeleteClass}>
+                              <Trash2 className={sessionMenuDeleteIconClass} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
-               <ul className={`mt-3 flex-1 space-y-2 min-h-0 ${menuSessionId ? 'overflow-visible' : 'overflow-y-auto'}`}>
-                 {displayedSessions.map((session) => (
-                 <li key={session.id} className={menuSessionId === session.id ? 'relative z-10' : 'relative'}>
-                   <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white/95 px-3 py-2 text-sm shadow-sm transition hover:-translate-y-0.5 dark:border-zinc-800 dark:bg-zinc-900/60">
-                     {session.is_pinned && (
-                       <Pin className="h-3 w-3 text-zinc-400 flex-shrink-0" />
-                     )}
-                 <button
-                       type="button"
-                       onClick={() => handleSelectSession(session.id)}
-                       className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap border-none bg-transparent text-left font-semibold text-zinc-800 outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 dark:text-zinc-100"
-                     >
-                       {session.title || `Session ${session.id.slice(0, 6)}`}
-                     </button>
-                     <div className="relative" data-session-menu>
-                       <button
-                         type="button"
-                         onClick={() => setMenuSessionId((current) => (current === session.id ? null : session.id))}
-                         className={[
-                           "flex items-center justify-center rounded-lg p-1.5 transition",
-                           menuSessionId && menuSessionId !== session.id ? "opacity-0 pointer-events-none" : "",
-                           isDark
-                             ? "text-zinc-400 hover:bg-white/10 hover:text-white"
-                             : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700",
-                         ].join(" ")}
-                         aria-label={`Menu for chat ${session.title || session.id}`}
-                       >
-                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                         </svg>
-                       </button>
-                       {menuSessionId === session.id && (
-                         <div className={sessionMenuPanelClass}>
-                           {/* Pin/Unpin */}
-                           <button
-                             type="button"
-                             onClick={() => handlePinSession(session)}
-                             className={sessionMenuItemClass}
-                             aria-label={session.is_pinned ? `Unpin chat ${session.title || session.id}` : `Pin chat ${session.title || session.id}`}
-                           >
-                             <Pin className={sessionMenuIconClass} />
-                             <span>{session.is_pinned ? "Unpin" : "Pin chat"}</span>
-                           </button>
-                           {/* Rename */}
-                           <button
-                             type="button"
-                             onClick={() => handleRenameSession(session)}
-                             className={sessionMenuItemClass}
-                             aria-label={`Rename chat ${session.title || session.id}`}
-                           >
-                             <svg className={sessionMenuIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                               <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                             </svg>
-                             <span>Rename</span>
-                           </button>
-                           {/* Archive */}
-                           <button
-                             type="button"
-                             onClick={() => handleArchiveSession(session)}
-                             className={sessionMenuItemClass}
-                             aria-label={`Archive chat ${session.title || session.id}`}
-                           >
-                             <Archive className={sessionMenuIconClass} />
-                             <span>Archive</span>
-                           </button>
-                           <div className={["my-1 border-t", isDark ? "border-white/10" : "border-zinc-200"].join(" ")}></div>
-                           {/* Delete */}
-                           <button
-                             type="button"
-                             onClick={() => handleDeleteSession(session)}
-                             className={sessionMenuDeleteClass}
-                             aria-label={`Delete chat ${session.title || session.id}`}
-                           >
-                             <svg className={sessionMenuDeleteIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                               <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                             </svg>
-                             <span>Delete</span>
-                           </button>
-                         </div>
-                       )}
-                     </div>
-                   </div>
-                 </li>
-               ))}
-            </ul>
             </div>
           )}
         </nav>
 
-        <div className="border-t border-zinc-200 px-6 pb-3 pt-5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-          {/* User Card */}
-          {isLoggedIn && user && (
-            <div className="mb-3 flex items-center gap-3 rounded-xl border border-zinc-200 bg-white/80 px-3 py-2.5 dark:border-zinc-800 dark:bg-zinc-800/60">
-              {/* Avatar */}
-              <div
-                className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
-                  isAdmin
-                    ? "bg-gradient-to-br from-amber-500 to-orange-600"
-                    : "bg-gradient-to-br from-indigo-500 to-violet-600"
-                }`}
+        {/* Footer: account, theme, sign out, secondary links */}
+        <div className={["flex-shrink-0 border-t border-zinc-200 p-3 dark:border-zinc-800", rail ? "lg:px-0" : ""].join(" ")}>
+          <div className={["flex items-center gap-1", rail ? "lg:flex-col" : ""].join(" ")}>
+            {isLoggedIn && user ? (
+              <Link
+                href="/profile"
+                onClick={() => setMobileNavOpen(false)}
+                aria-current={isActive("/profile") ? "page" : undefined}
+                title={rail ? `${userName} — profile` : "Your profile"}
+                className={[
+                  "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1.5 transition hover:bg-zinc-100 dark:hover:bg-zinc-800",
+                  isActive("/profile") ? "bg-zinc-100 dark:bg-zinc-800" : "",
+                  rail ? "lg:flex-none" : "",
+                ].join(" ")}
               >
-                {(user.display_name || user.full_name || user.username || "?").charAt(0).toUpperCase()}
-              </div>
-              {/* Info */}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-zinc-900 dark:text-white">
-                  {user.display_name || user.full_name || user.username}
-                </p>
-                <p className="truncate text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {user.email}
-                </p>
-                {isAdmin ? (
-                  <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                    <ShieldAlert className="h-3 w-3" />
-                    Admin
-                  </span>
-                ) : (
-                  <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
-                    <GraduationCap className="h-3 w-3" />
-                    Student
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          <p>
-            Need help?{" "}
-            <a href="mailto:support@smartaitutor.com" className="font-semibold text-zinc-900 dark:text-white">
-              support@smartaitutor.com
+                <span
+                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    isAdmin ? "bg-gradient-to-br from-amber-500 to-orange-600" : "bg-gradient-to-br from-indigo-500 to-violet-600"
+                  }`}
+                >
+                  {(userName || "?").charAt(0).toUpperCase()}
+                </span>
+                <span className={["min-w-0 flex-1 leading-tight", rail ? "lg:sr-only" : ""].join(" ")}>
+                  <span className="block truncate text-sm font-semibold text-zinc-900 dark:text-white">{userName}</span>
+                  <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{isAdmin ? "Admin" : "Student"} · Profile</span>
+                </span>
+              </Link>
+            ) : (
+              <span className="flex-1" />
+            )}
+            <button
+              type="button"
+              onClick={handleToggleTheme}
+              disabled={!showThemeToggle}
+              className={iconButtonClass}
+              aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+              title={isDark ? "Light theme" : "Dark theme"}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleAuthClick}
+              className={iconButtonClass}
+              aria-label={isLoggedIn ? "Sign out" : "Sign in"}
+              title={isLoggedIn ? "Sign out" : "Sign in"}
+            >
+              {isLoggedIn ? <LogOut className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            </button>
+          </div>
+          <div className={["mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-zinc-500 dark:text-zinc-400", rail ? "lg:hidden" : ""].join(" ")}>
+            {navSection("more").map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileNavOpen(false)}
+                aria-current={isActive(link.href) ? "page" : undefined}
+                className={isActive(link.href) ? "font-semibold text-zinc-900 dark:text-white" : "hover:text-zinc-900 dark:hover:text-white"}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <a href="mailto:support@smartaitutor.com" className="hover:text-zinc-900 dark:hover:text-white">
+              Help
             </a>
-          </p>
-          <button
-            type="button"
-            onClick={handleToggleTheme}
-            disabled={!showThemeToggle}
-            aria-label="Toggle theme"
-            className="mt-3 w-full rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-2"
-          >
-            {!showThemeToggle ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="h-3 w-3 animate-spin rounded-full border border-zinc-400 border-t-transparent"></span>
-              </span>
-            ) : isDark ? (
-              <>
-                <Sun className="h-4 w-4" />
-                <span>Switch to Light</span>
-              </>
-            ) : (
-              <>
-                <Moon className="h-4 w-4" />
-                <span>Switch to Dark</span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleAuthClick}
-            className="mt-2 w-full rounded-xl border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-900 hover:text-white dark:border-zinc-700 dark:text-white dark:hover:bg-white dark:hover:text-zinc-900 flex items-center justify-center gap-2"
-          >
-            {isLoggedIn ? (
-              <>
-                <LogOut className="h-4 w-4" />
-                <span>Sign out</span>
-              </>
-            ) : (
-              <>
-                <LogIn className="h-4 w-4" />
-                <span>Sign in</span>
-              </>
-            )}
-          </button>
-          <p className="mt-4 text-center text-[10px] uppercase tracking-[0.35em] text-zinc-400 dark:text-zinc-500">
-            © {year} Smart AI Tutor
-          </p>
+          </div>
         </div>
       </aside>
 
       {/* Main content area */}
-      <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-all duration-300 dark:bg-zinc-950 dark:text-white ${sidebarCollapsed ? 'lg:ml-0' : 'lg:ml-64'}`}>
-        {/* Scrollable content area */}
+      <div className={`flex flex-1 flex-col bg-zinc-50 text-zinc-900 transition-[margin] duration-200 dark:bg-zinc-950 dark:text-white ${rail ? "lg:ml-16" : "lg:ml-64"}`}>
         {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
         <main className={
           isFullHeightRoute

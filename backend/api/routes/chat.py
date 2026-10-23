@@ -12,6 +12,13 @@ from backend import posthog_tracker
 from backend.csrf_protection import csrf_protect
 from backend.rate_limiter import PerUserRateLimiter
 from backend.services.models import ChatMessage
+from backend.chat_models import (
+    ModelChoiceError,
+    available_chat_models,
+    is_admin_user,
+    validate_model_choice,
+)
+from backend import model_usage
 from backend.validators import FileValidator
 from backend.exceptions import InvalidFileError
 
@@ -265,6 +272,10 @@ async def send_message(
 
     query = payload.query
     model_id = payload.model_id
+    try:
+        validate_model_choice(model_id, is_admin_user(user))
+    except ModelChoiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
     posthog_tracker.capture(
         distinct_id=user["username"],
@@ -353,6 +364,9 @@ async def send_message(
     # this one. asyncio.to_thread moves it off the event loop so a slow
     # or paused-Neo4j request only blocks its own thread-pool worker.
     from backend.circuit_breaker import CircuitBreakerOpenError, bedrock_circuit_breaker
+    # Records the model that actually answers, which differs from the
+    # requested one when the Bedrock client falls back.
+    usage = model_usage.start_tracking()
     try:
         generator, sources, resolved_model_id = await asyncio.to_thread(
             chat_service.stream_response,
@@ -396,7 +410,13 @@ async def send_message(
                 import json
                 meta = json.dumps({"model_used": resolved_model_id})
                 yield f"__AGENT_META__{meta}\n"
-            for chunk in generator:
+            chunks = iter(generator)
+            while True:
+                model_usage.activate(usage)
+                try:
+                    chunk = next(chunks)
+                except StopIteration:
+                    break
                 collected += chunk
                 yield chunk
             bedrock_circuit_breaker.record_success()
@@ -407,7 +427,7 @@ async def send_message(
         finally:
             sem.release()
             _latency_ms = (_time.time() - _stream_start) * 1000
-            _model = resolved_model_id or "unknown"
+            _model = usage["model"] or resolved_model_id or model_id or "unknown"
             _input_tokens, _output_tokens = _estimate_token_pair(query, collected)
 
             # Approximate cost in USD based on model pricing (per 1K tokens)
@@ -416,12 +436,12 @@ async def send_message(
                 "meta.llama3-3-70b-instruct-v1:0":        (0.00072, 0.00072),
                 "meta.llama3-70b-instruct-v1:0":          (0.00265, 0.00350),
                 "us.meta.llama3-1-70b-instruct-v1:0":     (0.00265, 0.00350),
-                "us.anthropic.claude-5-5-sonnet-20261022-v1:0": (0.00300, 0.01500),
-                "anthropic.claude-5-5-sonnet-20261022-v1:0":    (0.00300, 0.01500),
-                "us.anthropic.claude-5-5-haiku-20261022-v1:0":  (0.00080, 0.00400),
-                "anthropic.claude-5-5-haiku-20261022-v1:0":     (0.00080, 0.00400),
-                "openai.gpt-6-luna-2026":                       (0.00250, 0.01000),
-                "gpt-6-luna":                                   (0.00250, 0.01000),
+                "us.anthropic.claude-sonnet-5-5":               (0.00300, 0.01500),
+                "anthropic.claude-sonnet-5-5":                  (0.00300, 0.01500),
+                "us.anthropic.claude-haiku-5-5":                (0.00080, 0.00400),
+                "anthropic.claude-haiku-5-5":                   (0.00080, 0.00400),
+                "us.openai.gpt-6-luna":                         (0.00250, 0.01000),
+                "openai.gpt-6-luna":                            (0.00250, 0.01000),
                 "us.anthropic.claude-3-5-sonnet-20241022-v2:0": (0.00300, 0.01500),
                 "us.anthropic.claude-3-haiku-20240307-v1:0":    (0.00025, 0.00125),
                 "amazon.titan-embed-text-v2:0":            (0.00020, 0.00000),
@@ -477,7 +497,11 @@ async def send_message(
                     if newline_idx != -1:
                         clean_content = clean_content[newline_idx + 1:]
                 assistant_message = ChatMessage(
-                    role="assistant", content=clean_content, sources=sources
+                    role="assistant",
+                    content=clean_content,
+                    sources=sources,
+                    model_used=None if _model == "unknown" else _model,
+                    model_requested=model_id,
                 )
                 chat_service.append_and_save(
                     user["username"], session_id, assistant_message
@@ -745,6 +769,13 @@ def get_session_feedback(
             feedback_map[fb.message_index] = fb.feedback_type
 
     return {"feedback": feedback_map}
+
+
+@router.get("/models")
+async def list_chat_models(session_data=Depends(get_current_session)):
+    """Models this user can pick in the chat selector (Auto is implicit)."""
+    _, user = session_data
+    return {"models": available_chat_models(is_admin_user(user))}
 
 
 @router.get("/model-limits")

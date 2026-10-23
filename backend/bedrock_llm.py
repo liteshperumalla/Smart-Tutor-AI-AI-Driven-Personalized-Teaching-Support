@@ -9,6 +9,7 @@ import json
 from typing import Optional, Dict, Any, Generator
 from datetime import datetime
 from backend.config import config
+from backend.model_usage import record_model_used
 from backend.logger import get_logger
 from botocore.config import Config
 
@@ -22,13 +23,13 @@ class BedrockLLM:
     # Includes both direct model IDs and cross-region inference profile IDs (us./eu./ap. prefix)
     PRICING = {
         # Claude 5.5 family
-        "anthropic.claude-5-5-sonnet-20261022-v1:0":      {"input": 0.0030,  "output": 0.0150},
-        "us.anthropic.claude-5-5-sonnet-20261022-v1:0":   {"input": 0.0030,  "output": 0.0150},
-        "anthropic.claude-5-5-haiku-20261022-v1:0":       {"input": 0.0008,  "output": 0.0040},
-        "us.anthropic.claude-5-5-haiku-20261022-v1:0":    {"input": 0.0008,  "output": 0.0040},
+        "anthropic.claude-sonnet-5-5":                    {"input": 0.0030,  "output": 0.0150},
+        "us.anthropic.claude-sonnet-5-5":                 {"input": 0.0030,  "output": 0.0150},
+        "anthropic.claude-haiku-5-5":                     {"input": 0.0008,  "output": 0.0040},
+        "us.anthropic.claude-haiku-5-5":                  {"input": 0.0008,  "output": 0.0040},
         # OpenAI models (GPT 6 Luna)
-        "openai.gpt-6-luna-2026":                         {"input": 0.0025,  "output": 0.0100},
-        "gpt-6-luna":                                     {"input": 0.0025,  "output": 0.0100},
+        "openai.gpt-6-luna":                              {"input": 0.0025,  "output": 0.0100},
+        "us.openai.gpt-6-luna":                           {"input": 0.0025,  "output": 0.0100},
         # Legacy Claude / Llama (still supported, moving to retirement in Bedrock)
         "anthropic.claude-3-5-sonnet-20241022-v2:0":      {"input": 0.0030,  "output": 0.0150},
         "us.anthropic.claude-3-5-sonnet-20241022-v2:0":   {"input": 0.0030,  "output": 0.0150},
@@ -173,50 +174,103 @@ class BedrockLLM:
             return self._generate_llama(
                 prompt, max_tokens, temperature, top_p, model_id=model_id, **kwargs
             )
-        elif "gpt" in model_id.lower() or "openai" in model_id.lower() or "luna" in model_id.lower():
-            return self._generate_openai(
-                prompt, max_tokens, temperature, system_prompt, model_id=model_id, **kwargs
+        elif "openai" in model_id.lower():
+            return self._generate_converse(
+                prompt, max_tokens, temperature, system_prompt, model_id=model_id
             )
         else:
             raise ValueError(f"Unsupported model: {model_id}")
 
-    def _generate_openai(
+    # Llama's system persona, applied by both the InvokeModel template and Converse.
+    LLAMA_SYSTEM_PROMPT = (
+        "You are a helpful, knowledgeable AI tutor. "
+        "Always provide clear, structured, and educational responses."
+    )
+
+    def _converse_request(
+        self,
+        model_id: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        system_prompt: Optional[str],
+    ) -> Dict[str, Any]:
+        """Arguments for Bedrock's Converse/ConverseStream, which every model
+        here supports and which applies each model's own chat template."""
+        if system_prompt is None and "llama" in model_id.lower():
+            system_prompt = self.LLAMA_SYSTEM_PROMPT
+        inference: Dict[str, Any] = {"maxTokens": max_tokens}
+        # GPT-6 models are reasoning models and take a reasoning effort, not a
+        # sampling temperature.
+        if "openai" not in model_id.lower():
+            inference["temperature"] = temperature
+        request: Dict[str, Any] = {
+            "modelId": model_id,
+            "messages": [{"role": "user", "content": [{"text": prompt}]}],
+            "inferenceConfig": inference,
+        }
+        if system_prompt:
+            request["system"] = [{"text": system_prompt}]
+        if config.BEDROCK_GUARDRAIL_ID:
+            request["guardrailConfig"] = {
+                "guardrailIdentifier": config.BEDROCK_GUARDRAIL_ID,
+                "guardrailVersion": config.BEDROCK_GUARDRAIL_VERSION,
+            }
+        return request
+
+    def _generate_converse(
         self,
         prompt: str,
         max_tokens: int,
         temperature: float,
         system_prompt: Optional[str],
         model_id: Optional[str] = None,
-        **kwargs,
     ) -> str:
-        """Generate using OpenAI client (e.g. GPT 6 Luna) or gracefully fall back to default Bedrock model."""
-        import os
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=openai_key)
-                messages = []
-                if system_prompt:
-                    messages.append({"role": "system", "content": system_prompt})
-                messages.append({"role": "user", "content": prompt})
-                resp = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                )
-                if resp.choices and resp.choices[0].message:
-                    return resp.choices[0].message.content or ""
-            except Exception as exc:
-                logger.warning(f"[OpenAI] Call failed for {model_id} ({exc}); falling back to default Bedrock model")
-        else:
-            logger.info(f"[OpenAI] OPENAI_API_KEY not set for {model_id}; falling back to default Bedrock model")
-
-        # Fallback to default Bedrock model (Llama)
-        return self._generate_llama(
-            prompt, max_tokens, temperature, 0.9, model_id=config.BEDROCK_MODEL_ID, **kwargs
+        """Generate with the Converse API (used for OpenAI models on Bedrock)."""
+        target_model = model_id or self.model_id
+        response = self.client.converse(
+            **self._converse_request(target_model, prompt, max_tokens, temperature, system_prompt)
         )
+        if response.get("stopReason") == "guardrail_intervened":
+            self._check_guardrail_intervention({"amazon-bedrock-guardrailAction": "INTERVENED"}, prompt)
+        # Reasoning models also return reasoningContent blocks; keep only the answer text.
+        blocks = response.get("output", {}).get("message", {}).get("content", [])
+        text = "".join(block.get("text", "") for block in blocks)
+        usage = response.get("usage", {})
+        input_tokens = usage.get("inputTokens", 0)
+        output_tokens = usage.get("outputTokens", 0)
+        cost = self._calculate_cost(input_tokens, output_tokens, target_model)
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+        self.total_cost += cost
+        if config.ENABLE_COST_TRACKING:
+            self._log_cost(input_tokens, output_tokens, cost, prompt[:100])
+        record_model_used(target_model)
+        return text
+
+    def _stream_converse(
+        self,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        system_prompt: Optional[str],
+    ) -> Generator[str, None, None]:
+        """Stream with ConverseStream (Llama and OpenAI models)."""
+        response = self.client.converse_stream(
+            **self._converse_request(self.model_id, prompt, max_tokens, temperature, system_prompt)
+        )
+        recorded = False
+        for event in response["stream"]:
+            delta = event.get("contentBlockDelta", {}).get("delta", {})
+            text = delta.get("text")  # reasoning deltas carry no "text"
+            if text:
+                if not recorded:
+                    record_model_used(self.model_id)
+                    recorded = True
+                yield text
+            stop = event.get("messageStop", {}).get("stopReason")
+            if stop == "guardrail_intervened":
+                self._check_guardrail_intervention({"amazon-bedrock-guardrailAction": "INTERVENED"}, prompt)
 
     def generate(
         self,
@@ -291,11 +345,12 @@ class BedrockLLM:
         target_model = model_id or self.model_id
         messages = [{"role": "user", "content": prompt}]
 
+        # Current Claude models reject requests that set both temperature
+        # and top_p, so only temperature is sent.
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "top_p": top_p,
             "messages": messages,
         }
 
@@ -332,6 +387,7 @@ class BedrockLLM:
                 f"cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            record_model_used(target_model)
             return response_body["content"][0]["text"]
 
         except Exception as e:
@@ -343,8 +399,7 @@ class BedrockLLM:
         return (
             "<|begin_of_text|>"
             "<|start_header_id|>system<|end_header_id|>\n\n"
-            "You are a helpful, knowledgeable AI tutor. "
-            "Always provide clear, structured, and educational responses.<|eot_id|>"
+            f"{self.LLAMA_SYSTEM_PROMPT}<|eot_id|>"
             "<|start_header_id|>user<|end_header_id|>\n\n"
             f"{prompt}<|eot_id|>"
             "<|start_header_id|>assistant<|end_header_id|>\n\n"
@@ -406,6 +461,7 @@ class BedrockLLM:
                 f"[Bedrock Llama] ~{input_tokens} in + ~{output_tokens} out, cost: ${cost:.4f} (total: ${self.total_cost:.2f})"
             )
 
+            record_model_used(target_model)
             return generated_text
 
         except Exception as e:
@@ -436,7 +492,18 @@ class BedrockLLM:
             Text chunks as they're generated
         """
         if "claude" not in self.model_id.lower():
-            # Fallback to non-streaming for non-Claude models
+            # Llama and OpenAI models stream through ConverseStream. If it fails
+            # before any text arrives, generate() runs its fallback chain.
+            yielded = False
+            try:
+                for text in self._stream_converse(prompt, max_tokens, temperature, system_prompt):
+                    yielded = True
+                    yield text
+                return
+            except Exception as e:
+                if yielded:
+                    raise
+                logger.warning(f"[Bedrock] ConverseStream error ({e}); falling back to generate()...")
             yield self.generate(
                 prompt, max_tokens, temperature, system_prompt=system_prompt, **kwargs
             )
@@ -462,6 +529,7 @@ class BedrockLLM:
             )
 
             intervened = False
+            recorded = False
             for event in response["body"]:
                 chunk = json.loads(event["chunk"]["bytes"])
 
@@ -472,6 +540,9 @@ class BedrockLLM:
                 if chunk["type"] == "content_block_delta":
                     text = chunk["delta"].get("text", "")
                     if text:
+                        if not recorded:
+                            record_model_used(self.model_id)
+                            recorded = True
                         yield text
 
         except Exception as e:
@@ -484,7 +555,7 @@ class BedrockLLM:
                 logger.error(f"[Bedrock] Streaming fallback also failed: {fb_err}", exc_info=True)
                 raise e
 
-    def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+    def _calculate_cost(self, input_tokens: int, output_tokens: int, model_id: Optional[str] = None) -> float:
         """
         Calculate cost for request
 
@@ -495,7 +566,7 @@ class BedrockLLM:
         Returns:
             Cost in USD
         """
-        pricing = self.PRICING.get(self.model_id, {"input": 0, "output": 0})
+        pricing = self.PRICING.get(model_id or self.model_id, {"input": 0, "output": 0})
 
         input_cost = (input_tokens / 1000) * pricing["input"]
         output_cost = (output_tokens / 1000) * pricing["output"]
