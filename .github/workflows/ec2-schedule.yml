@@ -1,6 +1,6 @@
 name: EC2 Schedule (weekday business hours)
 
-# Keeps the production EC2 instance running only Mon-Fri 09:00-17:00
+# Keeps the production EC2 instance running only Mon-Fri 08:50-17:00
 # America/Chicago, to cut the always-on compute bill. The Elastic IP
 # (52.2.3.101) survives stop/start, and every container uses
 # restart=unless-stopped, so the app comes back up automatically on boot.
@@ -15,8 +15,9 @@ name: EC2 Schedule (weekday business hours)
 # exact-hour match would.
 #
 # AWS EventBridge Scheduler (ec2-eventbridge-scheduler.yml) also starts the
-# instance at 08:50 and stops it at 17:30 on weekdays, so a late or skipped
-# GitHub run no longer leaves the app down at 09:00.
+# instance at 08:50 on weekdays, so a late or skipped GitHub run no longer
+# leaves the app down at 09:00. Stopping stays here, behind the
+# running-deploy check below.
 
 on:
   schedule:
