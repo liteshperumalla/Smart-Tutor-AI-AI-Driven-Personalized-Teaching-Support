@@ -1614,7 +1614,7 @@ function ChatWorkspaceContent() {
                       onClick={() => setLearningMode(mode.id)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                         learningMode === mode.id
-                          ? "bg-secondary text-white"
+                          ? "bg-secondary-solid text-white"
                           : "text-muted hover:bg-surface-2"
                       }`}
                     >

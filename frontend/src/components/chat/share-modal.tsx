@@ -231,8 +231,8 @@ export function ShareModal({
                       onClick={handleCopyLink}
                       className={`btn-icon transition-all ${
                         copied
-                          ? "bg-success! text-white!"
-                          : "bg-primary! text-white! hover:bg-primary-hover!"
+                          ? "bg-success-solid! text-white!"
+                          : "bg-primary-solid! text-white! hover:brightness-110"
                       }`}
                     >
                       {copied ? (

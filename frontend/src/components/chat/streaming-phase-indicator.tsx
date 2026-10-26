@@ -54,7 +54,7 @@ const AGENT_CONFIG: Record<string, {
   personalised_agent: {
     label: "Personalized Agent",
     icon: UserCog,
-    color: "text-lavender",
+    color: "text-violet-700 dark:text-lavender",
     bgColor: "bg-lavender",
     phases: [
       { id: "profiling", label: "Loading your learning profile", icon: UserCog, duration: 1500 },
@@ -156,8 +156,8 @@ export function StreamingPhaseIndicator({ isStreaming, hasContent, agentName }: 
         </div>
       )}
 
-      {/* Phase line: Neural Teal + spinner */}
-      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-secondary" role="status">
+      {/* Phase line: Neural Teal (the text-safe success shade) + spinner */}
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-success" role="status">
         <span className="inline-block h-[13px] w-[13px] rounded-full border-2 border-secondary border-t-transparent animate-phase-spin" />
         <IconComponent className="h-3.5 w-3.5" />
         <span>{currentPhase.label}…</span>
@@ -192,7 +192,7 @@ export function ThinkingIndicator() {
         <span className="h-2 w-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '150ms' }} />
         <span className="h-2 w-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '300ms' }} />
       </div>
-      <span className="text-sm font-semibold text-secondary">Thinking…</span>
+      <span className="text-sm font-semibold text-success">Thinking…</span>
     </div>
   );
 }

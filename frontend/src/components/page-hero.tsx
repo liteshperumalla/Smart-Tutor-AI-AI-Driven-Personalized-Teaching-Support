@@ -81,14 +81,7 @@ export function PageHero({
             {accent != null && (
               <>
                 {" "}
-                <span
-                  style={{
-                    backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)",
-                    WebkitBackgroundClip: "text",
-                    backgroundClip: "text",
-                    color: "transparent",
-                  }}
-                >
+                <span className="text-gradient-primary">
                   {accent}
                 </span>
               </>

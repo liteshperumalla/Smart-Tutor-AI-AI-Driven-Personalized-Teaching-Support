@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { X } from "lucide-react";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface RenameChatModalProps {
   isOpen: boolean;
@@ -20,6 +21,8 @@ export function RenameChatModal({
 }: RenameChatModalProps) {
   const [title, setTitle] = useState(currentTitle);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, isOpen);
 
   // Reset title when modal opens with new currentTitle
   useEffect(() => {
@@ -59,10 +62,12 @@ export function RenameChatModal({
       onClick={isRenaming ? undefined : onClose}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="rename-chat-title"
-        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg"
+        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <form onSubmit={handleSubmit}>

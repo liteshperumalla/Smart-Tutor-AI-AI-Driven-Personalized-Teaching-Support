@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Trash2 } from "lucide-react";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface DeleteChatModalProps {
   isOpen: boolean;
@@ -18,6 +19,9 @@ export function DeleteChatModal({
   chatTitle,
   isDeleting = false,
 }: DeleteChatModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, isOpen);
+
   // Close on escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -37,10 +41,12 @@ export function DeleteChatModal({
       onClick={isDeleting ? undefined : onClose}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="delete-chat-title"
-        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg"
+        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Destructive confirms lead with a tinted icon well and name the object. */}

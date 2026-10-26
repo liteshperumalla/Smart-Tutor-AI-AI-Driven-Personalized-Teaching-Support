@@ -272,7 +272,7 @@ export function ShareChatModal({
           {/* Loading state */}
           {isLoading && (
             <div className="flex items-center justify-center py-4">
-              <div className="h-6 w-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="h-6 w-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             </div>
           )}
 
@@ -293,7 +293,7 @@ export function ShareChatModal({
               >
                 <div className={`p-4 rounded-full transition-colors ${
                   copied
-                    ? "bg-success text-white"
+                    ? "bg-success-solid text-white"
                     : "bg-surface-2 text-foreground group-hover:bg-line"
                 }`}>
                   {copied ? (

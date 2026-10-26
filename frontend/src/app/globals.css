@@ -58,11 +58,18 @@
   --color-bright: #06B6D4;         /* Bright Cyan — info, highlights */
   --color-lavender: #A78BFA;       /* Soft Lavender — tertiary accents */
 
-  /* ---- Semantic ---- */
-  --color-success: #0D9488;
-  --color-warning: #D97706;        /* amber-600: 4.5:1 on white */
-  --color-danger:  #DC2626;
-  --color-info:    #0891B2;        /* cyan-600 for text; --color-bright for fills */
+  /* ---- Semantic ----
+     Text-safe: each reaches 4.5:1 on the surface and on its own -bg tint. */
+  --color-success: #0F766E;
+  --color-warning: #B45309;
+  --color-danger:  #B91C1C;
+  --color-info:    #0E7490;        /* text; --color-bright for fills */
+
+  /* ---- Solid fills that carry white labels (4.5:1+ in both themes) ---- */
+  --color-primary-solid: #1E3A8A;
+  --color-secondary-solid: #0F766E;
+  --color-success-solid: #0F766E;
+  --color-danger-solid: #DC2626;
 
   /* ---- Neutrals / surfaces ---- */
   --color-bg: #F8FAFC;             /* app background */
@@ -86,7 +93,7 @@
   --gradient-primary: linear-gradient(135deg, #1E3A8A 0%, #0D9488 100%);
   --gradient-secondary: linear-gradient(135deg, #0D9488 0%, #06B6D4 50%, #A78BFA 100%);
   --gradient-accent: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
-  --gradient-feature: linear-gradient(135deg, #1E3A8A 0%, #0D9488 55%, #06B6D4 100%);
+  --gradient-feature: linear-gradient(135deg, #1E3A8A 0%, #0F766E 55%, #0E7490 100%);
 
   /* ---- Typography ----
      next/font registers Space Grotesk and Inter under hashed family names, so
@@ -135,18 +142,21 @@
 
 /* ---- Dark theme: one switch, no !important ---- */
 .theme-dark {
-  --color-primary: #3B82F6;
-  --color-primary-hover: #60A5FA;
+  --color-primary: #60A5FA;
+  --color-primary-hover: #93C5FD;
   --color-secondary: #14B8A6;
   --color-secondary-hover: #2DD4BF;
   --color-accent: #FB923C;
   --color-bright: #22D3EE;
   --color-lavender: #C4B5FD;
 
-  --color-success: #14B8A6;
+  --color-success: #2DD4BF;
   --color-warning: #FBBF24;
-  --color-danger:  #F87171;
+  --color-danger:  #FCA5A5;
   --color-info:    #22D3EE;
+
+  --color-primary-solid: #2563EB;
+  --color-danger-solid: #DC2626;
 
   --color-bg: #0F172A;
   --color-surface: #1E293B;
@@ -155,16 +165,17 @@
   --color-text: #F8FAFC;
   --color-text-muted: #94A3B8;
 
-  --color-primary-bg: rgba(59, 130, 246, .16);
+  --color-primary-bg: rgba(96, 165, 250, .12);
   --color-success-bg: rgba(20, 184, 166, .16);
   --color-warning-bg: rgba(251, 191, 36, .14);
   --color-danger-bg:  rgba(248, 113, 113, .14);
   --color-info-bg:    rgba(34, 211, 238, .14);
 
-  --ring: rgba(59, 130, 246, .28);
+  --ring: rgba(96, 165, 250, .28);
 
-  --gradient-primary: linear-gradient(135deg, #3B82F6 0%, #14B8A6 100%);
-  --gradient-feature: linear-gradient(135deg, #3B82F6 0%, #14B8A6 55%, #22D3EE 100%);
+  /* White labels sit on these: keep both ends at 4.5:1+ */
+  --gradient-primary: linear-gradient(135deg, #2563EB 0%, #0F766E 100%);
+  --gradient-feature: linear-gradient(135deg, #2563EB 0%, #0F766E 55%, #0E7490 100%);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .40);
   --shadow-md: 0 6px 16px -4px rgba(0, 0, 0, .50);
@@ -192,6 +203,10 @@
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
   --color-info: var(--color-info);
+  --color-primary-solid: var(--color-primary-solid);
+  --color-secondary-solid: var(--color-secondary-solid);
+  --color-success-solid: var(--color-success-solid);
+  --color-danger-solid: var(--color-danger-solid);
   --color-primary-bg: var(--color-primary-bg);
   --color-success-bg: var(--color-success-bg);
   --color-warning-bg: var(--color-warning-bg);
@@ -329,7 +344,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-danger {
-  background: var(--color-danger);
+  background: var(--color-danger-solid);
   color: #fff;
 }
 

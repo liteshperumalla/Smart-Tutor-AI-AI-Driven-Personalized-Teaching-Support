@@ -21,7 +21,7 @@ export function ToastProvider() {
           error: "[&_[data-icon]]:bg-danger-bg [&_[data-icon]]:text-danger",
           warning: "[&_[data-icon]]:bg-warning-bg [&_[data-icon]]:text-warning",
           info: "[&_[data-icon]]:bg-info-bg [&_[data-icon]]:text-info",
-          actionButton: "rounded-full! bg-primary! text-white!",
+          actionButton: "rounded-full! bg-primary-solid! text-white!",
           cancelButton: "rounded-full! bg-surface-2! text-foreground!",
           closeButton: "border-line! bg-surface! text-muted!",
         },
