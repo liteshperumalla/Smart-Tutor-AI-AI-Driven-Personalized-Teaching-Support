@@ -106,11 +106,11 @@ export default function FeedbackPage() {
 
       {/* Admin Notice */}
       {isAdmin && (
-        <div className="mb-6 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/20">
-          <ShieldAlert className="h-5 w-5 text-amber-700 dark:text-amber-400 flex-shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-300">
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-warning/40 bg-warning-bg px-4 py-3">
+          <ShieldAlert className="h-5 w-5 text-warning flex-shrink-0" />
+          <p className="text-sm text-warning">
             As an admin, you can review all feedback in the{" "}
-            <Link href="/admin/feedback" className="font-semibold underline hover:text-amber-900 dark:hover:text-amber-200">
+            <Link href="/admin/feedback" className="font-semibold underline hover:text-warning">
               Admin Feedback Panel
             </Link>
           </p>
@@ -119,7 +119,7 @@ export default function FeedbackPage() {
 
       {/* Type Selector — the active option gets a ring and a solid surface
           so it stands out from the track in both themes. */}
-      <div className="flex gap-3 mb-6 p-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-800">
+      <div className="flex gap-3 mb-6 p-1.5 rounded-2xl bg-surface-2">
         <button
           type="button"
           onClick={() => {
@@ -129,8 +129,8 @@ export default function FeedbackPage() {
           aria-pressed={feedbackType === 'feedback'}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
             feedbackType === 'feedback'
-              ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600 [&>svg]:text-emerald-600 dark:[&>svg]:text-emerald-400'
-              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+              ? 'bg-surface text-foreground shadow-sm ring-1 ring-line [&>svg]:text-success'
+              : 'text-muted hover:text-foreground'
           }`}
         >
           <ThumbsUp className="h-5 w-5" />
@@ -145,8 +145,8 @@ export default function FeedbackPage() {
           aria-pressed={feedbackType === 'bug'}
           className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-medium transition ${
             feedbackType === 'bug'
-              ? 'bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600 [&>svg]:text-red-600 dark:[&>svg]:text-red-400'
-              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+              ? 'bg-surface text-foreground shadow-sm ring-1 ring-line [&>svg]:text-danger'
+              : 'text-muted hover:text-foreground'
           }`}
         >
           <Bug className="h-5 w-5" />
@@ -155,24 +155,24 @@ export default function FeedbackPage() {
       </div>
 
       {/* Unified Form Card */}
-      <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+      <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
         {/* Form Header */}
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-line">
           <div className={`p-2.5 rounded-xl ${
             feedbackType === 'feedback'
-              ? 'bg-indigo-100 dark:bg-indigo-900/30'
-              : 'bg-red-100 dark:bg-red-900/30'
+              ? 'bg-primary-bg'
+              : 'bg-danger-bg'
           }`}>
             {feedbackType === 'feedback'
-              ? <Sparkles className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-              : <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              ? <Sparkles className="h-5 w-5 text-primary" />
+              : <AlertTriangle className="h-5 w-5 text-danger" />
             }
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+            <h2 className="text-lg font-semibold text-foreground">
               {feedbackType === 'feedback' ? 'Share Your Feedback' : 'Report an Issue'}
             </h2>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-muted">
               {feedbackType === 'feedback'
                 ? 'Share usability notes, feature wishes, or content ideas'
                 : 'Describe the issue so we can fix it quickly'
@@ -182,11 +182,11 @@ export default function FeedbackPage() {
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit}>
-          {courses.length > 0 && <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Course context<select value={courseId} onChange={(event) => setCourseId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">{courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}</select></label>}
+          {courses.length > 0 && <label className="block text-sm font-medium text-foreground">Course context<select value={courseId} onChange={(event) => setCourseId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-line bg-surface-2 px-4 py-3 text-foreground">{courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}</select></label>}
           {/* Personal Info - Always Shown */}
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 <User className="h-4 w-4 inline mr-1.5" />
                 Name (Optional)
               </label>
@@ -194,11 +194,11 @@ export default function FeedbackPage() {
                 type="text"
                 name="name"
                 placeholder="Your name"
-                className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
                 <Mail className="h-4 w-4 inline mr-1.5" />
                 Email (Optional)
               </label>
@@ -206,7 +206,7 @@ export default function FeedbackPage() {
                 type="email"
                 name="email"
                 placeholder="your@email.com"
-                className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none"
               />
             </div>
           </div>
@@ -215,13 +215,13 @@ export default function FeedbackPage() {
           {feedbackType === 'feedback' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   <Tag className="h-4 w-4 inline mr-1.5" />
                   Category
                 </label>
                 <select
                   name="category"
-                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                  className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none"
                 >
                   <option value="general">General usability</option>
                   <option value="feature">Feature request</option>
@@ -232,14 +232,14 @@ export default function FeedbackPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   <FileText className="h-4 w-4 inline mr-1.5" />
                   Your Feedback
                 </label>
                 <textarea
                   name="message"
                   placeholder="Share your detailed feedback, suggestions, or ideas..."
-                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none resize-none"
                   rows={5}
                   required
                 />
@@ -252,7 +252,7 @@ export default function FeedbackPage() {
             <>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
                     <Zap className="h-4 w-4 inline mr-1.5" />
                     Affected Feature
                   </label>
@@ -260,18 +260,18 @@ export default function FeedbackPage() {
                     type="text"
                     name="feature"
                     placeholder="e.g., Chat, Quiz, Login"
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                    className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
                     <AlertTriangle className="h-4 w-4 inline mr-1.5" />
                     Severity
                   </label>
                   <select
                     name="severity"
-                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none"
+                    className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none"
                   >
                     <option value="low">Low · Minor inconvenience</option>
                     <option value="medium">Medium · Affects functionality</option>
@@ -282,28 +282,28 @@ export default function FeedbackPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   <FileText className="h-4 w-4 inline mr-1.5" />
                   Bug Description
                 </label>
                 <textarea
                   name="description"
                   placeholder="Describe what happened and what you expected..."
-                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none resize-none"
                   rows={4}
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
                   <MessageSquare className="h-4 w-4 inline mr-1.5" />
                   Steps to Reproduce (Optional)
                 </label>
                 <textarea
                   name="steps"
                   placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..."
-                  className="w-full px-4 py-3 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition outline-none resize-none"
+                  className="w-full px-4 py-3 rounded-xl border border-line bg-surface-2 text-foreground placeholder:text-muted focus:ring-2 focus:ring-primary focus:border-transparent transition outline-none resize-none"
                   rows={3}
                 />
               </div>
@@ -312,28 +312,28 @@ export default function FeedbackPage() {
 
           {/* Status Messages */}
           {formState.error && (
-            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
+            <div className="rounded-xl bg-danger-bg border border-danger/30 p-4">
               <div className="flex items-start gap-3">
-                <svg className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-5 w-5 text-danger flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-red-700 dark:text-red-400">Submission failed</p>
-                  <p className="text-sm text-red-600 dark:text-red-400/80 mt-1">{formState.error}</p>
+                  <p className="text-sm font-medium text-danger">Submission failed</p>
+                  <p className="text-sm text-danger mt-1">{formState.error}</p>
                 </div>
               </div>
             </div>
           )}
 
           {formState.success && (
-            <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-4">
+            <div className="rounded-xl bg-success-bg border border-success/30 p-4">
               <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <CheckCircle className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  <p className="text-sm font-medium text-success">
                     {feedbackType === 'feedback' ? 'Thanks for your feedback!' : 'Bug report submitted!'}
                   </p>
-                  <p className="text-sm text-emerald-600 dark:text-emerald-400/80 mt-1">
+                  <p className="text-sm text-success mt-1">
                     {feedbackType === 'feedback'
                       ? 'We appreciate you taking the time to help us improve.'
                       : 'Our team will look into this issue shortly.'
@@ -350,8 +350,8 @@ export default function FeedbackPage() {
             disabled={formState.loading}
             className={`w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
               feedbackType === 'feedback'
-                ? 'bg-gradient-to-r from-emerald-600 to-indigo-600 text-white hover:from-emerald-700 hover:to-indigo-700'
-                : 'bg-gradient-to-r from-red-600 to-orange-600 text-white hover:from-red-700 hover:to-orange-700'
+                ? 'gradient-primary text-white hover:brightness-110'
+                : 'bg-danger-solid text-white hover:brightness-110'
             }`}
           >
             {formState.loading ? (
@@ -371,13 +371,13 @@ export default function FeedbackPage() {
 
       {/* Help Link */}
       <div className="mt-6 text-center">
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-muted">
           Need direct assistance?{" "}
-          <Link href="/" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+          <Link href="/" className="font-medium text-primary hover:underline">
             Visit the home hub
           </Link>{" "}
           or contact{" "}
-          <a href="mailto:support@smartaitutor.com" className="font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+          <a href="mailto:support@smartaitutor.com" className="font-medium text-primary hover:underline">
             support@smartaitutor.com
           </a>
         </p>

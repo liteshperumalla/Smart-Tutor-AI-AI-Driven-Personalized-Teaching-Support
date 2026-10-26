@@ -94,6 +94,8 @@
   --gradient-secondary: linear-gradient(135deg, #0D9488 0%, #06B6D4 50%, #A78BFA 100%);
   --gradient-accent: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
   --gradient-feature: linear-gradient(135deg, #1E3A8A 0%, #0F766E 55%, #0E7490 100%);
+  /* Gradient-clipped headline text sits on the page, not under white labels */
+  --gradient-text: linear-gradient(90deg, #1E3A8A 0%, #0D9488 100%);
 
   /* ---- Typography ----
      next/font registers Space Grotesk and Inter under hashed family names, so
@@ -176,6 +178,7 @@
   /* White labels sit on these: keep both ends at 4.5:1+ */
   --gradient-primary: linear-gradient(135deg, #2563EB 0%, #0F766E 100%);
   --gradient-feature: linear-gradient(135deg, #2563EB 0%, #0F766E 55%, #0E7490 100%);
+  --gradient-text: linear-gradient(90deg, #60A5FA 0%, #2DD4BF 100%);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .40);
   --shadow-md: 0 6px 16px -4px rgba(0, 0, 0, .50);
@@ -253,39 +256,6 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 700;
-}
-
-/* Dark-mode bridge for pages that still use raw zinc/white palette classes.
-   Each one maps onto a token, so it follows the theme instead of a second
-   hard-coded palette. Delete a rule once no page uses its class; new code
-   should use bg-surface / text-foreground / text-muted / border-line. */
-.theme-dark .bg-zinc-50 {
-  background-color: var(--color-bg) !important;
-  color: var(--color-text);
-}
-
-.theme-dark .bg-white,
-.theme-dark .bg-white\/90 {
-  background-color: var(--color-surface) !important;
-  color: var(--color-text);
-}
-
-.theme-dark .text-zinc-900,
-.theme-dark .text-zinc-950 {
-  color: var(--color-text) !important;
-}
-
-.theme-dark .text-zinc-600,
-.theme-dark .text-zinc-700 {
-  color: #CBD5E1 !important; /* slate-300: between text and muted */
-}
-
-.theme-dark .text-zinc-500 {
-  color: var(--color-text-muted) !important;
-}
-
-.theme-dark .border-zinc-200 {
-  border-color: var(--color-border) !important;
 }
 
 /* ---------- Component recipes ----------
@@ -584,8 +554,13 @@ h1, h2, h3, h4, h5, h6 {
   background: var(--gradient-accent);
 }
 
+/* Hero panels that carry white text (one per page) */
+.gradient-feature {
+  background: var(--gradient-feature);
+}
+
 .text-gradient-primary {
-  background: var(--gradient-primary);
+  background: var(--gradient-text);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

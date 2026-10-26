@@ -97,13 +97,13 @@ function GoogleCallbackContent() {
   }, [router, searchParams]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
-      <div className="max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow">
-        <h1 className="text-xl font-semibold text-zinc-900">Connecting Google account…</h1>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-surface-2 px-4 text-center">
+      <div className="max-w-md space-y-4 rounded-2xl border border-line bg-surface p-8 shadow">
+        <h1 className="text-xl font-semibold text-foreground">Connecting Google account…</h1>
         {error ? (
-          <p className="text-sm text-red-600">{error}</p>
+          <p className="text-sm text-danger">{error}</p>
         ) : (
-          <p className="text-sm text-zinc-600">{status}</p>
+          <p className="text-sm text-muted">{status}</p>
         )}
       </div>
     </div>
@@ -113,9 +113,9 @@ function GoogleCallbackContent() {
 export default function GoogleCallbackPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 text-center">
-        <div className="max-w-md space-y-4 rounded-2xl border border-zinc-200 bg-white p-8 shadow">
-          <h1 className="text-xl font-semibold text-zinc-900">Loading…</h1>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-surface-2 px-4 text-center">
+        <div className="max-w-md space-y-4 rounded-2xl border border-line bg-surface p-8 shadow">
+          <h1 className="text-xl font-semibold text-foreground">Loading…</h1>
         </div>
       </div>
     }>

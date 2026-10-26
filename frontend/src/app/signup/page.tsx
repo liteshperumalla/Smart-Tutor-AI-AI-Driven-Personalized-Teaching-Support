@@ -115,10 +115,10 @@ export default function SignupPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Left: Visual side */}
-      <div className="relative hidden lg:flex flex-col justify-center bg-zinc-900 overflow-hidden p-16">
+      <div className="relative hidden lg:flex flex-col justify-center gradient-feature overflow-hidden p-16">
         <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 h-96 w-96 bg-emerald-500 rounded-full blur-3xl animate-float"></div>
-          <div className="absolute bottom-0 left-0 h-64 w-64 bg-teal-500 rounded-full blur-3xl" style={{ animationDelay: "1.5s" }}></div>
+          <div className="absolute top-0 right-0 h-96 w-96 bg-success-solid rounded-full blur-3xl animate-float"></div>
+          <div className="absolute bottom-0 left-0 h-64 w-64 bg-success-solid rounded-full blur-3xl" style={{ animationDelay: "1.5s" }}></div>
         </div>
         <div className="relative z-10 text-white">
           <h2 className="font-display text-6xl font-bold leading-tight animate-fade-in-up">
@@ -143,16 +143,16 @@ export default function SignupPage() {
       </div>
 
       {/* Right: Signup form */}
-      <div className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex items-center justify-center p-8 bg-surface-2">
         <div className="w-full max-w-md animate-scale-in">
           <div className="mb-10 text-center lg:text-left">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:gap-3 transition-all">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:gap-3 transition-all">
               <span>←</span> Back to home
             </Link>
-            <h1 className="font-display mt-6 text-4xl font-bold text-zinc-900 dark:text-white">
+            <h1 className="font-display mt-6 text-4xl font-bold text-foreground">
               Create your account
             </h1>
-            <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+            <p className="mt-3 text-muted">
               Get started with Smart AI Tutor in seconds
             </p>
           </div>
@@ -160,7 +160,7 @@ export default function SignupPage() {
           <form onSubmit={handleSubmit} className="space-y-5 card animate-fade-in-up stagger-1">
             {/* Username */}
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <label htmlFor="username" className="text-sm font-medium text-foreground">
                 Username
               </label>
               <input
@@ -178,7 +178,7 @@ export default function SignupPage() {
 
             {/* Email */}
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email
               </label>
               <input
@@ -196,7 +196,7 @@ export default function SignupPage() {
 
             {/* Password */}
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <label htmlFor="password" className="text-sm font-medium text-foreground">
                 Password
               </label>
               <input
@@ -214,7 +214,7 @@ export default function SignupPage() {
               {passwordTouched && (
                 <ul className="mt-2 space-y-1">
                   {passwordRuleResults.map((r) => (
-                    <li key={r.label} className={`flex items-center gap-2 text-xs ${r.passed ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+                    <li key={r.label} className={`flex items-center gap-2 text-xs ${r.passed ? "text-success" : "text-danger"}`}>
                       {r.passed
                         ? <CheckCircle className="h-3.5 w-3.5 shrink-0" />
                         : <XCircle className="h-3.5 w-3.5 shrink-0" />}
@@ -224,7 +224,7 @@ export default function SignupPage() {
                 </ul>
               )}
               {!passwordTouched && (
-                <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
+                <p className="mt-1 text-xs text-muted">
                   Must be 12+ characters with uppercase, lowercase, number &amp; special character.
                 </p>
               )}
@@ -232,7 +232,7 @@ export default function SignupPage() {
 
             {/* Confirm password */}
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
                 Confirm password
               </label>
               <input
@@ -243,21 +243,21 @@ export default function SignupPage() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className={`input ${confirmPassword && confirmPassword !== password ? "border-red-400 focus:border-red-500 focus:ring-red-500/10" : ""}`}
+                className={`input ${confirmPassword && confirmPassword !== password ? "border-danger focus:border-danger focus:ring-danger" : ""}`}
                 placeholder="Repeat password"
               />
               {confirmPassword && confirmPassword !== password && (
-                <p className="mt-1 text-xs text-red-500">Passwords do not match.</p>
+                <p className="mt-1 text-xs text-danger">Passwords do not match.</p>
               )}
             </div>
 
             {/* Global error */}
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+              <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
                 <p className="font-medium">Unable to create account</p>
                 <p className="mt-0.5">{error}</p>
                 {(error.toLowerCase().includes("email already") || error.toLowerCase().includes("already exists")) && (
-                  <p className="mt-2 border-t border-red-200 pt-2 dark:border-red-800">
+                  <p className="mt-2 border-t border-danger/30 pt-2">
                     Already have an account?{" "}
                     <Link href="/login" className="font-semibold underline hover:opacity-80">
                       Sign in →
@@ -280,7 +280,7 @@ export default function SignupPage() {
             </button>
 
             <div className="space-y-3">
-              <div className="text-center text-xs uppercase tracking-[0.3em] text-zinc-400 dark:text-zinc-500">
+              <div className="text-center text-xs uppercase tracking-[0.3em] text-muted">
                 or sign up with Google
               </div>
               <GoogleAuthButton intent="signup" />
@@ -288,9 +288,9 @@ export default function SignupPage() {
           </form>
 
           <div className="mt-8 text-center text-sm">
-            <p className="text-zinc-600 dark:text-zinc-400">
+            <p className="text-muted">
               Already registered?{" "}
-              <Link href="/login" className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+              <Link href="/login" className="font-semibold text-primary hover:text-primary">
                 Sign in →
               </Link>
             </p>

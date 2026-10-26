@@ -291,10 +291,10 @@ export default function AdminResourcesPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-white">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
           <FolderOpen className="h-5 w-5" />
           Resources
-          <span className="ml-2 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="ml-2 rounded-full bg-line px-2.5 py-0.5 text-xs font-medium text-foreground">
             {resources.length}
           </span>
         </h2>
@@ -302,7 +302,7 @@ export default function AdminResourcesPage() {
           {!showForm && (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="btn-primary btn-sm"
             >
               <Plus className="h-4 w-4" />
               Add Resource
@@ -320,8 +320,8 @@ export default function AdminResourcesPage() {
             className={[
               "rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition",
               tab === t
-                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                : "border border-zinc-200 text-zinc-500 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800",
+                ? "bg-primary-solid text-white"
+                : "border border-line text-muted hover:bg-surface-2",
             ].join(" ")}
           >
             {t === "all" ? `All (${resources.length})` : t === "link" ? `Links (${resources.filter((r) => r.type === "link").length})` : `Files (${resources.filter((r) => r.type === "file").length})`}
@@ -331,12 +331,12 @@ export default function AdminResourcesPage() {
         {/* Migrate Button */}
         <div className="ml-auto flex items-center gap-2">
           {migrateResult && (
-            <span className="text-xs text-green-600 dark:text-green-400">{migrateResult}</span>
+            <span className="text-xs text-success">{migrateResult}</span>
           )}
           <button
             onClick={handleMigrate}
             disabled={migrating}
-            className="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+            className="flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-muted transition hover:bg-surface-2 disabled:opacity-50"
           >
             <DatabaseBackup className="h-3.5 w-3.5" />
             {migrating ? "Importing…" : "Import Static Resources"}
@@ -346,8 +346,8 @@ export default function AdminResourcesPage() {
 
       {/* Create / Edit Form */}
       {showForm && (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/60">
-          <h3 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-white">
+        <div className="rounded-2xl border border-line bg-surface p-6">
+          <h3 className="mb-4 text-sm font-semibold text-foreground">
             {editingId ? "Edit Resource" : "Add Resource"}
           </h3>
 
@@ -359,8 +359,8 @@ export default function AdminResourcesPage() {
                 className={[
                   "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
                   formMode === "link"
-                    ? "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400"
-                    : "border border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400",
+                    ? "bg-primary-bg text-primary"
+                    : "border border-line text-muted",
                 ].join(" ")}
               >
                 <LinkIcon className="h-3.5 w-3.5" />
@@ -371,8 +371,8 @@ export default function AdminResourcesPage() {
                 className={[
                   "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition",
                   formMode === "file"
-                    ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400"
-                    : "border border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400",
+                    ? "bg-lavender/15 text-violet-700 dark:text-lavender"
+                    : "border border-line text-muted",
                 ].join(" ")}
               >
                 <Upload className="h-3.5 w-3.5" />
@@ -382,12 +382,12 @@ export default function AdminResourcesPage() {
           )}
 
           <div className="space-y-4">
-            <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="block text-sm font-medium text-foreground">
               Course workspace
               <select
                 value={formCourseId}
                 onChange={(event) => setFormCourseId(event.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="mt-1.5 w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
               >
                 <option value="" disabled>Select a course workspace</option>
                 {courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}
@@ -401,7 +401,7 @@ export default function AdminResourcesPage() {
                 value={formCategory}
                 onChange={(e) => setFormCategory(e.target.value)}
                 list="resource-categories"
-                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
               />
               <datalist id="resource-categories">
                 {uniqueCategories.map((c) => (
@@ -415,7 +415,7 @@ export default function AdminResourcesPage() {
               placeholder="Title"
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
             />
 
             {formMode === "link" && !editingId ? (
@@ -424,7 +424,7 @@ export default function AdminResourcesPage() {
                 placeholder="URL (https://...)"
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
               />
             ) : editingId && formMode === "link" ? (
               <input
@@ -432,7 +432,7 @@ export default function AdminResourcesPage() {
                 placeholder="URL (https://...)"
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
-                className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+                className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
               />
             ) : !editingId ? (
               /* File upload zone */
@@ -449,19 +449,19 @@ export default function AdminResourcesPage() {
                   const f = e.dataTransfer.files[0];
                   if (f) setFormFile(f);
                 }}
-                className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center transition hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-800/30 dark:hover:border-zinc-600"
+                className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-line bg-surface-2 px-6 py-8 text-center transition hover:border-muted"
               >
-                <Upload className="h-8 w-8 text-zinc-400" />
+                <Upload className="h-8 w-8 text-muted" />
                 {formFile ? (
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <p className="text-sm font-medium text-foreground">
                     {formFile.name} ({formatBytes(formFile.size)})
                   </p>
                 ) : (
                   <>
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    <p className="text-sm text-muted">
                       Click to choose or drag a file here
                     </p>
-                    <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                    <p className="text-xs text-muted">
                       PDF, PPTX, DOCX, or any document (max 50 MB)
                     </p>
                   </>
@@ -483,7 +483,7 @@ export default function AdminResourcesPage() {
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
             />
 
             <div className="flex gap-3">
@@ -497,13 +497,13 @@ export default function AdminResourcesPage() {
                   (!editingId && formMode === "link" && !formUrl.trim()) ||
                   (!editingId && formMode === "file" && !formFile)
                 }
-                className="rounded-xl bg-zinc-900 px-6 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="btn-primary btn-sm disabled:opacity-50"
               >
                 {saving ? "Saving…" : editingId ? "Update" : formMode === "link" ? "Add Link" : "Upload File"}
               </button>
               <button
                 onClick={resetForm}
-                className="rounded-xl border border-zinc-200 px-6 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-xl border border-line px-6 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2"
               >
                 Cancel
               </button>
@@ -515,12 +515,12 @@ export default function AdminResourcesPage() {
       {/* Resource List */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
-          <FolderOpen className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2 p-8 text-center">
+          <FolderOpen className="h-10 w-10 text-muted/40" />
+          <p className="text-sm text-muted">
             {resources.length === 0
               ? 'No resources yet. Click "Import Static Resources" to seed from the catalog, or add one manually.'
               : "No resources match this filter."}
@@ -533,36 +533,36 @@ export default function AdminResourcesPage() {
               key={res.id}
               className={`rounded-2xl border p-5 transition hover:shadow-md ${
                 res.type === "file"
-                  ? "border-purple-200 bg-purple-50/30 dark:border-purple-900 dark:bg-purple-950/10"
-                  : "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/60"
+                  ? "border-lavender/40 bg-lavender/15"
+                  : "border-line bg-surface"
               } ${!res.active ? "opacity-50" : ""}`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     {res.type === "file" ? (
-                      <FileText className="h-4 w-4 flex-shrink-0 text-purple-500" />
+                      <FileText className="h-4 w-4 flex-shrink-0 text-violet-700 dark:text-lavender" />
                     ) : (
-                      <LinkIcon className="h-4 w-4 flex-shrink-0 text-blue-500" />
+                      <LinkIcon className="h-4 w-4 flex-shrink-0 text-primary" />
                     )}
-                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
+                    <h3 className="text-sm font-semibold text-foreground">
                       {res.title}
                     </h3>
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-muted">
                       {res.category}
                     </span>
                     {!res.active && (
-                      <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                      <span className="rounded-full bg-line px-2 py-0.5 text-[10px] font-medium text-muted">
                         Inactive
                       </span>
                     )}
                   </div>
                   {res.description && (
-                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{res.description}</p>
+                    <p className="mt-1 text-sm text-muted">{res.description}</p>
                   )}
-                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="mt-2 text-xs text-muted">
                     {res.type === "link" && res.url && (
-                      <a href={res.url} target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">
+                      <a href={res.url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                         {res.url.length > 60 ? res.url.slice(0, 60) + "…" : res.url}
                       </a>
                     )}
@@ -584,19 +584,19 @@ export default function AdminResourcesPage() {
                     return (
                       <div className="mt-2">
                         {idx.status === "complete" ? (
-                          <p className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                          <p className="flex items-center gap-1 text-xs text-success">
                             <CheckCircle2 className="h-3.5 w-3.5" />
                             Indexed — {idx.chunks_created} chunks
                           </p>
                         ) : idx.status === "error" ? (
-                          <p className="flex items-center gap-1 text-xs text-red-500">
+                          <p className="flex items-center gap-1 text-xs text-danger">
                             <AlertCircle className="h-3.5 w-3.5" />
                             Index error: {idx.error ?? "unknown"}
                           </p>
                         ) : isActive ? (
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
-                              <p className="flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400">
+                              <p className="flex items-center gap-1 text-xs text-primary">
                                 <Loader2 className="h-3 w-3 animate-spin" />
                                 {idx.status === "queued" ? "Queued…"
                                   : idx.status === "extracting" ? "Extracting text…"
@@ -604,11 +604,11 @@ export default function AdminResourcesPage() {
                                   : idx.status === "embedding" ? `Embedding${idx.total_chunks ? ` (${idx.chunks_created}/${idx.total_chunks})` : "…"}`
                                   : `Uploading chunks (${idx.chunks_created})`}
                               </p>
-                              <span className="text-xs text-zinc-500">{idx.progress_pct}%</span>
+                              <span className="text-xs text-muted">{idx.progress_pct}%</span>
                             </div>
-                            <div className="h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-700">
+                            <div className="h-1.5 w-full rounded-full bg-line">
                               <div
-                                className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
+                                className="h-1.5 rounded-full bg-primary-solid transition-all duration-500"
                                 style={{ width: `${idx.progress_pct}%` }}
                               />
                             </div>
@@ -628,7 +628,7 @@ export default function AdminResourcesPage() {
                       <button
                         onClick={() => handleReindex(res.id)}
                         disabled={!!busy}
-                        className="rounded-lg p-2 text-indigo-500 transition hover:bg-indigo-50 disabled:opacity-50 dark:hover:bg-indigo-950/30"
+                        className="rounded-lg p-2 text-primary transition hover:bg-primary-bg disabled:opacity-50"
                         title={busy ? "Indexing…" : "Re-index for RAG"}
                       >
                         {busy
@@ -639,14 +639,14 @@ export default function AdminResourcesPage() {
                   })()}
                   <button
                     onClick={() => handleToggleActive(res.id, res.active)}
-                    className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="rounded-lg p-2 text-muted transition hover:bg-surface-2"
                     title={res.active ? "Deactivate" : "Activate"}
                   >
                     {res.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => startEdit(res)}
-                    className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="rounded-lg p-2 text-muted transition hover:bg-surface-2"
                     title="Edit"
                   >
                     <Edit2 className="h-4 w-4" />
@@ -655,13 +655,13 @@ export default function AdminResourcesPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleDelete(res.id)}
-                        className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                        className="rounded-lg bg-danger-solid px-2 py-1 text-xs text-white hover:brightness-110"
                       >
                         Yes
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="rounded-lg bg-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300"
+                        className="rounded-lg bg-line px-2 py-1 text-xs text-foreground hover:bg-line"
                       >
                         No
                       </button>
@@ -669,7 +669,7 @@ export default function AdminResourcesPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(res.id)}
-                      className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                      className="rounded-lg p-2 text-danger transition hover:bg-danger-bg"
                       title="Delete"
                     >
                       <Trash2 className="h-4 w-4" />

@@ -46,57 +46,57 @@ export default function PasswordResetRequestPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
+    <div className="flex min-h-screen flex-col bg-surface-2">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-12">
         <div className="mb-8 text-center">
-          <Link href="/login" className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+          <Link href="/login" className="text-sm font-semibold text-primary">
             ← Back to sign in
           </Link>
-          <h1 className="mt-4 text-2xl font-semibold text-zinc-900 dark:text-white">
+          <h1 className="mt-4 text-2xl font-semibold text-foreground">
             Reset your password
           </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-muted">
             We’ll email a reset link if the account exists.
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+          className="space-y-5 rounded-2xl border border-line bg-surface p-8 shadow-sm"
         >
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-sm font-medium text-foreground">
               Username
             </label>
             <input
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none ring-0 transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+              className="input"
               placeholder="your@email.edu"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="text-sm font-medium text-foreground">
               Email
             </label>
             <input
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none ring-0 transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+              className="input"
               placeholder="student@unt.edu"
             />
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
 
           {status === "success" && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <div className="rounded-xl border border-success/30 bg-success-bg px-4 py-3 text-sm text-success">
               If the account exists, we’ve sent a reset email.
             </div>
           )}

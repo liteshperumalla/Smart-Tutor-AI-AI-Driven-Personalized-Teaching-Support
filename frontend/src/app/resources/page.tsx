@@ -15,15 +15,15 @@ type CategoryMap = Record<string, { title: string; url: string }[]>;
 function FileBadge({ name }: { name?: string | null }) {
   const ext = (name?.split(".").pop() || "file").toUpperCase();
   const palette: Record<string, string> = {
-    PDF: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400",
-    IPYNB: "bg-orange-50 text-orange-600 dark:bg-orange-500/10 dark:text-orange-400",
-    PPTX: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
-    PPT: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
-    DOCX: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
-    DOC: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
-    PY: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
+    PDF: "bg-danger-bg text-danger",
+    IPYNB: "bg-warning-bg text-warning",
+    PPTX: "bg-warning-bg text-warning",
+    PPT: "bg-warning-bg text-warning",
+    DOCX: "bg-primary-bg text-primary",
+    DOC: "bg-primary-bg text-primary",
+    PY: "bg-success-bg text-success",
   };
-  const cls = palette[ext] || "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300";
+  const cls = palette[ext] || "bg-surface-2 text-muted";
   return (
     <span className={`flex-shrink-0 rounded-md px-2 py-1 text-[10px] font-bold tracking-wider ${cls}`}>
       .{ext}
@@ -35,11 +35,11 @@ function FileBadge({ name }: { name?: string | null }) {
 function SectionHeader({ label, count, unit }: { label: string; count: number; unit: string }) {
   return (
     <div className="mb-3 flex items-center justify-between px-1">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.25em] text-muted">
         <FileText className="h-4 w-4" />
         {label}
       </div>
-      <span className="text-xs text-zinc-400 dark:text-zinc-500">
+      <span className="text-xs text-muted">
         {count} {unit}
       </span>
     </div>
@@ -55,7 +55,7 @@ const KIND_FILTERS: { id: KindFilter; label: string }[] = [
 ];
 
 const ROW_CARD =
-  "flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 shadow-sm transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900";
+  "flex items-center gap-4 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-sm transition hover:shadow-md";
 
 export default function ResourcesPage() {
   const { token } = useAuthToken();
@@ -162,20 +162,20 @@ export default function ResourcesPage() {
         accent="tutor cites."
         subtitle="Slides, readings, and code demos — indexed and searchable from the chat."
         actions={
-          <div className="rounded-2xl border border-zinc-200 bg-white/80 px-5 py-4 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-zinc-400 dark:text-zinc-500">
+          <div className="rounded-2xl border border-line bg-surface/80 px-5 py-4 shadow-sm backdrop-blur">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-muted">
               Indexed
             </p>
-            <p className="font-display text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            <p className="font-display text-2xl font-bold text-success">
               {totalDocs} docs
             </p>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500">· {totalFiles} files</p>
+            <p className="text-xs text-muted">· {totalFiles} files</p>
           </div>
         }
       />
 
       {error && (
-        <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+        <p className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
           {error}
         </p>
       )}
@@ -185,16 +185,16 @@ export default function ResourcesPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search resources</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden="true" />
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by title, topic or file name"
-              className="w-full rounded-xl border border-zinc-200 bg-white py-2.5 pl-10 pr-4 text-sm text-zinc-900 placeholder:text-zinc-400 outline-none transition focus:border-transparent focus:ring-2 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              className="w-full rounded-xl border border-line bg-surface py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted outline-none transition focus:border-transparent focus:ring-2 focus:ring-success"
             />
           </label>
-          <div role="group" aria-label="Resource type" className="flex shrink-0 gap-1 rounded-xl bg-zinc-100 p-1 dark:bg-zinc-800">
+          <div role="group" aria-label="Resource type" className="flex shrink-0 gap-1 rounded-xl bg-surface-2 p-1">
             {KIND_FILTERS.map(({ id, label }) => (
               <button
                 key={id}
@@ -202,10 +202,10 @@ export default function ResourcesPage() {
                 aria-pressed={kind === id}
                 onClick={() => setKind(id)}
                 className={[
-                  "rounded-lg px-3.5 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                  "rounded-lg px-3.5 py-1.5 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success",
                   kind === id
-                    ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-300 dark:bg-zinc-950 dark:text-white dark:ring-zinc-600"
-                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white",
+                    ? "bg-surface text-foreground shadow-sm ring-1 ring-line"
+                    : "text-muted hover:text-foreground",
                 ].join(" ")}
               >
                 {label}
@@ -216,16 +216,16 @@ export default function ResourcesPage() {
       )}
 
       {noMatches && (
-        <div role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
-          <Search className="h-8 w-8 text-zinc-300 dark:text-zinc-600" aria-hidden="true" />
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Nothing matches your search.</p>
+        <div role="status" className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2 p-10 text-center">
+          <Search className="h-8 w-8 text-muted/40" aria-hidden="true" />
+          <p className="text-sm text-muted">Nothing matches your search.</p>
           <button
             type="button"
             onClick={() => {
               setQuery("");
               setKind("all");
             }}
-            className="text-sm font-semibold text-emerald-600 hover:underline dark:text-emerald-400"
+            className="text-sm font-semibold text-success hover:underline"
           >
             Clear filters
           </button>
@@ -236,8 +236,8 @@ export default function ResourcesPage() {
       {loading && !error && (
         <div className="flex items-center justify-center py-20">
           <div className="flex flex-col items-center gap-4">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading resources…</p>
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
+            <p className="text-sm text-muted">Loading resources…</p>
           </div>
         </div>
       )}
@@ -252,19 +252,19 @@ export default function ResourcesPage() {
                 <div key={res.id} className={ROW_CARD}>
                   <FileBadge name={res.file_name} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-zinc-900 dark:text-white">{res.title}</p>
+                    <p className="truncate font-semibold text-foreground">{res.title}</p>
                     {res.description && (
-                      <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{res.description}</p>
+                      <p className="truncate text-xs text-muted">{res.description}</p>
                     )}
                   </div>
-                  <span className="hidden flex-shrink-0 text-xs tabular-nums text-zinc-400 dark:text-zinc-500 sm:block">
+                  <span className="hidden flex-shrink-0 text-xs tabular-nums text-muted sm:block">
                     {formatBytes(res.file_size_bytes)}
                   </span>
                   <button
                     onClick={() => handleDownload(res.id)}
                     disabled={downloading === res.id}
                     aria-label={`Download ${res.title}`}
-                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-zinc-200 text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white"
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-line text-muted transition hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
                   >
                     <Download className={`h-4 w-4 ${downloading === res.id ? "animate-pulse" : ""}`} />
                   </button>
@@ -286,15 +286,15 @@ export default function ResourcesPage() {
                   href={link.url}
                   target="_blank"
                   rel="noreferrer"
-                  className={`group ${ROW_CARD} hover:border-emerald-300 dark:hover:border-emerald-700`}
+                  className={`group ${ROW_CARD} hover:border-success/30`}
                 >
-                  <span className="flex-shrink-0 rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-bold tracking-wider text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  <span className="flex-shrink-0 rounded-md bg-success-bg px-2 py-1 text-[10px] font-bold tracking-wider text-success">
                     .LINK
                   </span>
-                  <p className="min-w-0 flex-1 truncate font-semibold text-zinc-900 transition group-hover:text-emerald-600 dark:text-white dark:group-hover:text-emerald-400">
+                  <p className="min-w-0 flex-1 truncate font-semibold text-foreground transition group-hover:text-success">
                     {link.title}
                   </p>
-                  <ExternalLink className="h-4 w-4 flex-shrink-0 text-zinc-400 dark:text-zinc-500" />
+                  <ExternalLink className="h-4 w-4 flex-shrink-0 text-muted" />
                 </a>
               ))}
             </div>
@@ -310,12 +310,12 @@ export default function ResourcesPage() {
               <div key={upload.id} className={ROW_CARD}>
                 <FileBadge name={upload.file_name} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-zinc-900 dark:text-white">{upload.file_name}</p>
-                  <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="truncate font-semibold text-foreground">{upload.file_name}</p>
+                  <p className="truncate text-xs text-muted">
                     Uploaded {new Date(upload.uploaded_at).toLocaleDateString()}
                   </p>
                 </div>
-                <span className="hidden flex-shrink-0 text-xs tabular-nums text-zinc-400 dark:text-zinc-500 sm:block">
+                <span className="hidden flex-shrink-0 text-xs tabular-nums text-muted sm:block">
                   {Math.round(upload.size_bytes / 1024)} KB
                 </span>
               </div>
@@ -326,18 +326,18 @@ export default function ResourcesPage() {
 
       {/* Empty state */}
       {isEmpty && (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-10 text-center dark:border-zinc-800 dark:bg-zinc-900/30">
-          <FolderOpen className="h-10 w-10 text-zinc-300 dark:text-zinc-600" />
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">No curated resources available yet.</p>
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2 p-10 text-center">
+          <FolderOpen className="h-10 w-10 text-muted/40" />
+          <p className="text-sm text-muted">No curated resources available yet.</p>
         </div>
       )}
 
       {/* Suggestion CTA */}
       {!loading && (
-        <section className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-sm text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-400">
+        <section className="rounded-2xl border border-dashed border-line bg-surface-2 p-6 text-sm text-muted">
           <p>
             See something missing?{" "}
-            <Link href="/feedback" className="font-semibold text-emerald-600 hover:underline dark:text-emerald-400">
+            <Link href="/feedback" className="font-semibold text-success hover:underline">
               Suggest a resource
             </Link>{" "}
             and we&apos;ll review it for the next release.

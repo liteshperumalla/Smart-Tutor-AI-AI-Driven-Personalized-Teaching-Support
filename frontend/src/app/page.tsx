@@ -10,7 +10,7 @@ const DEFAULT_OVERVIEW: HomeOverview = {
       id: "welcome",
       title: "Welcome",
       body: "Start the FastAPI backend to see live system metrics.",
-      accent: "#3b82f6",
+      accent: "var(--color-primary)",
     },
   ],
   professor: {
@@ -71,24 +71,24 @@ export default async function Home() {
   const professor = overview?.professor;
   return (
     <PageShell contentClassName="gap-10 pb-6" noCard>
-        <header className="relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10 animate-fade-in-down dark:border-zinc-800 bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)] dark:bg-[linear-gradient(160deg,#041410_0%,#000000_55%,#08030f_100%)]">
+        <header className="gradient-mesh relative overflow-hidden rounded-2xl border border-line bg-surface p-6 shadow-sm animate-fade-in-up sm:p-8 lg:p-10">
           {/* Dotted texture */}
           <div
             className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20"
             style={{ backgroundImage: "radial-gradient(rgba(15,23,42,0.06) 1px, transparent 1px)", backgroundSize: "22px 22px" }}
           />
           {/* Decorative blobs */}
-          <div className="pointer-events-none absolute -top-20 -right-16 h-60 w-60 rounded-full blur-3xl animate-float" style={{ background: "rgba(16,185,129,0.18)" }}></div>
-          <div className="pointer-events-none absolute -bottom-20 -left-10 h-52 w-52 rounded-full blur-3xl" style={{ background: "rgba(99,102,241,0.16)", animationDelay: "1s" }}></div>
+          <div className="pointer-events-none absolute -top-20 -right-16 h-60 w-60 rounded-full blur-3xl animate-float" style={{ background: "var(--color-success-bg)" }}></div>
+          <div className="pointer-events-none absolute -bottom-20 -left-10 h-52 w-52 rounded-full blur-3xl" style={{ background: "var(--color-primary-bg)", animationDelay: "1s" }}></div>
 
           <div className="relative z-10">
-            <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-zinc-900 dark:text-white sm:text-5xl lg:text-6xl">
+            <h1 className="font-display text-4xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-5xl lg:text-6xl">
               Smart AI{" "}
-              <span style={{ backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+              <span className="text-gradient-primary">
                 Tutor
               </span>
             </h1>
-            <p className="mt-3 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-300 sm:text-lg">
+            <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
               Your multi-course learning platform for grounded answers, targeted practice, and measurable mastery.
             </p>
           </div>
@@ -112,20 +112,20 @@ export default async function Home() {
                     className={`group relative overflow-hidden rounded-3xl p-5 sm:p-8 transition-all hover:-translate-y-1 hover:shadow-xl animate-fade-in-up ${
                       featured
                         ? "card-gradient border-0"
-                        : "border-2 border-zinc-200 bg-white hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                        : "border-2 border-line bg-surface hover:bg-surface-2"
                     }`}
                     style={{ animationDelay: `${i * 0.05}s` }}>
 
                     <div className="mb-4">
-                      <h3 className={`font-display text-xl font-bold ${featured ? "text-white" : "text-zinc-900 dark:text-white"}`}>
+                      <h3 className={`font-display text-xl font-bold ${featured ? "text-white" : "text-foreground"}`}>
                         {action.title}
                       </h3>
-                      <p className={`mt-2 text-sm ${featured ? "text-white/85" : "text-zinc-600 dark:text-zinc-400"}`}>
+                      <p className={`mt-2 text-sm ${featured ? "text-white/85" : "text-muted"}`}>
                         {action.description}
                       </p>
                     </div>
 
-                    <div className={`mt-4 inline-flex items-center gap-2 font-medium text-sm ${featured ? "text-white" : "text-indigo-600 dark:text-indigo-400"}`}>
+                    <div className={`mt-4 inline-flex items-center gap-2 font-medium text-sm ${featured ? "text-white" : "text-primary"}`}>
                       Get started <span className="transition-transform group-hover:translate-x-1">→</span>
                     </div>
                   </Link>
@@ -136,22 +136,22 @@ export default async function Home() {
         )}
 
         <section className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="lg:col-span-2 rounded-3xl border border-line bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
-                <Bell className="h-5 w-5 text-zinc-500 dark:text-zinc-400" />
+              <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                <Bell className="h-5 w-5 text-muted" />
                 Latest announcements
               </h2>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">Course-wide updates</span>
+              <span className="text-xs text-muted">Course-wide updates</span>
             </div>
             <div className="mt-4 space-y-4">
-              {(announcements.length ? announcements : [{ id: "welcome", title: "Welcome", body: "Check back soon.", accent: "#3b82f6" }]).map((announcement) => (
+              {(announcements.length ? announcements : [{ id: "welcome", title: "Welcome", body: "Check back soon.", accent: "var(--color-primary)" }]).map((announcement) => (
                 <div
                   key={announcement.id}
-                  className="rounded-2xl border-l-4 bg-zinc-50 p-4 text-sm text-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300"
+                  className="rounded-2xl border-l-4 bg-surface-2 p-4 text-sm text-foreground"
                   style={{ borderColor: announcement.accent }}
                 >
-                  <p className="text-base font-semibold text-zinc-900 dark:text-white">{announcement.title}</p>
+                  <p className="text-base font-semibold text-foreground">{announcement.title}</p>
                   <p className="pt-1 text-sm">{announcement.body}</p>
                 </div>
               ))}
@@ -159,19 +159,19 @@ export default async function Home() {
           </div>
 
           <div className="space-y-6">
-            <article className="rounded-3xl border border-zinc-200 bg-white p-6 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400 flex items-center justify-center gap-2">
+            <article className="rounded-3xl border border-line bg-surface p-6 text-center shadow-sm">
+              <p className="text-xs uppercase tracking-[0.35em] text-muted flex items-center justify-center gap-2">
                 <GraduationCap className="h-4 w-4" />
                 Professor
               </p>
-              <div className="mx-auto mt-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 text-2xl font-semibold text-zinc-900 dark:bg-zinc-800 dark:text-white">
+              <div className="mx-auto mt-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface-2 text-2xl font-semibold text-foreground">
                 {(professor?.name || "Faculty").charAt(0)}
               </div>
-              <p className="mt-3 text-lg font-semibold text-zinc-900 dark:text-white">{professor?.name ?? "Faculty"}</p>
-              {professor?.email && <p className="text-xs text-zinc-500 dark:text-zinc-400">{professor.email}</p>}
+              <p className="mt-3 text-lg font-semibold text-foreground">{professor?.name ?? "Faculty"}</p>
+              {professor?.email && <p className="text-xs text-muted">{professor.email}</p>}
               <div className="mt-4 flex flex-wrap justify-center gap-2 text-sm">
                 {professor?.links?.map((link) => (
-                  <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="rounded-full border border-zinc-200 px-3 py-1 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors">
+                  <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="rounded-full border border-line px-3 py-1 text-foreground hover:bg-surface-2 transition-colors">
                     {link.label}
                   </a>
                 ))}
@@ -183,20 +183,20 @@ export default async function Home() {
               vector_store_ready={stats.vector_store_ready}
             />
 
-            <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <article className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0 flex-1 basis-48">
-                  <p className="text-xs uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400 flex items-center gap-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted flex items-center gap-2">
                     <FolderOpen className="h-4 w-4" />
                     Resources
                   </p>
-                  <p className="pt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="pt-2 text-sm text-muted">
                     Lecture slides, Canvas links, and curated learning materials.
                   </p>
                 </div>
                 <Link
                   href="/resources"
-                  className="shrink-0 whitespace-nowrap rounded-full border border-zinc-200 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1"
+                  className="shrink-0 whitespace-nowrap rounded-full border border-line px-4 py-2 text-sm font-semibold text-foreground hover:bg-surface-2 transition-colors flex items-center gap-1"
                 >
                   Browse <span aria-hidden="true">→</span>
                 </Link>

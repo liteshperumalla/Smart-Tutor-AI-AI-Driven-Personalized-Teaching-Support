@@ -62,7 +62,7 @@ export function ChatHeaderActions({
 
   const getFileIcon = (file: File) => {
     if (file.type.startsWith('image/')) {
-      return <Image className="h-4 w-4 text-blue-500" />;
+      return <Image className="h-4 w-4 text-primary" />;
     }
     return <FileText className="h-4 w-4 text-muted" />;
   };
