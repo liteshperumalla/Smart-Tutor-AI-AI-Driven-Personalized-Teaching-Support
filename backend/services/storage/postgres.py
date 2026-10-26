@@ -18,6 +18,7 @@ except ImportError:
     sql = None
 from contextlib import contextmanager
 import re
+import time
 
 from backend.config import config
 from backend.logger import get_logger
@@ -53,7 +54,15 @@ class PostgresStorageBackend(BaseStorageBackend):
             "password": password,
             "sslmode": config.POSTGRES_SSL_MODE,
             "connect_timeout": 5,  # Fail fast if database is unreachable
+            # Detect peers that went away (RDS restart, NAT/idle timeout) instead
+            # of handing a half-open socket to the next request.
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
         }
+        # id(conn) -> monotonic time it was last returned to a pool
+        self._conn_last_used: Dict[int, float] = {}
 
         # Add SSL root certificate if provided (for RDS)
         if config.POSTGRES_SSL_ROOT_CERT:
@@ -144,14 +153,14 @@ class PostgresStorageBackend(BaseStorageBackend):
         target_pool = self.reader_pool if use_reader else self.pool
         conn = None
         try:
-            conn = target_pool.getconn()
+            conn = self._checkout(target_pool)
         except Exception as exc:
             if use_reader:
                 logger.warning(
                     f"Failed to obtain connection from read replica ({exc}); falling back to primary pool"
                 )
                 target_pool = self.pool
-                conn = self.pool.getconn()
+                conn = self._checkout(self.pool)
             else:
                 raise
         try:
@@ -161,9 +170,51 @@ class PostgresStorageBackend(BaseStorageBackend):
                 # Return broken connections to pool with close=True
                 status_ready = psycopg2.extensions.STATUS_READY if psycopg2 and hasattr(psycopg2, "extensions") else 0
                 if conn.closed or conn.status != status_ready:
+                    self._conn_last_used.pop(id(conn), None)
                     target_pool.putconn(conn, close=True)
                 else:
+                    self._conn_last_used[id(conn)] = time.monotonic()
                     target_pool.putconn(conn)
+
+    # Pooled connections idle longer than this are pinged before reuse.
+    _IDLE_PING_SECONDS = 30.0
+
+    def _checkout(self, pool):
+        """Take a live connection from ``pool``.
+
+        Pooled connections go stale while they sit idle — the database
+        restarts, the EC2 instance comes back from its nightly stop, or a
+        NAT/idle timeout drops the socket. Handing one of those out made the
+        first query after downtime fail ("server closed the connection
+        unexpectedly"), and because get_user() maps errors to "not found",
+        the first login was rejected and /auth/me reported an expired session.
+        Idle connections are pinged and dead ones replaced before use.
+        """
+        for _ in range(3):
+            conn = pool.getconn()
+            if self._is_alive(conn):
+                return conn
+            self._conn_last_used.pop(id(conn), None)
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+        return pool.getconn()
+
+    def _is_alive(self, conn) -> bool:
+        if conn.closed:
+            return False
+        last_used = self._conn_last_used.get(id(conn))
+        if last_used is not None and time.monotonic() - last_used < self._IDLE_PING_SECONDS:
+            return True
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            conn.rollback()
+            return True
+        except Exception as exc:
+            logger.warning(f"Discarding stale PostgreSQL connection: {exc}")
+            return False
 
     @staticmethod
     def _is_valid_field_name(field_name: str) -> bool:
