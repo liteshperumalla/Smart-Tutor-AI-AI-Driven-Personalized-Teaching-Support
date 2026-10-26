@@ -198,52 +198,52 @@ export function ShareChatModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       {/* Modal */}
       <div
-        className="bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up"
+        className="bg-surface text-foreground border border-line rounded-lg shadow-lg w-full max-w-2xl overflow-hidden animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5">
-          <h2 className="text-2xl font-bold text-white">
+          <h2 className="text-2xl font-bold text-foreground">
             {sessionTitle || "Chat Conversation"}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-surface-2 rounded-md transition-colors"
           >
-            <X className="h-5 w-5 text-zinc-400" />
+            <X className="h-5 w-5 text-muted" />
           </button>
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-zinc-700 mx-6" />
+        <div className="h-px bg-line mx-6" />
 
         {/* Content */}
         <div className="p-6">
           {/* Privacy Warning */}
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-zinc-800 mb-6">
-            <Info className="h-5 w-5 text-zinc-400 flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-4 rounded-md border border-bright bg-info-bg mb-6">
+            <Info className="h-5 w-5 text-muted flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-white text-sm">
+              <p className="font-semibold text-foreground text-sm">
                 This conversation may include personal information.
               </p>
-              <p className="text-zinc-400 text-sm">
+              <p className="text-muted text-sm">
                 Take a moment to check the content before sharing the link.
               </p>
             </div>
           </div>
 
           {/* Chat Preview */}
-          <div className="rounded-xl bg-zinc-800/50 p-4 mb-6 max-h-64 overflow-y-auto">
+          <div className="rounded-md bg-surface-2 p-4 mb-6 max-h-64 overflow-y-auto">
             {previewMessages.map((msg, index) => (
               <div key={index} className="mb-4 last:mb-0">
                 {msg.role === "user" ? (
                   <div className="flex justify-end">
-                    <div className="max-w-[80%] rounded-2xl bg-blue-600 px-4 py-3 text-white">
+                    <div className="max-w-[85%] rounded-[18px_18px_4px_18px] gradient-primary px-4 py-3 text-white shadow-sm">
                       <p className="text-sm leading-relaxed whitespace-pre-wrap">
                         {msg.content.length > 200
                           ? msg.content.slice(0, 200) + "..."
@@ -252,7 +252,7 @@ export function ShareChatModal({
                     </div>
                   </div>
                 ) : (
-                  <div className="text-zinc-300 text-sm leading-relaxed">
+                  <div className="text-foreground text-sm leading-relaxed">
                     <p className="whitespace-pre-wrap">
                       {msg.content.length > 300
                         ? msg.content.slice(0, 300) + "..."
@@ -264,8 +264,8 @@ export function ShareChatModal({
             ))}
 
             {/* Branding */}
-            <div className="flex justify-end mt-4 pt-4 border-t border-zinc-700">
-              <span className="text-lg font-bold text-white">Smart AI Tutor</span>
+            <div className="flex justify-end mt-4 pt-4 border-t border-line">
+              <span className="font-display text-lg font-bold text-foreground">Smart AI Tutor</span>
             </div>
           </div>
 
@@ -278,8 +278,8 @@ export function ShareChatModal({
 
           {/* Error state */}
           {error && (
-            <div className="mb-4 p-4 rounded-xl bg-red-900/30 border border-red-800">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="mb-4 p-4 rounded-md bg-danger-bg border border-danger">
+              <p className="text-sm text-danger">{error}</p>
             </div>
           )}
 
@@ -293,16 +293,16 @@ export function ShareChatModal({
               >
                 <div className={`p-4 rounded-full transition-colors ${
                   copied
-                    ? "bg-green-600"
-                    : "bg-zinc-800 group-hover:bg-zinc-700"
+                    ? "bg-success text-white"
+                    : "bg-surface-2 text-foreground group-hover:bg-line"
                 }`}>
                   {copied ? (
                     <Check className="h-6 w-6 text-white" />
                   ) : (
-                    <Link2 className="h-6 w-6 text-white" />
+                    <Link2 className="h-6 w-6" />
                   )}
                 </div>
-                <span className="text-sm text-zinc-400">
+                <span className="text-sm text-muted">
                   {copied ? "Copied!" : "Copy link"}
                 </span>
               </button>
@@ -312,10 +312,10 @@ export function ShareChatModal({
                 onClick={handleShareX}
                 className="flex flex-col items-center gap-2 group"
               >
-                <div className="p-4 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-                  <XIcon className="h-6 w-6 text-white" />
+                <div className="p-4 rounded-full bg-surface-2 text-foreground group-hover:bg-line transition-colors">
+                  <XIcon className="h-6 w-6" />
                 </div>
-                <span className="text-sm text-zinc-400">X</span>
+                <span className="text-sm text-muted">X</span>
               </button>
 
               {/* LinkedIn */}
@@ -323,10 +323,10 @@ export function ShareChatModal({
                 onClick={handleShareLinkedIn}
                 className="flex flex-col items-center gap-2 group"
               >
-                <div className="p-4 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-                  <LinkedInIcon className="h-6 w-6 text-white" />
+                <div className="p-4 rounded-full bg-surface-2 text-foreground group-hover:bg-line transition-colors">
+                  <LinkedInIcon className="h-6 w-6" />
                 </div>
-                <span className="text-sm text-zinc-400">LinkedIn</span>
+                <span className="text-sm text-muted">LinkedIn</span>
               </button>
 
               {/* Reddit */}
@@ -334,10 +334,10 @@ export function ShareChatModal({
                 onClick={handleShareReddit}
                 className="flex flex-col items-center gap-2 group"
               >
-                <div className="p-4 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-                  <RedditIcon className="h-6 w-6 text-white" />
+                <div className="p-4 rounded-full bg-surface-2 text-foreground group-hover:bg-line transition-colors">
+                  <RedditIcon className="h-6 w-6" />
                 </div>
-                <span className="text-sm text-zinc-400">Reddit</span>
+                <span className="text-sm text-muted">Reddit</span>
               </button>
 
               {/* WhatsApp */}
@@ -345,10 +345,10 @@ export function ShareChatModal({
                 onClick={handleShareWhatsApp}
                 className="flex flex-col items-center gap-2 group"
               >
-                <div className="p-4 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-                  <WhatsAppIcon className="h-6 w-6 text-white" />
+                <div className="p-4 rounded-full bg-surface-2 text-foreground group-hover:bg-line transition-colors">
+                  <WhatsAppIcon className="h-6 w-6" />
                 </div>
-                <span className="text-sm text-zinc-400">WhatsApp</span>
+                <span className="text-sm text-muted">WhatsApp</span>
               </button>
 
               {/* Email */}
@@ -356,10 +356,10 @@ export function ShareChatModal({
                 onClick={handleShareEmail}
                 className="flex flex-col items-center gap-2 group"
               >
-                <div className="p-4 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-                  <Mail className="h-6 w-6 text-white" />
+                <div className="p-4 rounded-full bg-surface-2 text-foreground group-hover:bg-line transition-colors">
+                  <Mail className="h-6 w-6" />
                 </div>
-                <span className="text-sm text-zinc-400">Email</span>
+                <span className="text-sm text-muted">Email</span>
               </button>
             </div>
           )}

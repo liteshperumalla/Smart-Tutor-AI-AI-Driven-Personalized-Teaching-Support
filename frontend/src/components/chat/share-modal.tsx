@@ -162,37 +162,37 @@ export function ShareModal({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
         {/* Modal */}
         <div
-          className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up"
+          className="bg-surface border border-line rounded-lg shadow-lg w-full max-w-md overflow-hidden animate-fade-in-up"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-line">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-                <MessageCircle className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary-bg">
+                <MessageCircle className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+              <h2 className="text-lg font-semibold text-foreground">
                 Share Response
               </h2>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-surface-2 rounded-md transition-colors"
             >
-              <X className="h-5 w-5 text-zinc-500" />
+              <X className="h-5 w-5 text-muted" />
             </button>
           </div>
 
           {/* Content */}
           <div className="p-6">
             {/* Preview */}
-            <div className="mb-6 p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700">
-              <p className="text-sm text-zinc-600 dark:text-zinc-300 line-clamp-3">
+            <div className="mb-6 p-4 rounded-xl bg-surface-2 border border-line">
+              <p className="text-sm text-muted line-clamp-3">
                 {messageContent.slice(0, 200)}
                 {messageContent.length > 200 ? "..." : ""}
               </p>
@@ -201,14 +201,14 @@ export function ShareModal({
             {/* Loading state */}
             {isLoading && (
               <div className="flex items-center justify-center py-8">
-                <div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                <div className="h-8 w-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             )}
 
             {/* Error state */}
             {error && (
-              <div className="mb-4 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+              <div className="mb-4 p-4 rounded-xl bg-danger-bg border border-danger/30">
+                <p className="text-sm text-danger">{error}</p>
               </div>
             )}
 
@@ -217,7 +217,7 @@ export function ShareModal({
               <>
                 {/* Copy Link */}
                 <div className="mb-6">
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Share Link
                   </label>
                   <div className="flex gap-2">
@@ -225,14 +225,14 @@ export function ShareModal({
                       type="text"
                       readOnly
                       value={shareUrl}
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-sm text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-700 truncate"
+                      className="input flex-1 truncate bg-surface-2"
                     />
                     <button
                       onClick={handleCopyLink}
-                      className={`px-4 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                      className={`btn-icon transition-all ${
                         copied
-                          ? "bg-green-500 text-white"
-                          : "bg-indigo-600 text-white hover:bg-indigo-700"
+                          ? "bg-success! text-white!"
+                          : "bg-primary! text-white! hover:bg-primary-hover!"
                       }`}
                     >
                       {copied ? (
@@ -246,27 +246,27 @@ export function ShareModal({
 
                 {/* Social Share Buttons */}
                 <div>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+                  <label className="block text-sm font-medium text-foreground mb-3">
                     Share on Social Media
                   </label>
                   <div className="grid grid-cols-3 gap-3">
                     <button
                       onClick={handleShareX}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-zinc-900 dark:bg-zinc-800 text-white hover:bg-zinc-800 dark:hover:bg-zinc-700 transition-colors"
+                      className="flex flex-col items-center gap-2 p-4 rounded-md bg-black text-white hover:bg-black/80 ring-1 ring-line transition-colors"
                     >
                       <XIcon className="h-5 w-5" />
                       <span className="text-xs font-medium">X</span>
                     </button>
                     <button
                       onClick={handleShareLinkedIn}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-[#0077B5] text-white hover:bg-[#006699] transition-colors"
+                      className="flex flex-col items-center gap-2 p-4 rounded-md bg-[#0077B5] text-white hover:bg-[#006699] transition-colors"
                     >
                       <LinkedInIcon className="h-5 w-5" />
                       <span className="text-xs font-medium">LinkedIn</span>
                     </button>
                     <button
                       onClick={handleShareReddit}
-                      className="flex flex-col items-center gap-2 p-4 rounded-xl bg-[#FF4500] text-white hover:bg-[#E03D00] transition-colors"
+                      className="flex flex-col items-center gap-2 p-4 rounded-md bg-[#FF4500] text-white hover:bg-[#E03D00] transition-colors"
                     >
                       <RedditIcon className="h-5 w-5" />
                       <span className="text-xs font-medium">Reddit</span>

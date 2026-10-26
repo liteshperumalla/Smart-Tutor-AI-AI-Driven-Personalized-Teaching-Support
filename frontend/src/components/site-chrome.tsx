@@ -227,27 +227,16 @@ export function SiteChrome({
   const isDark = themeHasHydrated && theme === "dark";
   const showThemeToggle = themeHasHydrated;
 
-  const sessionMenuPanelClass = [
-    "absolute right-0 top-full z-[60] mt-1 w-48 rounded-xl border p-1.5 shadow-lg backdrop-blur animate-fade-in",
-    isDark
-      ? "border-white/10 bg-zinc-900/95 text-zinc-100"
-      : "border-zinc-200/80 bg-white/95 text-zinc-900",
-  ].join(" ");
+  const sessionMenuPanelClass =
+    "absolute right-0 top-full z-[60] mt-1 w-48 rounded-md border border-line bg-surface/95 p-1.5 text-foreground shadow-lg backdrop-blur animate-scale-in";
 
-  const sessionMenuItemClass = [
-    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition",
-    isDark ? "text-white hover:bg-white/10" : "text-zinc-700 hover:bg-zinc-100",
-  ].join(" ");
+  const sessionMenuItemClass =
+    "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2";
 
-  const sessionMenuIconClass = [
-    "h-4 w-4 flex-shrink-0",
-    isDark ? "text-zinc-400" : "text-zinc-500",
-  ].join(" ");
+  const sessionMenuIconClass = "h-4 w-4 flex-shrink-0 text-muted";
 
-  const sessionMenuDeleteClass = [
-    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition",
-    isDark ? "text-red-300 hover:bg-red-500/10" : "text-red-600 hover:bg-red-50",
-  ].join(" ");
+  const sessionMenuDeleteClass =
+    "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-bg";
 
   const sessionMenuDeleteIconClass = "h-4 w-4 flex-shrink-0";
 
@@ -411,11 +400,11 @@ export function SiteChrome({
         aria-current={active ? "page" : undefined}
         title={rail ? link.label : undefined}
         className={[
-          "group flex h-9 items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors",
+          "group flex h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold transition-colors",
           rail ? "lg:justify-center lg:px-0" : "",
           active
-            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
+            ? "bg-primary-bg text-primary"
+            : "text-muted hover:bg-surface-2 hover:text-foreground",
         ].join(" ")}
       >
         <Icon className="h-4 w-4 flex-shrink-0" />
@@ -425,7 +414,7 @@ export function SiteChrome({
   };
 
   const iconButtonClass =
-    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white";
+    "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-foreground disabled:opacity-50";
 
   if (isStandaloneRoute) return <>{children}</>;
 
@@ -441,7 +430,7 @@ export function SiteChrome({
       )}
 
       {/* ── Mobile: top header bar (only on < lg) ── */}
-      <header className="fixed top-0 left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-zinc-200 bg-white/95 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/95 lg:hidden">
+      <header className="fixed top-0 left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/95 px-4 backdrop-blur lg:hidden">
         <button
           onClick={() => setMobileNavOpen(true)}
           className={iconButtonClass}
@@ -450,7 +439,7 @@ export function SiteChrome({
         >
           <Menu className="h-5 w-5" />
         </button>
-        <Link href="/" className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-white">
+        <Link href="/" className="flex items-center gap-2 font-display text-base font-bold tracking-tight text-foreground">
           <LogoMark size={26} />
           Smart AI Tutor
         </Link>
@@ -468,9 +457,9 @@ export function SiteChrome({
       <aside
         aria-label="Main navigation"
         className={[
-          "fixed left-0 top-0 bottom-0 z-50 flex w-72 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900",
-          "transition-[transform,width] duration-200",
-          mobileNavOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full",
+          "fixed left-0 top-0 bottom-0 z-50 flex w-72 flex-col border-r border-line bg-surface",
+          "transition-[transform,width] duration-300 ease-[var(--ease-out)]",
+          mobileNavOpen ? "translate-x-0 shadow-lg" : "-translate-x-full",
           "lg:translate-x-0 lg:shadow-none",
           rail ? "lg:w-16" : "lg:w-64",
         ].join(" ")}
@@ -480,7 +469,7 @@ export function SiteChrome({
           <Link
             href="/"
             onClick={() => setMobileNavOpen(false)}
-            className={["flex min-w-0 items-center gap-2.5 px-1 text-base font-semibold text-zinc-900 dark:text-white", rail ? "lg:hidden" : ""].join(" ")}
+            className={["flex min-w-0 items-center gap-2.5 px-1 font-display text-base font-bold tracking-tight text-foreground", rail ? "lg:hidden" : ""].join(" ")}
           >
             <LogoMark size={28} />
             <span className="truncate">Smart AI Tutor</span>
@@ -502,15 +491,15 @@ export function SiteChrome({
 
         {/* Primary actions */}
         {isLoggedIn && (
-          <div className={["flex flex-shrink-0 gap-1.5 px-3 pb-3", rail ? "lg:flex-col lg:items-center lg:px-0" : ""].join(" ")}>
+          <div className={["flex flex-shrink-0 gap-2 px-3 pb-3", rail ? "lg:flex-col lg:items-center lg:px-0" : ""].join(" ")}>
             <button
               onClick={handleCreateSession}
               disabled={isCreatingSession}
               title={rail ? "New chat" : undefined}
               aria-label="New chat"
               className={[
-                "flex h-9 flex-1 items-center gap-2 rounded-lg bg-zinc-900 px-3 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200",
-                rail ? "lg:w-9 lg:flex-none lg:justify-center lg:px-0" : "",
+                "flex h-10 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-3.5 text-[13px] font-semibold text-foreground shadow-sm transition hover:-translate-y-px hover:shadow-md disabled:opacity-60",
+                rail ? "lg:w-10 lg:flex-none lg:justify-center lg:px-0" : "",
               ].join(" ")}
             >
               {isCreatingSession ? (
@@ -522,7 +511,7 @@ export function SiteChrome({
             </button>
             <button
               onClick={() => setSearchModalOpen(true)}
-              className={`${iconButtonClass} border border-zinc-200 dark:border-zinc-700`}
+              className={`${iconButtonClass} bg-surface-2`}
               aria-label="Search chats"
               title="Search chats"
             >
@@ -536,7 +525,7 @@ export function SiteChrome({
 
           {navSection("manage").length > 0 && (
             <div className="mt-4 grid flex-shrink-0 gap-0.5">
-              <p className={["px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500", rail ? "lg:sr-only" : ""].join(" ")}>
+              <p className={["micro-label px-3 pb-2", rail ? "lg:sr-only" : ""].join(" ")}>
                 Manage
               </p>
               {navSection("manage").map(renderNavLink)}
@@ -544,22 +533,22 @@ export function SiteChrome({
           )}
 
           {!isLoggedIn && !rail && (
-            <div className="mt-4 rounded-xl border border-dashed border-zinc-200 p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-300">
+            <div className="mt-4 rounded-lg border-[1.5px] border-dashed border-line p-4 text-sm text-foreground">
               <p className="font-semibold">You are not signed in yet.</p>
-              <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Sign in to see your chats.</p>
+              <p className="mt-1 text-xs text-muted">Sign in to see your chats.</p>
             </div>
           )}
 
           {/* Recent chats take all remaining height and scroll on their own. */}
           {isLoggedIn && (
             <div className={["mt-4 flex min-h-0 flex-1 flex-col", rail ? "lg:hidden" : ""].join(" ")}>
-              <p className="flex-shrink-0 px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+              <p className="micro-label flex-shrink-0 px-3 pb-2">
                 Recent chats
               </p>
               {displayedSessions.length === 0 ? (
-                <p className="px-2.5 py-1 text-xs text-zinc-500">No chats yet. Start one above.</p>
+                <p className="px-3 py-1 text-xs text-muted">No chats yet. Start one above.</p>
               ) : (
-                <ul className={`-mx-1 min-h-0 flex-1 space-y-0.5 px-1 pb-2 ${menuSessionId ? "overflow-visible" : "overflow-y-auto"}`}>
+                <ul className={`-mx-1 min-h-0 flex-1 space-y-1 px-1 pb-2 ${menuSessionId ? "overflow-visible" : "overflow-y-auto"}`}>
                   {displayedSessions.map((session) => {
                     const title = session.title?.trim() || "New chat";
                     const current = pathname === "/chat" && activeSessionId === session.id;
@@ -568,13 +557,13 @@ export function SiteChrome({
                       <li key={session.id} className="relative" data-session-menu>
                         <div
                           className={[
-                            "group flex h-9 items-center rounded-lg pl-2.5 pr-1 text-sm transition-colors",
+                            "group flex h-9 items-center rounded-md border pl-3 pr-1 text-[13px] font-semibold transition",
                             current
-                              ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-white"
-                              : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-white",
+                              ? "border-transparent bg-primary-bg text-primary"
+                              : "border-transparent text-muted hover:-translate-y-0.5 hover:border-line hover:bg-surface hover:text-foreground hover:shadow-sm",
                           ].join(" ")}
                         >
-                          {session.is_pinned && <Pin className="mr-1.5 h-3 w-3 flex-shrink-0 text-zinc-400" aria-label="Pinned" />}
+                          {session.is_pinned && <Pin className="mr-1.5 h-3 w-3 flex-shrink-0 text-muted" aria-label="Pinned" />}
                           <button
                             type="button"
                             onClick={() => handleSelectSession(session.id)}
@@ -587,7 +576,7 @@ export function SiteChrome({
                             type="button"
                             onClick={() => setMenuSessionId(menuOpen ? null : session.id)}
                             className={[
-                              "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-200 hover:text-zinc-900 dark:hover:bg-zinc-700 dark:hover:text-white",
+                              "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-sm text-muted transition hover:bg-surface-2 hover:text-foreground",
                               // Visible on hover/focus, or always on touch screens.
                               menuOpen ? "opacity-100" : "opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100",
                             ].join(" ")}
@@ -611,7 +600,7 @@ export function SiteChrome({
                               <Archive className={sessionMenuIconClass} />
                               <span>Archive</span>
                             </button>
-                            <div className={["my-1 border-t", isDark ? "border-white/10" : "border-zinc-200"].join(" ")} />
+                            <div className="my-1 border-t border-line" />
                             <button type="button" role="menuitem" onClick={() => handleDeleteSession(session)} className={sessionMenuDeleteClass}>
                               <Trash2 className={sessionMenuDeleteIconClass} />
                               <span>Delete</span>
@@ -628,7 +617,7 @@ export function SiteChrome({
         </nav>
 
         {/* Footer: account, theme, sign out, secondary links */}
-        <div className={["flex-shrink-0 border-t border-zinc-200 p-3 dark:border-zinc-800", rail ? "lg:px-0" : ""].join(" ")}>
+        <div className={["flex-shrink-0 border-t border-line p-3", rail ? "lg:px-0" : ""].join(" ")}>
           <div className={["flex items-center gap-1", rail ? "lg:flex-col" : ""].join(" ")}>
             {isLoggedIn && user ? (
               <Link
@@ -637,21 +626,21 @@ export function SiteChrome({
                 aria-current={isActive("/profile") ? "page" : undefined}
                 title={rail ? `${userName} — profile` : "Your profile"}
                 className={[
-                  "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1.5 transition hover:bg-zinc-100 dark:hover:bg-zinc-800",
-                  isActive("/profile") ? "bg-zinc-100 dark:bg-zinc-800" : "",
+                  "flex min-w-0 flex-1 items-center gap-2.5 rounded-md border border-line bg-surface px-2.5 py-2 transition hover:bg-surface-2",
+                  isActive("/profile") ? "border-primary/40 bg-primary-bg" : "",
                   rail ? "lg:flex-none" : "",
                 ].join(" ")}
               >
                 <span
-                  className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
-                    isAdmin ? "bg-gradient-to-br from-amber-500 to-orange-600" : "bg-gradient-to-br from-indigo-500 to-violet-600"
+                  className={`flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${
+                    isAdmin ? "bg-gradient-to-br from-amber-500 to-orange-600" : "bg-gradient-to-br from-[#6366F1] to-[#8B5CF6]"
                   }`}
                 >
                   {(userName || "?").charAt(0).toUpperCase()}
                 </span>
                 <span className={["min-w-0 flex-1 leading-tight", rail ? "lg:sr-only" : ""].join(" ")}>
-                  <span className="block truncate text-sm font-semibold text-zinc-900 dark:text-white">{userName}</span>
-                  <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{isAdmin ? "Admin" : "Student"} · Profile</span>
+                  <span className="block truncate text-[13px] font-bold text-foreground">{userName}</span>
+                  <span className="block truncate text-[11px] text-muted">{isAdmin ? "🛡 Admin" : "🎓 Student"} · Profile</span>
                 </span>
               </Link>
             ) : (
@@ -677,14 +666,14 @@ export function SiteChrome({
               {isLoggedIn ? <LogOut className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
             </button>
           </div>
-          <div className={["mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-zinc-500 dark:text-zinc-400", rail ? "lg:hidden" : ""].join(" ")}>
+          <div className={["mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1.5 text-xs text-muted", rail ? "lg:hidden" : ""].join(" ")}>
             {navSection("more").map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileNavOpen(false)}
                 aria-current={isActive(link.href) ? "page" : undefined}
-                className={isActive(link.href) ? "font-semibold text-zinc-900 dark:text-white" : "hover:text-zinc-900 dark:hover:text-white"}
+                className={isActive(link.href) ? "font-semibold text-primary" : "hover:text-foreground"}
               >
                 {link.label}
               </Link>
@@ -693,7 +682,7 @@ export function SiteChrome({
               href="/help"
               onClick={() => setMobileNavOpen(false)}
               aria-current={isActive("/help") ? "page" : undefined}
-              className={isActive("/help") ? "font-semibold text-zinc-900 dark:text-white" : "hover:text-zinc-900 dark:hover:text-white"}
+              className={isActive("/help") ? "font-semibold text-primary" : "hover:text-foreground"}
             >
               Help
             </Link>
@@ -702,7 +691,7 @@ export function SiteChrome({
       </aside>
 
       {/* Main content area */}
-      <div className={`flex min-w-0 flex-1 flex-col bg-zinc-50 text-zinc-900 transition-[margin] duration-200 dark:bg-zinc-950 dark:text-white ${rail ? "lg:ml-16" : "lg:ml-64"}`}>
+      <div className={`flex min-w-0 flex-1 flex-col bg-background text-foreground transition-[margin] duration-300 ${rail ? "lg:ml-16" : "lg:ml-64"}`}>
         {/* Mobile: pt-14 to clear the fixed top header bar; full-height routes manage their own padding */}
         <main className={
           isFullHeightRoute

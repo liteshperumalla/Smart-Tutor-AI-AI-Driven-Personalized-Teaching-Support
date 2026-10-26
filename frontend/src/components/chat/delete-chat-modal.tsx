@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Trash2 } from "lucide-react";
 
 interface DeleteChatModalProps {
   isOpen: boolean;
@@ -32,54 +33,46 @@ export function DeleteChatModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={isDeleting ? undefined : onClose}
     >
-      {/* Modal */}
       <div
-        className="bg-zinc-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-chat-title"
+        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Content */}
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">
-            Delete chat?
-          </h2>
-
-          <p className="text-zinc-300 mb-2">
-            This will delete <span className="font-semibold text-white">{chatTitle}</span>.
-          </p>
-
-          <p className="text-zinc-400 text-sm mb-6">
-            Visit settings to delete any memories saved during this chat.
-          </p>
-
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isDeleting}
-              className="px-5 py-2.5 rounded-full bg-zinc-700 text-white font-medium hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isDeleting}
-              className="px-5 py-2.5 rounded-full bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
-              {isDeleting ? (
-                <>
-                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete"
-              )}
-            </button>
+        {/* Destructive confirms lead with a tinted icon well and name the object. */}
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-danger-bg text-danger">
+            <Trash2 className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="delete-chat-title" className="text-base">
+              Delete chat?
+            </h2>
+            <p className="mt-1 text-[13px] text-muted">
+              <span className="font-semibold text-foreground">&ldquo;{chatTitle}&rdquo;</span> will be permanently removed.
+              Visit settings to delete any memories saved during this chat.
+            </p>
           </div>
+        </div>
+
+        <div className="mt-[18px] flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={isDeleting} className="btn-ghost btn-sm">
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm} disabled={isDeleting} className="btn-danger btn-sm">
+            {isDeleting ? (
+              <>
+                <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                Deleting…
+              </>
+            ) : (
+              "Delete chat"
+            )}
+          </button>
         </div>
       </div>
     </div>

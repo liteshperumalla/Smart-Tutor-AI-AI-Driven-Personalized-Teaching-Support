@@ -82,7 +82,7 @@ function ImagePreview({ file, status, error, onRemove }: ImagePreviewProps) {
   }, [file]);
 
   return (
-    <div className="relative group w-20 h-20 rounded-xl overflow-hidden shadow-md border border-zinc-200 dark:border-zinc-700 flex-shrink-0">
+    <div className="relative group w-20 h-20 rounded-xl overflow-hidden shadow-md border border-line flex-shrink-0">
       {previewUrl && (
         <img
           src={previewUrl}
@@ -95,7 +95,7 @@ function ImagePreview({ file, status, error, onRemove }: ImagePreviewProps) {
         <button
           type="button"
           onClick={onRemove}
-          className="p-1.5 rounded-full bg-white/90 text-zinc-700 hover:bg-white transition-colors"
+          className="p-1.5 rounded-full bg-surface/90 text-foreground hover:bg-surface transition-colors"
           title="Remove file"
         >
           <X className="h-4 w-4" />
@@ -130,7 +130,7 @@ function DocumentPreview({ file, status, error, onRemove }: DocumentPreviewProps
   const colorClass = getFileTypeColor(file);
 
   return (
-    <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 group hover:bg-zinc-150 dark:hover:bg-zinc-750 transition-colors max-w-[200px]">
+    <div className="relative flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-2 border border-line group hover:bg-surface-2 transition-colors max-w-[200px]">
       {/* Icon */}
       <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${colorClass} flex items-center justify-center`}>
         {renderFileIcon(file, "h-4 w-4 text-white")}
@@ -138,17 +138,17 @@ function DocumentPreview({ file, status, error, onRemove }: DocumentPreviewProps
 
       {/* File info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate">
+        <p className="text-sm font-medium text-foreground truncate">
           {file.name}
         </p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-muted">
           {formatFileSize(file.size)}
         </p>
         {status === "uploading" && (
-          <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Uploading…</p>
+          <p className="text-[10px] text-muted">Uploading…</p>
         )}
         {status === "error" && (
-          <p className="text-[10px] text-red-500">{error || "Upload failed"}</p>
+          <p className="text-[10px] text-danger">{error || "Upload failed"}</p>
         )}
       </div>
 
@@ -156,7 +156,7 @@ function DocumentPreview({ file, status, error, onRemove }: DocumentPreviewProps
       <button
         type="button"
         onClick={onRemove}
-        className="flex-shrink-0 p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors opacity-0 group-hover:opacity-100"
+        className="flex-shrink-0 p-1 rounded-full text-muted hover:text-muted hover:bg-line transition-colors opacity-0 group-hover:opacity-100"
         title="Remove file"
       >
         <X className="h-4 w-4" />

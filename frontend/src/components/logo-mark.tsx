@@ -2,7 +2,7 @@
  * LogoMark — Smart AI Tutor brand mark.
  *
  * A typographic monogram: the letter "S" set in the display font on a rounded
- * square filled with the primary emerald → indigo gradient. No accent spark —
+ * square filled with the Deep Learning Blue → Neural Teal brand gradient. No accent spark —
  * the mark is intentionally clean.
  */
 export function LogoMark({ size = 36, className = "" }: { size?: number; className?: string }) {
@@ -12,9 +12,10 @@ export function LogoMark({ size = 36, className = "" }: { size?: number; classNa
       style={{
         height: size,
         width: size,
-        borderRadius: size * 0.27,
-        background: "linear-gradient(135deg, #059669 0%, #4f46e5 100%)",
-        boxShadow: "0 4px 6px -1px rgba(5, 150, 105, 0.30)",
+        borderRadius: size * 0.26,
+        // Fixed brand colors: the mark does not shift with the theme.
+        background: "linear-gradient(135deg, #1E3A8A 0%, #0D9488 100%)",
+        boxShadow: "var(--shadow-brand)",
       }}
       aria-hidden="true"
     >

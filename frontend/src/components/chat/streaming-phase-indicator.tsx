@@ -21,17 +21,17 @@ const DEFAULT_PHASES: StreamingPhase[] = [
 const AGENT_CONFIG: Record<string, {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  // Agent identity reuses the chart series colors; the phase line itself is
+  // always Neural Teal so "working" reads the same for every agent.
   color: string;
   bgColor: string;
-  borderColor: string;
   phases: StreamingPhase[];
 }> = {
   tutor_agent: {
     label: "Tutor Agent",
     icon: GraduationCap,
-    color: "text-blue-600 dark:text-blue-400",
-    bgColor: "bg-blue-100 dark:bg-blue-900/30",
-    borderColor: "border-blue-500/30 border-t-blue-500",
+    color: "text-primary",
+    bgColor: "bg-primary",
     phases: [
       { id: "searching", label: "Searching course materials", icon: Search, duration: 1500 },
       { id: "retrieving", label: "Retrieving relevant content", icon: Database, duration: 1500 },
@@ -42,9 +42,8 @@ const AGENT_CONFIG: Record<string, {
   doubts_agent: {
     label: "Doubt Resolver",
     icon: HelpCircle,
-    color: "text-amber-600 dark:text-amber-400",
-    bgColor: "bg-amber-100 dark:bg-amber-900/30",
-    borderColor: "border-amber-500/30 border-t-amber-500",
+    color: "text-warning",
+    bgColor: "bg-warning",
     phases: [
       { id: "understanding", label: "Understanding your doubt", icon: HelpCircle, duration: 1500 },
       { id: "searching", label: "Finding clarifying sources", icon: Search, duration: 1500 },
@@ -55,9 +54,8 @@ const AGENT_CONFIG: Record<string, {
   personalised_agent: {
     label: "Personalized Agent",
     icon: UserCog,
-    color: "text-purple-600 dark:text-purple-400",
-    bgColor: "bg-purple-100 dark:bg-purple-900/30",
-    borderColor: "border-purple-500/30 border-t-purple-500",
+    color: "text-lavender",
+    bgColor: "bg-lavender",
     phases: [
       { id: "profiling", label: "Loading your learning profile", icon: UserCog, duration: 1500 },
       { id: "searching", label: "Finding personalized content", icon: Search, duration: 1500 },
@@ -68,9 +66,8 @@ const AGENT_CONFIG: Record<string, {
   quiz_helper_agent: {
     label: "Quiz Helper",
     icon: ClipboardCheck,
-    color: "text-green-600 dark:text-green-400",
-    bgColor: "bg-green-100 dark:bg-green-900/30",
-    borderColor: "border-green-500/30 border-t-green-500",
+    color: "text-success",
+    bgColor: "bg-success",
     phases: [
       { id: "searching", label: "Searching quiz-related content", icon: Search, duration: 1500 },
       { id: "analyzing", label: "Analyzing your quiz history", icon: ClipboardCheck, duration: 1500 },
@@ -81,9 +78,8 @@ const AGENT_CONFIG: Record<string, {
   feedback_agent: {
     label: "Feedback Agent",
     icon: MessageSquareHeart,
-    color: "text-teal-600 dark:text-teal-400",
-    bgColor: "bg-teal-100 dark:bg-teal-900/30",
-    borderColor: "border-teal-500/30 border-t-teal-500",
+    color: "text-info",
+    bgColor: "bg-bright",
     phases: [
       { id: "reading", label: "Reading your feedback", icon: MessageSquareHeart, duration: 1500 },
       { id: "processing", label: "Processing feedback", icon: Brain, duration: 2000 },
@@ -148,50 +144,40 @@ export function StreamingPhaseIndicator({ isStreaming, hasContent, agentName }: 
   const currentPhase = phases[currentPhaseIndex];
   const IconComponent = currentPhase.icon;
 
-  const iconColor = agentConfig?.color ?? "text-indigo-600 dark:text-indigo-400";
-  const iconBg = agentConfig?.bgColor ?? "bg-indigo-100 dark:bg-indigo-900/30";
-  const spinnerBorder = agentConfig?.borderColor ?? "border-indigo-500/30 border-t-indigo-500";
-  const dotActive = agentConfig ? agentConfig.color.replace("text-", "bg-").split(" ")[0] : "bg-indigo-500";
+  const agentDot = agentConfig?.bgColor ?? "bg-secondary";
 
   return (
-    <div className="flex items-center gap-3 py-3 animate-fade-in-up">
-      {/* Animated icon container with spinner */}
-      <div className="relative">
-        <div className={`h-10 w-10 rounded-full ${iconBg} flex items-center justify-center`}>
-          <IconComponent className={`h-5 w-5 ${iconColor} animate-pulse`} />
+    <div className="flex w-full max-w-md flex-col py-2 animate-fade-in-up">
+      {/* Agent badge when detected */}
+      {agentConfig && (
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${agentDot} animate-pulse`} />
+          <span className={`text-[11px] font-semibold ${agentConfig.color}`}>{agentConfig.label}</span>
         </div>
-        {/* Spinning border */}
-        <div className={`absolute inset-0 rounded-full border-2 ${spinnerBorder} animate-phase-spin`} />
+      )}
+
+      {/* Phase line: Neural Teal + spinner */}
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-secondary" role="status">
+        <span className="inline-block h-[13px] w-[13px] rounded-full border-2 border-secondary border-t-transparent animate-phase-spin" />
+        <IconComponent className="h-3.5 w-3.5" />
+        <span>{currentPhase.label}…</span>
       </div>
 
-      {/* Phase label with agent name and progress dots */}
-      <div className="flex flex-col gap-1">
-        {/* Agent badge when detected */}
-        {agentConfig && (
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className={`h-1.5 w-1.5 rounded-full ${dotActive} animate-pulse`} />
-            <span className={`text-[11px] font-semibold ${iconColor}`}>
-              {agentConfig.label}
-            </span>
-          </div>
-        )}
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          {currentPhase.label}...
-        </span>
+      {/* Shimmer placeholder for the answer that's on its way */}
+      <div className="shimmer-line w-[88%]" />
+      <div className="shimmer-line mt-1.5 w-[70%]" />
+      <div className="shimmer-line mt-1.5 w-[52%]" />
 
-        {/* Progress indicator showing which phase we're on */}
-        <div className="flex items-center gap-1">
-          {phases.map((phase, index) => (
-            <div
-              key={phase.id}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                index <= currentPhaseIndex
-                  ? `w-4 ${dotActive}`
-                  : "w-2 bg-zinc-300 dark:bg-zinc-600"
-              }`}
-            />
-          ))}
-        </div>
+      {/* Progress indicator showing which phase we're on */}
+      <div className="mt-2.5 flex items-center gap-1">
+        {phases.map((phase, index) => (
+          <div
+            key={phase.id}
+            className={`h-1 rounded-full transition-all duration-300 ${
+              index <= currentPhaseIndex ? "w-4 bg-secondary" : "w-2 bg-line"
+            }`}
+          />
+        ))}
       </div>
     </div>
   );
@@ -202,11 +188,11 @@ export function ThinkingIndicator() {
   return (
     <div className="flex items-center gap-3 py-2">
       <div className="flex items-center gap-1">
-        <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-        <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-        <span className="h-2 w-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+        <span className="h-2 w-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '0ms' }} />
+        <span className="h-2 w-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '150ms' }} />
+        <span className="h-2 w-2 rounded-full bg-secondary animate-bounce" style={{ animationDelay: '300ms' }} />
       </div>
-      <span className="text-sm text-zinc-500 dark:text-zinc-400">Thinking...</span>
+      <span className="text-sm font-semibold text-secondary">Thinking…</span>
     </div>
   );
 }

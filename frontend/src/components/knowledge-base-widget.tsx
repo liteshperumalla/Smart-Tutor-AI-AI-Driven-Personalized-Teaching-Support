@@ -30,21 +30,21 @@ export function KnowledgeBaseWidget({
   if (isLoading || !isAdmin) return null;
 
   return (
-    <article className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <article className="rounded-3xl border border-line bg-surface p-6 shadow-sm">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs uppercase tracking-[0.35em] text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs uppercase tracking-[0.35em] text-muted">
           Knowledge Base
         </p>
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
             knowledge_base?.ready
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-              : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              ? "bg-success-bg text-success"
+              : "bg-warning-bg text-warning"
           }`}
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              knowledge_base?.ready ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+              knowledge_base?.ready ? "bg-success animate-pulse" : "bg-warning"
             }`}
           />
           {knowledge_base?.ready ? "Active" : "Loading"}
@@ -53,31 +53,31 @@ export function KnowledgeBaseWidget({
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
-          <span className="text-zinc-500 dark:text-zinc-400">Source files</span>
-          <span className="font-medium text-zinc-900 dark:text-white">
+          <span className="text-muted">Source files</span>
+          <span className="font-medium text-foreground">
             {knowledge_base?.source_count?.toLocaleString() ?? 0}
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-zinc-500 dark:text-zinc-400">Vector chunks</span>
-          <span className="font-medium text-zinc-900 dark:text-white">
+          <span className="text-muted">Vector chunks</span>
+          <span className="font-medium text-foreground">
             {knowledge_base?.document_count?.toLocaleString() ?? 0}
           </span>
         </div>
         {knowledge_base?.last_updated_display && (
           <div className="flex justify-between">
-            <span className="text-zinc-500 dark:text-zinc-400">Last updated</span>
-            <span className="font-medium text-zinc-900 dark:text-white text-xs">
+            <span className="text-muted">Last updated</span>
+            <span className="font-medium text-foreground text-xs">
               {knowledge_base.last_updated_display}
             </span>
           </div>
         )}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+      <div className="mt-4 pt-4 border-t border-line">
         <Link
           href="/admin/resources"
-          className="text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium flex items-center gap-1"
+          className="text-sm text-primary hover:text-primary font-medium flex items-center gap-1"
         >
           <Upload className="h-4 w-4" />
           Upload sources →

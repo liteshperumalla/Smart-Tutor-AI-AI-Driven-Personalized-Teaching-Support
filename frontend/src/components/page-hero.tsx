@@ -34,10 +34,8 @@ export function PageHero({
   actions,
 }: PageHeroProps) {
   const outerClassName = [
-    "relative overflow-hidden rounded-3xl border border-zinc-200 p-6 sm:p-8 lg:p-10",
-    "animate-fade-in-down dark:border-zinc-800",
-    "bg-[linear-gradient(160deg,#ecfdf5_0%,#ffffff_55%,#eef2ff_100%)]",
-    "dark:bg-[linear-gradient(160deg,#041410_0%,#000000_55%,#08030f_100%)]",
+    "relative overflow-hidden rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8 lg:p-10",
+    "animate-fade-in-up gradient-mesh",
     className,
   ]
     .filter(Boolean)
@@ -57,28 +55,28 @@ export function PageHero({
       {/* Decorative blobs */}
       <div
         className="pointer-events-none absolute -top-20 -right-16 h-60 w-60 rounded-full blur-3xl animate-float"
-        style={{ background: "rgba(16,185,129,0.18)" }}
+        style={{ background: "var(--color-success-bg)" }}
       />
       <div
         className="pointer-events-none absolute -bottom-20 -left-10 h-52 w-52 rounded-full blur-3xl"
-        style={{ background: "rgba(99,102,241,0.16)", animationDelay: "1s" }}
+        style={{ background: "var(--color-primary-bg)", animationDelay: "1s" }}
       />
 
       <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           {eyebrow ? (
-            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400">
+            <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-primary-bg px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary">
               {Icon && <Icon className="h-3.5 w-3.5" />}
               {eyebrow}
             </span>
           ) : (
             Icon && (
-              <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-white/70 text-emerald-600 shadow-sm ring-1 ring-zinc-200 dark:bg-white/10 dark:text-emerald-400 dark:ring-white/10">
+              <span className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-[14px] bg-primary-bg text-primary">
                 <Icon className="h-5 w-5" />
               </span>
             )
           )}
-          <h1 className="font-display text-3xl font-bold leading-[1.05] tracking-tight text-zinc-900 dark:text-white sm:text-4xl lg:text-5xl">
+          <h1 className="font-display text-3xl font-bold leading-[1.05] tracking-tight text-foreground sm:text-4xl lg:text-5xl">
             {title}
             {accent != null && (
               <>
@@ -97,7 +95,7 @@ export function PageHero({
             )}
           </h1>
           {subtitle && (
-            <p className="mt-3 max-w-2xl text-base leading-relaxed text-zinc-600 dark:text-zinc-300 sm:text-lg">
+            <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted sm:text-lg">
               {subtitle}
             </p>
           )}
