@@ -8,6 +8,7 @@ import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
 import { PageHero } from "@/components/page-hero";
 import { FolderOpen, ExternalLink, FileText, Download, Search } from "lucide-react";
+import { Skeleton, SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 type CategoryMap = Record<string, { title: string; url: string }[]>;
 
@@ -234,12 +235,12 @@ export default function ResourcesPage() {
 
       {/* Loading state */}
       {loading && !error && (
-        <div className="flex items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-4">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-            <p className="text-sm text-muted">Loading resources…</p>
-          </div>
-        </div>
+        <SkeletonRegion label="Loading resources" className="space-y-6">
+          <Skeleton className="h-3 w-32" />
+          <SkeletonList rows={4} />
+          <Skeleton className="h-3 w-24" />
+          <SkeletonList rows={2} />
+        </SkeletonRegion>
       )}
 
       {/* Downloadable course files, grouped by category */}

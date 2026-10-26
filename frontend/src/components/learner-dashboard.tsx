@@ -6,6 +6,7 @@ import { BookOpenCheck, CircleGauge, Target, ChevronRight } from "lucide-react";
 import { enrollInCourse, fetchCourseCatalog, fetchCourses, fetchLearningDashboard, type Course, type CourseCatalogEntry, type LearningDashboard } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
+import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
 function masteryLabel(score: number) {
   if (score >= 0.8) return "Strong";
@@ -47,7 +48,7 @@ export function LearnerDashboard() {
   if (coursesLoaded && !courseId) {
     return <section className="rounded-2xl border border-primary/30 bg-primary-bg p-6 shadow-sm"><p className="text-sm font-semibold text-primary">Course catalog</p><h2 className="mt-2 text-xl font-bold text-foreground">Choose a course to begin</h2><p className="mt-2 text-sm text-muted">Course content remains private until you explicitly enroll.</p><div className="mt-5 grid gap-3 md:grid-cols-2">{catalog.filter((course) => !course.enrolled).map((availableCourse) => <article key={availableCourse.id} className="rounded-2xl bg-surface p-4 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wide text-primary">{availableCourse.code}</p><h3 className="mt-1 font-semibold text-foreground">{availableCourse.title}</h3><p className="mt-2 text-sm text-muted">{availableCourse.description || "Course workspace"}</p><button type="button" disabled={enrolling} onClick={async () => { setEnrolling(true); try { await enrollInCourse(token, availableCourse.id); setCourses((items) => [...items, { ...availableCourse, membership_role: "student" }]); setCourseId(availableCourse.id); } catch { setError("Unable to enroll in this course"); } finally { setEnrolling(false); } }} className="btn-primary btn-sm mt-4">{enrolling ? "Joining…" : `Join ${availableCourse.code}`}</button></article>)}</div>{catalog.length === 0 && <p className="mt-4 text-sm text-muted">No courses are open for enrollment yet.</p>}</section>;
   }
-  if (!dashboard) return <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm"><div className="shimmer-line h-5 w-48" /></section>;
+  if (!dashboard) return <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8"><SkeletonRegion label="Loading learning progress"><Skeleton className="h-3 w-40" /><Skeleton className="mt-3 h-7 w-64 max-w-full" /><div className="mt-6 grid gap-4 lg:grid-cols-3"><Skeleton className="h-28 rounded-xl" /><Skeleton className="h-28 rounded-xl lg:col-span-2" /></div></SkeletonRegion></section>;
 
   const recommendation = dashboard.recommendation;
   return (

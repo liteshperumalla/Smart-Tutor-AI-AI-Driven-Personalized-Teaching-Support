@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { Megaphone, Plus, Trash2, Edit2, Eye, EyeOff } from "lucide-react";
+import { SkeletonCard, SkeletonRegion } from "@/components/skeleton";
 
 const priorityStyles: Record<string, string> = {
   info: "border-primary/30 bg-primary-bg",
@@ -212,9 +213,11 @@ export default function AdminAnnouncementsPage() {
 
       {/* Announcements List */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-        </div>
+        <SkeletonRegion label="Loading announcements" className="space-y-4">
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={1} />
+        </SkeletonRegion>
       ) : announcements.length === 0 ? (
         <div className="rounded-2xl border border-line bg-surface-2 p-8 text-center text-muted">
           No announcements yet. Create one to get started.

@@ -12,6 +12,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { MessageSquare, Bug, Filter, ChevronDown, ChevronUp, Flag, Search } from "lucide-react";
+import { SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 type TabFilter = "all" | "feedback" | "bug" | "report";
 
@@ -121,9 +122,9 @@ export default function AdminFeedbackPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-        </div>
+        <SkeletonRegion label="Loading feedback">
+          <SkeletonList rows={4} />
+        </SkeletonRegion>
       ) : visibleEntries.length === 0 ? (
         <div className="rounded-2xl border border-line bg-surface-2 p-8 text-center text-muted">
           No feedback entries found.

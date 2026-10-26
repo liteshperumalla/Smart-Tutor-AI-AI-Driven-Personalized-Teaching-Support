@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { getSharedChatSession, ChatMessageDTO, ChatSessionDTO } from "@/lib/api";
 import { PageShell } from "@/components/page-shell";
+import { SkeletonRegion } from "@/components/skeleton";
 
 type SharedSessionData = {
   session: ChatSessionDTO;
@@ -57,27 +58,29 @@ export default function SharedChatPage() {
   if (loading) {
     return (
       <PageShell className="max-w-4xl" contentClassName="gap-8">
+        <SkeletonRegion label="Loading shared chat" className="contents">
         <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
           <div className="relative z-10 space-y-4">
-            <div className="h-6 w-32 bg-line rounded animate-pulse"></div>
-            <div className="h-10 w-64 bg-line rounded animate-pulse"></div>
-            <div className="h-6 w-96 bg-line rounded animate-pulse"></div>
+            <div className="skeleton h-6 w-32"></div>
+            <div className="skeleton h-10 w-64"></div>
+            <div className="skeleton h-6 w-96 max-w-full"></div>
           </div>
         </header>
         <section className="flex flex-col rounded-3xl border border-line bg-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-line px-6 py-4">
-            <div className="h-6 w-48 bg-line rounded animate-pulse"></div>
+            <div className="skeleton h-6 w-48"></div>
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
             {[1, 2, 3].map((i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-xl rounded-2xl px-5 py-4 ${i % 2 === 0 ? "gradient-primary" : "border-2 border-line bg-surface"}`}>
-                  <div className="h-4 w-3/4 bg-current/20 rounded animate-pulse"></div>
+                  <div className={`h-4 w-3/4 rounded ${i % 2 === 0 ? "bg-white/25" : "skeleton"}`}></div>
                 </div>
               </div>
             ))}
           </div>
         </section>
+        </SkeletonRegion>
       </PageShell>
     );
   }

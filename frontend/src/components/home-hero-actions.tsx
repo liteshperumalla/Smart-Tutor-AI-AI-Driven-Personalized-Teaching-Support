@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuthToken } from "@/hooks/useAuthToken";
+import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
 export function HomeHeroActions() {
   const [hydrated, setHydrated] = useState(false);
@@ -56,10 +57,10 @@ export function HomeHeroActions() {
 
  function HeroActionsSkeleton() {
    return (
-     <div className="flex flex-wrap justify-center gap-3 pt-4 sm:justify-start">
-       <span className="h-10 w-28 animate-pulse rounded-full bg-line" />
-       <span className="h-10 w-32 animate-pulse rounded-full bg-line" />
-       <span className="h-10 w-24 animate-pulse rounded-full bg-line" />
-     </div>
+     <SkeletonRegion label="Loading actions" className="flex flex-wrap justify-center gap-3 pt-4 sm:justify-start">
+       <Skeleton className="h-10 w-28 rounded-full" />
+       <Skeleton className="h-10 w-32 rounded-full" />
+       <Skeleton className="h-10 w-24 rounded-full" />
+     </SkeletonRegion>
    );
  }

@@ -731,13 +731,21 @@ h1, h2, h3, h4, h5, h6 {
   animation: shimmer 1.5s infinite;
 }
 
-/* Skeleton line: surface-2 → border sweep, follows the theme */
-.shimmer-line {
-  height: 12px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-border) 50%, var(--color-surface-2) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+/* Skeleton block: surface-2 → border sweep, follows the theme. Size it with
+   utilities; .shimmer-line is the 12px text-line preset. In the components
+   layer so per-instance utilities (rounded-*, h-*) override it. */
+@layer components {
+  .skeleton,
+  .shimmer-line {
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-border) 50%, var(--color-surface-2) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .shimmer-line {
+    height: 12px;
+  }
 }
 
 /* Gentle pulse for indicators */

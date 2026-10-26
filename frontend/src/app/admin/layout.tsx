@@ -15,6 +15,7 @@ import {
   GraduationCap,
   ShieldAlert,
 } from "lucide-react";
+import { Skeleton, SkeletonRegion, SkeletonStatGrid } from "@/components/skeleton";
 
 const adminNav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -41,12 +42,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-          <p className="text-sm text-muted">Checking admin access…</p>
+      // Admin shell placeholder while access is checked: header, tab bar, stats.
+      <SkeletonRegion label="Checking admin access" className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-6 w-6 rounded-md" />
+          <Skeleton className="h-5 w-36" />
         </div>
-      </div>
+        <div className="flex gap-1 overflow-hidden rounded-[14px] border border-line bg-surface p-1.5">
+          {[24, 16, 28, 20, 28, 24].map((w, i) => (
+            <Skeleton key={i} className="h-10 shrink-0 rounded-md" style={{ width: `${w * 4}px` }} />
+          ))}
+        </div>
+        <SkeletonStatGrid />
+      </SkeletonRegion>
     );
   }
 
@@ -110,7 +118,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
 
       {/* Admin Page Content */}
-      <div>{children}</div>
+      {/* Keyed on the route so each admin section gets the page entrance */}
+      <div key={pathname} className="animate-fade-in-up">{children}</div>
     </div>
   );
 }
