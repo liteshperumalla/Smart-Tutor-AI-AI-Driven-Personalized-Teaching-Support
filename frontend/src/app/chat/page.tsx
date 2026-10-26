@@ -305,9 +305,11 @@ function ChatWorkspaceContent() {
   const recognitionRef = useRef<any>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
-  // keepLocalFor: a session whose just-streamed messages must survive a server
-  // copy that hasn't caught up yet (fewer messages than shown locally).
-  const refreshSessions = useCallback(async (keepLocalFor?: string) => {
+  // Session whose just-streamed reply must survive a server copy that hasn't
+  // caught up yet (fewer messages than shown locally). Cleared once it has.
+  const keepLocalRef = useRef<string | null>(null);
+
+  const refreshSessions = useCallback(async () => {
     if (!isLoggedIn || !token) {
       setSessions([]);
       setSelectedSessionId(null);
@@ -316,13 +318,17 @@ function ChatWorkspaceContent() {
     try {
       const data = await listChatSessions(token);
       setSessions((prev) => {
-        if (!keepLocalFor) return data;
-        const local = prev.find((s) => s.id === keepLocalFor);
-        return data.map((s) =>
-          s.id === keepLocalFor && local && (s.messages?.length ?? 0) < (local.messages?.length ?? 0)
-            ? { ...s, messages: local.messages }
-            : s
-        );
+        const keepId = keepLocalRef.current;
+        const local = keepId ? prev.find((s) => s.id === keepId) : undefined;
+        if (!local) return data;
+        return data.map((s) => {
+          if (s.id !== keepId) return s;
+          if ((s.messages?.length ?? 0) < (local.messages?.length ?? 0)) {
+            return { ...s, messages: local.messages };
+          }
+          keepLocalRef.current = null;
+          return s;
+        });
       });
       if (data.length > 0) {
         const querySession = searchParams.get("session");
@@ -767,7 +773,8 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions(sessionId);
+      keepLocalRef.current = sessionId;
+      await refreshSessions();
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");
@@ -911,6 +918,7 @@ function ChatWorkspaceContent() {
   const handleEditMessage = useCallback(async (messageIndex: number, newContent: string) => {
     if (!token || !isLoggedIn || !selectedSessionId || isStreaming || isEditSending) return;
 
+    keepLocalRef.current = null;
     setIsEditSending(true);
     setStreamError(null);
 
@@ -1063,7 +1071,7 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions(selectedSessionId ?? undefined);
+      await refreshSessions();
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");
@@ -1112,6 +1120,7 @@ function ChatWorkspaceContent() {
       setStreamError("Cannot regenerate: No user message found before this response.");
       return;
     }
+    keepLocalRef.current = null;
 
     const userQuery = activeSession.messages[userMessageIndex].content;
     setRegeneratingMessageIndex(messageIndex);
@@ -1232,7 +1241,7 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions(selectedSessionId ?? undefined);
+      await refreshSessions();
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");

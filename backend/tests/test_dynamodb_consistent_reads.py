@@ -43,7 +43,7 @@ def _item(session_id, updated_at):
 def test_list_chat_sessions_is_consistent_and_paginates():
     table = _FakeTable([
         {"Items": [_item("a", "2026-01-01T00:00:00+00:00")], "LastEvaluatedKey": {"k": 1}},
-        {"Items": [_item("b", "2026-01-02T00:00:00+00:00")]},
+        {"Items": [_item("b", "2026-01-02T00:00:00+00:00")], "LastEvaluatedKey": {}},
     ])
     sessions = _backend(table).list_chat_sessions("alice")
 

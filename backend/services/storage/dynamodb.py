@@ -121,9 +121,10 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             while True:
                 response = self.table.query(**query_kwargs)
                 items.extend(response.get('Items', []))
-                if 'LastEvaluatedKey' not in response:
+                last_key = response.get('LastEvaluatedKey')
+                if not last_key:
                     break
-                query_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+                query_kwargs['ExclusiveStartKey'] = last_key
 
             def parse_timestamp(value: Optional[str]) -> datetime:
                 if not value:
