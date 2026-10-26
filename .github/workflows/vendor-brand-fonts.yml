@@ -1,0 +1,55 @@
+# One-shot: fetch the self-hosted brand fonts (Clash Display, Cabinet Grotesk)
+# from Fontshare into frontend/public/fonts/, then delete this workflow in the
+# same commit. Fontshare's ITF Free Font License permits self-hosting.
+name: Vendor brand fonts
+
+on:
+  push:
+    branches: [design-system-tokens-components]
+    paths: [.github/workflows/vendor-brand-fonts.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and extract woff2 files
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          dest=frontend/public/fonts
+          mkdir -p "$dest"
+          for family in clash-display cabinet-grotesk; do
+            curl -fsSL --retry 3 -o "$work/$family.zip" \
+              "https://api.fontshare.com/v2/fonts/download/$family"
+            unzip -q -o "$work/$family.zip" -d "$work/$family"
+          done
+          for file in ClashDisplay-Semibold ClashDisplay-Bold \
+                      CabinetGrotesk-Regular CabinetGrotesk-Medium CabinetGrotesk-Bold; do
+            src="$(find "$work" -type f -name "$file.woff2" | head -n 1)"
+            if [ -z "$src" ]; then
+              echo "::error::$file.woff2 not found in the Fontshare download"
+              find "$work" -name '*.woff2'
+              exit 1
+            fi
+            cp "$src" "$dest/$file.woff2"
+          done
+          # Keep the licence next to the files it covers.
+          lic="$(find "$work/clash-display" -type f -iname '*licen*' | head -n 1)"
+          if [ -n "$lic" ]; then cp "$lic" "$dest/FONT-LICENSE.${lic##*.}"; fi
+          ls -l "$dest"
+
+      - name: Commit fonts and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git rm -q .github/workflows/vendor-brand-fonts.yml
+          git add frontend/public/fonts
+          git commit -m "Self-host Clash Display and Cabinet Grotesk brand fonts"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

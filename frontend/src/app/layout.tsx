@@ -61,6 +61,12 @@ export default function RootLayout({
     // Font variables sit on <html> because globals.css composes them into
     // --font-display / --font-body on :root.
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}>
+      <head>
+        {/* Self-hosted brand fonts (public/fonts, @font-face in globals.css):
+            preload the two faces nearly every page paints with. */}
+        <link rel="preload" href="/fonts/ClashDisplay-Bold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/CabinetGrotesk-Regular.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </head>
       <body className="antialiased">
         {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
             an OS-dark or previously-chosen-dark user doesn't flash a light screen.
