@@ -89,14 +89,14 @@ export function ResponseActionBar({
   const isDisliked = currentFeedback === "thumbs_down";
 
   return (
-    <div className="flex items-center gap-1 mt-3 pt-2 border-t border-zinc-200/50 dark:border-zinc-700/50">
+    <div className="flex items-center gap-1 mt-3 pt-2 border-t border-line/50">
       {/* Copy */}
       <ActionButton
         icon={copied ? Check : Copy}
         label={copied ? "Copied!" : "Copy"}
         onClick={handleCopy}
         active={copied}
-        activeColor="text-green-500"
+        activeColor="text-success"
       />
 
       {/* Thumbs Up */}
@@ -105,7 +105,7 @@ export function ResponseActionBar({
         label="Like"
         onClick={() => handleFeedback("thumbs_up")}
         active={isLiked}
-        activeColor="text-green-500"
+        activeColor="text-success"
         filled={isLiked}
         disabled={isSubmitting}
       />
@@ -116,7 +116,7 @@ export function ResponseActionBar({
         label="Dislike"
         onClick={() => handleFeedback("thumbs_down")}
         active={isDisliked}
-        activeColor="text-red-500"
+        activeColor="text-danger"
         filled={isDisliked}
         disabled={isSubmitting}
       />
@@ -174,7 +174,7 @@ function ActionButton({
   label,
   onClick,
   active = false,
-  activeColor = "text-indigo-500",
+  activeColor = "text-primary",
   filled = false,
   disabled = false,
   spinning = false,
@@ -187,8 +187,8 @@ function ActionButton({
       className={`
         group relative flex items-center justify-center
         p-2 rounded-lg transition-all duration-200
-        ${active ? activeColor : "text-zinc-400 dark:text-zinc-500"}
-        ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-700 dark:hover:text-zinc-300"}
+        ${active ? activeColor : "text-muted"}
+        ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-surface-2 hover:text-foreground"}
       `}
       title={label}
     >
@@ -198,7 +198,7 @@ function ActionButton({
         } ${!disabled ? "group-hover:scale-110" : ""} ${spinning ? "animate-spin" : ""}`}
       />
       {/* Tooltip */}
-      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs font-medium text-white bg-zinc-800 dark:bg-zinc-700 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+      <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs font-medium text-background bg-foreground rounded-sm shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
         {label}
       </span>
     </button>

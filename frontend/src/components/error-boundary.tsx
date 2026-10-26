@@ -38,13 +38,13 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+        <div className="min-h-screen flex items-center justify-center p-8 bg-background">
           <div className="max-w-md w-full">
-            <div className="rounded-3xl border-2 border-red-200 bg-white p-8 shadow-lg dark:border-red-800 dark:bg-zinc-900">
+            <div className="rounded-lg border border-line bg-surface p-[22px] shadow-lg">
               <div className="flex items-center gap-3 mb-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-md bg-danger-bg">
                   <svg
-                    className="h-6 w-6 text-red-600 dark:text-red-400"
+                    className="h-5 w-5 text-danger"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -58,17 +58,17 @@ export class ErrorBoundary extends Component<Props, State> {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+                  <h2 className="text-base font-bold text-foreground">
                     Something went wrong
                   </h2>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="text-sm text-muted">
                     An unexpected error occurred
                   </p>
                 </div>
               </div>
 
               {this.state.error && (
-                <div className="mb-6 rounded-xl bg-red-50 p-4 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                <div className="mb-6 rounded-md border border-danger bg-danger-bg p-3.5 text-sm text-danger">
                   <p className="font-mono text-xs break-all">
                     {this.state.error.message}
                   </p>
@@ -78,7 +78,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <div className="flex gap-3">
                 <button
                   onClick={() => window.location.reload()}
-                  className="flex-1 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:scale-105"
+                  className="btn-primary flex-1"
                 >
                   Reload page
                 </button>
@@ -86,13 +86,13 @@ export class ErrorBoundary extends Component<Props, State> {
                   onClick={() => {
                     this.setState({ hasError: false, error: undefined });
                   }}
-                  className="flex-1 rounded-xl border-2 border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700"
+                  className="btn-secondary flex-1"
                 >
                   Try again
                 </button>
               </div>
 
-              <div className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
+              <div className="mt-4 text-center text-xs text-muted">
                 If this persists, please contact support
               </div>
             </div>

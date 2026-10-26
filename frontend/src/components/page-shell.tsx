@@ -28,7 +28,7 @@ export function PageShell({
 
   const containerClassName = noCard
     ? "flex min-h-full w-full flex-col"
-    : "flex min-h-full w-full flex-col rounded-[32px] border border-zinc-200 bg-white p-6 text-zinc-900 shadow-sm md:p-10 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100";
+    : "flex min-h-full w-full flex-col rounded-[32px] border border-line bg-surface p-6 text-foreground shadow-sm md:p-10";
 
   const innerClassName = ["flex flex-col gap-8", contentClassName]
     .filter(Boolean)

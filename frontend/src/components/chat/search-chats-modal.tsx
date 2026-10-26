@@ -108,30 +108,30 @@ export function SearchChatsModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-start justify-center pt-20 p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center pt-20 p-4"
       onClick={onClose}
     >
       {/* Modal */}
       <div
-        className="bg-zinc-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-fade-in-up"
+        className="bg-surface text-foreground border border-line rounded-lg shadow-lg w-full max-w-xl overflow-hidden animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-zinc-700">
-          <Search className="h-5 w-5 text-zinc-400 flex-shrink-0" />
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-line">
+          <Search className="h-5 w-5 text-muted flex-shrink-0" />
           <input
             ref={inputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search chats..."
-            className="flex-1 bg-transparent text-white placeholder-zinc-400 outline-none text-lg"
+            className="flex-1 bg-transparent text-foreground placeholder:text-muted outline-none text-lg"
           />
           <button
             onClick={onClose}
-            className="p-1 hover:bg-zinc-700 rounded-lg transition-colors"
+            className="p-1 hover:bg-surface-2 rounded-sm transition-colors"
           >
-            <X className="h-5 w-5 text-zinc-400" />
+            <X className="h-5 w-5 text-muted" />
           </button>
         </div>
 
@@ -141,10 +141,10 @@ export function SearchChatsModal({
           <button
             onClick={handleCreateSession}
             disabled={isCreating}
-            className="w-full flex items-center gap-3 px-5 py-3 bg-zinc-700 hover:bg-zinc-600 transition-colors disabled:opacity-50"
+            className="w-full flex items-center gap-3 px-5 py-3 bg-primary-bg text-primary hover:bg-surface-2 transition-colors disabled:opacity-50"
           >
-            <Edit3 className="h-5 w-5 text-white" />
-            <span className="text-white font-medium">
+            <Edit3 className="h-5 w-5" />
+            <span className="font-semibold">
               {isCreating ? "Creating..." : "New chat"}
             </span>
           </button>
@@ -152,7 +152,7 @@ export function SearchChatsModal({
           {/* Pinned Section */}
           {groupedSessions.pinned.length > 0 && (
             <div className="px-5 pt-4">
-              <p className="text-xs text-zinc-500 mb-2 flex items-center gap-1">
+              <p className="micro-label mb-2 flex items-center gap-1">
                 <Pin className="h-3 w-3" />
                 Pinned
               </p>
@@ -169,7 +169,7 @@ export function SearchChatsModal({
           {/* Today Section */}
           {groupedSessions.todayItems.length > 0 && (
             <div className="px-5 pt-4">
-              <p className="text-xs text-zinc-500 mb-2">Today</p>
+              <p className="micro-label mb-2">Today</p>
               {groupedSessions.todayItems.map((session) => (
                 <SessionItem
                   key={session.id}
@@ -183,7 +183,7 @@ export function SearchChatsModal({
           {/* Previous 7 Days Section */}
           {groupedSessions.last7Days.length > 0 && (
             <div className="px-5 pt-4">
-              <p className="text-xs text-zinc-500 mb-2">Previous 7 Days</p>
+              <p className="micro-label mb-2">Previous 7 Days</p>
               {groupedSessions.last7Days.map((session) => (
                 <SessionItem
                   key={session.id}
@@ -197,7 +197,7 @@ export function SearchChatsModal({
           {/* Previous 30 Days Section */}
           {groupedSessions.last30Days.length > 0 && (
             <div className="px-5 pt-4">
-              <p className="text-xs text-zinc-500 mb-2">Previous 30 Days</p>
+              <p className="micro-label mb-2">Previous 30 Days</p>
               {groupedSessions.last30Days.map((session) => (
                 <SessionItem
                   key={session.id}
@@ -211,7 +211,7 @@ export function SearchChatsModal({
           {/* Older Section */}
           {groupedSessions.older.length > 0 && (
             <div className="px-5 pt-4 pb-4">
-              <p className="text-xs text-zinc-500 mb-2">Older</p>
+              <p className="micro-label mb-2">Older</p>
               {groupedSessions.older.map((session) => (
                 <SessionItem
                   key={session.id}
@@ -225,14 +225,14 @@ export function SearchChatsModal({
           {/* No results */}
           {filteredSessions.length === 0 && searchQuery && (
             <div className="px-5 py-8 text-center">
-              <p className="text-zinc-400">No chats found for &quot;{searchQuery}&quot;</p>
+              <p className="text-muted">No chats found for &quot;{searchQuery}&quot;</p>
             </div>
           )}
 
           {/* Empty state */}
           {filteredSessions.length === 0 && !searchQuery && (
             <div className="px-5 py-8 text-center">
-              <p className="text-zinc-400">No chats yet. Start a new conversation!</p>
+              <p className="text-muted">No chats yet. Start a new conversation!</p>
             </div>
           )}
 
@@ -254,14 +254,14 @@ function SessionItem({
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-zinc-700 transition-colors text-left mb-1"
+      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-surface-2 transition-colors text-left mb-1"
     >
-      <MessageCircle className="h-4 w-4 text-zinc-400 flex-shrink-0" />
-      <span className="text-white truncate">
+      <MessageCircle className="h-4 w-4 text-muted flex-shrink-0" />
+      <span className="text-foreground truncate">
         {session.title || `Session ${session.id.slice(0, 6)}`}
       </span>
       {session.is_pinned && (
-        <Pin className="h-3 w-3 text-zinc-500 flex-shrink-0 ml-auto" />
+        <Pin className="h-3 w-3 text-muted flex-shrink-0 ml-auto" />
       )}
     </button>
   );

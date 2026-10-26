@@ -35,7 +35,7 @@ export function MaintenanceBanner() {
     <div
       role="status"
       aria-live="polite"
-      className="sticky top-0 z-50 flex items-center justify-center gap-2 border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/60 dark:text-amber-200"
+      className="sticky top-0 z-50 flex items-center justify-center gap-2 border-b border-warning/40 bg-warning-bg px-4 py-2 text-center text-sm font-medium text-foreground"
     >
       <Wrench className="h-4 w-4 shrink-0" />
       <span>

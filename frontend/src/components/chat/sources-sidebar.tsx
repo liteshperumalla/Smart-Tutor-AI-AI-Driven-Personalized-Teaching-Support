@@ -228,41 +228,38 @@ export function SourcesSidebar({
       {/* Sidebar */}
       <div
         className={`
-          fixed right-0 top-0 bottom-0 z-50 w-96 max-w-[90vw]
-          bg-white dark:bg-zinc-900
-          border-l border-zinc-200 dark:border-zinc-700
-          transform transition-transform duration-300 ease-in-out
+          fixed right-0 top-0 bottom-0 z-50 w-96 max-w-[90vw] bg-surface border-l border-line transform transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0 shadow-2xl" : "translate-x-full"}
           flex flex-col
         `}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-              <FileText className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <div className="p-2 rounded-lg bg-primary-bg">
+              <FileText className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+              <h2 className="text-lg font-semibold text-foreground">
                 Sources
               </h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-muted">
                 {sources.length} reference{sources.length !== 1 ? "s" : ""}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+            className="p-2 hover:bg-surface-2 rounded-lg transition-colors"
           >
-            <X className="h-5 w-5 text-zinc-500" />
+            <X className="h-5 w-5 text-muted" />
           </button>
         </div>
 
         {/* Sources List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {sources.length === 0 ? (
-            <div className="text-center py-12 text-zinc-500 dark:text-zinc-400">
+            <div className="text-center py-12 text-muted">
               <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No sources available</p>
             </div>
@@ -278,17 +275,17 @@ export function SourcesSidebar({
                 <button
                   key={index}
                   onClick={() => handleSourceClick(source)}
-                  className="w-full text-left p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 transition-all duration-200 group"
+                  className="w-full text-left p-3 rounded-xl bg-surface-2 hover:bg-surface-2 border border-line transition-all duration-200 group"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {isExternal ? (
                         <Globe className="h-4 w-4 text-blue-500 flex-shrink-0" />
                       ) : (
-                        <FileText className="h-4 w-4 text-zinc-400 flex-shrink-0" />
+                        <FileText className="h-4 w-4 text-muted flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
-                        <span className="block font-medium text-zinc-900 dark:text-white truncate">
+                        <span className="block font-medium text-foreground truncate">
                           {label}
                         </span>
                         {externalUrl && (
@@ -298,15 +295,15 @@ export function SourcesSidebar({
                         )}
                       </div>
                       {location && (
-                        <span className="text-xs text-zinc-500 dark:text-zinc-400 flex-shrink-0">
+                        <span className="text-xs text-muted flex-shrink-0">
                           • {location}
                         </span>
                       )}
                     </div>
-                    <ExternalLink className="h-4 w-4 text-zinc-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ExternalLink className="h-4 w-4 text-muted flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
                   {snippet && (
-                    <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2">{snippet}</p>
+                    <p className="mt-2 text-xs text-muted line-clamp-2">{snippet}</p>
                   )}
                 </button>
               );

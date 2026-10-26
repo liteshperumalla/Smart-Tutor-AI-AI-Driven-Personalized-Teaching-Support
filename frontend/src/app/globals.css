@@ -1,69 +1,240 @@
 @import "tailwindcss";
 
-/* Tailwind v4 defaults the `dark:` variant to the `prefers-color-scheme`
-   media query. This app toggles theme explicitly via a `.dark` class on
-   <html> (see theme-context.tsx), so we override the variant to key off
-   that class. Without this, clicking "Switch to Light" on an OS that is in
-   dark mode leaves every `dark:` utility firing off the OS preference,
-   producing a half-broken light theme. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* ============================================================
+   Smart AI Tutor — Design Tokens (v1.0)
+   Single source of truth: change a value here, every surface follows.
+   Dark mode: ONE mechanism — the `.theme-dark` class (theme-context.tsx
+   puts it on <html> together with `.dark`), mirrored into Tailwind's
+   `dark:` variant below. Tailwind v4 defaults `dark:` to the
+   prefers-color-scheme media query; keying it off the class means an explicit
+   "Switch to Light" always wins even when the OS is dark.
+   ============================================================ */
+
+@custom-variant dark (&:where(.dark, .dark *, .theme-dark, .theme-dark *));
+
+/* ---- Brand fonts (self-hosted) ----
+   Fontshare's licence permits self-hosting; the files live in
+   public/fonts/. Until they are present the stacks below fall through to
+   Space Grotesk / Inter (loaded by next/font in app/layout.tsx), so text is
+   never invisible. */
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/ClashDisplay-Semibold.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Clash Display";
+  src: url("/fonts/ClashDisplay-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/fonts/CabinetGrotesk-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/fonts/CabinetGrotesk-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/fonts/CabinetGrotesk-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
 
 :root {
-  /* Typography */
-  /* Both families are loaded by next/font in app/layout.tsx. */
-  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* ---- Brand ---- */
+  --color-primary: #1E3A8A;        /* Deep Learning Blue — identity, CTAs */
+  --color-primary-hover: #1E40AF;
+  --color-secondary: #0D9488;      /* Neural Teal — interactive, success */
+  --color-secondary-hover: #0F766E;
+  --color-accent: #F97316;         /* Warm Coral — achievements, energy */
+  --color-bright: #06B6D4;         /* Bright Cyan — info, highlights */
+  --color-lavender: #A78BFA;       /* Soft Lavender — tertiary accents */
 
-  /* Colors - Intelligent Learning Theme (Light Mode) */
-  --color-primary: #059669;      /* Emerald 600 - learning-positive, friendly */
-  --color-secondary: #4f46e5;    /* Indigo 600 - interactive elements */
-  --color-accent: #f59e0b;       /* Amber 500 - achievements */
-  --color-achieve: #f59e0b;      /* Amber 500 - achievements (alias) */
-  --color-highlight: #f43f5e;    /* Rose 500 - highlights */
-  --color-bright: #34d399;       /* Emerald 400 - success states and CTAs */
-  --color-success: #059669;      /* Emerald 600 - consistency with primary */
-  --color-danger: #dc2626;       /* Red 600 - better contrast */
-  --color-subtle: #a78bfa;       /* Soft Lavender - tertiary surfaces */
+  /* ---- Semantic ----
+     Text-safe: each reaches 4.5:1 on the surface and on its own -bg tint. */
+  --color-success: #0F766E;
+  --color-warning: #B45309;
+  --color-danger:  #B91C1C;
+  --color-info:    #0E7490;        /* text; --color-bright for fills */
 
-  --background: #f8fafc;   /* Cloud White - clean and airy */
-  --foreground: #0f172a;   /* Slate Foundation - deep text */
+  /* ---- Solid fills that carry white labels (4.5:1+ in both themes) ---- */
+  --color-primary-solid: #1E3A8A;
+  --color-secondary-solid: #0F766E;
+  --color-success-solid: #0F766E;
+  --color-danger-solid: #DC2626;
+
+  /* ---- Neutrals / surfaces ---- */
+  --color-bg: #F8FAFC;             /* app background */
+  --color-surface: #FFFFFF;        /* cards, panels */
+  --color-surface-2: #F1F5F9;      /* wells, hovers, inputs */
+  --color-border: #E2E8F0;
+  --color-text: #0F172A;
+  --color-text-muted: #64748B;
+
+  /* ---- State backgrounds (10-16% tints) ---- */
+  --color-primary-bg: rgba(30, 58, 138, .10);
+  --color-success-bg: rgba(13, 148, 136, .10);
+  --color-warning-bg: rgba(217, 119, 6, .10);
+  --color-danger-bg:  rgba(220, 38, 38, .08);
+  --color-info-bg:    rgba(6, 182, 212, .10);
+
+  /* ---- Focus ring ---- */
+  --ring: rgba(30, 58, 138, .14);
+
+  /* ---- Gradients ---- */
+  --gradient-primary: linear-gradient(135deg, #1E3A8A 0%, #0D9488 100%);
+  --gradient-secondary: linear-gradient(135deg, #0D9488 0%, #06B6D4 50%, #A78BFA 100%);
+  --gradient-accent: linear-gradient(135deg, #F97316 0%, #FB923C 100%);
+  --gradient-feature: linear-gradient(135deg, #1E3A8A 0%, #0F766E 55%, #0E7490 100%);
+
+  /* ---- Typography ----
+     next/font registers Space Grotesk and Inter under hashed family names, so
+     the fallbacks go through their CSS variables, not the literal names. */
+  --font-display: "Clash Display", var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Cabinet Grotesk", var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --text-display-xl: 3.25rem;  /* hero */
+  --text-display: 2.5rem;      /* page hero, small screens */
+  --text-h1: 2rem;
+  --text-h2: 1.5rem;
+  --text-h3: 1.25rem;
+  --text-body-lg: 1.125rem;
+  --text-body: 1rem;
+  --text-body-sm: 0.875rem;
+  --text-caption: 0.75rem;
+  --tracking-label: 0.2em;     /* uppercase micro-labels */
+
+  /* ---- Spacing (4px base) ---- */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --space-12: 48px; --space-16: 64px;
+
+  /* ---- Radius ---- */
+  --radius-sm: 8px;      /* menu items, chips */
+  --radius-md: 12px;     /* inputs, buttons (non-pill), nav items */
+  --radius-lg: 16px;     /* small cards, modals */
+  --radius-xl: 20px;     /* cards */
+  --radius-2xl: 24px;    /* feature cards, hero panels */
+  --radius-pill: 9999px; /* primary buttons, badges */
+
+  /* ---- Elevation ---- */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-md: 0 6px 16px -4px rgba(15, 23, 42, .10);
+  --shadow-lg: 0 20px 40px -12px rgba(15, 23, 42, .18);
+  --shadow-brand: 0 10px 22px -6px rgba(30, 58, 138, .35);
+  --shadow-achievement: 0 4px 10px -2px rgba(249, 115, 22, .40);
+
+  /* ---- Motion ---- */
+  --duration-fast: 150ms;      /* hovers, toggles */
+  --duration-base: 200ms;      /* most transitions */
+  --duration-slow: 300ms;      /* drawers, modals */
+  --duration-entrance: 600ms;  /* page-load reveals */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
-  --color-primary: #059669;
-  --color-secondary: #4f46e5;
-  --color-accent: #f59e0b;
-  --color-bright: #34d399;
-  --color-success: #059669;
-}
-
-/* Dark-mode color tokens. Gated on the `.dark`/`.theme-dark` class (set by
-   theme-context.tsx) rather than `@media (prefers-color-scheme: dark)`, so an
-   explicit "Switch to Light" choice always wins even when the OS is dark.
-   First-load OS preference is still honored: theme-context reads
-   prefers-color-scheme on mount and applies the class when no choice is stored. */
-.dark,
+/* ---- Dark theme: one switch, no !important ---- */
 .theme-dark {
-  --color-primary: #10b981;      /* Brighter Emerald - vibrant for dark mode */
-  --color-secondary: #6366f1;    /* Brighter Indigo - better contrast */
-  --color-accent: #fbbf24;       /* Lighter Amber - energetic in dark */
-  --color-achieve: #fbbf24;      /* Lighter Amber - achievements (alias) */
-  --color-highlight: #fb7185;    /* Lighter Rose - highlights in dark */
-  --color-bright: #34d399;       /* Brighter Emerald - pops on dark background */
-  --color-success: #10b981;      /* Matches primary */
-  --color-subtle: #c4b5fd;       /* Lighter Lavender - visible on dark */
-  --background: #000000;   /* True Black - OLED dark */
-  --foreground: #f8fafc;   /* Cloud White - crisp text */
+  --color-primary: #60A5FA;
+  --color-primary-hover: #93C5FD;
+  --color-secondary: #14B8A6;
+  --color-secondary-hover: #2DD4BF;
+  --color-accent: #FB923C;
+  --color-bright: #22D3EE;
+  --color-lavender: #C4B5FD;
+
+  --color-success: #2DD4BF;
+  --color-warning: #FBBF24;
+  --color-danger:  #FCA5A5;
+  --color-info:    #22D3EE;
+
+  --color-primary-solid: #2563EB;
+  --color-danger-solid: #DC2626;
+
+  --color-bg: #0F172A;
+  --color-surface: #1E293B;
+  --color-surface-2: #334155;
+  --color-border: #475569;
+  --color-text: #F8FAFC;
+  --color-text-muted: #94A3B8;
+
+  --color-primary-bg: rgba(96, 165, 250, .12);
+  --color-success-bg: rgba(20, 184, 166, .16);
+  --color-warning-bg: rgba(251, 191, 36, .14);
+  --color-danger-bg:  rgba(248, 113, 113, .14);
+  --color-info-bg:    rgba(34, 211, 238, .14);
+
+  --ring: rgba(96, 165, 250, .28);
+
+  /* White labels sit on these: keep both ends at 4.5:1+ */
+  --gradient-primary: linear-gradient(135deg, #2563EB 0%, #0F766E 100%);
+  --gradient-feature: linear-gradient(135deg, #2563EB 0%, #0F766E 55%, #0E7490 100%);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-md: 0 6px 16px -4px rgba(0, 0, 0, .50);
+  --shadow-lg: 0 20px 40px -12px rgba(0, 0, 0, .60);
+  --shadow-brand: 0 10px 22px -6px rgba(59, 130, 246, .40);
+
+  /* Native controls (date/time pickers, select menus, scrollbars) follow
+     the app theme instead of always rendering light. */
+  color-scheme: dark;
+}
+
+/* ---- Expose to Tailwind v4 utilities (bg-primary, text-muted, border-line, …) ----
+   `inline` makes each utility reference the token directly. Tailwind also
+   echoes these names into its `theme` layer; the unlayered :root and
+   .theme-dark blocks above always win the cascade, so the echo is inert. */
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-secondary: var(--color-secondary);
+  --color-secondary-hover: var(--color-secondary-hover);
+  --color-accent: var(--color-accent);
+  --color-bright: var(--color-bright);
+  --color-lavender: var(--color-lavender);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+  --color-primary-solid: var(--color-primary-solid);
+  --color-secondary-solid: var(--color-secondary-solid);
+  --color-success-solid: var(--color-success-solid);
+  --color-danger-solid: var(--color-danger-solid);
+  --color-primary-bg: var(--color-primary-bg);
+  --color-success-bg: var(--color-success-bg);
+  --color-warning-bg: var(--color-warning-bg);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-info-bg: var(--color-info-bg);
+  --color-background: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-line: var(--color-border);
+  --color-foreground: var(--color-text);
+  --color-muted: var(--color-text-muted);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-geist-mono), ui-monospace, Menlo, monospace;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-brand: var(--shadow-brand);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-bg);
+  color: var(--color-text);
   font-family: var(--font-body);
 }
 
@@ -84,271 +255,273 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
 }
 
-/* Dark theme overrides — neutral near-black palette ("truly black" dark mode) */
-.theme-dark body {
-  background: #000000;
-  color: #F8FAFC;
-}
-
-body.theme-dark {
-  background: #000000;
-  color: #F8FAFC;
-}
-
-.theme-dark .bg-zinc-50,
-body.theme-dark .bg-zinc-50 {
-  background-color: #0a0a0a !important;
-  color: #F8FAFC;
+/* Dark-mode bridge for pages that still use raw zinc/white palette classes.
+   Each one maps onto a token, so it follows the theme instead of a second
+   hard-coded palette. Delete a rule once no page uses its class; new code
+   should use bg-surface / text-foreground / text-muted / border-line. */
+.theme-dark .bg-zinc-50 {
+  background-color: var(--color-bg) !important;
+  color: var(--color-text);
 }
 
 .theme-dark .bg-white,
-body.theme-dark .bg-white,
-.theme-dark .bg-white\/90,
-body.theme-dark .bg-white\/90 {
-  background-color: #141414 !important;
-  color: #F8FAFC;
+.theme-dark .bg-white\/90 {
+  background-color: var(--color-surface) !important;
+  color: var(--color-text);
 }
 
 .theme-dark .text-zinc-900,
-body.theme-dark .text-zinc-900 {
-  color: #F8FAFC !important;
+.theme-dark .text-zinc-950 {
+  color: var(--color-text) !important;
 }
 
 .theme-dark .text-zinc-600,
-body.theme-dark .text-zinc-600 {
-  color: #d4d4d4 !important;
+.theme-dark .text-zinc-700 {
+  color: #CBD5E1 !important; /* slate-300: between text and muted */
 }
 
-.theme-dark .border-zinc-200,
-body.theme-dark .border-zinc-200 {
-  border-color: #262626 !important;
+.theme-dark .text-zinc-500 {
+  color: var(--color-text-muted) !important;
 }
 
-.theme-dark .text-zinc-500,
-body.theme-dark .text-zinc-500 {
-  color: #a3a3a3 !important;
+.theme-dark .border-zinc-200 {
+  border-color: var(--color-border) !important;
 }
 
-.theme-dark .text-zinc-700,
-body.theme-dark .text-zinc-700 {
-  color: #e5e5e5 !important;
-}
-
-.theme-dark .text-zinc-950,
-body.theme-dark .text-zinc-950 {
-  color: #F8FAFC !important;
-}
-
-/* Input styles */
-.input {
-  width: 100%;
-  border-radius: 0.75rem;
-  border: 2px solid rgb(228, 228, 231);
-  background: white;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  color: rgb(24, 24, 27);
-  outline: none;
-  transition: all 0.2s;
-}
-
-.input:focus {
-  border-color: #059669;
-  box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.1);
-}
-
-.theme-dark .input,
-body.theme-dark .input {
-  background-color: #141414;
-  color: #F8FAFC;
-  border-color: #262626;
-}
-
-.input::placeholder {
-  color: #71717a; /* zinc-500 */
-}
-
-.theme-dark .input::placeholder {
-  color: #a1a1aa; /* zinc-400 */
-}
-
-/* Native controls (date/time pickers, select menus, scrollbars) follow the
-   app theme instead of always rendering light. */
-html.dark {
-  color-scheme: dark;
-}
-
-.theme-dark .input:focus,
-body.theme-dark .input:focus {
-  border-color: #10b981;
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
-}
-
-/* Button variants */
-.btn-primary {
+/* ---------- Component recipes ----------
+   Mirrors the design-system component sheets. Buttons: one gradient primary
+   per view; secondary is a 2px outline pill; ghost for tertiary/inline;
+   danger only inside confirmations. */
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
+.btn-danger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  border-radius: 9999px;
-  background-color: #059669; /* fallback for browsers without gradient support */
-  background: -webkit-linear-gradient(135deg, #059669 0%, #4f46e5 100%);
-  background: linear-gradient(135deg, #059669 0%, #4f46e5 100%);
-  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-pill);
+  padding: 11px 22px;
+  font-size: 0.875rem;
   font-weight: 600;
-  color: white;
-  box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.3);
-  transition: all 0.2s;
+  line-height: 1.25rem;
+  transition: all var(--duration-base) ease;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--gradient-primary);
+  color: #fff;
+  box-shadow: var(--shadow-brand);
 }
 
 .btn-primary:hover {
-  transform: scale(1.05);
-  box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4);
-  background: -webkit-linear-gradient(135deg, #047857 0%, #4338ca 100%);
-  background: linear-gradient(135deg, #047857 0%, #4338ca 100%);
+  transform: translateY(-1px) scale(1.02);
 }
 
 .btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-radius: 9999px;
-  border: 2px solid rgb(24, 24, 27);
-  padding: 0.75rem 1.5rem;
-  font-weight: 600;
-  color: rgb(24, 24, 27);
-  transition: all 0.2s;
+  border: 2px solid var(--color-text);
+  padding: 9px 20px;
+  color: var(--color-text);
+  background: transparent;
 }
 
 .btn-secondary:hover {
-  background: rgb(24, 24, 27);
-  color: white;
-}
-
-.theme-dark .btn-secondary,
-body.theme-dark .btn-secondary {
-  border-color: #F8FAFC;
-  color: #F8FAFC;
-}
-
-.theme-dark .btn-secondary:hover,
-body.theme-dark .btn-secondary:hover {
-  background-color: #F8FAFC;
-  color: #000000;
+  background: var(--color-text);
+  color: var(--color-bg);
 }
 
 .btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-radius: 0.75rem;
-  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
   font-weight: 500;
-  color: rgb(63, 63, 70);
-  transition: all 0.2s;
+  background: transparent;
 }
 
 .btn-ghost:hover {
-  background: rgb(244, 244, 245);
+  background: var(--color-surface-2);
+  color: var(--color-text);
 }
 
-.theme-dark .btn-ghost,
-body.theme-dark .btn-ghost {
-  color: #CBD5E1;
+.btn-danger {
+  background: var(--color-danger-solid);
+  color: #fff;
 }
 
-.theme-dark .btn-ghost:hover,
-body.theme-dark .btn-ghost:hover {
-  background-color: rgba(71, 85, 105, 0.3);
+.btn-danger:hover {
+  filter: brightness(0.92);
 }
 
-/* Card variants */
-.card {
-  border-radius: 1.5rem;
-  border: 2px solid rgb(228, 228, 231);
-  background: white;
-  padding: 2rem;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.2s;
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 0.8125rem;
 }
 
-.theme-dark .card,
-body.theme-dark .card {
-  border-color: #262626;
-  background-color: #141414;
+.btn-secondary.btn-sm {
+  padding: 5px 12px;
 }
 
+.btn-lg {
+  padding: 14px 28px;
+  font-size: 1rem;
+}
+
+.btn-secondary.btn-lg {
+  padding: 12px 26px;
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-ghost:disabled,
+.btn-danger:disabled,
+.btn-icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* 40px square, radius-md, ghost surface */
+.btn-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+  transition: color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+}
+
+.btn-icon:hover {
+  color: var(--color-text);
+}
+
+/* Inputs: 2px border, radius-md. Focus = primary border + 4px soft ring. */
+.input {
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 11px 14px;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  outline: none;
+  transition: all var(--duration-base);
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--ring);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.field-helper {
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.field-error {
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: var(--color-danger);
+}
+
+/* Cards: surface + 1px border + shadow-sm, radius-xl (20px), 20–24px padding. */
+.card,
 .card-hover {
-  border-radius: 1.5rem;
-  border: 2px solid rgb(228, 228, 231);
-  background: white;
-  padding: 2rem;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.2s;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 22px;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--duration-base) var(--ease-out);
 }
 
 .card-hover:hover {
-  transform: translateY(-0.5rem);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-lg);
 }
 
+/* One hero stat per page — white text only, no muted grays. */
 .card-gradient {
-  border-radius: 1.5rem;
-  background-color: #059669;
-  background: -webkit-linear-gradient(135deg, #059669 0%, #10b981 45%, #4f46e5 100%);
-  background: linear-gradient(135deg, #059669 0%, #10b981 45%, #4f46e5 100%);
-  padding: 2rem;
+  border-radius: var(--radius-xl);
+  background: var(--gradient-feature);
+  padding: 22px;
   color: white;
-  box-shadow: 0 10px 15px -3px rgba(5, 150, 105, 0.3);
-  transition: all 0.2s;
+  box-shadow: var(--shadow-brand);
+  transition: all var(--duration-base);
 }
 
 .card-gradient:hover {
-  box-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.4);
   transform: translateY(-2px);
 }
 
-/* Badge styles */
+/* Badges: tinted background + solid text of the same hue. */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  border-radius: 9999px;
-  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
   font-size: 0.75rem;
   font-weight: 600;
 }
 
 .badge-primary {
-  background: rgba(79, 70, 229, 0.1);
-  color: #4f46e5;
-}
-
-.theme-dark .badge-primary,
-body.theme-dark .badge-primary {
-  background-color: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
 }
 
 .badge-success {
-  background: rgba(5, 150, 105, 0.1);
-  color: #059669;
-}
-
-.theme-dark .badge-success,
-body.theme-dark .badge-success {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #6ee7b7;
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .badge-warning {
-  background: rgba(245, 158, 11, 0.1);
-  color: #b45309;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
-.theme-dark .badge-warning,
-body.theme-dark .badge-warning {
-  background-color: rgba(245, 158, 11, 0.2);
-  color: #fcd34d;
+.badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.badge-info {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.badge-neutral {
+  background: var(--color-surface-2);
+  color: var(--color-text-muted);
+}
+
+/* Uppercase micro-label: section headings in nav, stat tiles, tables. */
+.micro-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 /* Typography utilities */
@@ -360,21 +533,17 @@ body.theme-dark .badge-warning {
   font-family: var(--font-body);
 }
 
-/* Animation utilities */
+/* Animation utilities — entrances use fadeInUp 600ms */
 .animate-fade-in-up {
-  animation: fadeInUp 0.6s ease-out both;
+  animation: fadeInUp var(--duration-entrance) var(--ease-out) both;
 }
 
 .animate-fade-in-down {
-  animation: fadeInDown 0.6s ease-out both;
+  animation: fadeInDown var(--duration-entrance) var(--ease-out) both;
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.4s ease-out both;
-}
-
-.animate-slide-in-right {
-  animation: slideInRight 0.5s ease-out both;
+  animation: scaleIn 0.4s var(--ease-out) both;
 }
 
 .animate-float {
@@ -404,33 +573,34 @@ body.theme-dark .badge-warning {
 
 /* Gradient utilities */
 .gradient-primary {
-  background-color: #059669;
-  background: -webkit-linear-gradient(135deg, #059669 0%, #4f46e5 100%);
-  background: linear-gradient(135deg, #059669 0%, #4f46e5 100%);
+  background: var(--gradient-primary);
 }
 
 .gradient-secondary {
-  background-color: #4f46e5;
-  background: -webkit-linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%);
-  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%);
+  background: var(--gradient-secondary);
 }
 
 .gradient-accent {
-  background-color: #f59e0b;
-  background: -webkit-linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
-  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  background: var(--gradient-accent);
+}
+
+.text-gradient-primary {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .gradient-mesh {
-  background: radial-gradient(circle at 30% 20%, rgba(5, 150, 105, 0.12) 0%, transparent 50%),
-              radial-gradient(circle at 70% 80%, rgba(79, 70, 229, 0.08) 0%, transparent 50%),
-              radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+  background: radial-gradient(circle at 30% 20%, rgba(30, 58, 138, 0.10) 0%, transparent 50%),
+              radial-gradient(circle at 70% 80%, rgba(13, 148, 136, 0.08) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
 }
 
-body.theme-dark .gradient-mesh {
-  background: radial-gradient(circle at 30% 20%, rgba(16, 185, 129, 0.15) 0%, transparent 50%),
-              radial-gradient(circle at 70% 80%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
-              radial-gradient(circle at 50% 50%, rgba(52, 211, 153, 0.08) 0%, transparent 60%);
+.theme-dark .gradient-mesh {
+  background: radial-gradient(circle at 30% 20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
+              radial-gradient(circle at 70% 80%, rgba(20, 184, 166, 0.12) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(34, 211, 238, 0.08) 0%, transparent 60%);
 }
 
 /* Noise texture overlay */
@@ -500,10 +670,10 @@ body.theme-dark .gradient-mesh {
 
 @keyframes pulseGlow {
   0%, 100% {
-    box-shadow: 0 0 20px 0 rgba(5, 150, 105, 0.3);
+    box-shadow: 0 0 20px 0 rgba(30, 58, 138, 0.3);
   }
   50% {
-    box-shadow: 0 0 30px 10px rgba(79, 70, 229, 0.5);
+    box-shadow: 0 0 30px 10px rgba(13, 148, 136, 0.45);
   }
 }
 
@@ -546,7 +716,7 @@ body.theme-dark .gradient-mesh {
 }
 
 .animate-text-appear {
-  animation: textAppear 0.15s ease-out;
+  animation: textAppear var(--duration-fast) ease-out;
 }
 
 /* Slide in from right */
@@ -562,10 +732,10 @@ body.theme-dark .gradient-mesh {
 }
 
 .animate-slide-in-right {
-  animation: slideInFromRight 0.3s ease-out both;
+  animation: slideInFromRight var(--duration-slow) ease-out both;
 }
 
-/* Shimmer effect for loading states */
+/* Shimmer for streaming / loading states */
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -582,6 +752,15 @@ body.theme-dark .gradient-mesh {
     rgba(255, 255, 255, 0.1) 50%,
     transparent 100%
   );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Skeleton line: surface-2 → border sweep, follows the theme */
+.shimmer-line {
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--color-surface-2) 25%, var(--color-border) 50%, var(--color-surface-2) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -625,14 +804,14 @@ body.theme-dark .gradient-mesh {
   background-clip: padding-box;
 }
 
-body.theme-dark ::-webkit-scrollbar-thumb {
+.theme-dark ::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, #475569 0%, #334155 100%);
   border-radius: 100px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
-body.theme-dark ::-webkit-scrollbar-thumb:hover {
+.theme-dark ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #64748B 0%, #475569 100%);
   border-radius: 100px;
   border: 1px solid transparent;
@@ -650,78 +829,35 @@ body.theme-dark ::-webkit-scrollbar-thumb:hover {
   scrollbar-color: #64748B transparent;
 }
 
-body.theme-dark * {
+.theme-dark * {
   scrollbar-color: #475569 transparent;
 }
 
 /* Selection styling */
 ::selection {
-  background-color: rgba(5, 150, 105, 0.2);
-  color: #0f172a;
+  background-color: var(--color-primary-bg);
+  color: var(--color-text);
 }
 
-body.theme-dark ::selection {
-  background-color: rgba(16, 185, 129, 0.3);
-  color: #f8fafc;
-}
-
-/* Additional utility classes for Intelligent Learning theme */
-.text-primary {
-  color: var(--color-primary);
-}
-
-.text-secondary {
-  color: var(--color-secondary);
-}
-
-.text-accent {
-  color: var(--color-accent);
-}
-
-.bg-primary {
-  background-color: var(--color-primary);
-}
-
-.bg-secondary {
-  background-color: var(--color-secondary);
-}
-
-.bg-accent {
-  background-color: var(--color-accent);
-}
-
-.border-primary {
-  border-color: var(--color-primary);
-}
-
-.border-secondary {
-  border-color: var(--color-secondary);
-}
-
-/* Achievement and progress indicators */
+/* Achievement: the coral gradient is reserved for rewards — never regular UI chrome. */
 .achievement-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--gradient-accent);
   color: white;
   font-weight: 600;
-  font-size: 0.875rem;
-  box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.3);
-  animation: slideInRight 0.5s ease-out both;
+  font-size: 0.8125rem;
+  box-shadow: var(--shadow-achievement);
+  animation: slideInRight 0.5s var(--ease-out) both;
 }
 
 /* Focus state indicator for learning flow */
-.focus-ring {
+.focus-ring:focus-visible {
   outline: none;
-  ring: 2px solid var(--color-secondary);
-  ring-offset: 2px;
-}
-
-body.theme-dark .focus-ring {
-  ring-offset-color: #0f172a;
+  box-shadow: 0 0 0 4px var(--ring);
 }
 
 /* Respect the OS "reduce motion" setting: entrance animations, floating
@@ -742,7 +878,9 @@ body.theme-dark .focus-ring {
     animation-iteration-count: infinite !important;
   }
 
-  [class*="hover:-translate-y"]:hover {
+  [class*="hover:-translate-y"]:hover,
+  .card-hover:hover,
+  .btn-primary:hover {
     transform: none !important;
   }
 }

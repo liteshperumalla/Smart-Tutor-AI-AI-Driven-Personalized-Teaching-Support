@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
+import { Geist_Mono, Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
@@ -12,8 +12,10 @@ import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Body fallback until the self-hosted Cabinet Grotesk files are in
+// public/fonts (see the @font-face rules in globals.css).
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -22,8 +24,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Headings. Loaded through next/font so it is self-hosted with the build; the
-// old Fontshare @import never reached the bundled CSS.
+// Heading fallback behind Clash Display. Loaded through next/font so it is
+// self-hosted with the build; the old Fontshare @import never reached the
+// bundled CSS.
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-space-grotesk",
   subsets: ["latin"],
@@ -57,7 +60,13 @@ export default function RootLayout({
   return (
     // Font variables sit on <html> because globals.css composes them into
     // --font-display / --font-body on :root.
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${geistMono.variable} ${spaceGrotesk.variable}`}>
+      <head>
+        {/* Self-hosted brand fonts (public/fonts, @font-face in globals.css):
+            preload the two faces nearly every page paints with. */}
+        <link rel="preload" href="/fonts/ClashDisplay-Bold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        <link rel="preload" href="/fonts/CabinetGrotesk-Regular.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+      </head>
       <body className="antialiased">
         {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
             an OS-dark or previously-chosen-dark user doesn't flash a light screen.

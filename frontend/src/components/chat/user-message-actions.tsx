@@ -23,11 +23,11 @@ export function UserMessageActions({ onCopy, onEdit, visible = false }: UserMess
       {/* Copy Button */}
       <button
         onClick={handleCopy}
-        className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
+        className="p-1.5 rounded-sm text-muted hover:text-foreground hover:bg-surface-2 transition-colors"
         title="Copy message"
       >
         {copied ? (
-          <Check className="h-4 w-4 text-green-400" />
+          <Check className="h-4 w-4 text-success" />
         ) : (
           <Copy className="h-4 w-4" />
         )}
@@ -36,7 +36,7 @@ export function UserMessageActions({ onCopy, onEdit, visible = false }: UserMess
       {/* Edit Button */}
       <button
         onClick={onEdit}
-        className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-600 transition-colors"
+        className="p-1.5 rounded-sm text-muted hover:text-foreground hover:bg-surface-2 transition-colors"
         title="Edit message"
       >
         <Pencil className="h-4 w-4" />
@@ -77,12 +77,12 @@ export function EditableUserMessage({
 
   return (
     <div className="w-full max-w-2xl">
-      <div className="rounded-2xl bg-zinc-700 dark:bg-zinc-700 p-4">
+      <div className="rounded-[18px] border-2 border-primary bg-surface p-4 shadow-[0_0_0_4px_var(--ring)]">
         <textarea
           value={editedContent}
           onChange={(e) => setEditedContent(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="w-full bg-transparent text-white text-sm leading-relaxed resize-none outline-none min-h-[60px] placeholder:text-zinc-400"
+          className="w-full bg-transparent text-foreground text-sm leading-relaxed resize-none outline-none min-h-[60px] placeholder:text-muted"
           autoFocus
           rows={Math.max(2, editedContent.split("\n").length)}
         />
@@ -90,14 +90,14 @@ export function EditableUserMessage({
           <button
             onClick={onCancel}
             disabled={isSending}
-            className="px-4 py-2 rounded-full bg-zinc-600 text-white text-sm font-medium hover:bg-zinc-500 transition-colors disabled:opacity-50"
+            className="btn-ghost btn-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSend}
             disabled={isSending || !editedContent.trim()}
-            className="px-4 py-2 rounded-full bg-white text-zinc-900 text-sm font-medium hover:bg-zinc-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary btn-sm"
           >
             {isSending ? "Sending..." : "Send"}
           </button>

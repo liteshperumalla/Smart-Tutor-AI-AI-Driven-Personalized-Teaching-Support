@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { X } from "lucide-react";
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 
 interface RenameChatModalProps {
   isOpen: boolean;
@@ -19,6 +21,8 @@ export function RenameChatModal({
 }: RenameChatModalProps) {
   const [title, setTitle] = useState(currentTitle);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, isOpen);
 
   // Reset title when modal opens with new currentTitle
   useEffect(() => {
@@ -54,19 +58,33 @@ export function RenameChatModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       onClick={isRenaming ? undefined : onClose}
     >
-      {/* Modal */}
       <div
-        className="bg-zinc-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up"
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rename-chat-title"
+        className="w-full max-w-[400px] animate-fade-in-up rounded-lg border border-line bg-surface p-[22px] text-foreground shadow-lg outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-6">
-          <h2 className="text-xl font-semibold text-white mb-4">
-            Rename chat
-          </h2>
+        <form onSubmit={handleSubmit}>
+          <div className="flex items-center justify-between">
+            <h2 id="rename-chat-title" className="text-base">
+              Rename chat
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isRenaming}
+              className="text-muted transition-colors hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="h-[18px] w-[18px]" />
+            </button>
+          </div>
 
           <input
             ref={inputRef}
@@ -75,31 +93,22 @@ export function RenameChatModal({
             onChange={(e) => setTitle(e.target.value)}
             disabled={isRenaming}
             placeholder="Enter chat name"
-            className="w-full px-4 py-3 rounded-xl bg-zinc-700 border border-zinc-600 text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 disabled:opacity-50 transition-colors"
+            aria-label="Chat name"
+            className="input mt-3.5 disabled:opacity-50"
           />
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isRenaming}
-              className="px-5 py-2.5 rounded-full bg-zinc-700 text-white font-medium hover:bg-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button type="button" onClick={onClose} disabled={isRenaming} className="btn-ghost btn-sm">
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={isRenaming || !title.trim()}
-              className="px-5 py-2.5 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-            >
+            <button type="submit" disabled={isRenaming || !title.trim()} className="btn-primary btn-sm">
               {isRenaming ? (
                 <>
-                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Renaming...
+                  <span className="h-[15px] w-[15px] animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  Saving…
                 </>
               ) : (
-                "Rename"
+                "Save"
               )}
             </button>
           </div>

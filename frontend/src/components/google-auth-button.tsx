@@ -69,7 +69,7 @@ export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
         type="button"
         onClick={handleClick}
         disabled={!config.ready || !config.url}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
           <path
@@ -92,7 +92,7 @@ export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
         {label}
       </button>
       {!config.ready && (
-        <p className="text-center text-xs text-zinc-400">
+        <p className="text-center text-xs text-muted">
           Google sign-in is currently unavailable.
         </p>
       )}

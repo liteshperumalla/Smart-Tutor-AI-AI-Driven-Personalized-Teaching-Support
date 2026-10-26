@@ -1527,13 +1527,13 @@ function ChatWorkspaceContent() {
       <div className="flex-shrink-0 max-w-5xl mx-auto w-full px-3 sm:px-6 pb-4 pt-2">
           {isListening ? (
             /* Dictation mode - waveform animation */
-            <div className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3">
+            <div className="rounded-[28px] border-2 border-primary bg-surface px-4 py-3 shadow-[0_0_0_4px_var(--ring)]">
               <div className="flex items-center gap-4">
                 {/* Plus button */}
                 <button
                   type="button"
                   aria-label="Attachments and options"
-                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  className="flex h-9 w-9 items-center justify-center text-muted hover:text-foreground transition-colors"
                 >
                   <Plus className="h-5 w-5" aria-hidden="true" />
                 </button>
@@ -1543,7 +1543,7 @@ function ChatWorkspaceContent() {
                   {Array.from({ length: 80 }).map((_, i) => (
                     <div
                       key={i}
-                      className="w-[2px] bg-zinc-500 rounded-full animate-waveform"
+                      className="w-[2px] bg-secondary rounded-full animate-waveform"
                       style={{
                         height: `${Math.random() * 20 + 4}px`,
                         animationDelay: `${i * 20}ms`,
@@ -1561,7 +1561,7 @@ function ChatWorkspaceContent() {
                     setIsListening(false);
                     setComposerText(""); // Clear any transcribed text
                   }}
-                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  className="flex h-9 w-9 items-center justify-center text-muted hover:text-foreground transition-colors"
                   title="Cancel dictation"
                 >
                   <X className="h-5 w-5" />
@@ -1579,14 +1579,14 @@ function ChatWorkspaceContent() {
                       handleSendMessage(fakeEvent);
                     }
                   }}
-                  className="flex h-9 w-9 items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  className="flex h-9 w-9 items-center justify-center text-muted hover:text-foreground transition-colors"
                   title="Send message"
                 >
                   <Check className="h-5 w-5" />
                 </button>
               </div>
               {composerText.trim() && (
-                <div className="mt-2 rounded-lg bg-zinc-900/40 px-3 py-2 text-xs text-zinc-200">
+                <div className="mt-2 rounded-sm bg-surface-2 px-3 py-2 text-xs text-foreground">
                   {composerText}
                 </div>
               )}
@@ -1603,7 +1603,7 @@ function ChatWorkspaceContent() {
               {/* Learning mode + active options. Always visible so the mode
                   can be changed even with web search off. */}
               <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
-                <div role="radiogroup" aria-label="Learning mode" className="inline-flex rounded-full border border-zinc-200 bg-white p-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+                <div role="radiogroup" aria-label="Learning mode" className="inline-flex rounded-full border border-line bg-surface p-0.5">
                   {LEARNING_MODES.map((mode) => (
                     <button
                       key={mode.id}
@@ -1614,20 +1614,20 @@ function ChatWorkspaceContent() {
                       onClick={() => setLearningMode(mode.id)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                         learningMode === mode.id
-                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                          ? "bg-secondary-solid text-white"
+                          : "text-muted hover:bg-surface-2"
                       }`}
                     >
                       {mode.label}
                     </button>
                   ))}
                 </div>
-                <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
+                <span className="hidden text-xs text-muted sm:inline">
                   {LEARNING_MODES.find((mode) => mode.id === learningMode)?.hint}
                 </span>
-                {courses.length > 1 && <><label className="sr-only" htmlFor="active-course">Active course</label><select id="active-course" value={activeCourseId} onChange={(event) => setActiveCourseId(event.target.value)} className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-800">{courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}</select></>}
+                {courses.length > 1 && <><label className="sr-only" htmlFor="active-course">Active course</label><select id="active-course" value={activeCourseId} onChange={(event) => setActiveCourseId(event.target.value)} className="rounded-full border border-line bg-surface px-2 py-0.5 text-xs">{courses.map((course) => <option key={course.id} value={course.id}>{course.code}</option>)}</select></>}
                 {webSearchEnabled && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs">
+                  <span className="badge badge-info px-2! py-0.5!">
                     <Globe className="h-3 w-3" />
                     Web search
                   </span>
@@ -1639,7 +1639,7 @@ function ChatWorkspaceContent() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2 sm:gap-3 rounded-full border border-zinc-200 bg-zinc-100 px-3 sm:px-4 py-2 focus-within:border-zinc-300 focus-within:bg-white transition dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-zinc-600 dark:focus-within:bg-zinc-800">
+              <div className="flex items-center gap-2 sm:gap-3 rounded-full border-2 border-line bg-surface py-1.5 pl-3 pr-1.5 sm:pl-[18px] transition focus-within:border-primary focus-within:shadow-[0_0_0_4px_var(--ring)]">
                 {/* Plus Menu Button (Left side) */}
                 <div className="relative" ref={plusMenuRef}>
                   <button
@@ -1648,7 +1648,7 @@ function ChatWorkspaceContent() {
                       setPlusMenuOpen(!plusMenuOpen);
                       setStyleSubmenuOpen(false);
                     }}
-                    className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-300 dark:border-zinc-600 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-line text-muted hover:bg-line transition"
                     title="More options"
                   >
                     <Plus className={`h-5 w-5 transition-transform ${plusMenuOpen ? 'rotate-45' : ''}`} />
@@ -1656,7 +1656,7 @@ function ChatWorkspaceContent() {
 
                   {/* Plus Menu Dropdown */}
                   {plusMenuOpen && (
-                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-visible z-50 animate-fade-in-up">
+                    <div className="absolute bottom-full left-0 mb-2 w-56 bg-surface border border-line rounded-xl shadow-xl overflow-visible z-50 animate-fade-in-up">
                       {/* Hidden file input */}
                       <input
                         type="file"
@@ -1672,9 +1672,9 @@ function ChatWorkspaceContent() {
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-foreground hover:bg-surface-2 transition-colors"
                         >
-                          <Paperclip className="h-5 w-5 text-zinc-500" />
+                          <Paperclip className="h-5 w-5 text-muted" />
                           <span className="text-sm">Add files or photos</span>
                         </button>
 
@@ -1685,32 +1685,32 @@ function ChatWorkspaceContent() {
                             setResearchSidebarOpen(true);
                             setPlusMenuOpen(false);
                           }}
-                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-foreground hover:bg-surface-2 transition-colors"
                         >
-                          <FlaskConical className="h-5 w-5 text-indigo-500" />
+                          <FlaskConical className="h-5 w-5 text-primary" />
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">Research Mode</span>
-                            <span className="text-xs text-zinc-400">Upload sources & use research tools</span>
+                            <span className="text-xs text-muted">Upload sources & use research tools</span>
                           </div>
                         </button>
 
                         {/* Divider */}
-                        <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+                        <div className="h-px bg-line my-1" />
 
                         {/* Web search toggle */}
                         <button
                           type="button"
                           onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-                          className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-2 transition-colors"
                         >
                           <div className="flex items-center gap-3">
-                            <Globe className={`h-5 w-5 ${webSearchEnabled ? 'text-blue-500' : 'text-zinc-500'}`} />
-                            <span className={`text-sm ${webSearchEnabled ? 'text-blue-500 font-medium' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                            <Globe className={`h-5 w-5 ${webSearchEnabled ? 'text-info' : 'text-muted'}`} />
+                            <span className={`text-sm ${webSearchEnabled ? 'text-info font-medium' : 'text-foreground'}`}>
                               Web search
                             </span>
                           </div>
                           {webSearchEnabled && (
-                            <Check className="h-4 w-4 text-blue-500" />
+                            <Check className="h-4 w-4 text-primary" />
                           )}
                         </button>
 
@@ -1719,17 +1719,17 @@ function ChatWorkspaceContent() {
                           <button
                             type="button"
                             onClick={() => setStyleSubmenuOpen(!styleSubmenuOpen)}
-                            className="w-full flex items-center justify-between px-4 py-2.5 text-left text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                            className="w-full flex items-center justify-between px-4 py-2.5 text-left text-foreground hover:bg-surface-2 transition-colors"
                           >
                             <div className="flex items-center gap-3">
                               <span className="text-sm">Use style</span>
                             </div>
-                            <ChevronRight className="h-4 w-4 text-zinc-400" />
+                            <ChevronRight className="h-4 w-4 text-muted" />
                           </button>
 
                           {/* Style submenu */}
                           {styleSubmenuOpen && (
-                            <div className="absolute left-0 bottom-full mb-1 sm:left-full sm:bottom-0 sm:mb-0 sm:ml-1 w-56 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl z-50 animate-fade-in-up">
+                            <div className="absolute left-0 bottom-full mb-1 sm:left-full sm:bottom-0 sm:mb-0 sm:ml-1 w-56 bg-surface border border-line rounded-xl shadow-xl z-50 animate-fade-in-up">
                               <div className="py-2">
                                 {RESPONSE_STYLES.map((style) => (
                                   <button
@@ -1740,17 +1740,17 @@ function ChatWorkspaceContent() {
                                       setStyleSubmenuOpen(false);
                                       setPlusMenuOpen(false);
                                     }}
-                                    className={`w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
-                                      selectedStyle === style.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
+                                    className={`w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-surface-2 transition-colors ${
+                                      selectedStyle === style.id ? 'bg-surface-2' : ''
                                     }`}
                                   >
                                     <div className="flex items-center gap-3">
-                                      <span className={`text-sm ${selectedStyle === style.id ? 'text-blue-500 font-medium' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                                      <span className={`text-sm ${selectedStyle === style.id ? 'text-primary font-medium' : 'text-foreground'}`}>
                                         {style.name}
                                       </span>
                                     </div>
                                     {selectedStyle === style.id && (
-                                      <Check className="h-4 w-4 text-blue-500" />
+                                      <Check className="h-4 w-4 text-primary" />
                                     )}
                                   </button>
                                 ))}
@@ -1779,7 +1779,7 @@ function ChatWorkspaceContent() {
                       }
                     }
                   }}
-                  className="min-w-0 flex-1 bg-transparent text-base text-zinc-900 outline-none placeholder:text-zinc-500 dark:text-white dark:placeholder:text-zinc-400 caret-zinc-900 dark:caret-white"
+                  className="min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted caret-primary"
                 />
 
                 {/* Right side buttons */}
@@ -1789,19 +1789,19 @@ function ChatWorkspaceContent() {
                     <button
                       type="button"
                       onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                      className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-600 transition text-sm font-medium shadow-xs"
+                      className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full border border-line bg-surface text-foreground hover:bg-surface-2 transition text-sm font-medium shadow-xs"
                       title="Select model"
                     >
-                      <LLMCompanyIcon company={currentModel.company} className="h-4 w-4 text-zinc-600 dark:text-zinc-300 flex-shrink-0" />
+                      <LLMCompanyIcon company={currentModel.company} className="h-4 w-4 text-muted flex-shrink-0" />
                       <span className="hidden sm:inline">{currentModel.shortName}</span>
-                      <ChevronDown className={`h-3.5 w-3.5 transition-transform text-zinc-400 ${modelDropdownOpen ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform text-muted ${modelDropdownOpen ? 'rotate-180' : ''}`} />
                     </button>
 
                     {/* Model Dropdown Menu */}
                     {modelDropdownOpen && (
-                      <div className="absolute bottom-full right-0 mb-2 w-80 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
-                        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
-                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">Select Model</p>
+                      <div className="absolute bottom-full right-0 mb-2 w-80 bg-surface border border-line rounded-xl shadow-xl overflow-hidden z-50 animate-fade-in-up">
+                        <div className="px-4 py-3 border-b border-line">
+                          <p className="text-sm font-semibold text-foreground">Select Model</p>
                         </div>
                         <div className="py-2">
                           {LLM_MODELS.map((model) => {
@@ -1815,29 +1815,29 @@ function ChatWorkspaceContent() {
                                   setSelectedModel(model.id);
                                   setModelDropdownOpen(false);
                                 }}
-                                className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors ${
-                                  selectedModel === model.id ? 'bg-zinc-100 dark:bg-zinc-700/50' : ''
+                                className={`w-full flex items-center justify-between px-4 py-2.5 hover:bg-surface-2 transition-colors ${
+                                  selectedModel === model.id ? 'bg-surface-2' : ''
                                 }`}
                               >
                                 <div className="flex items-center gap-3 text-left">
-                                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-600/50 flex-shrink-0">
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-2 text-foreground border border-line flex-shrink-0">
                                     <LLMCompanyIcon company={model.company} className="h-4 w-4" />
                                   </div>
                                   <div>
-                                    <p className="text-sm font-medium text-zinc-900 dark:text-white leading-tight">{model.name}</p>
-                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                                    <p className="text-sm font-medium text-foreground leading-tight">{model.name}</p>
+                                    <p className="text-xs text-muted mt-0.5">
                                       {quota ? `${quota.remaining}/${quota.limit} remaining` : model.description}
                                     </p>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                   {model.badge && (
-                                    <span className="px-2 py-0.5 text-xs font-medium bg-zinc-200 dark:bg-zinc-600 text-zinc-600 dark:text-zinc-300 rounded">
+                                    <span className="px-2 py-0.5 text-xs font-medium bg-line text-muted rounded">
                                       {model.badge}
                                     </span>
                                   )}
                                   {selectedModel === model.id && (
-                                    <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center">
+                                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
                                       <Check className="h-3 w-3 text-white" />
                                     </div>
                                   )}
@@ -1855,7 +1855,7 @@ function ChatWorkspaceContent() {
                     type="button"
                     onClick={handleToggleDictation}
                     disabled={!isLoggedIn || isStreaming || isStartingChat}
-                    className="flex h-8 w-8 items-center justify-center text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex h-8 w-8 items-center justify-center text-muted hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label={isListening ? "Stop dictation" : "Start dictation"}
                   >
                     <Mic className="h-5 w-5" aria-hidden="true" />
@@ -1864,7 +1864,7 @@ function ChatWorkspaceContent() {
                   <button
                     type="submit"
                     disabled={!isLoggedIn || isStreaming || isStartingChat || !composerText.trim()}
-                    className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-full gradient-primary text-white shadow-[var(--shadow-brand)] transition hover:scale-105 disabled:opacity-45 disabled:shadow-none disabled:hover:scale-100 disabled:cursor-not-allowed"
                     aria-label="Send message"
                   >
                     <Send className="h-4 w-4" aria-hidden="true" />
@@ -1876,13 +1876,13 @@ function ChatWorkspaceContent() {
 
           {/* Grounded note + AI disclaimer */}
           <div className="mt-2 flex flex-col items-center gap-1 select-none">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
               {activeCourseCode
                 ? `Every answer is grounded in your ${activeCourseCode} materials`
                 : "Every answer is grounded in your course materials"}
             </span>
-            <p className="text-center text-xs text-zinc-400 dark:text-zinc-500">
+            <p className="text-center text-xs text-muted">
               AI is experimental and can make mistakes. Please double-check responses.
             </p>
           </div>
@@ -2067,25 +2067,26 @@ function ChatBubble({
             <div className="flex flex-wrap justify-end gap-2">
               {message.attachments.map((att, i) =>
                 att.isImage && att.previewUrl ? (
-                  <div key={i} className="w-48 rounded-xl overflow-hidden border border-zinc-600 shadow-md">
+                  <div key={i} className="w-48 rounded-md overflow-hidden border border-line bg-surface shadow-sm">
                     <img src={att.previewUrl} alt={att.name} className="w-full h-auto object-cover max-h-48" />
-                    <div className="px-2 py-1 bg-zinc-800 text-[10px] text-zinc-400 truncate">{att.name}</div>
+                    <div className="px-2 py-1 bg-surface-2 text-[10px] text-muted truncate">{att.name}</div>
                   </div>
                 ) : (
-                  <div key={i} className="flex items-center gap-2 rounded-xl bg-zinc-800 border border-zinc-600 px-3 py-2 max-w-[200px]">
+                  <div key={i} className="flex items-center gap-2 rounded-md bg-surface border border-line px-3 py-2 shadow-sm max-w-[200px]">
                     <div className={`flex-shrink-0 w-8 h-8 rounded-lg ${getAttachmentStyle(att.ext).color} flex items-center justify-center`}>
                       <FileText className="h-4 w-4 text-white" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-zinc-200 truncate">{att.name}</p>
-                      <p className="text-[10px] text-zinc-400">{getAttachmentStyle(att.ext).label}</p>
+                      <p className="text-xs font-medium text-foreground truncate">{att.name}</p>
+                      <p className="text-[10px] text-muted">{getAttachmentStyle(att.ext).label}</p>
                     </div>
                   </div>
                 )
               )}
             </div>
           )}
-          <div className="max-w-[85%] sm:max-w-2xl rounded-2xl bg-zinc-700 dark:bg-zinc-700 px-4 py-3 text-white">
+          {/* User = brand gradient, right-aligned, sharp inner corner */}
+          <div className="max-w-[85%] sm:max-w-2xl rounded-[18px_18px_4px_18px] gradient-primary px-4 py-3 text-white shadow-sm">
             <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.content}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -2122,18 +2123,18 @@ function ChatBubble({
 
   // Agent badge color mapping
   const agentBadgeConfig: Record<string, { label: string; color: string }> = {
-    tutor_agent: { label: "Tutor", color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20" },
-    doubts_agent: { label: "Doubt Resolver", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20" },
-    personalised_agent: { label: "Personalized", color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20" },
-    quiz_helper_agent: { label: "Quiz Helper", color: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20" },
-    feedback_agent: { label: "Feedback", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20" },
+    tutor_agent: { label: "Tutor", color: "bg-primary-bg text-primary border-primary/20" },
+    doubts_agent: { label: "Doubt Resolver", color: "bg-warning-bg text-warning border-warning/20" },
+    personalised_agent: { label: "Personalized", color: "bg-lavender/15 text-violet-700 dark:text-lavender border-lavender/30" },
+    quiz_helper_agent: { label: "Quiz Helper", color: "bg-success-bg text-success border-success/20" },
+    feedback_agent: { label: "Feedback", color: "bg-info-bg text-info border-info/20" },
   };
   const agentInfo = message.agent ? agentBadgeConfig[message.agent] : null;
 
-  // Assistant message - left aligned, no bubble
+  // Assistant message - left aligned surface bubble with a sharp inner corner
   return (
     <div className="animate-fade-in-up">
-      <div className="max-w-3xl">
+      <div className="w-fit min-w-0 max-w-[85%] lg:max-w-2xl rounded-[18px_18px_18px_4px] border border-line bg-surface px-4 py-3 shadow-sm">
         {showPhaseIndicator ? (
           <StreamingPhaseIndicator
             isStreaming={isStreaming || false}
@@ -2174,8 +2175,8 @@ function ChatBubble({
                       className={[
                         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
                         fellBack
-                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
-                          : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
+                          ? "bg-warning-bg text-warning border-warning/30"
+                          : "bg-primary-bg text-primary border-primary/20",
                       ].join(" ")}
                       title={fellBack ? `${MODEL_DISPLAY_NAMES[requested!] || requested} was unavailable, so ${usedName} answered.` : undefined}
                     >

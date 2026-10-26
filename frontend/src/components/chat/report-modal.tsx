@@ -94,29 +94,29 @@ export function ReportModal({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
         {/* Modal */}
         <div
-          className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up"
+          className="bg-surface border border-line rounded-lg shadow-lg w-full max-w-md overflow-hidden animate-fade-in-up"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-700">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-line">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
-                <Flag className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-danger-bg">
+                <Flag className="h-5 w-5 text-danger" />
               </div>
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">
+              <h2 className="text-lg font-semibold text-foreground">
                 Report Response
               </h2>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-surface-2 rounded-md transition-colors"
             >
-              <X className="h-5 w-5 text-zinc-500" />
+              <X className="h-5 w-5 text-muted" />
             </button>
           </div>
 
@@ -124,29 +124,29 @@ export function ReportModal({
           <div className="p-6">
             {isSubmitted ? (
               <div className="text-center py-8">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 mb-4">
-                  <Check className="h-8 w-8 text-green-600 dark:text-green-400" />
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success-bg mb-4">
+                  <Check className="h-8 w-8 text-success" />
                 </div>
-                <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-2">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
                   Report Submitted
                 </h3>
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                <p className="text-sm text-muted">
                   Thank you for your feedback. We&apos;ll review this response.
                 </p>
               </div>
             ) : (
               <>
                 {/* Warning */}
-                <div className="flex gap-3 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-6">
-                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                <div className="flex gap-3 p-4 rounded-xl bg-warning-bg border border-warning/40 mb-6">
+                  <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-warning">
                     Please help us improve by reporting any issues with this response.
                   </p>
                 </div>
 
                 {/* Reason selection */}
                 <div className="space-y-3 mb-6">
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <label className="block text-sm font-medium text-foreground">
                     What&apos;s the issue?
                   </label>
                   {REPORT_REASONS.map((reason) => (
@@ -154,18 +154,18 @@ export function ReportModal({
                       key={reason.id}
                       type="button"
                       onClick={() => setSelectedReason(reason.id)}
-                      className={`w-full text-left p-4 rounded-xl border transition-all ${
+                      className={`w-full text-left p-4 rounded-md border-2 transition-all ${
                         selectedReason === reason.id
-                          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20"
-                          : "border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600"
+                          ? "border-primary bg-primary-bg"
+                          : "border-line hover:border-primary/40"
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         <div
                           className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
                             selectedReason === reason.id
-                              ? "border-indigo-500 bg-indigo-500"
-                              : "border-zinc-300 dark:border-zinc-600"
+                              ? "border-primary bg-primary"
+                              : "border-line"
                           }`}
                         >
                           {selectedReason === reason.id && (
@@ -173,10 +173,10 @@ export function ReportModal({
                           )}
                         </div>
                         <div>
-                          <span className="font-medium text-zinc-900 dark:text-white">
+                          <span className="font-medium text-foreground">
                             {reason.label}
                           </span>
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+                          <p className="text-sm text-muted mt-0.5">
                             {reason.description}
                           </p>
                         </div>
@@ -188,7 +188,7 @@ export function ReportModal({
                 {/* Other text area */}
                 {selectedReason === "other" && (
                   <div className="mb-6">
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+                    <label className="block text-sm font-medium text-foreground mb-2">
                       Please describe the issue
                     </label>
                     <textarea
@@ -196,15 +196,15 @@ export function ReportModal({
                       onChange={(e) => setOtherText(e.target.value)}
                       placeholder="Describe the problem with this response..."
                       rows={4}
-                      className="w-full px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all resize-none"
+                      className="input resize-none"
                     />
                   </div>
                 )}
 
                 {/* Error */}
                 {error && (
-                  <div className="mb-4 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  <div className="mb-4 p-4 rounded-xl bg-danger-bg border border-danger/30">
+                    <p className="text-sm text-danger">{error}</p>
                   </div>
                 )}
 
@@ -213,7 +213,7 @@ export function ReportModal({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="flex-1 px-4 py-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                    className="btn-ghost flex-1"
                   >
                     Cancel
                   </button>
@@ -221,11 +221,11 @@ export function ReportModal({
                     type="button"
                     onClick={handleSubmit}
                     disabled={!selectedReason || isSubmitting}
-                    className="flex-1 px-4 py-3 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="btn-danger flex-1"
                   >
                     {isSubmitting ? (
                       <span className="flex items-center justify-center gap-2">
-                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <div className="h-[15px] w-[15px] border-2 border-white/40 border-t-white rounded-full animate-spin" />
                         Submitting...
                       </span>
                     ) : (
