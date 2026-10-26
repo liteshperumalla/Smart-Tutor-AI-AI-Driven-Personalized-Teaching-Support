@@ -77,7 +77,7 @@
   --color-surface-2: #F1F5F9;      /* wells, hovers, inputs */
   --color-border: #E2E8F0;
   --color-text: #0F172A;
-  --color-text-muted: #64748B;
+  --color-text-muted: #5B6B82;    /* 4.5:1+ on bg, surface and surface-2 */
 
   /* ---- State backgrounds (10-16% tints) ---- */
   --color-primary-bg: rgba(30, 58, 138, .10);
@@ -165,7 +165,7 @@
   --color-surface-2: #334155;
   --color-border: #475569;
   --color-text: #F8FAFC;
-  --color-text-muted: #94A3B8;
+  --color-text-muted: #A8B4C6;    /* 4.5:1+ on bg, surface and surface-2 */
 
   --color-primary-bg: rgba(96, 165, 250, .12);
   --color-success-bg: rgba(20, 184, 166, .16);
