@@ -305,7 +305,9 @@ function ChatWorkspaceContent() {
   const recognitionRef = useRef<any>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
-  const refreshSessions = useCallback(async () => {
+  // keepLocalFor: a session whose just-streamed messages must survive a server
+  // copy that hasn't caught up yet (fewer messages than shown locally).
+  const refreshSessions = useCallback(async (keepLocalFor?: string) => {
     if (!isLoggedIn || !token) {
       setSessions([]);
       setSelectedSessionId(null);
@@ -313,7 +315,15 @@ function ChatWorkspaceContent() {
     }
     try {
       const data = await listChatSessions(token);
-      setSessions(data);
+      setSessions((prev) => {
+        if (!keepLocalFor) return data;
+        const local = prev.find((s) => s.id === keepLocalFor);
+        return data.map((s) =>
+          s.id === keepLocalFor && local && (s.messages?.length ?? 0) < (local.messages?.length ?? 0)
+            ? { ...s, messages: local.messages }
+            : s
+        );
+      });
       if (data.length > 0) {
         const querySession = searchParams.get("session");
         const validSessions = data.filter((s): s is ChatSessionDTO => Boolean(s && typeof s === 'object' && 'id' in s));
@@ -757,7 +767,7 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions();
+      await refreshSessions(sessionId);
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");
@@ -1053,7 +1063,7 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions();
+      await refreshSessions(selectedSessionId ?? undefined);
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");
@@ -1222,7 +1232,7 @@ function ChatWorkspaceContent() {
         );
       }
 
-      await refreshSessions();
+      await refreshSessions(selectedSessionId ?? undefined);
       dispatchChatSessionsUpdated();
       fetchModelQuota();
       toast.success("Response ready");
