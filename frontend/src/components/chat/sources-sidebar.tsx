@@ -280,7 +280,7 @@ export function SourcesSidebar({
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       {isExternal ? (
-                        <Globe className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                        <Globe className="h-4 w-4 text-primary flex-shrink-0" />
                       ) : (
                         <FileText className="h-4 w-4 text-muted flex-shrink-0" />
                       )}
@@ -289,7 +289,7 @@ export function SourcesSidebar({
                           {label}
                         </span>
                         {externalUrl && (
-                          <span className="block text-xs text-blue-500 dark:text-blue-400 truncate">
+                          <span className="block text-xs text-primary truncate">
                             {getDomain(externalUrl)}
                           </span>
                         )}

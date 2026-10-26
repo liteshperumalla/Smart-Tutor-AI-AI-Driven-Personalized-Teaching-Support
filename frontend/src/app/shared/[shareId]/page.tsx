@@ -59,20 +59,20 @@ export default function SharedChatPage() {
       <PageShell className="max-w-4xl" contentClassName="gap-8">
         <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
           <div className="relative z-10 space-y-4">
-            <div className="h-6 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-            <div className="h-10 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
-            <div className="h-6 w-96 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+            <div className="h-6 w-32 bg-line rounded animate-pulse"></div>
+            <div className="h-10 w-64 bg-line rounded animate-pulse"></div>
+            <div className="h-6 w-96 bg-line rounded animate-pulse"></div>
           </div>
         </header>
-        <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex items-center justify-between-b-zinc-100 px-6 py-4 dark:border-zinc-800">
-            <div className="h-6 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+        <section className="flex flex-col rounded-3xl border border-line bg-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-line px-6 py-4">
+            <div className="h-6 w-48 bg-line rounded animate-pulse"></div>
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
             {[1, 2, 3].map((i) => (
               <div key={i} className={`flex ${i % 2 === 0 ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-xl rounded-2xl px-5 py-4 ${i % 2 === 0 ? "bg-gradient-to-br from-indigo-600 to-purple-600" : "border-2 border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-800"}`}>
-                  <div className="h-4 w-3/4 bg-white/20 rounded animate-pulse"></div>
+                <div className={`max-w-xl rounded-2xl px-5 py-4 ${i % 2 === 0 ? "gradient-primary" : "border-2 border-line bg-surface"}`}>
+                  <div className="h-4 w-3/4 bg-current/20 rounded animate-pulse"></div>
                 </div>
               </div>
             ))}
@@ -87,10 +87,10 @@ export default function SharedChatPage() {
       <PageShell className="max-w-2xl" contentClassName="gap-8">
         <header className="relative overflow-hidden rounded-3xl gradient-mesh p-12">
           <div className="relative z-10">
-            <h1 className="font-display text-2xl sm:text-4xl font-bold text-zinc-900 dark:text-white">
+            <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground">
               Shared Chat Unavailable
             </h1>
-            <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">{error}</p>
+            <p className="mt-4 text-lg text-muted">{error}</p>
             <div className="mt-8">
               <Link href="/" className="btn-primary">
                 Go to Home
@@ -110,14 +110,14 @@ export default function SharedChatPage() {
   return (
     <PageShell className="max-w-4xl" contentClassName="gap-8">
       <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
-        <div className="absolute bottom-0 left-0 h-48 w-48 bg-purple-400/20 rounded-full blur-3xl" style={{ animationDelay: "1s" }}></div>
+        <div className="absolute bottom-0 left-0 h-48 w-48 bg-lavender/20 rounded-full blur-3xl" style={{ animationDelay: "1s" }}></div>
         <div className="relative z-10">
-          <h1 className="font-display text-2xl sm:text-4xl font-bold text-zinc-900 dark:text-white">
+          <h1 className="font-display text-2xl sm:text-4xl font-bold text-foreground">
             {session.title}
           </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-2 text-sm text-muted">
             {isExpired ? (
-              <span className="text-red-500">This shared link has expired</span>
+              <span className="text-danger">This shared link has expired</span>
             ) : (
               <>
                 Shared on {formatDate(session.created_at)} · Expires {formatDate(expires_at)} ·{" "}
@@ -136,16 +136,16 @@ export default function SharedChatPage() {
         </div>
       </header>
 
-      <section className="flex flex-col rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="flex items-center justify-between-b-zinc-100 px-6 py-4 dark:border-zinc-800">
+      <section className="flex flex-col rounded-3xl border border-line bg-surface shadow-sm">
+        <div className="flex items-center justify-between border-b border-line px-6 py-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-zinc-500 dark:text-zinc-400">
+            <p className="text-xs uppercase tracking-[0.25em] text-muted">
               {session.messages.length === 0 ? "No messages" : "Conversation"}
             </p>
           </div>
           {!isExpired && (
-            <span className="inline-flex items-center gap-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-              <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+            <span className="inline-flex items-center gap-2 rounded-full bg-success-bg px-3 py-1 text-xs font-medium text-success">
+              <span className="h-2 w-2 rounded-full bg-success-solid"></span>
               Active
             </span>
           )}
@@ -154,12 +154,12 @@ export default function SharedChatPage() {
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
           {session.messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-16 w-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
-                <svg className="h-8 w-8 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="h-16 w-16 rounded-full bg-surface-2 flex items-center justify-center mb-4">
+                <svg className="h-8 w-8 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               </div>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
+              <p className="text-sm text-muted max-w-md">
                 This chat session has no messages yet.
               </p>
             </div>
@@ -176,13 +176,13 @@ export default function SharedChatPage() {
                 <div
                   className={`max-w-xl rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-md break-words ${
                     isUser
-                      ? "bg-gradient-to-br from-indigo-600 to-purple-600 text-white shadow-indigo-600/20"
-                      : "border-2 border-zinc-200 bg-white text-zinc-900 shadow-zinc-200/50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:shadow-zinc-800/50"
+                      ? "gradient-primary text-white shadow-brand"
+                      : "border-2 border-line bg-surface text-foreground shadow-sm"
                   }`}
                 >
                   <p className="whitespace-pre-wrap break-words">{message.content || (isUser ? "" : "…")}</p>
                   {formattedTime && (
-                    <p className={`mt-2 text-xs ${isUser ? "text-white/70" : "text-zinc-500 dark:text-zinc-400"}`}>
+                    <p className={`mt-2 text-xs ${isUser ? "text-white/70" : "text-muted"}`}>
                       {formattedTime}
                     </p>
                   )}
@@ -192,10 +192,10 @@ export default function SharedChatPage() {
           })}
         </div>
 
-        <div className="border-t-zinc-100 px-6 py-4 dark:border-zinc-800">
-          <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="border-t border-line px-6 py-4">
+          <p className="text-center text-xs text-muted">
             Shared via Smart AI Tutor ·{" "}
-            <Link href="/" className="hover:text-zinc-700 dark:hover:text-zinc-300 underline">
+            <Link href="/" className="hover:text-foreground underline">
               Create your own chat sessions
             </Link>
           </p>

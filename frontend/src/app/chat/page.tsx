@@ -76,7 +76,7 @@ function MessageTime({ iso, className = "" }: { iso?: string; className?: string
   const formatted = formatMessageTime(iso);
   if (!formatted) return null;
   return (
-    <time dateTime={iso} title={formatted.full} className={`text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500 ${className}`}>
+    <time dateTime={iso} title={formatted.full} className={`text-[11px] tabular-nums text-muted ${className}`}>
       {formatted.label}
     </time>
   );
@@ -1357,7 +1357,7 @@ function ChatWorkspaceContent() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Full-width Header Bar - Outside of content constraints */}
-      <div className="flex-shrink-0 sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-surface border-b border-line">
         <div className="flex items-center px-4 py-3 max-w-6xl mx-auto w-full">
           {activeSession ? (
             <ChatHeaderActions
@@ -1375,7 +1375,7 @@ function ChatWorkspaceContent() {
             />
           ) : (
             <div className="flex items-center justify-between w-full">
-              <h1 className="text-base font-medium text-zinc-800 dark:text-zinc-100">
+              <h1 className="text-base font-medium text-foreground">
                 New chat
               </h1>
             </div>
@@ -1383,13 +1383,13 @@ function ChatWorkspaceContent() {
           <div className="flex items-center gap-1.5 sm:gap-2 ml-auto flex-shrink-0">
             {isAdmin && (
               <>
-                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-warning-bg px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-warning">
                   <ShieldAlert className="h-3 w-3" />
                   Admin
                 </span>
                 <Link
                   href="/admin"
-                  className="hidden sm:inline text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
+                  className="hidden sm:inline text-xs font-medium text-warning hover:underline"
                 >
                   Dashboard →
                 </Link>
@@ -1404,16 +1404,16 @@ function ChatWorkspaceContent() {
       <div className="flex flex-col max-w-5xl mx-auto w-full px-3 sm:px-6 animate-fade-in-up">
         {/* Error banner */}
         {streamError && (
-          <div className="mt-4 rounded-xl bg-red-500/10 px-4 py-3">
+          <div className="mt-4 rounded-md border border-danger bg-danger-bg px-4 py-3">
             <div className="flex items-center gap-3">
-              <svg className="h-5 w-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5 text-danger flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <p className="text-sm text-red-400 flex-1">{streamError}</p>
+              <p className="text-sm text-danger flex-1">{streamError}</p>
               <button
                 type="button"
                 onClick={() => setStreamError(null)}
-                className="text-sm font-medium text-red-400 hover:text-red-300"
+                className="text-sm font-medium text-danger hover:underline"
               >
                 Dismiss
               </button>
@@ -1424,15 +1424,15 @@ function ChatWorkspaceContent() {
         {/* Unauthenticated state */}
         {!isLoggedIn && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16">
-            <h1 className="text-3xl font-semibold text-zinc-900 dark:text-white mb-3">
+            <h1 className="text-3xl font-semibold text-foreground mb-3">
               Sign in to start chatting
             </h1>
-            <p className="text-base text-zinc-500 dark:text-zinc-400 mb-6 max-w-xl">
+            <p className="text-base text-muted mb-6 max-w-xl">
               Your chat history and saved sessions appear after signing in.
             </p>
             <Link
               href="/login"
-              className="px-6 py-3 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition"
+              className="px-6 py-3 rounded-full bg-primary-solid text-white font-medium hover:brightness-110 transition"
             >
               Sign in
             </Link>
@@ -1442,16 +1442,16 @@ function ChatWorkspaceContent() {
         {/* Welcome screen when no messages */}
         {isLoggedIn && (!activeSession || !hasMessages) && (
           <div className="flex flex-col items-center justify-center flex-1 px-6 text-center pb-16 pt-24">
-            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-zinc-900 dark:text-white mb-3">
+            <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-foreground mb-3">
               {`Hi, ${getFriendlyUserName(user)}`}
             </h1>
-            <p className="text-base sm:text-xl text-zinc-500 dark:text-zinc-400">
+            <p className="text-base sm:text-xl text-muted">
               {isAdmin ? (
                 "What would you like to test or explore?"
               ) : (
                 <>
                   What would you like to{" "}
-                  <span style={{ backgroundImage: "linear-gradient(90deg, #059669, #4f46e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+                  <span className="text-gradient-primary">
                     learn
                   </span>{" "}
                   today?
@@ -1470,7 +1470,7 @@ function ChatWorkspaceContent() {
                     setComposerText(starter);
                     composerRef.current?.focus();
                   }}
-                  className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 shadow-sm transition hover:border-emerald-400 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-emerald-500 dark:hover:text-white"
+                  className="rounded-full border border-line bg-surface px-4 py-2 text-sm text-foreground shadow-sm transition hover:border-success hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success disabled:opacity-50"
                 >
                   {/* Open-ended starters end in a space for the student's topic. */}
                   {starter.endsWith(" ") ? `${starter.trimEnd()} …` : starter}
@@ -1633,7 +1633,7 @@ function ChatWorkspaceContent() {
                   </span>
                 )}
                 {selectedStyle !== 'normal' && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lavender/15 text-violet-700 dark:text-lavender text-xs">
                     {currentStyle.name}
                   </span>
                 )}
@@ -2044,8 +2044,8 @@ function ChatBubble({
     // Helper: get icon + color for document attachments
     const getAttachmentStyle = (ext: string) => {
       switch (ext) {
-        case "pdf": return { color: "bg-red-500", label: "PDF" };
-        case "docx": case "doc": return { color: "bg-blue-500", label: "Word" };
+        case "pdf": return { color: "bg-danger-solid", label: "PDF" };
+        case "docx": case "doc": return { color: "bg-primary-solid", label: "Word" };
         case "pptx": case "ppt": return { color: "bg-orange-500", label: "PPT" };
         case "py": return { color: "bg-yellow-500", label: "Python" };
         case "ipynb": return { color: "bg-orange-600", label: "Notebook" };
@@ -2151,7 +2151,7 @@ function ChatBubble({
                   {agentInfo.label}
                 </span>
                 {message.route_reason && (
-                  <span className="text-[11px] text-zinc-400 dark:text-zinc-500 italic">{message.route_reason}</span>
+                  <span className="text-[11px] text-muted italic">{message.route_reason}</span>
                 )}
               </div>
             )}
@@ -2266,29 +2266,29 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
           onClick={() => onOpenSources(sources)}
           onMouseEnter={() => setShowTooltip(true)}
           onMouseLeave={() => setShowTooltip(false)}
-          className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-zinc-100 dark:bg-zinc-700 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors align-middle border border-zinc-200 dark:border-zinc-600"
+          className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-md bg-surface-2 text-xs text-foreground hover:bg-line transition-colors align-middle border border-line"
         >
-          <span className="w-3 h-3 rounded-full bg-zinc-300 dark:bg-zinc-500 flex items-center justify-center text-[8px] font-bold">
+          <span className="w-3 h-3 rounded-full bg-line flex items-center justify-center text-[8px] font-bold">
             {sourceIndex + 1}
           </span>
           <span className="max-w-[120px] truncate">{displayName}</span>
         </button>
         {/* Hover tooltip with source preview */}
         {showTooltip && (
-          <div className="absolute z-50 bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-white dark:bg-zinc-800 shadow-xl border border-zinc-200 dark:border-zinc-700 animate-fade-in-up">
+          <div className="absolute z-50 bottom-full left-0 mb-2 w-72 p-3 rounded-lg bg-surface shadow-xl border border-line animate-fade-in-up">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-5 h-5 rounded bg-zinc-200 dark:bg-zinc-600 flex items-center justify-center text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+              <div className="w-5 h-5 rounded bg-line flex items-center justify-center text-xs font-semibold text-muted">
                 {sourceIndex + 1}
               </div>
-              <span className="font-medium text-zinc-900 dark:text-white text-sm truncate flex-1">{displayName}</span>
+              <span className="font-medium text-foreground text-sm truncate flex-1">{displayName}</span>
             </div>
             {location && (
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-1">{location}</p>
+              <p className="text-xs text-muted mb-1">{location}</p>
             )}
             {snippet && (
-              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed line-clamp-4">&quot;{snippet}&quot;</p>
+              <p className="text-xs text-muted leading-relaxed line-clamp-4">&quot;{snippet}&quot;</p>
             )}
-            <p className="text-xs text-indigo-500 mt-2">Click to view all sources</p>
+            <p className="text-xs text-primary mt-2">Click to view all sources</p>
           </div>
         )}
       </span>
@@ -2402,7 +2402,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
           }
           // Add bold text
           result.push(
-            <strong key={`${keyPrefix}-bold-${partKey++}`} className="font-semibold text-zinc-900 dark:text-white">
+            <strong key={`${keyPrefix}-bold-${partKey++}`} className="font-semibold text-foreground">
               {boldMatch[1]}
             </strong>
           );
@@ -2443,7 +2443,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
     const flushParagraph = () => {
       if (currentParagraph.length > 0) {
         elements.push(
-          <p key={`p-${paragraphKey++}`} className="mb-5 leading-7 text-zinc-700 dark:text-zinc-200">
+          <p key={`p-${paragraphKey++}`} className="mb-5 leading-7 text-foreground">
             {currentParagraph}
           </p>
         );
@@ -2484,7 +2484,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
         flushParagraph();
         flushList();
         elements.push(
-          <h1 key={`h1-${lineIndex}`} className="text-2xl font-bold mb-4 mt-8 text-zinc-900 dark:text-white">
+          <h1 key={`h1-${lineIndex}`} className="text-2xl font-bold mb-4 mt-8 text-foreground">
             {renderInlineMarkdown(h1Match[1], `h1-${lineIndex}`)}
           </h1>
         );
@@ -2492,7 +2492,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
         flushParagraph();
         flushList();
         elements.push(
-          <h2 key={`h2-${lineIndex}`} className="text-xl font-bold mb-3 mt-6 text-zinc-900 dark:text-white">
+          <h2 key={`h2-${lineIndex}`} className="text-xl font-bold mb-3 mt-6 text-foreground">
             {renderInlineMarkdown(h2Match[1], `h2-${lineIndex}`)}
           </h2>
         );
@@ -2500,7 +2500,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
         flushParagraph();
         flushList();
         elements.push(
-          <h3 key={`h3-${lineIndex}`} className="text-lg font-semibold mb-3 mt-5 text-zinc-900 dark:text-white">
+          <h3 key={`h3-${lineIndex}`} className="text-lg font-semibold mb-3 mt-5 text-foreground">
             {renderInlineMarkdown(h3Match[1], `h3-${lineIndex}`)}
           </h3>
         );
@@ -2511,7 +2511,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
           listType = 'ul';
         }
         currentList.push(
-          <li key={`li-${lineIndex}`} className="text-zinc-700 dark:text-zinc-200 leading-relaxed">
+          <li key={`li-${lineIndex}`} className="text-foreground leading-relaxed">
             {renderInlineMarkdown(unorderedListMatch[1], `li-${lineIndex}`)}
           </li>
         );
@@ -2522,7 +2522,7 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
           listType = 'ol';
         }
         currentList.push(
-          <li key={`li-${lineIndex}`} className="text-zinc-700 dark:text-zinc-200 leading-relaxed">
+          <li key={`li-${lineIndex}`} className="text-foreground leading-relaxed">
             {renderInlineMarkdown(orderedListMatch[1], `li-${lineIndex}`)}
           </li>
         );
@@ -2550,9 +2550,9 @@ function MarkdownContent({ content, sources, isStreaming, onOpenSources }: Markd
   };
 
   return (
-    <div className="prose prose-sm dark:prose-invert max-w-none text-zinc-800 dark:text-zinc-200">
+    <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
       {renderMarkdown(safeContent)}
-      {isStreaming && <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse rounded-sm"></span>}
+      {isStreaming && <span className="inline-block w-2 h-4 ml-1 bg-primary-solid animate-pulse rounded-sm"></span>}
     </div>
   );
 }
@@ -2596,17 +2596,17 @@ function FileViewerModal({
   
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-6xl h-[90vh] bg-white dark:bg-zinc-900 rounded-xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-6xl h-[90vh] bg-surface rounded-xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
-          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white truncate">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-surface-2">
+          <h3 className="text-lg font-semibold text-foreground truncate">
             {title}
           </h3>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-line rounded-lg transition-colors"
           >
-            <svg className="w-5 h-5 text-zinc-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -2645,7 +2645,7 @@ function FileViewerModal({
           ) : isAudio ? (
             // Audio - embed player
             <div className="flex flex-col items-center justify-center h-full p-4">
-              <div className="w-24 h-24 mb-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <div className="w-24 h-24 mb-6 rounded-full gradient-primary flex items-center justify-center">
                 <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                 </svg>
@@ -2658,7 +2658,7 @@ function FileViewerModal({
                 href={displayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+                className="mt-4 text-sm text-primary hover:underline"
               >
                 Download audio file
               </a>
@@ -2674,22 +2674,22 @@ function FileViewerModal({
           ) : isCode ? (
             // Code files - show with download option
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+              <div className="w-20 h-20 mb-6 rounded-2xl gradient-primary flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>
-              <h4 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+              <h4 className="text-xl font-semibold text-foreground mb-2">
                 {title}
               </h4>
-              <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md">
+              <p className="text-muted mb-6 max-w-md">
                 Code file detected. Download to view in your editor or IDE.
               </p>
               <a
                 href={displayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="px-6 py-3 bg-primary-solid text-white rounded-lg hover:brightness-110 transition-colors font-medium"
               >
                 Download Code
               </a>
@@ -2697,15 +2697,15 @@ function FileViewerModal({
           ) : isOffice ? (
             // Office files - show info card with multiple options
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+              <div className="w-20 h-20 mb-6 rounded-2xl gradient-primary flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+              <h4 className="text-xl font-semibold text-foreground mb-2">
                 {title}
               </h4>
-              <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md">
+              <p className="text-muted mb-6 max-w-md">
                 Office documents require Microsoft Office or Google Docs to view. 
                 Download the file and open it with your preferred application.
               </p>
@@ -2714,7 +2714,7 @@ function FileViewerModal({
                   href={displayUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
+                  className="px-6 py-3 bg-primary-solid text-white rounded-lg hover:brightness-110 transition-colors font-medium flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -2722,22 +2722,22 @@ function FileViewerModal({
                   Download & Open
                 </a>
               </div>
-              <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
+              <p className="mt-6 text-sm text-muted max-w-md">
                 <strong>Tip:</strong> Right-click the download button and choose &quot;Save link as...&quot; to download the file, then open it with Microsoft Office, Google Docs, or any compatible viewer.
               </p>
             </div>
           ) : isNotebook ? (
             // Jupyter notebooks - show info card
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+              <div className="w-20 h-20 mb-6 rounded-2xl gradient-primary flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>
-              <h4 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+              <h4 className="text-xl font-semibold text-foreground mb-2">
                 {title}
               </h4>
-              <p className="text-zinc-600 dark:text-zinc-400 mb-6 max-w-md">
+              <p className="text-muted mb-6 max-w-md">
                 Jupyter notebook detected. Download the file to open in Jupyter Lab, 
                 VS Code, or upload to Google Colab.
               </p>
@@ -2746,7 +2746,7 @@ function FileViewerModal({
                   href={displayUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium flex items-center gap-2"
+                  className="px-6 py-3 bg-success-solid text-white rounded-lg hover:brightness-110 transition-colors font-medium flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -2757,31 +2757,31 @@ function FileViewerModal({
                   href={getColabUrl()}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-6 py-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors font-medium"
+                  className="px-6 py-3 bg-surface-2 text-foreground rounded-lg hover:bg-line transition-colors font-medium"
                 >
                   Open in Colab
                 </a>
               </div>
-                <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400 max-w-md">
+                <p className="mt-6 text-sm text-muted max-w-md">
                   <strong>Tip:</strong> For Colab, you may need to upload the downloaded .ipynb file manually.
                 </p>
               </div>
             ) : isText ? (
             // Text files - show with open link
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-zinc-500 to-zinc-700 flex items-center justify-center">
+              <div className="w-20 h-20 mb-6 rounded-2xl gradient-primary flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+              <h4 className="text-xl font-semibold text-foreground mb-2">
                 {title}
               </h4>
               <a
                 href={displayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                className="px-6 py-3 bg-primary-solid text-white rounded-lg hover:brightness-110 transition-colors font-medium"
               >
                 Open File
               </a>
@@ -2789,19 +2789,19 @@ function FileViewerModal({
           ) : (
             // Default - show download link
             <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-              <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-zinc-400 to-zinc-600 flex items-center justify-center">
+              <div className="w-20 h-20 mb-6 rounded-2xl gradient-primary flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h4 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">
+              <h4 className="text-xl font-semibold text-foreground mb-2">
                 {title}
               </h4>
               <a
                 href={displayUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                className="px-6 py-3 bg-primary-solid text-white rounded-lg hover:brightness-110 transition-colors font-medium"
               >
                 Download File
               </a>
@@ -2810,8 +2810,8 @@ function FileViewerModal({
         </div>
         
         {/* Footer */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-zinc-50 dark:bg-zinc-800 border-t border-zinc-200 dark:border-zinc-700">
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-surface-2 border-t border-line">
+          <span className="text-xs text-muted">
             {isPDF ? 'PDF document' : 
              isImage ? 'Image file' : 
              isVideo ? 'Video file' : 
@@ -2874,30 +2874,30 @@ function ChatWorkspaceSkeleton() {
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header skeleton */}
-      <div className="flex-shrink-0 sticky top-0 z-10 bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-surface border-b border-line">
         <div className="flex items-center px-6 py-3 max-w-5xl mx-auto">
-          <div className="h-5 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+          <div className="h-5 w-32 bg-line rounded animate-pulse"></div>
         </div>
       </div>
 
       {/* Welcome screen skeleton */}
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-6 max-w-4xl mx-auto w-full">
-        <div className="h-10 w-48 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse mb-3"></div>
-        <div className="h-6 w-64 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+        <div className="h-10 w-48 bg-line rounded animate-pulse mb-3"></div>
+        <div className="h-6 w-64 bg-line rounded animate-pulse"></div>
       </div>
 
       {/* Input skeleton */}
       <div className="flex-shrink-0 max-w-4xl mx-auto w-full px-4 pb-4 pt-2">
-        <div className="rounded-3xl bg-zinc-100 px-4 py-3 dark:bg-zinc-800">
-          <div className="h-6 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse"></div>
+        <div className="rounded-3xl bg-surface-2 px-4 py-3">
+          <div className="h-6 w-full bg-line rounded animate-pulse"></div>
           <div className="flex items-center justify-end mt-2">
-            <div className="h-9 w-9 bg-indigo-600 rounded-full animate-pulse"></div>
+            <div className="h-9 w-9 bg-primary-solid rounded-full animate-pulse"></div>
           </div>
         </div>
         <div className="flex justify-center gap-2 mt-4">
-          <div className="h-10 w-32 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
-          <div className="h-10 w-24 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
-          <div className="h-10 w-28 bg-zinc-200 dark:bg-zinc-700 rounded-full animate-pulse"></div>
+          <div className="h-10 w-32 bg-line rounded-full animate-pulse"></div>
+          <div className="h-10 w-24 bg-line rounded-full animate-pulse"></div>
+          <div className="h-10 w-28 bg-line rounded-full animate-pulse"></div>
         </div>
       </div>
     </div>

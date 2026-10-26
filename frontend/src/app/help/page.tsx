@@ -55,7 +55,7 @@ const faqs: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "Where do the tutor's answers come from?",
-    a: <>From the materials indexed for your active course, listed on the <Link href="/resources" className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-400">Resources</Link> page. Answers show which sources they used so you can check them.</>,
+    a: <>From the materials indexed for your active course, listed on the <Link href="/resources" className="font-medium text-success underline-offset-2 hover:underline">Resources</Link> page. Answers show which sources they used so you can check them.</>,
   },
   {
     q: "Can I choose which AI model answers?",
@@ -71,7 +71,7 @@ const faqs: { q: string; a: React.ReactNode }[] = [
   },
   {
     q: "I forgot my password.",
-    a: <>Use <Link href="/password-reset/request" className="font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-400">Reset password</Link> on the sign-in page and follow the link in the email.</>,
+    a: <>Use <Link href="/password-reset/request" className="font-medium text-success underline-offset-2 hover:underline">Reset password</Link> on the sign-in page and follow the link in the email.</>,
   },
 ];
 
@@ -87,7 +87,7 @@ export default function HelpPage() {
       />
 
       <section className="animate-fade-in-up">
-        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
           <BookOpen className="h-4 w-4" />
           Feature guides
         </h2>
@@ -96,55 +96,55 @@ export default function HelpPage() {
             <Link
               key={title}
               href={href}
-              className="group rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900"
+              className="group rounded-2xl border border-line bg-surface p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-success-bg text-success">
                 <Icon className="h-5 w-5" aria-hidden="true" />
               </span>
-              <h3 className="font-display mt-5 text-lg font-bold text-zinc-900 dark:text-white">
+              <h3 className="font-display mt-5 text-lg font-bold text-foreground">
                 {title}
                 <span className="ml-1 inline-block transition-transform group-hover:translate-x-1" aria-hidden="true">→</span>
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{body}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
             </Link>
           ))}
         </div>
       </section>
 
       <section className="animate-fade-in-up stagger-1">
-        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
           <CircleHelp className="h-4 w-4" />
           Frequently asked questions
         </h2>
-        <div className="mt-5 divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:divide-zinc-800 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mt-5 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
           {faqs.map(({ q, a }) => (
             <details key={q} className="group">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-sm font-semibold text-zinc-900 hover:bg-zinc-50 dark:text-white dark:hover:bg-zinc-800/60 [&::-webkit-details-marker]:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-4 text-sm font-semibold text-foreground hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
                 {q}
-                <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition-transform group-open:rotate-180" aria-hidden="true" />
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden="true" />
               </summary>
-              <p className="px-6 pb-5 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{a}</p>
+              <p className="px-6 pb-5 text-sm leading-relaxed text-muted">{a}</p>
             </details>
           ))}
         </div>
       </section>
 
-      <section className="animate-fade-in-up stagger-2 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="animate-fade-in-up stagger-2 rounded-2xl border border-line bg-surface p-6 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success-bg text-success">
               <LifeBuoy className="h-5 w-5" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="font-display text-lg font-bold text-zinc-900 dark:text-white">Still stuck?</h2>
-              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              <h2 className="font-display text-lg font-bold text-foreground">Still stuck?</h2>
+              <p className="mt-1 text-sm text-muted">
                 Send feedback or report a bug and it goes straight to the course team.
               </p>
             </div>
           </div>
           <Link
             href="/feedback"
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-2 rounded-full gradient-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success focus-visible:ring-offset-2"
           >
             Contact us →
           </Link>

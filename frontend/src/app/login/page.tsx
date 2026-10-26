@@ -110,10 +110,10 @@ function LoginPageContent() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* Left: modern split — brand bar + gradient headline */}
-      <div className="relative hidden lg:flex flex-col gap-6 overflow-hidden p-12 text-white" style={{ background: "#0a0e1a" }}>
+      <div className="relative hidden lg:flex flex-col gap-6 overflow-hidden p-12 text-white" style={{ background: "#0F172A" }}>
         {/* Ambient brand glows */}
-        <div className="pointer-events-none absolute top-28 -right-20 h-80 w-80 rounded-full blur-[100px] animate-float" style={{ background: "rgba(16,185,129,0.18)" }}></div>
-        <div className="pointer-events-none absolute bottom-16 -left-24 h-72 w-72 rounded-full blur-[100px]" style={{ background: "rgba(99,102,241,0.16)", animationDelay: "1.5s" }}></div>
+        <div className="pointer-events-none absolute top-28 -right-20 h-80 w-80 rounded-full blur-[100px] animate-float" style={{ background: "rgba(20,184,166,0.20)" }}></div>
+        <div className="pointer-events-none absolute bottom-16 -left-24 h-72 w-72 rounded-full blur-[100px]" style={{ background: "rgba(59,130,246,0.22)", animationDelay: "1.5s" }}></div>
 
         {/* Brand bar */}
         <div className="relative z-10 flex items-center justify-between">
@@ -127,7 +127,7 @@ function LoginPageContent() {
         <div className="relative z-10 flex flex-1 flex-col justify-center">
           <h2 className="font-display text-5xl font-bold leading-[1.04] tracking-tight animate-fade-in-up">
             Learn across{" "}
-            <span style={{ backgroundImage: "linear-gradient(90deg, #6ee7b7, #818cf8)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+            <span style={{ backgroundImage: "linear-gradient(90deg, #93C5FD, #5EEAD4)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
               your courses
             </span>.
           </h2>
@@ -143,22 +143,22 @@ function LoginPageContent() {
       </div>
 
       {/* Right: Login form */}
-      <div className="flex items-center justify-center p-8 bg-zinc-50 dark:bg-zinc-950">
+      <div className="flex items-center justify-center p-8 bg-surface-2">
         <div className="w-full max-w-md animate-scale-in">
           <div className="mb-10 text-center lg:text-left">
-            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400 hover:gap-3 transition-all">
+            <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-success hover:gap-3 transition-all">
               <span>←</span> Back to home
             </Link>
-            <h1 className="font-display mt-6 text-4xl font-bold text-zinc-900 dark:text-white">
+            <h1 className="font-display mt-6 text-4xl font-bold text-foreground">
               Welcome back
             </h1>
-            <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+            <p className="mt-3 text-muted">
               Sign in to continue your learning journey
             </p>
           </div>
 
           {signupSuccess && (
-            <div className="mb-6 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 animate-fade-in-down">
+            <div className="mb-6 rounded-2xl border-2 border-success/30 bg-success-bg px-4 py-3 text-sm text-success animate-fade-in-down">
               <div className="flex items-center gap-2">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -168,7 +168,7 @@ function LoginPageContent() {
             </div>
           )}
           {signupVerified && (
-            <div className="mb-6 rounded-2xl border-2 border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 animate-fade-in-down">
+            <div className="mb-6 rounded-2xl border-2 border-success/30 bg-success-bg px-4 py-3 text-sm text-success animate-fade-in-down">
               <div className="flex items-center gap-2">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -185,7 +185,7 @@ function LoginPageContent() {
           <div className="space-y-2">
             <label
               htmlFor="username"
-              className="text-sm font-medium text-zinc-900 dark:text-zinc-300"
+              className="text-sm font-medium text-foreground"
             >
               Username / Email
             </label>
@@ -197,7 +197,7 @@ function LoginPageContent() {
               required
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none ring-0 transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+              className="input"
               placeholder="your@email.edu"
             />
           </div>
@@ -205,7 +205,7 @@ function LoginPageContent() {
           <div className="space-y-2">
             <label
               htmlFor="password"
-              className="text-sm font-medium text-zinc-900 dark:text-zinc-300"
+              className="text-sm font-medium text-foreground"
             >
               Password
             </label>
@@ -217,17 +217,17 @@ function LoginPageContent() {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-900 outline-none ring-0 transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white dark:focus:border-zinc-500"
+              className="input"
               placeholder="********"
             />
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-400">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
               <p className="font-medium">Sign-in failed</p>
               <p className="mt-0.5">{error}</p>
               {(error.toLowerCase().includes("incorrect") || error.toLowerCase().includes("invalid") || error.toLowerCase().includes("not found") || error.toLowerCase().includes("no account")) && (
-                <p className="mt-2 border-t border-red-200 pt-2 dark:border-red-800">
+                <p className="mt-2 border-t border-danger/30 pt-2">
                   No account?{" "}
                   <Link href="/signup" className="font-semibold underline hover:opacity-80">
                     Create one →
@@ -237,7 +237,7 @@ function LoginPageContent() {
             </div>
           )}
           {unverified && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+            <div className="rounded-xl border border-warning/40 bg-warning-bg px-4 py-3 text-sm text-warning">
               <p>Email not verified.</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
@@ -269,7 +269,7 @@ function LoginPageContent() {
           </button>
 
           <div className="space-y-3">
-            <div className="text-center text-xs uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500">
+            <div className="text-center text-xs uppercase tracking-[0.2em] text-muted">
               or continue with Google
             </div>
           <GoogleAuthButton intent="login" returnTo={returnTo} />
@@ -277,15 +277,15 @@ function LoginPageContent() {
         </form>
 
         <div className="mt-8 space-y-3 text-center text-sm">
-          <p className="text-zinc-600 dark:text-zinc-400">
+          <p className="text-muted">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
+            <Link href="/signup" className="font-semibold text-success hover:text-success">
               Create one →
             </Link>
           </p>
-          <p className="text-zinc-600 dark:text-zinc-400">
+          <p className="text-muted">
             Forgot your password?{" "}
-            <Link href="/password-reset/request" className="font-semibold text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
+            <Link href="/password-reset/request" className="font-semibold text-success hover:text-success">
               Reset it
             </Link>
           </p>
@@ -299,8 +299,8 @@ function LoginPageContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <p className="text-zinc-500">Loading...</p>
+      <div className="flex min-h-screen items-center justify-center bg-surface-2">
+        <p className="text-muted">Loading...</p>
       </div>
     }>
       <LoginPageContent />

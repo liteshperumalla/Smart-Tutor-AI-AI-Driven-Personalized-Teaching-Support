@@ -43,8 +43,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
       <div className="flex h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Checking admin access…</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
+          <p className="text-sm text-muted">Checking admin access…</p>
         </div>
       </div>
     );
@@ -53,13 +53,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!isAdmin) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-red-200 bg-red-50 p-8 dark:border-red-900 dark:bg-red-950/30">
-          <ShieldAlert className="h-12 w-12 text-red-500" />
-          <h2 className="text-lg font-semibold text-red-700 dark:text-red-400">Access Denied</h2>
-          <p className="text-sm text-red-600 dark:text-red-400">You do not have admin privileges.</p>
+        <div className="flex flex-col items-center gap-4 rounded-2xl border border-danger/30 bg-danger-bg p-8">
+          <ShieldAlert className="h-12 w-12 text-danger" />
+          <h2 className="text-lg font-semibold text-danger">Access Denied</h2>
+          <p className="text-sm text-danger">You do not have admin privileges.</p>
           <Link
             href="/"
-            className="mt-2 rounded-xl bg-zinc-900 px-6 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="mt-2 btn-primary btn-sm"
           >
             Go Home
           </Link>
@@ -72,17 +72,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex flex-col gap-6">
       {/* Admin Header */}
       <div className="flex items-center gap-3">
-        <ShieldAlert className="h-6 w-6 text-zinc-900 dark:text-white" />
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-white">Admin Panel</h1>
-        <span className="rounded-full bg-zinc-900 px-3 py-0.5 text-xs font-medium text-white dark:bg-white dark:text-zinc-900">
+        <ShieldAlert className="h-6 w-6 text-foreground" />
+        <h1 className="text-xl font-bold text-foreground">Admin Panel</h1>
+        <span className="rounded-full bg-primary-solid px-3 py-0.5 text-xs font-medium text-white">
           {user?.username}
         </span>
       </div>
 
       {/* Admin Navigation Tabs — one row that scrolls sideways instead of
           wrapping into a ragged second line. */}
-      <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white/70 [scrollbar-width:thin] dark:border-zinc-800 dark:bg-zinc-900/60">
-        <nav aria-label="Admin sections" className="flex min-w-max gap-1 p-2">
+      <div className="overflow-x-auto rounded-[14px] border border-line bg-surface [scrollbar-width:thin]">
+        <nav aria-label="Admin sections" className="flex min-w-max gap-1 p-1.5">
           {adminNav.map((item) => {
             const Icon = item.icon;
             const isActive =
@@ -95,10 +95,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
                 className={[
-                  "flex min-h-[40px] items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition whitespace-nowrap sm:px-4",
+                  "flex min-h-[40px] items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition whitespace-nowrap sm:px-4",
                   isActive
-                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white",
+                    ? "bg-primary-solid text-white"
+                    : "text-muted hover:bg-surface-2 hover:text-foreground",
                 ].join(" ")}
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />

@@ -143,26 +143,26 @@ function PasswordSetupContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
-      <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-surface-2 px-4">
+      <div className="w-full max-w-md rounded-3xl border border-line bg-surface p-8 shadow-sm">
         <div className="mb-6">
           <Link
             href="/login"
-            className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+            className="text-sm font-semibold text-primary hover:text-primary"
           >
             ← Back to sign in
           </Link>
-          <h1 className="mt-4 text-2xl font-bold text-zinc-900">
+          <h1 className="mt-4 text-2xl font-bold text-foreground">
             Set your password
           </h1>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-muted">
             Google sign-in requires creating a password for future logins.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="username">
+            <label className="text-sm font-medium text-foreground" htmlFor="username">
               Username
             </label>
             <input
@@ -178,7 +178,7 @@ function PasswordSetupContent() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="password">
+            <label className="text-sm font-medium text-foreground" htmlFor="password">
               New password
             </label>
             <input
@@ -198,7 +198,7 @@ function PasswordSetupContent() {
             {passwordTouched && (
               <ul className="mt-2 space-y-1">
                 {passwordRuleResults.map((r) => (
-                  <li key={r.label} className={`flex items-center gap-2 text-xs ${r.passed ? "text-emerald-600" : "text-red-500"}`}>
+                  <li key={r.label} className={`flex items-center gap-2 text-xs ${r.passed ? "text-success" : "text-danger"}`}>
                     {r.passed
                       ? <CheckCircle className="h-3.5 w-3.5 shrink-0" />
                       : <XCircle className="h-3.5 w-3.5 shrink-0" />}
@@ -208,14 +208,14 @@ function PasswordSetupContent() {
               </ul>
             )}
             {!passwordTouched && (
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="mt-1 text-xs text-muted">
                 Must be 12+ characters with uppercase, lowercase, number, and special character.
               </p>
             )}
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="confirmPassword">
+            <label className="text-sm font-medium text-foreground" htmlFor="confirmPassword">
               Confirm password
             </label>
             <input
@@ -232,7 +232,7 @@ function PasswordSetupContent() {
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
@@ -253,9 +253,9 @@ function PasswordSetupContent() {
 export default function PasswordSetupPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
-        <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
-          <h1 className="text-2xl font-bold text-zinc-900">Loading…</h1>
+      <div className="flex min-h-screen items-center justify-center bg-surface-2 px-4">
+        <div className="w-full max-w-md rounded-3xl border border-line bg-surface p-8 shadow-sm">
+          <h1 className="text-2xl font-bold text-foreground">Loading…</h1>
         </div>
       </div>
     }>

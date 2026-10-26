@@ -208,15 +208,15 @@ export default function QuizPage() {
   }, [result]);
 
   const getScoreColor = (percentage: number) => {
-    if (percentage >= 80) return 'text-emerald-600 dark:text-emerald-400';
-    if (percentage >= 60) return 'text-amber-600 dark:text-amber-400';
-    return 'text-red-600 dark:text-red-400';
+    if (percentage >= 80) return 'text-success';
+    if (percentage >= 60) return 'text-warning';
+    return 'text-danger';
   };
 
   const getScoreBg = (percentage: number) => {
-    if (percentage >= 80) return 'bg-emerald-100 dark:bg-emerald-900/30';
-    if (percentage >= 60) return 'bg-amber-100 dark:bg-amber-900/30';
-    return 'bg-red-100 dark:bg-red-900/30';
+    if (percentage >= 80) return 'bg-success-bg';
+    if (percentage >= 60) return 'bg-warning-bg';
+    return 'bg-danger-bg';
   };
 
   return (
@@ -233,57 +233,57 @@ export default function QuizPage() {
       <div className="grid gap-6 lg:grid-cols-4">
         {/* Quiz Setup */}
         <div className="lg:col-span-3">
-          <form onSubmit={handleGenerate} className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm">
+          <form onSubmit={handleGenerate} className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
             {/* Header */}
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30">
-                <Target className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              <div className="p-2 rounded-lg bg-lavender/15">
+                <Target className="h-5 w-5 text-violet-700 dark:text-lavender" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Practice this course</h2>
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">Choose course materials, then practice with feedback.</p>
+                <h2 className="text-lg font-semibold text-foreground">Practice this course</h2>
+                <p className="text-sm text-muted">Choose course materials, then practice with feedback.</p>
               </div>
             </div>
 
-            <label className="mb-6 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <label className="mb-6 block text-sm font-medium text-foreground">
               Active course
-              <select value={courseId} onChange={(event) => { setCourseId(event.target.value); setRecommendedObjectiveId(undefined); }} className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white">
+              <select value={courseId} onChange={(event) => { setCourseId(event.target.value); setRecommendedObjectiveId(undefined); }} className="mt-2 w-full rounded-xl border border-line bg-surface px-3 py-2 text-foreground">
                 {courses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.title}</option>)}
               </select>
             </label>
 
-            {recommendedObjectiveId && <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100"><p className="font-semibold">Recommended practice{recommendedTitle ? `: ${recommendedTitle}` : ""}</p><p className="mt-1">This {recommendedDifficulty} set targets one objective and updates mastery from your item-level answers.</p></div>}
+            {recommendedObjectiveId && <div className="mb-6 rounded-xl border border-primary/30 bg-primary-bg px-4 py-3 text-sm text-foreground"><p className="font-semibold">Recommended practice{recommendedTitle ? `: ${recommendedTitle}` : ""}</p><p className="mt-1">This {recommendedDifficulty} set targets one objective and updates mastery from your item-level answers.</p></div>}
 
             {foldersError && (
-              <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+              <div className="mb-4 rounded-xl bg-danger-bg border border-danger/30 px-4 py-3 text-sm text-danger">
                 {foldersError}
               </div>
             )}
 
-            <details className="mb-6 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700" open={!recommendedObjectiveId}>
-              <summary className="cursor-pointer text-sm font-semibold text-zinc-800 dark:text-zinc-100">{recommendedObjectiveId ? "Customize this practice set" : "Choose practice materials"}</summary>
+            <details className="mb-6 rounded-xl border border-line p-4" open={!recommendedObjectiveId}>
+              <summary className="cursor-pointer text-sm font-semibold text-foreground">{recommendedObjectiveId ? "Customize this practice set" : "Choose practice materials"}</summary>
             {/* Folder Selection */}
             <div className="mb-6 mt-5">
-              <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
                 <Folder className="h-4 w-4" />
                 Select Topics
               </label>
               {loadingFolders ? (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="rounded-xl p-4 border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 animate-pulse">
-                      <div className="h-4 w-3/4 bg-zinc-200 dark:bg-zinc-700 rounded mb-2"></div>
-                      <div className="h-3 w-1/2 bg-zinc-200 dark:bg-zinc-700 rounded"></div>
+                    <div key={i} className="rounded-xl p-4 border border-line bg-surface-2 animate-pulse">
+                      <div className="h-4 w-3/4 bg-line rounded mb-2"></div>
+                      <div className="h-3 w-1/2 bg-line rounded"></div>
                     </div>
                   ))}
                 </div>
               ) : folders.length === 0 ? (
-                <div className="rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 p-8 text-center">
-                  <div className="mx-auto h-12 w-12 rounded-full bg-zinc-100 dark:bg-zinc-700 flex items-center justify-center mb-3">
-                    <Folder className="h-6 w-6 text-zinc-400" />
+                <div className="rounded-xl border-2 border-dashed border-line bg-surface-2 p-8 text-center">
+                  <div className="mx-auto h-12 w-12 rounded-full bg-surface-2 flex items-center justify-center mb-3">
+                    <Folder className="h-6 w-6 text-muted" />
                   </div>
-                  <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">No course folders found</p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Upload course materials to generate quizzes</p>
+                  <p className="text-sm font-medium text-foreground">No course folders found</p>
+                  <p className="text-xs text-muted mt-1">Upload course materials to generate quizzes</p>
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -294,8 +294,8 @@ export default function QuizPage() {
                         key={folder.path}
                         className={`group relative cursor-pointer overflow-hidden rounded-xl p-4 transition-all duration-200 hover:-translate-y-0.5 ${
                           isSelected
-                            ? "bg-gradient-to-br from-purple-500 to-indigo-600 text-white shadow-lg shadow-purple-500/25"
-                            : "border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md"
+                            ? "gradient-primary text-white shadow-brand"
+                            : "border border-line bg-surface-2 hover:border-primary/40 hover:shadow-md"
                         }`}
                       >
                         <input
@@ -309,10 +309,10 @@ export default function QuizPage() {
                             <CheckCircle className="h-4 w-4" />
                           </div>
                         )}
-                        <span className={`font-semibold block ${isSelected ? '' : 'text-zinc-900 dark:text-white'}`}>
+                        <span className={`font-semibold block ${isSelected ? '' : 'text-foreground'}`}>
                           {folder.label}
                         </span>
-                        <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                        <span className={`text-xs ${isSelected ? 'text-white/70' : 'text-muted'}`}>
                           {folder.file_count} files
                         </span>
                       </label>
@@ -324,12 +324,12 @@ export default function QuizPage() {
 
             {/* Question Count */}
             <div className="mb-2">
-              <label className="flex items-center justify-between text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">
+              <label className="flex items-center justify-between text-sm font-medium text-foreground mb-3">
                 <span className="flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
                   Number of Questions
                 </span>
-                <span className="text-lg font-bold text-purple-600 dark:text-purple-400">{numQuestions}</span>
+                <span className="text-lg font-bold text-violet-700 dark:text-lavender">{numQuestions}</span>
               </label>
               <input
                 type="range"
@@ -337,9 +337,9 @@ export default function QuizPage() {
                 max={10}
                 value={numQuestions}
                 onChange={(event) => setNumQuestions(Number(event.target.value))}
-                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer accent-purple-600"
+                className="w-full h-2 bg-line rounded-full appearance-none cursor-pointer accent-purple-600"
               />
-              <div className="flex justify-between text-xs text-zinc-400 mt-1">
+              <div className="flex justify-between text-xs text-muted mt-1">
                 <span>1</span>
                 <span>10</span>
               </div>
@@ -347,7 +347,7 @@ export default function QuizPage() {
             </details>
 
             {actionError && (
-              <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+              <div className="mb-4 rounded-xl bg-danger-bg border border-danger/30 px-4 py-3 text-sm text-danger">
                 {actionError}
               </div>
             )}
@@ -356,7 +356,7 @@ export default function QuizPage() {
             <button
               type="submit"
               disabled={isGenerating || selectedFolders.length === 0}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-700 hover:to-indigo-700 text-white font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl gradient-primary hover:brightness-110 text-white font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {isGenerating ? (
                 <>
@@ -371,7 +371,7 @@ export default function QuizPage() {
               )}
             </button>
             {!isGenerating && selectedFolders.length === 0 && (
-              <p className="mt-2 text-center text-xs text-zinc-500 dark:text-zinc-400" role="status">
+              <p className="mt-2 text-center text-xs text-muted" role="status">
                 {recommendedObjectiveId
                   ? "Open “Customize this practice set” and pick at least one topic to start."
                   : "Pick at least one topic above to generate a quiz."}
@@ -382,24 +382,24 @@ export default function QuizPage() {
 
         {/* History Sidebar */}
         <div className="lg:col-span-1">
-          <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-sm">
+          <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
-              <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                <Trophy className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <div className="p-1.5 rounded-lg bg-warning-bg">
+                <Trophy className="h-4 w-4 text-warning" />
               </div>
-              <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Recent Scores</h3>
+              <h3 className="font-semibold text-foreground text-sm">Recent Scores</h3>
             </div>
 
             <div className="space-y-2">
               {history.length === 0 ? (
-                <p className="text-center text-xs text-zinc-500 dark:text-zinc-400 py-6">
+                <p className="text-center text-xs text-muted py-6">
                   No attempts yet. Generate a quiz to get started!
                 </p>
               ) : (
                 history.slice(0, 5).map((attempt, index) => (
                   <div
                     key={`${attempt.id}-${attempt.created_at ?? index}`}
-                    className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50"
+                    className="flex items-center justify-between p-3 rounded-xl bg-surface-2"
                   >
                     <div className="flex items-center gap-2">
                       <div className={`p-1.5 rounded-lg ${getScoreBg(attempt.percentage)}`}>
@@ -409,11 +409,11 @@ export default function QuizPage() {
                         <p className={`font-bold text-sm ${getScoreColor(attempt.percentage)}`}>
                           {attempt.percentage.toFixed(0)}%
                         </p>
-                        <p className="text-xs text-zinc-500">{attempt.score}/{attempt.total_questions}</p>
+                        <p className="text-xs text-muted">{attempt.score}/{attempt.total_questions}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-zinc-400">
+                      <p className="text-xs text-muted">
                         {new Date(attempt.created_at).toLocaleDateString()}
                       </p>
                     </div>
@@ -427,18 +427,18 @@ export default function QuizPage() {
 
       {/* Active Quiz Section */}
       {quiz && (
-        <div className="mt-8 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 shadow-sm animate-fade-in-up">
+        <div className="mt-8 rounded-2xl border border-line bg-surface p-6 shadow-sm animate-fade-in-up">
           {/* Quiz Header */}
-          <div className="flex flex-col gap-2 pb-6 mb-6 border-b border-zinc-100 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 pb-6 mb-6 border-b border-line sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-wider text-purple-600 dark:text-purple-400 font-semibold mb-1">Active Quiz</p>
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+              <p className="text-xs uppercase tracking-wider text-violet-700 dark:text-lavender font-semibold mb-1">Active Quiz</p>
+              <h2 className="text-xl font-bold text-foreground">
                 {resolvedFolderLabels.join(", ")}
               </h2>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-zinc-100 dark:bg-zinc-800">
-              <Clock className="h-4 w-4 text-zinc-500" />
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-surface-2">
+              <Clock className="h-4 w-4 text-muted" />
+              <span className="text-sm font-medium text-foreground">
                 {answeredCount}/{quiz.questions.length} answered
               </span>
             </div>
@@ -456,22 +456,22 @@ export default function QuizPage() {
                   className={`rounded-xl p-5 border ${
                     isGraded
                       ? qResult.is_correct
-                        ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/50"
-                        : "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800/50"
-                      : "bg-zinc-50 dark:bg-zinc-800/50 border-zinc-100 dark:border-zinc-700/50"
+                        ? "bg-success-bg border-success/30"
+                        : "bg-danger-bg border-danger/30"
+                      : "bg-surface-2 border-line"
                   }`}
                 >
                   <div className="flex items-start gap-3 mb-4">
                     <span className={`flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold ${
                       isGraded
                         ? qResult.is_correct
-                          ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
-                          : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-                        : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+                          ? "bg-success-bg text-success"
+                          : "bg-danger-bg text-danger"
+                        : "bg-lavender/15 text-violet-700 dark:text-lavender"
                     }`}>
                       {isGraded ? (qResult.is_correct ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />) : index + 1}
                     </span>
-                    <h3 className="text-base font-semibold text-zinc-900 dark:text-white leading-relaxed">
+                    <h3 className="text-base font-semibold text-foreground leading-relaxed">
                       {question.question}
                     </h3>
                   </div>
@@ -490,28 +490,28 @@ export default function QuizPage() {
 
                       if (isGraded) {
                         if (isCorrectAnswer) {
-                          optionClass = "bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-500";
-                          circleClass = "bg-emerald-600 text-white";
-                          textClass = "text-emerald-900 dark:text-emerald-100 font-medium";
+                          optionClass = "bg-success-bg border-2 border-success";
+                          circleClass = "bg-success-solid text-white";
+                          textClass = "text-success font-medium";
                         } else if (isWrongSelection) {
-                          optionClass = "bg-red-100 dark:bg-red-900/30 border-2 border-red-400";
-                          circleClass = "bg-red-500 text-white";
-                          textClass = "text-red-900 dark:text-red-100 font-medium line-through";
+                          optionClass = "bg-danger-bg border-2 border-danger";
+                          circleClass = "bg-danger-solid text-white";
+                          textClass = "text-danger font-medium line-through";
                         } else {
-                          optionClass = "bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 opacity-60";
-                          circleClass = "bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400";
-                          textClass = "text-zinc-700 dark:text-zinc-300";
+                          optionClass = "bg-surface border border-line opacity-60";
+                          circleClass = "bg-surface-2 text-muted";
+                          textClass = "text-foreground";
                         }
                       } else {
                         optionClass = isSelected
-                          ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-500"
-                          : "bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:border-purple-300 dark:hover:border-purple-600";
+                          ? "bg-primary-bg border-2 border-primary"
+                          : "bg-surface border border-line hover:border-primary/40";
                         circleClass = isSelected
-                          ? "bg-purple-600 text-white"
-                          : "bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400";
+                          ? "bg-primary-solid text-white"
+                          : "bg-surface-2 text-muted";
                         textClass = isSelected
-                          ? "text-purple-900 dark:text-purple-100 font-medium"
-                          : "text-zinc-700 dark:text-zinc-300";
+                          ? "text-primary font-medium"
+                          : "text-foreground";
                       }
 
                       return (
@@ -546,21 +546,21 @@ export default function QuizPage() {
 
                   {/* Explanation for wrong answers */}
                   {isGraded && !qResult.is_correct && qResult.explanation && (
-                    <div className="ml-11 mt-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-4 py-3">
+                    <div className="ml-11 mt-3 rounded-lg bg-warning-bg border border-warning/40 px-4 py-3">
                       <div className="flex items-start gap-2">
-                        <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-amber-900 dark:text-amber-200">{qResult.explanation}</p>
+                        <Lightbulb className="h-4 w-4 text-warning mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-warning">{qResult.explanation}</p>
                       </div>
-                      {question.objective_id && <Link href={`/chat?course=${encodeURIComponent(courseId)}&mode=learn&objective=${encodeURIComponent(question.objective_id)}`} className="mt-2 inline-block text-sm font-semibold text-amber-800 underline dark:text-amber-200">Review this objective in Learn mode</Link>}
+                      {question.objective_id && <Link href={`/chat?course=${encodeURIComponent(courseId)}&mode=learn&objective=${encodeURIComponent(question.objective_id)}`} className="mt-2 inline-block text-sm font-semibold text-warning underline">Review this objective in Learn mode</Link>}
                     </div>
                   )}
 
                   {/* Confirmation for correct answers */}
                   {isGraded && qResult.is_correct && qResult.explanation && (
-                    <div className="ml-11 mt-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/50 px-4 py-3">
+                    <div className="ml-11 mt-3 rounded-lg bg-success-bg border border-success/30 px-4 py-3">
                       <div className="flex items-start gap-2">
-                        <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-emerald-900 dark:text-emerald-200">{qResult.explanation}</p>
+                        <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-success">{qResult.explanation}</p>
                       </div>
                     </div>
                   )}
@@ -578,7 +578,7 @@ export default function QuizPage() {
                   <p className={`text-lg font-bold ${getScoreColor(result.percentage)}`}>
                     {result.score}/{result.total_questions} ({result.percentage.toFixed(0)}%)
                   </p>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400">Quiz completed!</p>
+                  <p className="text-xs text-muted">Quiz completed!</p>
                 </div>
               </div>
             )}
@@ -587,11 +587,11 @@ export default function QuizPage() {
                 type="button"
                 disabled={answeredCount !== quiz.questions.length || isSubmitting}
                 onClick={handleSubmit}
-                className="flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 font-semibold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary btn-lg"
               >
                 {isSubmitting ? (
                   <>
-                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-white dark:border-zinc-900 border-t-transparent"></span>
+                    <span className="h-5 w-5 animate-spin rounded-full border-2 border-background border-t-transparent"></span>
                     Submitting...
                   </>
                 ) : (

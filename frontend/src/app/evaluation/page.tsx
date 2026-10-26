@@ -66,6 +66,14 @@ import {
   Lock, GitBranch, Users
 } from "lucide-react";
 
+// Recharts tooltips follow the theme: surface card, 1px border, theme text.
+const CHART_TOOLTIP_STYLE = {
+  backgroundColor: "var(--color-surface)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "12px",
+  color: "var(--color-text)",
+};
+
 // Types for metrics
 interface PrometheusMetric {
   name: string;
@@ -547,30 +555,30 @@ export function EvaluationContent() {
   // Color helper for quality scores
   const qualityColor = (score: number | null | undefined) =>
     !isFiniteMetric(score)
-      ? "text-zinc-400 dark:text-zinc-500"
+      ? "text-muted"
       : score >= 0.7
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-success"
       : score >= 0.4
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-red-600 dark:text-red-400";
+      ? "text-warning"
+      : "text-danger";
 
   const qualityBg = (score: number | null | undefined) =>
     !isFiniteMetric(score)
-      ? "bg-zinc-50 dark:bg-zinc-800"
+      ? "bg-surface-2"
       : score >= 0.7
-      ? "bg-emerald-50 dark:bg-emerald-900/20"
+      ? "bg-success-bg"
       : score >= 0.4
-      ? "bg-amber-50 dark:bg-amber-900/20"
-      : "bg-red-50 dark:bg-red-900/20";
+      ? "bg-warning-bg"
+      : "bg-danger-bg";
 
   const driftColor = (score: number | null | undefined) =>
     !isFiniteMetric(score)
-      ? "text-zinc-400 dark:text-zinc-500"
+      ? "text-muted"
       : score < 1.5
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? "text-success"
       : score < 2.5
-      ? "text-amber-600 dark:text-amber-400"
-      : "text-red-600 dark:text-red-400";
+      ? "text-warning"
+      : "text-danger";
 
   // Metric Card Component
   const MetricCard = ({
@@ -589,31 +597,31 @@ export function EvaluationContent() {
     color?: "indigo" | "emerald" | "amber" | "red" | "blue";
   }) => {
     const colorClasses = {
-      indigo: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400",
-      emerald: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400",
-      amber: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400",
-      red: "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400",
-      blue: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400",
+      indigo: "bg-primary-bg text-primary",
+      emerald: "bg-success-bg text-success",
+      amber: "bg-warning-bg text-warning",
+      red: "bg-danger-bg text-danger",
+      blue: "bg-primary-bg text-primary",
     };
 
     return (
-      <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
         <div className="flex items-start justify-between">
           <div className={`rounded-xl p-2.5 ${colorClasses[color]}`}>
             <Icon className="h-5 w-5" />
           </div>
           {trend && (
             <div className={`flex items-center gap-1 text-xs font-medium ${
-              trend === "up" ? "text-emerald-600" : trend === "down" ? "text-red-600" : "text-zinc-500"
+              trend === "up" ? "text-success" : trend === "down" ? "text-danger" : "text-muted"
             }`}>
               <TrendingUp className={`h-3 w-3 ${trend === "down" ? "rotate-180" : ""}`} />
               {trend === "up" ? "Good" : trend === "down" ? "Needs attention" : "Stable"}
             </div>
           )}
         </div>
-        <p className="mt-4 text-2xl font-bold text-zinc-900 dark:text-white">{value}</p>
-        <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{title}</p>
-        {subtitle && <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">{subtitle}</p>}
+        <p className="mt-4 text-2xl font-bold text-foreground">{value}</p>
+        <p className="text-xs uppercase tracking-wide text-muted">{title}</p>
+        {subtitle && <p className="mt-1 text-xs text-muted">{subtitle}</p>}
       </div>
     );
   };
@@ -624,15 +632,15 @@ export function EvaluationContent() {
     return (
       <div className="space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
-          <span className="font-medium text-zinc-900 dark:text-white">{value.toFixed(1)}%</span>
+          <span className="text-muted">{label}</span>
+          <span className="font-medium text-foreground">{value.toFixed(1)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+        <div className="h-2 rounded-full bg-line overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${
-              color === "emerald" ? "bg-emerald-500" :
-              color === "amber" ? "bg-amber-500" :
-              color === "red" ? "bg-red-500" : "bg-indigo-500"
+              color === "emerald" ? "bg-success-solid" :
+              color === "amber" ? "bg-warning" :
+              color === "red" ? "bg-danger-solid" : "bg-primary-solid"
             }`}
             style={{ width: `${percentage}%` }}
           />
@@ -646,14 +654,14 @@ export function EvaluationContent() {
       {/* Header */}
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Evaluation Dashboard</h1>
-          <p className="mt-1 text-zinc-500 dark:text-zinc-400">Monitor RAG pipeline performance and website metrics</p>
+          <h1 className="text-3xl font-bold text-foreground">Evaluation Dashboard</h1>
+          <p className="mt-1 text-muted">Monitor RAG pipeline performance and website metrics</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={fetchPrometheusMetrics}
             disabled={metricsLoading}
-            className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${metricsLoading ? "animate-spin" : ""}`} />
             Refresh Metrics
@@ -662,7 +670,7 @@ export function EvaluationContent() {
       </header>
 
       {/* Tab Navigation */}
-      <div className="overflow-x-auto rounded-xl bg-zinc-100 dark:bg-zinc-800">
+      <div className="overflow-x-auto rounded-xl bg-surface-2">
         <div className="flex gap-1 p-1 min-w-max">
           {[
             { id: "rag", label: "RAG Pipeline", icon: Brain },
@@ -678,8 +686,8 @@ export function EvaluationContent() {
               onClick={() => setActiveTab(tab.id as typeof activeTab)}
               className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition whitespace-nowrap sm:px-4 sm:gap-2 ${
                 activeTab === tab.id
-                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-white"
-                  : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+                  ? "bg-surface text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground"
               }`}
             >
               <tab.icon className="h-4 w-4 flex-shrink-0" />
@@ -695,12 +703,12 @@ export function EvaluationContent() {
           {/* Header with Refresh and Export */}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-900/20">
-                <Brain className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="rounded-xl bg-primary-bg p-2.5">
+                <Brain className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-zinc-900 dark:text-white">Real-time Pipeline Metrics</h3>
-                <p className="text-xs text-zinc-500">
+                <h3 className="font-semibold text-foreground">Real-time Pipeline Metrics</h3>
+                <p className="text-xs text-muted">
                   Live data from actual chat queries • {realtimeMetrics?.summary?.total_queries_analyzed || 0} queries analyzed
                 </p>
               </div>
@@ -708,20 +716,20 @@ export function EvaluationContent() {
             <div className="flex items-center gap-2">
               {/* Export Dropdown */}
               <div className="relative group">
-                <button className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700">
+                <button className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2">
                   <Download className="h-4 w-4" />
                   Export
                 </button>
-                <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-32 rounded-lg border border-zinc-200 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-800 z-10">
+                <div className="absolute right-0 top-full mt-1 hidden group-hover:block w-32 rounded-lg border border-line bg-surface shadow-lg z-10">
                   <button
                     onClick={() => handleExport("json")}
-                    className="w-full px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700 rounded-t-lg"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-surface-2 rounded-t-lg"
                   >
                     Export JSON
                   </button>
                   <button
                     onClick={() => handleExport("csv")}
-                    className="w-full px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700 rounded-b-lg"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-surface-2 rounded-b-lg"
                   >
                     Export CSV
                   </button>
@@ -730,7 +738,7 @@ export function EvaluationContent() {
               <button
                 onClick={() => { fetchRealtimeMetricsData(); fetchHistoryData(); }}
                 disabled={realtimeLoading || historyLoading}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${realtimeLoading || historyLoading ? "animate-spin" : ""}`} />
                 Refresh
@@ -740,13 +748,13 @@ export function EvaluationContent() {
 
           {realtimeLoading && !realtimeMetrics ? (
             <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" />
+              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
             </div>
           ) : realtimeMetrics?.status === "no_data" ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-              <Brain className="h-16 w-16 text-zinc-300 dark:text-zinc-600 mb-4" />
-              <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-2">No Data Yet</h3>
-              <p className="text-zinc-500 dark:text-zinc-400 max-w-md">
+            <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-line bg-surface">
+              <Brain className="h-16 w-16 text-muted/40 mb-4" />
+              <h3 className="text-lg font-semibold text-foreground mb-2">No Data Yet</h3>
+              <p className="text-muted max-w-md">
                 {realtimeMetrics.message || "Start chatting with the AI to see real-time pipeline metrics!"}
               </p>
             </div>
@@ -756,12 +764,12 @@ export function EvaluationContent() {
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-purple-50 p-2.5 dark:bg-purple-900/20">
-                      <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <div className="rounded-xl bg-lavender/15 p-2.5">
+                      <Shield className="h-5 w-5 text-violet-700 dark:text-lavender" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">Quality Metrics</h3>
-                      <p className="text-xs text-zinc-500">
+                      <h3 className="font-semibold text-foreground">Quality Metrics</h3>
+                      <p className="text-xs text-muted">
                         {activeQualitySummary
                           ? `${activeQualitySummary.evaluated_count} queries evaluated`
                           : "Run evaluation to see quality scores"}
@@ -771,7 +779,7 @@ export function EvaluationContent() {
                   <button
                     onClick={handleRunQualityEval}
                     disabled={qualityLoading}
-                    className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                    className="flex items-center gap-2 rounded-lg bg-primary-solid px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
                   >
                     {qualityLoading ? (
                       <>
@@ -788,7 +796,7 @@ export function EvaluationContent() {
                 </div>
 
                 {qualityError && (
-                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
+                  <div className="mb-4 rounded-xl border border-danger/30 bg-danger-bg p-3 text-sm text-danger">
                     {qualityError}
                   </div>
                 )}
@@ -804,11 +812,11 @@ export function EvaluationContent() {
                     ].map((metric) => (
                       <div
                         key={metric.label}
-                        className={`rounded-2xl border border-zinc-200 p-5 shadow-sm dark:border-zinc-800 ${qualityBg(metric.value)}`}
+                        className={`rounded-2xl border border-line p-5 shadow-sm ${qualityBg(metric.value)}`}
                       >
                         <div className="flex items-center gap-2 mb-3">
                           <metric.icon className={`h-4 w-4 ${qualityColor(metric.value)}`} />
-                          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{metric.label}</span>
+                          <span className="text-xs font-medium text-muted">{metric.label}</span>
                         </div>
                         <p className={`text-2xl font-bold ${qualityColor(metric.value)}`}>
                           {metric.value.toFixed(2)}
@@ -822,10 +830,10 @@ export function EvaluationContent() {
                       (label) => (
                         <div
                           key={label}
-                          className="rounded-2xl border border-zinc-200 bg-zinc-50 p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+                          className="rounded-2xl border border-line bg-surface-2 p-5 shadow-sm"
                         >
-                          <span className="text-xs font-medium text-zinc-400">{label}</span>
-                          <p className="mt-2 text-2xl font-bold text-zinc-300 dark:text-zinc-600">N/A</p>
+                          <span className="text-xs font-medium text-muted">{label}</span>
+                          <p className="mt-2 text-2xl font-bold text-muted/40">N/A</p>
                         </div>
                       )
                     )}
@@ -836,25 +844,25 @@ export function EvaluationContent() {
               {/* Section 2: Radar Chart + Summary Cards */}
               <section className="grid gap-6 lg:grid-cols-2">
                 {/* Radar Chart */}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-900/20">
-                      <Gauge className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                    <div className="rounded-xl bg-primary-bg p-2.5">
+                      <Gauge className="h-5 w-5 text-primary" />
                     </div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-white">Quality Radar</h3>
+                    <h3 className="font-semibold text-foreground">Quality Radar</h3>
                   </div>
                   {radarData.length > 0 ? (
                     <div className="h-72">
                       <ResponsiveContainer width="100%" height="100%">
                         <RadarChart outerRadius="70%" data={radarData}>
-                          <PolarGrid stroke="#e4e4e7" />
-                          <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "#71717a" }} />
-                          <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9 }} />
+                          <PolarGrid stroke="var(--color-border)" />
+                          <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                          <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9, fill: "var(--color-text-muted)" }} />
                           <Radar
                             name="Quality"
                             dataKey="value"
-                            stroke="#6366f1"
-                            fill="#6366f1"
+                            stroke="var(--color-primary)"
+                            fill="var(--color-primary)"
                             fillOpacity={0.3}
                             strokeWidth={2}
                           />
@@ -863,8 +871,8 @@ export function EvaluationContent() {
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-72 text-center">
-                      <Gauge className="h-12 w-12 text-zinc-300 dark:text-zinc-600 mb-3" />
-                      <p className="text-sm text-zinc-500">Run quality evaluation to see the radar chart</p>
+                      <Gauge className="h-12 w-12 text-muted/40 mb-3" />
+                      <p className="text-sm text-muted">Run quality evaluation to see the radar chart</p>
                     </div>
                   )}
                 </div>
@@ -905,34 +913,34 @@ export function EvaluationContent() {
               </section>
 
               {/* Section 3: Retrieval Evaluation */}
-              <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="rounded-xl bg-emerald-50 p-2.5 dark:bg-emerald-900/20">
-                    <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  <div className="rounded-xl bg-success-bg p-2.5">
+                    <Target className="h-5 w-5 text-success" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-white">Retrieval Evaluation</h3>
-                    <p className="text-xs text-zinc-500">Document retrieval quality and distribution</p>
+                    <h3 className="font-semibold text-foreground">Retrieval Evaluation</h3>
+                    <p className="text-xs text-muted">Document retrieval quality and distribution</p>
                   </div>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   {/* Retrieval Stats */}
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Avg Docs Retrieved</span>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Avg Docs Retrieved</span>
+                      <span className="text-lg font-bold text-foreground">
                         {realtimeMetrics.summary.avg_docs_retrieved.toFixed(1)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Avg Relevance Score</span>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Avg Relevance Score</span>
                       <span className={`text-lg font-bold ${qualityColor(realtimeMetrics.summary.avg_relevance_score)}`}>
                         {realtimeMetrics.summary.avg_relevance_score.toFixed(3)}
                       </span>
                     </div>
                     {activeQualitySummary && (
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Context Precision</span>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                        <span className="text-sm text-muted">Context Precision</span>
                         <span className={`text-lg font-bold ${qualityColor(activeQualitySummary.avg_context_precision)}`}>
                           {activeQualitySummary.avg_context_precision.toFixed(3)}
                         </span>
@@ -943,30 +951,30 @@ export function EvaluationContent() {
                   {/* Relevance Distribution */}
                   {realtimeMetrics.performance && (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-success-bg">
                         <div className="flex items-center gap-3">
-                          <CheckCircle className="h-5 w-5 text-emerald-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">High (&gt;0.7)</span>
+                          <CheckCircle className="h-5 w-5 text-success" />
+                          <span className="text-sm text-muted">High (&gt;0.7)</span>
                         </div>
-                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                        <span className="text-lg font-bold text-success">
                           {realtimeMetrics.performance.relevance_distribution.high_relevance_percentage}%
                         </span>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-warning-bg">
                         <div className="flex items-center gap-3">
-                          <Target className="h-5 w-5 text-amber-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Medium (0.4-0.7)</span>
+                          <Target className="h-5 w-5 text-warning" />
+                          <span className="text-sm text-muted">Medium (0.4-0.7)</span>
                         </div>
-                        <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                        <span className="text-lg font-bold text-warning">
                           {realtimeMetrics.performance.relevance_distribution.medium_0_4_to_0_7}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-red-50 dark:bg-red-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-danger-bg">
                         <div className="flex items-center gap-3">
-                          <AlertTriangle className="h-5 w-5 text-red-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Low (&lt;0.4)</span>
+                          <AlertTriangle className="h-5 w-5 text-danger" />
+                          <span className="text-sm text-muted">Low (&lt;0.4)</span>
                         </div>
-                        <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                        <span className="text-lg font-bold text-danger">
                           {realtimeMetrics.performance.relevance_distribution.low_below_0_4}
                         </span>
                       </div>
@@ -976,27 +984,27 @@ export function EvaluationContent() {
               </section>
 
               {/* Section 4: Generation Evaluation */}
-              <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="rounded-xl bg-purple-50 p-2.5 dark:bg-purple-900/20">
-                    <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  <div className="rounded-xl bg-lavender/15 p-2.5">
+                    <Brain className="h-5 w-5 text-violet-700 dark:text-lavender" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-white">Generation Evaluation</h3>
-                    <p className="text-xs text-zinc-500">Answer quality and response characteristics</p>
+                    <h3 className="font-semibold text-foreground">Generation Evaluation</h3>
+                    <p className="text-xs text-muted">Answer quality and response characteristics</p>
                   </div>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Avg Response Length</span>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Avg Response Length</span>
+                      <span className="text-lg font-bold text-foreground">
                         {realtimeMetrics.summary.avg_response_length_words} words
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Avg Generation Time</span>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Avg Generation Time</span>
+                      <span className="text-lg font-bold text-foreground">
                         {realtimeMetrics.summary.avg_generation_time_seconds.toFixed(2)}s
                       </span>
                     </div>
@@ -1004,22 +1012,22 @@ export function EvaluationContent() {
                   <div className="space-y-4">
                     {activeQualitySummary ? (
                       <>
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Faithfulness</span>
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                          <span className="text-sm text-muted">Faithfulness</span>
                           <span className={`text-lg font-bold ${qualityColor(activeQualitySummary.avg_faithfulness)}`}>
                             {activeQualitySummary.avg_faithfulness.toFixed(3)}
                           </span>
                         </div>
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Answer Relevance</span>
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                          <span className="text-sm text-muted">Answer Relevance</span>
                           <span className={`text-lg font-bold ${qualityColor(activeQualitySummary.avg_answer_relevance)}`}>
                             {activeQualitySummary.avg_answer_relevance.toFixed(3)}
                           </span>
                         </div>
                       </>
                     ) : (
-                      <div className="flex items-center justify-center p-6 rounded-xl bg-zinc-50 dark:bg-zinc-800 text-center">
-                        <p className="text-sm text-zinc-500">Run quality evaluation to see faithfulness & relevance scores</p>
+                      <div className="flex items-center justify-center p-6 rounded-xl bg-surface-2 text-center">
+                        <p className="text-sm text-muted">Run quality evaluation to see faithfulness & relevance scores</p>
                       </div>
                     )}
                   </div>
@@ -1027,34 +1035,34 @@ export function EvaluationContent() {
               </section>
 
               {/* Section 5: End-to-End Performance */}
-              <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="rounded-xl bg-blue-50 p-2.5 dark:bg-blue-900/20">
-                    <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="rounded-xl bg-primary-bg p-2.5">
+                    <Clock className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-zinc-900 dark:text-white">End-to-End Performance</h3>
-                    <p className="text-xs text-zinc-500">Total latency with percentile breakdown</p>
+                    <h3 className="font-semibold text-foreground">End-to-End Performance</h3>
+                    <p className="text-xs text-muted">Total latency with percentile breakdown</p>
                   </div>
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">
                   {/* Percentile Cards */}
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="rounded-xl bg-zinc-50 p-4 text-center dark:bg-zinc-800">
-                      <p className="text-xs text-zinc-500 mb-1">p50</p>
-                      <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                    <div className="rounded-xl bg-surface-2 p-4 text-center">
+                      <p className="text-xs text-muted mb-1">p50</p>
+                      <p className="text-xl font-bold text-foreground">
                         {realtimeMetrics.summary.p50_total_time_seconds.toFixed(2)}s
                       </p>
                     </div>
-                    <div className="rounded-xl bg-zinc-50 p-4 text-center dark:bg-zinc-800">
-                      <p className="text-xs text-zinc-500 mb-1">p95</p>
-                      <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
+                    <div className="rounded-xl bg-surface-2 p-4 text-center">
+                      <p className="text-xs text-muted mb-1">p95</p>
+                      <p className="text-xl font-bold text-warning">
                         {realtimeMetrics.summary.p95_total_time_seconds.toFixed(2)}s
                       </p>
                     </div>
-                    <div className="rounded-xl bg-zinc-50 p-4 text-center dark:bg-zinc-800">
-                      <p className="text-xs text-zinc-500 mb-1">p99</p>
-                      <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                    <div className="rounded-xl bg-surface-2 p-4 text-center">
+                      <p className="text-xs text-muted mb-1">p99</p>
+                      <p className="text-xl font-bold text-danger">
                         {realtimeMetrics.summary.p99_total_time_seconds.toFixed(2)}s
                       </p>
                     </div>
@@ -1063,35 +1071,35 @@ export function EvaluationContent() {
                   {/* Latency Distribution */}
                   {realtimeMetrics.performance && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-success-bg">
                         <div className="flex items-center gap-3">
-                          <Zap className="h-5 w-5 text-emerald-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Fast (&lt;2s)</span>
+                          <Zap className="h-5 w-5 text-success" />
+                          <span className="text-sm text-muted">Fast (&lt;2s)</span>
                         </div>
                         <div className="text-right">
-                          <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                          <span className="text-lg font-bold text-success">
                             {realtimeMetrics.performance.latency_distribution.fast_percentage}%
                           </span>
-                          <span className="text-xs text-zinc-500 ml-2">
+                          <span className="text-xs text-muted ml-2">
                             ({realtimeMetrics.performance.latency_distribution.fast_under_2s})
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-warning-bg">
                         <div className="flex items-center gap-3">
-                          <Clock className="h-5 w-5 text-amber-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Medium (2-5s)</span>
+                          <Clock className="h-5 w-5 text-warning" />
+                          <span className="text-sm text-muted">Medium (2-5s)</span>
                         </div>
-                        <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                        <span className="text-lg font-bold text-warning">
                           {realtimeMetrics.performance.latency_distribution.medium_2_to_5s}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between p-3 rounded-xl bg-red-50 dark:bg-red-900/20">
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-danger-bg">
                         <div className="flex items-center gap-3">
-                          <AlertTriangle className="h-5 w-5 text-red-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">Slow (&gt;5s)</span>
+                          <AlertTriangle className="h-5 w-5 text-danger" />
+                          <span className="text-sm text-muted">Slow (&gt;5s)</span>
                         </div>
-                        <span className="text-lg font-bold text-red-600 dark:text-red-400">
+                        <span className="text-lg font-bold text-danger">
                           {realtimeMetrics.performance.latency_distribution.slow_over_5s}
                         </span>
                       </div>
@@ -1103,12 +1111,12 @@ export function EvaluationContent() {
                 {metricsHistory?.data_points && metricsHistory.data_points.length > 0 && (
                   <div className="mt-6">
                     <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Historical Latency Trend</h4>
+                      <h4 className="text-sm font-medium text-foreground">Historical Latency Trend</h4>
                       <div className="flex items-center gap-2">
                         <select
                           value={historyHours}
                           onChange={(e) => setHistoryHours(Number(e.target.value))}
-                          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-foreground"
                         >
                           <option value={1}>1h</option>
                           <option value={6}>6h</option>
@@ -1119,7 +1127,7 @@ export function EvaluationContent() {
                         <select
                           value={historyGranularity}
                           onChange={(e) => setHistoryGranularity(e.target.value as "minute" | "hour" | "day")}
-                          className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                          className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-foreground"
                         >
                           <option value="minute">Min</option>
                           <option value="hour">Hour</option>
@@ -1130,23 +1138,18 @@ export function EvaluationContent() {
                     <div className="h-48">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={metricsHistory.data_points}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                           <XAxis
                             dataKey="timestamp"
-                            tick={{ fontSize: 10 }}
+                            tick={{ fontSize: 10, fill: "var(--color-text-muted)" }}
                             tickFormatter={(value) => {
                               const parts = value.split(" ");
                               return parts[1] || parts[0];
                             }}
                           />
-                          <YAxis tick={{ fontSize: 10 }} tickFormatter={(value) => `${value}s`} />
+                          <YAxis tick={{ fontSize: 10, fill: "var(--color-text-muted)" }} tickFormatter={(value) => `${value}s`} />
                           <Tooltip
-                            contentStyle={{
-                              backgroundColor: "#18181b",
-                              border: "none",
-                              borderRadius: "8px",
-                              color: "#fff",
-                            }}
+                            contentStyle={CHART_TOOLTIP_STYLE}
                             formatter={(value) => [`${(value as number)?.toFixed(3) ?? 0}s`, ""]}
                           />
                           <Legend />
@@ -1155,8 +1158,8 @@ export function EvaluationContent() {
                             dataKey="avg_retrieval_latency"
                             name="Retrieval"
                             stackId="1"
-                            stroke="#6366f1"
-                            fill="#6366f1"
+                            stroke="var(--color-primary)"
+                            fill="var(--color-primary)"
                             fillOpacity={0.6}
                           />
                           <Area
@@ -1164,8 +1167,8 @@ export function EvaluationContent() {
                             dataKey="avg_generation_latency"
                             name="Generation"
                             stackId="1"
-                            stroke="#8b5cf6"
-                            fill="#8b5cf6"
+                            stroke="var(--color-lavender)"
+                            fill="var(--color-lavender)"
                             fillOpacity={0.6}
                           />
                         </AreaChart>
@@ -1177,40 +1180,40 @@ export function EvaluationContent() {
 
               {/* Section 6: Recent Queries */}
               {realtimeMetrics.recent_queries.length > 0 && (
-                <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="rounded-xl bg-purple-50 p-2.5 dark:bg-purple-900/20">
-                      <Activity className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <div className="rounded-xl bg-lavender/15 p-2.5">
+                      <Activity className="h-5 w-5 text-violet-700 dark:text-lavender" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">Recent Queries</h3>
-                      <p className="text-xs text-zinc-500">Last {realtimeMetrics.recent_queries.length} queries from chat</p>
+                      <h3 className="font-semibold text-foreground">Recent Queries</h3>
+                      <p className="text-xs text-muted">Last {realtimeMetrics.recent_queries.length} queries from chat</p>
                     </div>
                   </div>
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-zinc-200 dark:border-zinc-700">
-                          <th className="pb-3 text-left font-medium text-zinc-500 dark:text-zinc-400">Query</th>
-                          <th className="pb-3 text-center font-medium text-zinc-500 dark:text-zinc-400">Latency</th>
-                          <th className="pb-3 text-center font-medium text-zinc-500 dark:text-zinc-400">Relevance</th>
-                          <th className="pb-3 text-center font-medium text-zinc-500 dark:text-zinc-400">Docs</th>
-                          <th className="pb-3 text-center font-medium text-zinc-500 dark:text-zinc-400">Quality</th>
-                          <th className="pb-3 text-center font-medium text-zinc-500 dark:text-zinc-400">Mode</th>
+                        <tr className="border-b border-line">
+                          <th className="pb-3 text-left font-medium text-muted">Query</th>
+                          <th className="pb-3 text-center font-medium text-muted">Latency</th>
+                          <th className="pb-3 text-center font-medium text-muted">Relevance</th>
+                          <th className="pb-3 text-center font-medium text-muted">Docs</th>
+                          <th className="pb-3 text-center font-medium text-muted">Quality</th>
+                          <th className="pb-3 text-center font-medium text-muted">Mode</th>
                         </tr>
                       </thead>
                       <tbody>
                         {realtimeMetrics.recent_queries.map((query, idx) => (
-                          <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800 last:border-0">
+                          <tr key={idx} className="border-b border-line last:border-0">
                             <td className="py-3 pr-4 max-w-[300px]">
-                              <p className="font-medium text-zinc-900 dark:text-white truncate">{query.query}</p>
-                              <p className="text-xs text-zinc-400">
+                              <p className="font-medium text-foreground truncate">{query.query}</p>
+                              <p className="text-xs text-muted">
                                 {query.timestamp ? new Date(query.timestamp).toLocaleString() : ""}
                               </p>
                             </td>
                             <td className="py-3 text-center">
-                              <span className="font-bold text-zinc-900 dark:text-white">
+                              <span className="font-bold text-foreground">
                                 {query.total_time.toFixed(2)}s
                               </span>
                             </td>
@@ -1218,16 +1221,16 @@ export function EvaluationContent() {
                               <span className={`font-bold ${
                                 isFiniteMetric(query.relevance_score)
                                   ? query.relevance_score > 0.7
-                                    ? "text-emerald-600"
+                                    ? "text-success"
                                     : query.relevance_score > 0.4
-                                    ? "text-amber-600"
-                                    : "text-red-600"
-                                  : "text-zinc-400"
+                                    ? "text-warning"
+                                    : "text-danger"
+                                  : "text-muted"
                               }`}>
                                 {formatMetric(query.relevance_score, 2)}
                               </span>
                             </td>
-                            <td className="py-3 text-center font-bold text-zinc-900 dark:text-white">
+                            <td className="py-3 text-center font-bold text-foreground">
                               {query.docs_retrieved}
                             </td>
                             <td className="py-3 text-center">
@@ -1236,11 +1239,11 @@ export function EvaluationContent() {
                                   {formatMetric(query.quality_scores.correctness, 2)}
                                 </span>
                               ) : (
-                                <span className="text-zinc-400 text-xs">—</span>
+                                <span className="text-muted text-xs">—</span>
                               )}
                             </td>
                             <td className="py-3 text-center">
-                              <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                              <span className="inline-flex items-center rounded-full bg-primary-bg px-2 py-0.5 text-xs font-medium text-primary">
                                 {query.mode}
                               </span>
                             </td>
@@ -1253,15 +1256,15 @@ export function EvaluationContent() {
               )}
 
               {/* Section 7: Dataset Pipeline Evaluation */}
-              <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-teal-50 p-2.5 dark:bg-teal-900/20">
-                      <FileText className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                    <div className="rounded-xl bg-success-bg p-2.5">
+                      <FileText className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">Dataset Pipeline Evaluation</h3>
-                      <p className="text-xs text-zinc-500">
+                      <h3 className="font-semibold text-foreground">Dataset Pipeline Evaluation</h3>
+                      <p className="text-xs text-muted">
                         Run evaluation dataset through the live RAG pipeline (retrieve → generate → judge)
                       </p>
                     </div>
@@ -1270,7 +1273,7 @@ export function EvaluationContent() {
                     <select
                       value={datasetLimit}
                       onChange={(e) => setDatasetLimit(Number(e.target.value))}
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                      className="rounded-lg border border-line bg-surface px-3 py-2 text-sm text-foreground"
                     >
                       <option value={5}>5 questions</option>
                       <option value={10}>10 questions</option>
@@ -1281,7 +1284,7 @@ export function EvaluationContent() {
                     <button
                       onClick={handleRunDatasetQuality}
                       disabled={datasetLoading}
-                      className="flex items-center gap-2 rounded-lg bg-teal-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-700 disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg bg-success-solid px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
                     >
                       {datasetLoading ? (
                         <>
@@ -1299,21 +1302,21 @@ export function EvaluationContent() {
                 </div>
 
                 {datasetError && (
-                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-400">
+                  <div className="mb-4 rounded-xl border border-danger/30 bg-danger-bg p-3 text-sm text-danger">
                     {datasetError}
                   </div>
                 )}
 
                 {datasetLoading && !datasetResult ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <RefreshCw className="h-8 w-8 text-teal-500 animate-spin mb-3" />
-                    <p className="text-sm text-zinc-500">Running {datasetLimit} questions through the RAG pipeline...</p>
-                    <p className="text-xs text-zinc-400 mt-1">This may take a few minutes</p>
+                    <RefreshCw className="h-8 w-8 text-success animate-spin mb-3" />
+                    <p className="text-sm text-muted">Running {datasetLimit} questions through the RAG pipeline...</p>
+                    <p className="text-xs text-muted mt-1">This may take a few minutes</p>
                   </div>
                 ) : datasetResult ? (
                   <div className="space-y-6">
                     {datasetResult.message && !datasetResult.quality_summary && (
-                      <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+                      <div className="rounded-xl bg-warning-bg p-3 text-sm text-warning">
                         {datasetResult.message}
                       </div>
                     )}
@@ -1330,11 +1333,11 @@ export function EvaluationContent() {
                         ].map((metric) => (
                           <div
                             key={metric.label}
-                            className={`rounded-2xl border border-zinc-200 p-5 shadow-sm dark:border-zinc-800 ${qualityBg(metric.value)}`}
+                            className={`rounded-2xl border border-line p-5 shadow-sm ${qualityBg(metric.value)}`}
                           >
                             <div className="flex items-center gap-2 mb-3">
                               <metric.icon className={`h-4 w-4 ${qualityColor(metric.value)}`} />
-                              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{metric.label}</span>
+                              <span className="text-xs font-medium text-muted">{metric.label}</span>
                             </div>
                             <p className={`text-2xl font-bold ${qualityColor(metric.value)}`}>
                               {metric.value.toFixed(2)}
@@ -1348,8 +1351,8 @@ export function EvaluationContent() {
                     {datasetResult.quality_summary && (
                       <div className="grid gap-6 lg:grid-cols-2">
                         {/* Radar Chart */}
-                        <div className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50">
-                          <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-3">Quality Radar</h4>
+                        <div className="rounded-xl border border-line bg-surface-2 p-4">
+                          <h4 className="text-sm font-medium text-foreground mb-3">Quality Radar</h4>
                           <div className="h-56">
                             <ResponsiveContainer width="100%" height="100%">
                               <RadarChart
@@ -1362,10 +1365,10 @@ export function EvaluationContent() {
                                   { dimension: "Correctness", value: datasetResult.quality_summary.avg_correctness, fullMark: 1 },
                                 ]}
                               >
-                                <PolarGrid stroke="#e4e4e7" />
-                                <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "#71717a" }} />
-                                <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9 }} />
-                                <Radar name="Dataset" dataKey="value" stroke="#14b8a6" fill="#14b8a6" fillOpacity={0.3} strokeWidth={2} />
+                                <PolarGrid stroke="var(--color-border)" />
+                                <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                                <PolarRadiusAxis angle={90} domain={[0, 1]} tick={{ fontSize: 9, fill: "var(--color-text-muted)" }} />
+                                <Radar name="Dataset" dataKey="value" stroke="var(--color-secondary)" fill="var(--color-secondary)" fillOpacity={0.3} strokeWidth={2} />
                               </RadarChart>
                             </ResponsiveContainer>
                           </div>
@@ -1373,26 +1376,26 @@ export function EvaluationContent() {
 
                         {/* Summary Cards */}
                         <div className="grid grid-cols-2 gap-4 content-start">
-                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                            <p className="text-xs text-zinc-500 mb-1">Questions Evaluated</p>
-                            <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                          <div className="rounded-xl bg-surface-2 p-4">
+                            <p className="text-xs text-muted mb-1">Questions Evaluated</p>
+                            <p className="text-xl font-bold text-foreground">
                               {datasetResult.total_evaluated}/{datasetResult.total_dataset_questions || datasetResult.total_evaluated}
                             </p>
                           </div>
-                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                            <p className="text-xs text-zinc-500 mb-1">Avg Latency</p>
-                            <p className="text-xl font-bold text-zinc-900 dark:text-white">
+                          <div className="rounded-xl bg-surface-2 p-4">
+                            <p className="text-xs text-muted mb-1">Avg Latency</p>
+                            <p className="text-xl font-bold text-foreground">
                               {datasetResult.avg_latency?.toFixed(2) || "—"}s
                             </p>
                           </div>
-                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                            <p className="text-xs text-zinc-500 mb-1">Avg Correctness</p>
+                          <div className="rounded-xl bg-surface-2 p-4">
+                            <p className="text-xs text-muted mb-1">Avg Correctness</p>
                             <p className={`text-xl font-bold ${qualityColor(datasetResult.quality_summary.avg_correctness)}`}>
                               {(datasetResult.quality_summary.avg_correctness * 100).toFixed(1)}%
                             </p>
                           </div>
-                          <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                            <p className="text-xs text-zinc-500 mb-1">Avg Faithfulness</p>
+                          <div className="rounded-xl bg-surface-2 p-4">
+                            <p className="text-xs text-muted mb-1">Avg Faithfulness</p>
                             <p className={`text-xl font-bold ${qualityColor(datasetResult.quality_summary.avg_faithfulness)}`}>
                               {(datasetResult.quality_summary.avg_faithfulness * 100).toFixed(1)}%
                             </p>
@@ -1405,30 +1408,30 @@ export function EvaluationContent() {
                     {datasetResult.individual_results.length > 0 && (
                       <div>
                         <div className="flex items-center gap-2 mb-3">
-                          <Activity className="h-4 w-4 text-teal-500" />
-                          <h4 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+                          <Activity className="h-4 w-4 text-success" />
+                          <h4 className="text-sm font-semibold text-foreground">
                             Per-Question Results ({datasetResult.individual_results.length})
                           </h4>
                         </div>
-                        <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-zinc-100 dark:border-zinc-800">
+                        <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-xl border border-line">
                           <table className="w-full text-sm">
-                            <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-800">
-                              <tr className="border-b border-zinc-200 dark:border-zinc-700">
-                                <th className="px-3 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">Question</th>
-                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Faithful</th>
-                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Relevance</th>
-                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Recall</th>
-                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Correct</th>
-                                <th className="px-3 py-2 text-center font-medium text-zinc-500 dark:text-zinc-400">Latency</th>
+                            <thead className="sticky top-0 bg-surface-2">
+                              <tr className="border-b border-line">
+                                <th className="px-3 py-2 text-left font-medium text-muted">Question</th>
+                                <th className="px-3 py-2 text-center font-medium text-muted">Faithful</th>
+                                <th className="px-3 py-2 text-center font-medium text-muted">Relevance</th>
+                                <th className="px-3 py-2 text-center font-medium text-muted">Recall</th>
+                                <th className="px-3 py-2 text-center font-medium text-muted">Correct</th>
+                                <th className="px-3 py-2 text-center font-medium text-muted">Latency</th>
                               </tr>
                             </thead>
                             <tbody>
                               {datasetResult.individual_results.map((item, idx) => (
-                                <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800 last:border-0">
+                                <tr key={idx} className="border-b border-line last:border-0">
                                   <td className="px-3 py-2 max-w-[280px]">
-                                    <p className="font-medium text-zinc-900 dark:text-white truncate">{item.query}</p>
+                                    <p className="font-medium text-foreground truncate">{item.query}</p>
                                     {item.reasoning && (
-                                      <p className="text-xs text-zinc-400 truncate mt-0.5">{item.reasoning}</p>
+                                      <p className="text-xs text-muted truncate mt-0.5">{item.reasoning}</p>
                                     )}
                                   </td>
                                   <td className="px-3 py-2 text-center">
@@ -1451,7 +1454,7 @@ export function EvaluationContent() {
                                       {formatMetric(item.correctness, 2)}
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 text-center text-zinc-600 dark:text-zinc-400">
+                                  <td className="px-3 py-2 text-center text-muted">
                                     {formatMetric(item.latency, 1, "s")}
                                   </td>
                                 </tr>
@@ -1464,20 +1467,20 @@ export function EvaluationContent() {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <FileText className="h-12 w-12 text-zinc-300 dark:text-zinc-600 mb-3" />
-                    <p className="text-sm text-zinc-500">Click &quot;Run Dataset Evaluation&quot; to test {datasetLimit} questions from the evaluation dataset</p>
-                    <p className="text-xs text-zinc-400 mt-1">Each question will be sent through the full RAG pipeline and scored by LLM-as-judge</p>
+                    <FileText className="h-12 w-12 text-muted/40 mb-3" />
+                    <p className="text-sm text-muted">Click &quot;Run Dataset Evaluation&quot; to test {datasetLimit} questions from the evaluation dataset</p>
+                    <p className="text-xs text-muted mt-1">Each question will be sent through the full RAG pipeline and scored by LLM-as-judge</p>
                   </div>
                 )}
               </section>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Brain className="h-16 w-16 text-zinc-300 dark:text-zinc-600 mb-4" />
-              <p className="text-zinc-500 dark:text-zinc-400">Unable to load RAG metrics</p>
+              <Brain className="h-16 w-16 text-muted/40 mb-4" />
+              <p className="text-muted">Unable to load RAG metrics</p>
               <button
                 onClick={fetchRealtimeMetricsData}
-                className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                className="mt-4 text-sm text-primary hover:text-primary"
               >
                 Try again
               </button>
@@ -1492,12 +1495,12 @@ export function EvaluationContent() {
           {/* Website Header with Refresh and Export */}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-blue-50 p-2.5 dark:bg-blue-900/20">
-                <Server className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <div className="rounded-xl bg-primary-bg p-2.5">
+                <Server className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-zinc-900 dark:text-white">Website Performance</h3>
-                <p className="text-xs text-zinc-500">
+                <h3 className="font-semibold text-foreground">Website Performance</h3>
+                <p className="text-xs text-muted">
                   Prometheus metrics • Auto-refreshes every 30s
                 </p>
               </div>
@@ -1506,7 +1509,7 @@ export function EvaluationContent() {
               <button
                 onClick={handleExportWebsite}
                 disabled={!websiteMetrics}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
                 Export
@@ -1514,7 +1517,7 @@ export function EvaluationContent() {
               <button
                 onClick={fetchPrometheusMetrics}
                 disabled={metricsLoading}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${metricsLoading ? "animate-spin" : ""}`} />
                 Refresh
@@ -1524,7 +1527,7 @@ export function EvaluationContent() {
 
           {metricsLoading && !websiteMetrics ? (
             <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" />
+              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
             </div>
           ) : websiteMetrics ? (
             <>
@@ -1562,88 +1565,88 @@ export function EvaluationContent() {
               </section>
 
               <section className="grid gap-6 lg:grid-cols-2">
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="rounded-xl bg-emerald-50 p-2.5 dark:bg-emerald-900/20">
-                      <Gauge className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    <div className="rounded-xl bg-success-bg p-2.5">
+                      <Gauge className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">API Performance</h3>
-                      <p className="text-xs text-zinc-500">Request processing metrics</p>
+                      <h3 className="font-semibold text-foreground">API Performance</h3>
+                      <p className="text-xs text-muted">Request processing metrics</p>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
                       <div className="flex items-center gap-3">
-                        <CheckCircle className="h-5 w-5 text-emerald-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Successful Requests</span>
+                        <CheckCircle className="h-5 w-5 text-success" />
+                        <span className="text-sm text-muted">Successful Requests</span>
                       </div>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      <span className="text-lg font-bold text-foreground">
                         {((1 - websiteMetrics.errorRate / 100) * 100).toFixed(1)}%
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
                       <div className="flex items-center gap-3">
-                        <Zap className="h-5 w-5 text-amber-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Cache Hit Rate</span>
+                        <Zap className="h-5 w-5 text-warning" />
+                        <span className="text-sm text-muted">Cache Hit Rate</span>
                       </div>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      <span className="text-lg font-bold text-foreground">
                         {websiteMetrics.cacheHitRate.toFixed(1)}%
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
                       <div className="flex items-center gap-3">
-                        <Database className="h-5 w-5 text-blue-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">RAG Queries</span>
+                        <Database className="h-5 w-5 text-primary" />
+                        <span className="text-sm text-muted">RAG Queries</span>
                       </div>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      <span className="text-lg font-bold text-foreground">
                         {websiteMetrics.ragQueriesTotal}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="rounded-xl bg-amber-50 p-2.5 dark:bg-amber-900/20">
-                      <Cpu className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    <div className="rounded-xl bg-warning-bg p-2.5">
+                      <Cpu className="h-5 w-5 text-warning" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">Resource Usage</h3>
-                      <p className="text-xs text-zinc-500">Tokens and cost tracking</p>
+                      <h3 className="font-semibold text-foreground">Resource Usage</h3>
+                      <p className="text-xs text-muted">Tokens and cost tracking</p>
                     </div>
                   </div>
 
                   <div className="space-y-6">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
                       <div className="flex items-center gap-3">
-                        <HardDrive className="h-5 w-5 text-purple-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Tokens Processed</span>
+                        <HardDrive className="h-5 w-5 text-violet-700 dark:text-lavender" />
+                        <span className="text-sm text-muted">Tokens Processed</span>
                       </div>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      <span className="text-lg font-bold text-foreground">
                         {websiteMetrics.tokensProcessed.toLocaleString()}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
                       <div className="flex items-center gap-3">
-                        <Brain className="h-5 w-5 text-indigo-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Embedding Requests</span>
+                        <Brain className="h-5 w-5 text-primary" />
+                        <span className="text-sm text-muted">Embedding Requests</span>
                       </div>
-                      <span className="text-lg font-bold text-zinc-900 dark:text-white">
+                      <span className="text-lg font-bold text-foreground">
                         {websiteMetrics.embeddingRequests}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-success-bg">
                       <div className="flex items-center gap-3">
-                        <TrendingUp className="h-5 w-5 text-emerald-500" />
-                        <span className="text-sm text-zinc-600 dark:text-zinc-400">Estimated Cost</span>
+                        <TrendingUp className="h-5 w-5 text-success" />
+                        <span className="text-sm text-muted">Estimated Cost</span>
                       </div>
-                      <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                      <span className="text-lg font-bold text-success">
                         ${websiteMetrics.totalCost.toFixed(4)}
                       </span>
                     </div>
@@ -1653,13 +1656,13 @@ export function EvaluationContent() {
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Server className="h-16 w-16 text-zinc-300 dark:text-zinc-600 mb-4" />
-              <p className="text-zinc-500 dark:text-zinc-400">
+              <Server className="h-16 w-16 text-muted/40 mb-4" />
+              <p className="text-muted">
                 {websiteMetricsError || "Website metrics are unavailable right now."}
               </p>
               <button
                 onClick={fetchPrometheusMetrics}
-                className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                className="mt-4 text-sm text-primary hover:text-primary"
               >
                 Try again
               </button>
@@ -1674,12 +1677,12 @@ export function EvaluationContent() {
           {/* AWS Header with Refresh and Export */}
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-orange-50 p-2.5 dark:bg-orange-900/20">
-                <Cloud className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+              <div className="rounded-xl bg-warning-bg p-2.5">
+                <Cloud className="h-5 w-5 text-warning" />
               </div>
               <div>
-                <h3 className="font-semibold text-zinc-900 dark:text-white">AWS Infrastructure</h3>
-                <p className="text-xs text-zinc-500">
+                <h3 className="font-semibold text-foreground">AWS Infrastructure</h3>
+                <p className="text-xs text-muted">
                   Region: {formatOptionalText(awsMetrics?.region)} •
                   {isFiniteMetric(awsMetrics?.summary?.active_services) && isFiniteMetric(awsMetrics?.summary?.total_services)
                     ? `${awsMetrics.summary.active_services}/${awsMetrics.summary.total_services} Services Active`
@@ -1691,7 +1694,7 @@ export function EvaluationContent() {
               <button
                 onClick={handleExportAWS}
                 disabled={!awsMetrics}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
               >
                 <Download className="h-4 w-4" />
                 Export
@@ -1699,7 +1702,7 @@ export function EvaluationContent() {
               <button
                 onClick={fetchAWSMetricsData}
                 disabled={awsLoading}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
               >
                 <RefreshCw className={`h-4 w-4 ${awsLoading ? "animate-spin" : ""}`} />
                 Refresh
@@ -1709,7 +1712,7 @@ export function EvaluationContent() {
 
           {awsLoading && !awsMetrics ? (
             <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" />
+              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
             </div>
           ) : awsMetrics ? (
             <>
@@ -1756,21 +1759,21 @@ export function EvaluationContent() {
               {/* AWS Services Grid */}
               <section className="grid gap-6 lg:grid-cols-2">
                 {/* Bedrock Service */}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-purple-50 p-2.5 dark:bg-purple-900/20">
-                        <Brain className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      <div className="rounded-xl bg-lavender/15 p-2.5">
+                        <Brain className="h-5 w-5 text-violet-700 dark:text-lavender" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-zinc-900 dark:text-white">Amazon Bedrock</h3>
-                        <p className="text-xs text-zinc-500">Foundation Models</p>
+                        <h3 className="font-semibold text-foreground">Amazon Bedrock</h3>
+                        <p className="text-xs text-muted">Foundation Models</p>
                       </div>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       awsMetrics.services?.bedrock?.status === "active"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        ? "bg-success-bg text-success"
+                        : "bg-danger-bg text-danger"
                     }`}>
                       {awsMetrics.services?.bedrock?.status || "unknown"}
                     </span>
@@ -1779,15 +1782,15 @@ export function EvaluationContent() {
                   {awsMetrics.services?.bedrock?.models && (
                     <div className="space-y-4">
                       {/* LLM Model */}
-                      <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                      <div className="rounded-xl bg-surface-2 p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-zinc-900 dark:text-white">LLM Model</span>
-                          <span className="text-xs text-zinc-500">Primary</span>
+                          <span className="text-sm font-medium text-foreground">LLM Model</span>
+                          <span className="text-xs text-muted">Primary</span>
                         </div>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 font-mono truncate">
+                        <p className="text-xs text-muted font-mono truncate">
                           {formatOptionalText(awsMetrics.services.bedrock.models.llm?.model_id)}
                         </p>
-                        <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+                        <div className="mt-2 flex items-center gap-2 text-xs text-muted">
                           <span>
                             Input: {isFiniteMetric(awsMetrics.services.bedrock.models.llm?.pricing?.input_per_1k)
                               ? `$${awsMetrics.services.bedrock.models.llm.pricing.input_per_1k.toFixed(6)}`
@@ -1801,32 +1804,32 @@ export function EvaluationContent() {
                           </span>
                         </div>
                         {awsMetrics.services.bedrock.models.llm?.pricing?.source && (
-                          <div className="mt-2 text-[11px] text-zinc-500">
+                          <div className="mt-2 text-[11px] text-muted">
                             Source: {awsMetrics.services.bedrock.models.llm.pricing.source}
                           </div>
                         )}
                       </div>
 
                       {/* Embedding Model */}
-                      <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                      <div className="rounded-xl bg-surface-2 p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-zinc-900 dark:text-white">Embedding Model</span>
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-sm font-medium text-foreground">Embedding Model</span>
+                          <span className="text-xs text-muted">
                             {isFiniteMetric(awsMetrics.services.bedrock.models.embedding?.dimension)
                               ? `${awsMetrics.services.bedrock.models.embedding.dimension}d`
                               : "Unavailable"}
                           </span>
                         </div>
-                        <p className="text-xs text-zinc-600 dark:text-zinc-400 font-mono truncate">
+                        <p className="text-xs text-muted font-mono truncate">
                           {formatOptionalText(awsMetrics.services.bedrock.models.embedding?.model_id)}
                         </p>
-                        <div className="mt-2 text-xs text-zinc-500">
+                        <div className="mt-2 text-xs text-muted">
                           Input: {isFiniteMetric(awsMetrics.services.bedrock.models.embedding?.pricing?.input_per_1k)
                             ? `$${awsMetrics.services.bedrock.models.embedding.pricing.input_per_1k.toFixed(6)}`
                             : "Unavailable"}
                         </div>
                         {awsMetrics.services.bedrock.models.embedding?.pricing?.source && (
-                          <div className="mt-2 text-[11px] text-zinc-500">
+                          <div className="mt-2 text-[11px] text-muted">
                             Source: {awsMetrics.services.bedrock.models.embedding.pricing.source}
                           </div>
                         )}
@@ -1836,55 +1839,55 @@ export function EvaluationContent() {
                 </div>
 
                 {/* S3 Service */}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-green-50 p-2.5 dark:bg-green-900/20">
-                        <Box className="h-5 w-5 text-green-600 dark:text-green-400" />
+                      <div className="rounded-xl bg-success-bg p-2.5">
+                        <Box className="h-5 w-5 text-success" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-zinc-900 dark:text-white">Amazon S3</h3>
-                        <p className="text-xs text-zinc-500">Object Storage</p>
+                        <h3 className="font-semibold text-foreground">Amazon S3</h3>
+                        <p className="text-xs text-muted">Object Storage</p>
                       </div>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       awsMetrics.services?.s3?.status === "active"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        ? "bg-success-bg text-success"
+                        : "bg-warning-bg text-warning"
                     }`}>
                       {awsMetrics.services?.s3?.status || "unknown"}
                     </span>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Bucket</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white font-mono truncate max-w-[200px]">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Bucket</span>
+                      <span className="text-sm font-medium text-foreground font-mono truncate max-w-[200px]">
                         {formatOptionalText(awsMetrics.services?.s3?.bucket)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Total Objects</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Total Objects</span>
+                      <span className="text-sm font-medium text-foreground">
                         {formatOptionalInteger(awsMetrics.services?.s3?.total_objects)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Total Size</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Total Size</span>
+                      <span className="text-sm font-medium text-foreground">
                         {formatOptionalMetric(awsMetrics.services?.s3?.total_size_mb, 2, " MB")}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Storage Cost</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Storage Cost</span>
+                      <span className="text-sm font-medium text-foreground">
                         {isFiniteMetric(awsMetrics.services?.s3?.pricing?.storage_per_gb_month)
                           ? `$${awsMetrics.services.s3.pricing.storage_per_gb_month.toFixed(6)}/GB/mo`
                           : "Unavailable"}
                       </span>
                     </div>
                     {awsMetrics.services?.s3?.pricing?.source && (
-                      <div className="px-1 text-[11px] text-zinc-500">
+                      <div className="px-1 text-[11px] text-muted">
                         Source: {awsMetrics.services.s3.pricing.source}
                       </div>
                     )}
@@ -1892,53 +1895,53 @@ export function EvaluationContent() {
                 </div>
 
                 {/* DynamoDB Service */}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
-                      <div className="rounded-xl bg-blue-50 p-2.5 dark:bg-blue-900/20">
-                        <Database className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <div className="rounded-xl bg-primary-bg p-2.5">
+                        <Database className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-zinc-900 dark:text-white">Amazon DynamoDB</h3>
-                        <p className="text-xs text-zinc-500">NoSQL Database</p>
+                        <h3 className="font-semibold text-foreground">Amazon DynamoDB</h3>
+                        <p className="text-xs text-muted">NoSQL Database</p>
                       </div>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                       awsMetrics.services?.dynamodb?.status === "active"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                        ? "bg-success-bg text-success"
+                        : "bg-warning-bg text-warning"
                     }`}>
                       {awsMetrics.services?.dynamodb?.status || "unknown"}
                     </span>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Table Name</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white font-mono truncate max-w-[200px]">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Table Name</span>
+                      <span className="text-sm font-medium text-foreground font-mono truncate max-w-[200px]">
                         {formatOptionalText(awsMetrics.services?.dynamodb?.table_name)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Item Count</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Item Count</span>
+                      <span className="text-sm font-medium text-foreground">
                         {formatOptionalInteger(awsMetrics.services?.dynamodb?.item_count)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Table Size</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Table Size</span>
+                      <span className="text-sm font-medium text-foreground">
                         {formatOptionalMetric(awsMetrics.services?.dynamodb?.size_mb, 2, " MB")}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800">
-                      <span className="text-sm text-zinc-600 dark:text-zinc-400">Billing Mode</span>
-                      <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-surface-2">
+                      <span className="text-sm text-muted">Billing Mode</span>
+                      <span className="text-sm font-medium text-foreground">
                         {formatOptionalText(awsMetrics.services?.dynamodb?.billing_mode)}
                       </span>
                     </div>
                     {awsMetrics.services?.dynamodb?.pricing?.source && (
-                      <div className="px-1 text-[11px] text-zinc-500">
+                      <div className="px-1 text-[11px] text-muted">
                         Source: {awsMetrics.services.dynamodb.pricing.source}
                       </div>
                     )}
@@ -1946,55 +1949,55 @@ export function EvaluationContent() {
                 </div>
 
                 {/* STS & CloudWatch */}
-                <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-900/20">
-                      <Shield className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                    <div className="rounded-xl bg-primary-bg p-2.5">
+                      <Shield className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-zinc-900 dark:text-white">Identity & Monitoring</h3>
-                      <p className="text-xs text-zinc-500">STS & CloudWatch</p>
+                      <h3 className="font-semibold text-foreground">Identity & Monitoring</h3>
+                      <p className="text-xs text-muted">STS & CloudWatch</p>
                     </div>
                   </div>
 
                   <div className="space-y-4">
                     {/* STS Info */}
-                    <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                    <div className="rounded-xl bg-surface-2 p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-zinc-900 dark:text-white">AWS Identity</span>
+                        <span className="text-sm font-medium text-foreground">AWS Identity</span>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                           awsMetrics.services?.sts?.status === "active"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            ? "bg-success-bg text-success"
+                            : "bg-danger-bg text-danger"
                         }`}>
                           {awsMetrics.services?.sts?.status || "unknown"}
                         </span>
                       </div>
-                      <div className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                      <div className="space-y-1 text-xs text-muted">
                         <p>Account: {formatOptionalText(awsMetrics.services?.sts?.account_id)}</p>
                         <p>User: {formatOptionalText(awsMetrics.services?.sts?.arn_suffix)}</p>
                       </div>
                     </div>
 
                     {/* CloudWatch Info */}
-                    <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
+                    <div className="rounded-xl bg-surface-2 p-4">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-zinc-900 dark:text-white">CloudWatch Metrics</span>
+                        <span className="text-sm font-medium text-foreground">CloudWatch Metrics</span>
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                           awsMetrics.services?.cloudwatch?.status === "active"
-                            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            ? "bg-success-bg text-success"
+                            : "bg-warning-bg text-warning"
                         }`}>
                           {awsMetrics.services?.cloudwatch?.status || "unknown"}
                         </span>
                       </div>
-                      <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                      <div className="text-xs text-muted">
                         <p>Bedrock Invocations: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_invocations)}</p>
                         <p>Input Tokens: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_input_tokens)}</p>
                         <p>Output Tokens: {formatOptionalInteger(awsMetrics.services?.cloudwatch?.bedrock_output_tokens)}</p>
                         <p>Invocation Latency: {formatOptionalMetric(awsMetrics.services?.cloudwatch?.bedrock_invocation_latency_ms, 0, " ms")}</p>
                         {awsMetrics.services?.cloudwatch?.note && (
-                          <p className="mt-1 text-amber-600 dark:text-amber-400">{awsMetrics.services?.cloudwatch?.note}</p>
+                          <p className="mt-1 text-warning">{awsMetrics.services?.cloudwatch?.note}</p>
                         )}
                       </div>
                     </div>
@@ -2004,14 +2007,14 @@ export function EvaluationContent() {
 
               {/* Errors Section */}
               {awsMetrics.errors && awsMetrics.errors.length > 0 && (
-                <section className="rounded-2xl border border-red-200 bg-red-50 p-6 dark:border-red-900 dark:bg-red-900/20">
+                <section className="rounded-2xl border border-danger/30 bg-danger-bg p-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                    <h3 className="font-semibold text-red-900 dark:text-red-400">AWS Errors</h3>
+                    <AlertTriangle className="h-5 w-5 text-danger" />
+                    <h3 className="font-semibold text-danger">AWS Errors</h3>
                   </div>
                   <ul className="space-y-2">
                     {awsMetrics.errors.map((error, idx) => (
-                      <li key={idx} className="text-sm text-red-700 dark:text-red-300 font-mono">
+                      <li key={idx} className="text-sm text-danger font-mono">
                         {error}
                       </li>
                     ))}
@@ -2020,17 +2023,17 @@ export function EvaluationContent() {
               )}
 
               {/* Last Updated */}
-              <p className="text-xs text-zinc-500 text-center">
+              <p className="text-xs text-muted text-center">
                 Last updated: {awsMetrics.timestamp ? new Date(awsMetrics.timestamp).toLocaleString() : "N/A"}
               </p>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Cloud className="h-16 w-16 text-zinc-300 dark:text-zinc-600 mb-4" />
-              <p className="text-zinc-500 dark:text-zinc-400">Unable to load AWS metrics</p>
+              <Cloud className="h-16 w-16 text-muted/40 mb-4" />
+              <p className="text-muted">Unable to load AWS metrics</p>
               <button
                 onClick={fetchAWSMetricsData}
-                className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                className="mt-4 text-sm text-primary hover:text-primary"
               >
                 Try again
               </button>
@@ -2071,30 +2074,30 @@ export function EvaluationContent() {
 
           {/* Test Configuration */}
           <section className="grid gap-6 lg:grid-cols-2">
-            <form onSubmit={handleRunSuite} className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <form onSubmit={handleRunSuite} className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
-                <div className="rounded-xl bg-indigo-50 p-2.5 dark:bg-indigo-900/20">
-                  <Play className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <div className="rounded-xl bg-primary-bg p-2.5">
+                  <Play className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Run Test Suite</h3>
-                  <p className="text-xs text-zinc-500">Configure and execute evaluation tests</p>
+                  <h3 className="font-semibold text-foreground">Run Test Suite</h3>
+                  <p className="text-xs text-muted">Configure and execute evaluation tests</p>
                 </div>
               </div>
 
               {loading ? (
                 <div className="space-y-4">
-                  <div className="h-10 w-full bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse" />
-                  <div className="h-8 w-32 bg-zinc-200 dark:bg-zinc-700 rounded animate-pulse" />
+                  <div className="h-10 w-full bg-line rounded animate-pulse" />
+                  <div className="h-8 w-32 bg-line rounded animate-pulse" />
                 </div>
               ) : cases.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-center">
-                  <BarChart3 className="h-12 w-12 text-zinc-300 dark:text-zinc-600 mb-3" />
-                  <p className="text-sm text-zinc-500">No test cases available</p>
+                  <BarChart3 className="h-12 w-12 text-muted/40 mb-3" />
+                  <p className="text-sm text-muted">No test cases available</p>
                 </div>
               ) : (
                 <>
-                  <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-4">
+                  <label className="block text-sm font-medium text-foreground mb-4">
                     Number of tests
                     <input
                       type="number"
@@ -2102,13 +2105,13 @@ export function EvaluationContent() {
                       max={100}
                       value={runLimit}
                       onChange={(e) => setRunLimit(Number(e.target.value))}
-                      className="mt-2 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-800 dark:text-white"
+                      className="mt-2 w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
                     />
                   </label>
 
                   {categoryOptions.length > 0 && (
                     <div className="mb-4">
-                      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Categories</p>
+                      <p className="text-sm font-medium text-foreground mb-2">Categories</p>
                       <div className="flex flex-wrap gap-2">
                         {categoryOptions.map((cat) => (
                           <button
@@ -2117,8 +2120,8 @@ export function EvaluationContent() {
                             onClick={() => toggleSelection(cat, selectedCategories, setSelectedCategories)}
                             className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                               selectedCategories.includes(cat)
-                                ? "bg-indigo-600 text-white"
-                                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                ? "bg-primary-solid text-white"
+                                : "bg-surface-2 text-foreground hover:bg-line"
                             }`}
                           >
                             {cat}
@@ -2130,7 +2133,7 @@ export function EvaluationContent() {
 
                   {difficultyOptions.length > 0 && (
                     <div className="mb-6">
-                      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">Difficulty</p>
+                      <p className="text-sm font-medium text-foreground mb-2">Difficulty</p>
                       <div className="flex flex-wrap gap-2">
                         {difficultyOptions.map((diff) => (
                           <button
@@ -2139,8 +2142,8 @@ export function EvaluationContent() {
                             onClick={() => toggleSelection(diff, selectedDifficulties, setSelectedDifficulties)}
                             className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                               selectedDifficulties.includes(diff)
-                                ? "bg-indigo-600 text-white"
-                                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                                ? "bg-primary-solid text-white"
+                                : "bg-surface-2 text-foreground hover:bg-line"
                             }`}
                           >
                             {diff}
@@ -2152,13 +2155,13 @@ export function EvaluationContent() {
                 </>
               )}
 
-              {error && <p className="mb-4 text-sm text-red-600 dark:text-red-400">{error}</p>}
+              {error && <p className="mb-4 text-sm text-danger">{error}</p>}
 
               <div className="flex gap-3">
                 <button
                   type="submit"
                   disabled={isRunning || cases.length === 0}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary-solid px-4 py-2.5 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isRunning ? (
                     <>
@@ -2179,7 +2182,7 @@ export function EvaluationContent() {
                     setSelectedDifficulties([]);
                     setRunLimit(5);
                   }}
-                  className="rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-2"
                 >
                   <RotateCcw className="h-4 w-4" />
                 </button>
@@ -2187,62 +2190,62 @@ export function EvaluationContent() {
             </form>
 
             {/* Dataset Preview */}
-            <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
-                <div className="rounded-xl bg-purple-50 p-2.5 dark:bg-purple-900/20">
-                  <Filter className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <div className="rounded-xl bg-lavender/15 p-2.5">
+                  <Filter className="h-5 w-5 text-violet-700 dark:text-lavender" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Dataset Preview</h3>
-                  <p className="text-xs text-zinc-500">First 5 test cases</p>
+                  <h3 className="font-semibold text-foreground">Dataset Preview</h3>
+                  <p className="text-xs text-muted">First 5 test cases</p>
                 </div>
               </div>
 
               <div className="space-y-3 max-h-[400px] overflow-y-auto">
                 {cases.slice(0, 5).map((testCase) => (
-                  <div key={testCase.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-800/50">
+                  <div key={testCase.id} className="rounded-xl border border-line bg-surface-2 p-3">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                      <span className="inline-flex items-center rounded-full bg-primary-bg px-2 py-0.5 text-xs font-medium text-primary">
                         {testCase.category || "general"}
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-zinc-900 dark:text-white">{testCase.query}</p>
-                    <p className="mt-1 text-xs text-zinc-500">
+                    <p className="text-sm font-medium text-foreground">{testCase.query}</p>
+                    <p className="mt-1 text-xs text-muted">
                       Topics: {testCase.expected_topics.slice(0, 3).join(", ")}
                       {testCase.expected_topics.length > 3 && ` +${testCase.expected_topics.length - 3} more`}
                     </p>
                   </div>
                 ))}
                 {cases.length === 0 && (
-                  <p className="text-sm text-zinc-500 text-center py-4">No test cases loaded</p>
+                  <p className="text-sm text-muted text-center py-4">No test cases loaded</p>
                 )}
               </div>
             </div>
           </section>
 
           {/* Historical Metrics */}
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-emerald-50 p-2.5 dark:bg-emerald-900/20">
-                  <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                <div className="rounded-xl bg-success-bg p-2.5">
+                  <TrendingUp className="h-5 w-5 text-success" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Historical Performance</h3>
-                  <p className="text-xs text-zinc-500">Aggregated metrics from logged queries</p>
+                  <h3 className="font-semibold text-foreground">Historical Performance</h3>
+                  <p className="text-xs text-muted">Aggregated metrics from logged queries</p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={handleRefreshSummary}
-                  className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                  className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
                 >
                   <RefreshCw className="h-3 w-3" />
                   Refresh
                 </button>
                 <button
                   onClick={handleClearLogs}
-                  className="flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-50 dark:border-red-900 dark:bg-zinc-800 dark:text-red-400"
+                  className="flex items-center gap-2 rounded-lg border border-danger/30 bg-surface px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-danger-bg"
                 >
                   <Trash2 className="h-3 w-3" />
                   Clear
@@ -2250,49 +2253,49 @@ export function EvaluationContent() {
               </div>
             </div>
 
-            {logMessage && <p className="mb-4 text-sm text-zinc-500">{logMessage}</p>}
+            {logMessage && <p className="mb-4 text-sm text-muted">{logMessage}</p>}
 
             {logSummary ? (
               logSummary.error ? (
-                <p className="text-sm text-red-600 dark:text-red-400">{logSummary.error}</p>
+                <p className="text-sm text-danger">{logSummary.error}</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Queries Analyzed</p>
-                    <p className="text-2xl font-bold text-zinc-900 dark:text-white">{logSummary.total_queries_analyzed ?? 0}</p>
+                  <div className="rounded-xl bg-surface-2 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted mb-1">Queries Analyzed</p>
+                    <p className="text-2xl font-bold text-foreground">{logSummary.total_queries_analyzed ?? 0}</p>
                   </div>
-                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Avg Total Latency</p>
-                    <p className="text-2xl font-bold text-zinc-900 dark:text-white">{(logSummary.avg_total_time_seconds ?? 0).toFixed(2)}s</p>
+                  <div className="rounded-xl bg-surface-2 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted mb-1">Avg Total Latency</p>
+                    <p className="text-2xl font-bold text-foreground">{(logSummary.avg_total_time_seconds ?? 0).toFixed(2)}s</p>
                   </div>
-                  <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-800">
-                    <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">Avg Relevance</p>
-                    <p className="text-2xl font-bold text-zinc-900 dark:text-white">{(logSummary.avg_relevance_score ?? 0).toFixed(2)}</p>
+                  <div className="rounded-xl bg-surface-2 p-4">
+                    <p className="text-xs uppercase tracking-wide text-muted mb-1">Avg Relevance</p>
+                    <p className="text-2xl font-bold text-foreground">{(logSummary.avg_relevance_score ?? 0).toFixed(2)}</p>
                   </div>
                 </div>
               )
             ) : (
               <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 text-zinc-400 animate-spin" />
+                <RefreshCw className="h-6 w-6 text-muted animate-spin" />
               </div>
             )}
           </section>
 
           {/* Scheduled Evaluation Runs */}
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <div className="rounded-xl bg-sky-50 p-2.5 dark:bg-sky-900/20">
-                  <Calendar className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                <div className="rounded-xl bg-info-bg p-2.5">
+                  <Calendar className="h-5 w-5 text-info" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white">Scheduled Evaluation Runs</h3>
-                  <p className="text-xs text-zinc-500">Dataset evaluations triggered by CI</p>
+                  <h3 className="font-semibold text-foreground">Scheduled Evaluation Runs</h3>
+                  <p className="text-xs text-muted">Dataset evaluations triggered by CI</p>
                 </div>
               </div>
               <button
                 onClick={handleRefreshRuns}
-                className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-surface-2"
               >
                 <RefreshCw className={`h-3 w-3 ${runsLoading ? "animate-spin" : ""}`} />
                 Refresh
@@ -2300,15 +2303,15 @@ export function EvaluationContent() {
             </div>
 
             {runsError && (
-              <p className="text-sm text-red-600 dark:text-red-400">{runsError}</p>
+              <p className="text-sm text-danger">{runsError}</p>
             )}
 
             {runsLoading ? (
               <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 text-zinc-400 animate-spin" />
+                <RefreshCw className="h-6 w-6 text-muted animate-spin" />
               </div>
             ) : evaluationRuns.length === 0 ? (
-              <p className="text-sm text-zinc-500">No scheduled runs recorded yet.</p>
+              <p className="text-sm text-muted">No scheduled runs recorded yet.</p>
             ) : (
               <div className="space-y-4">
                 {evaluationRuns.map((run) => {
@@ -2322,78 +2325,78 @@ export function EvaluationContent() {
                   return (
                     <div
                       key={run.run_id}
-                      className="rounded-xl border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-800/50"
+                      className="rounded-xl border border-line bg-surface-2 p-4"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                          <p className="text-sm font-semibold text-foreground">
                             {new Date(run.timestamp).toLocaleString()}
                           </p>
-                          <p className="text-xs text-zinc-500">
+                          <p className="text-xs text-muted">
                             {run.dataset} · {run.source}
                           </p>
                         </div>
-                        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                        <span className="rounded-full bg-info-bg px-3 py-1 text-xs font-medium text-info">
                           {run.summary?.total_evaluated ?? 0} evaluated
                         </span>
                       </div>
 
                       <div className="mt-3 grid gap-3 sm:grid-cols-5">
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Latency</p>
-                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                          <p className="text-[11px] uppercase tracking-wide text-muted">Avg Latency</p>
+                          <p className="text-sm font-semibold text-foreground">
                             {formatMetric(run.summary?.avg_latency, 2, "s")}
                           </p>
                           {typeof delta?.avg_latency === "number" && (
-                            <p className="text-[11px] text-zinc-500">
+                            <p className="text-[11px] text-muted">
                               Δ {delta.avg_latency >= 0 ? "+" : ""}
                               {delta.avg_latency.toFixed(2)}s
                             </p>
                           )}
                         </div>
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Correctness</p>
+                          <p className="text-[11px] uppercase tracking-wide text-muted">Correctness</p>
                           <p className={`text-sm font-semibold ${qualityColor(correctness)}`}>
                             {formatMetric(correctness, 2)}
                           </p>
                           {typeof delta?.avg_correctness === "number" && (
-                            <p className="text-[11px] text-zinc-500">
+                            <p className="text-[11px] text-muted">
                               Δ {delta.avg_correctness >= 0 ? "+" : ""}
                               {delta.avg_correctness.toFixed(2)}
                             </p>
                           )}
                         </div>
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Faithfulness</p>
+                          <p className="text-[11px] uppercase tracking-wide text-muted">Faithfulness</p>
                           <p className={`text-sm font-semibold ${qualityColor(faithfulness)}`}>
                             {formatMetric(faithfulness, 2)}
                           </p>
                           {typeof delta?.avg_faithfulness === "number" && (
-                            <p className="text-[11px] text-zinc-500">
+                            <p className="text-[11px] text-muted">
                               Δ {delta.avg_faithfulness >= 0 ? "+" : ""}
                               {delta.avg_faithfulness.toFixed(2)}
                             </p>
                           )}
                         </div>
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Answer Relevance</p>
+                          <p className="text-[11px] uppercase tracking-wide text-muted">Answer Relevance</p>
                           <p className={`text-sm font-semibold ${qualityColor(relevance)}`}>
                             {formatMetric(relevance, 2)}
                           </p>
                           {typeof delta?.avg_answer_relevance === "number" && (
-                            <p className="text-[11px] text-zinc-500">
+                            <p className="text-[11px] text-muted">
                               Δ {delta.avg_answer_relevance >= 0 ? "+" : ""}
                               {delta.avg_answer_relevance.toFixed(2)}
                             </p>
                           )}
                         </div>
                         <div>
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Drift</p>
+                          <p className="text-[11px] uppercase tracking-wide text-muted">Avg Drift</p>
                           <p className={`text-sm font-semibold ${driftColor(avgDrift)}`}>
                             {formatMetric(avgDrift, 2)}
                           </p>
                           {typeof delta?.avg_drift_score === "number" && (
-                            <p className="text-[11px] text-zinc-500">
+                            <p className="text-[11px] text-muted">
                               Δ {delta.avg_drift_score >= 0 ? "+" : ""}
                               {delta.avg_drift_score.toFixed(2)}
                             </p>
@@ -2404,19 +2407,19 @@ export function EvaluationContent() {
                       {(run.sample_results?.length > 0 || drift) && (
                         <div className="mt-3">
                           {drift && (
-                            <p className="mb-2 text-xs text-zinc-500">
+                            <p className="mb-2 text-xs text-muted">
                               Drift baseline: {drift.baseline_path} • {drift.scored_count} scored • {drift.high_drift_count} high-drift prompts
                             </p>
                           )}
                           {run.sample_results?.length > 0 && (
-                            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-2">
+                            <p className="text-xs font-medium text-muted mb-2">
                               Lowest correctness samples
                             </p>
                           )}
                           <ul className="space-y-2">
                             {run.sample_results.slice(0, 3).map((sample, idx) => (
-                              <li key={`${run.run_id}-${idx}`} className="text-xs text-zinc-600 dark:text-zinc-400">
-                                <span className="font-semibold text-zinc-900 dark:text-white">
+                              <li key={`${run.run_id}-${idx}`} className="text-xs text-muted">
+                                <span className="font-semibold text-foreground">
                                   {formatMetric(sample.correctness, 2)}
                                 </span>
                                 {" · "}
@@ -2439,16 +2442,16 @@ export function EvaluationContent() {
         <div className="space-y-6 animate-fade-in-up">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <Zap className="h-5 w-5 text-amber-500" />
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Zap className="h-5 w-5 text-warning" />
                 Agent Analytics
               </h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Multi-agent system performance and usage metrics</p>
+              <p className="text-sm text-muted">Multi-agent system performance and usage metrics</p>
             </div>
             <button
               onClick={fetchAgentMetricsData}
               disabled={agentMetricsLoading}
-              className="flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-primary-solid px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${agentMetricsLoading ? "animate-spin" : ""}`} />
               {agentMetricsLoading ? "Loading..." : "Refresh"}
@@ -2459,7 +2462,7 @@ export function EvaluationContent() {
           (!agentMetrics ||
             (agentMetrics.total_agent_interactions === 0 &&
               Object.keys(agentMetrics.agent_distribution || {}).length === 0)) ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
               {agentMetricsError}
             </div>
           ) : agentMetrics ? (
@@ -2467,25 +2470,25 @@ export function EvaluationContent() {
               {/* Summary cards */}
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 {[
-                  { label: "Total Interactions", value: agentMetrics.total_agent_interactions, icon: Activity, color: "text-blue-500" },
-                  { label: "Unique Users", value: agentMetrics.unique_users, icon: Users, color: "text-green-500" },
-                  { label: "Avg Response Time", value: `${agentMetrics.avg_response_time_ms}ms`, icon: Clock, color: "text-amber-500" },
-                  { label: "Routing Accuracy", value: agentMetrics.routing_accuracy?.positive_after_route == null ? "No ratings yet" : `${agentMetrics.routing_accuracy.positive_after_route}%`, icon: Target, color: "text-purple-500" },
+                  { label: "Total Interactions", value: agentMetrics.total_agent_interactions, icon: Activity, color: "text-primary" },
+                  { label: "Unique Users", value: agentMetrics.unique_users, icon: Users, color: "text-success" },
+                  { label: "Avg Response Time", value: `${agentMetrics.avg_response_time_ms}ms`, icon: Clock, color: "text-warning" },
+                  { label: "Routing Accuracy", value: agentMetrics.routing_accuracy?.positive_after_route == null ? "No ratings yet" : `${agentMetrics.routing_accuracy.positive_after_route}%`, icon: Target, color: "text-violet-700 dark:text-lavender" },
                 ].map((card) => (
-                  <div key={card.label} className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                    <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                  <div key={card.label} className="rounded-xl border border-line bg-surface p-4">
+                    <div className="flex items-center gap-2 text-xs text-muted mb-1">
                       <card.icon className={`h-4 w-4 ${card.color}`} />
                       {card.label}
                     </div>
-                    <div className="text-2xl font-bold text-zinc-900 dark:text-white">{card.value}</div>
+                    <div className="text-2xl font-bold text-foreground">{card.value}</div>
                   </div>
                 ))}
               </div>
 
               {/* Agent distribution + Response times */}
               <div className="grid gap-6 md:grid-cols-2">
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Agent Distribution</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Agent Distribution</h3>
                   {Object.keys(agentMetrics.agent_distribution || {}).length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
@@ -2495,43 +2498,43 @@ export function EvaluationContent() {
                           dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`}
                         >
                           {Object.keys(agentMetrics.agent_distribution).map((_, i) => (
-                            <Cell key={i} fill={["#3b82f6", "#f59e0b", "#8b5cf6", "#10b981", "#14b8a6", "#ef4444"][i % 6]} />
+                            <Cell key={i} fill={["var(--color-primary)", "var(--color-secondary)", "var(--color-bright)", "var(--color-lavender)", "var(--color-accent)", "var(--color-danger)"][i % 6]} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                       </PieChart>
                     </ResponsiveContainer>
-                  ) : <p className="text-sm text-zinc-400 text-center py-8">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-8">No data yet</p>}
                 </section>
 
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Response Time by Agent</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Response Time by Agent</h3>
                   {Object.keys(agentMetrics.response_time_by_agent || {}).length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={Object.entries(agentMetrics.response_time_by_agent).map(([name, ms]) => ({ name: name.replace("_agent", ""), ms }))}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="ms" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                        <YAxis tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                        <Bar dataKey="ms" fill="var(--color-accent)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                  ) : <p className="text-sm text-zinc-400 text-center py-8">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-8">No data yet</p>}
                 </section>
               </div>
 
               {/* Daily usage area chart */}
               {(agentMetrics.daily_usage?.length ?? 0) > 0 && (
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Daily Usage (14 days)</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Daily Usage (14 days)</h3>
                   <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={agentMetrics.daily_usage}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Area type="monotone" dataKey="count" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} name="Interactions" />
-                      <Area type="monotone" dataKey="unique_users" stroke="#10b981" fill="#10b981" fillOpacity={0.2} name="Unique Users" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10, fill: "var(--color-text-muted)" }} />
+                      <YAxis tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                      <Area type="monotone" dataKey="count" stroke="var(--color-primary)" fill="var(--color-primary)" fillOpacity={0.2} name="Interactions" />
+                      <Area type="monotone" dataKey="unique_users" stroke="var(--color-secondary)" fill="var(--color-secondary)" fillOpacity={0.2} name="Unique Users" />
                       <Legend />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -2540,22 +2543,22 @@ export function EvaluationContent() {
 
               {/* Top query types */}
               {(agentMetrics.top_query_types?.length ?? 0) > 0 && (
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Top Query Types</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Top Query Types</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <BarChart data={agentMetrics.top_query_types} layout="vertical">
                       <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                      <XAxis type="number" tick={{ fontSize: 11 }} />
-                      <YAxis type="category" dataKey="type" tick={{ fontSize: 11 }} width={140} />
-                      <Tooltip />
-                      <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                      <YAxis type="category" dataKey="type" tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} width={140} />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                      <Bar dataKey="count" fill="var(--color-lavender)" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </section>
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
+            <div className="flex flex-col items-center justify-center py-16 text-muted">
               <Zap className="h-12 w-12 mb-3 opacity-30" />
               <p className="text-sm">Click Refresh to load agent metrics</p>
             </div>
@@ -2568,16 +2571,16 @@ export function EvaluationContent() {
         <div className="space-y-6 animate-fade-in-up">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <GitBranch className="h-5 w-5 text-cyan-500" />
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <GitBranch className="h-5 w-5 text-info" />
                 Knowledge Graph
               </h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Neo4j graph database metrics and student learning patterns</p>
+              <p className="text-sm text-muted">Neo4j graph database metrics and student learning patterns</p>
             </div>
             <button
               onClick={fetchGraphMetricsData}
               disabled={graphMetricsLoading}
-              className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-primary-solid px-4 py-2 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${graphMetricsLoading ? "animate-spin" : ""}`} />
               {graphMetricsLoading ? "Loading..." : "Refresh"}
@@ -2590,31 +2593,31 @@ export function EvaluationContent() {
               graphMetrics.total_relationships === 0 &&
               Object.keys(graphMetrics.nodes_by_type || {}).length === 0 &&
               Object.keys(graphMetrics.relationships_by_type || {}).length === 0)) ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
               {graphMetricsError}
             </div>
           ) : graphMetrics ? (
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-2 gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    <Database className="h-4 w-4 text-cyan-500" /> Total Nodes
+                <div className="rounded-xl border border-line bg-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted mb-1">
+                    <Database className="h-4 w-4 text-info" /> Total Nodes
                   </div>
-                  <div className="text-2xl font-bold text-zinc-900 dark:text-white">{graphMetrics.total_nodes}</div>
+                  <div className="text-2xl font-bold text-foreground">{graphMetrics.total_nodes}</div>
                 </div>
-                <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                    <GitBranch className="h-4 w-4 text-purple-500" /> Total Relationships
+                <div className="rounded-xl border border-line bg-surface p-4">
+                  <div className="flex items-center gap-2 text-xs text-muted mb-1">
+                    <GitBranch className="h-4 w-4 text-violet-700 dark:text-lavender" /> Total Relationships
                   </div>
-                  <div className="text-2xl font-bold text-zinc-900 dark:text-white">{graphMetrics.total_relationships}</div>
+                  <div className="text-2xl font-bold text-foreground">{graphMetrics.total_relationships}</div>
                 </div>
               </div>
 
               {/* Nodes by type + Relationships by type */}
               <div className="grid gap-6 md:grid-cols-2">
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Nodes by Type</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Nodes by Type</h3>
                   {Object.keys(graphMetrics.nodes_by_type || {}).length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
                       <PieChart>
@@ -2624,76 +2627,76 @@ export function EvaluationContent() {
                           dataKey="value" label={({ name, value }) => `${name}: ${value}`}
                         >
                           {Object.keys(graphMetrics.nodes_by_type).map((_, i) => (
-                            <Cell key={i} fill={["#06b6d4", "#3b82f6", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#ec4899", "#14b8a6", "#f97316"][i % 9]} />
+                            <Cell key={i} fill={["var(--color-primary)", "var(--color-secondary)", "var(--color-bright)", "var(--color-lavender)", "var(--color-accent)"][i % 5]} />
                           ))}
                         </Pie>
-                        <Tooltip />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                       </PieChart>
                     </ResponsiveContainer>
-                  ) : <p className="text-sm text-zinc-400 text-center py-8">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-8">No data yet</p>}
                 </section>
 
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Relationships by Type</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Relationships by Type</h3>
                   {Object.keys(graphMetrics.relationships_by_type || {}).length > 0 ? (
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={Object.entries(graphMetrics.relationships_by_type).map(([name, count]) => ({ name, count }))}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                        <XAxis dataKey="name" tick={{ fontSize: 9 }} angle={-30} textAnchor="end" height={60} />
-                        <YAxis tick={{ fontSize: 11 }} />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                        <XAxis dataKey="name" tick={{ fontSize: 9, fill: "var(--color-text-muted)" }} angle={-30} textAnchor="end" height={60} />
+                        <YAxis tick={{ fontSize: 11, fill: "var(--color-text-muted)" }} />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                        <Bar dataKey="count" fill="var(--color-bright)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
-                  ) : <p className="text-sm text-zinc-400 text-center py-8">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-8">No data yet</p>}
                 </section>
               </div>
 
               {/* Most struggled concepts + Most studied topics */}
               <div className="grid gap-6 md:grid-cols-2">
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-400" /> Most Struggled Concepts
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-danger" /> Most Struggled Concepts
                   </h3>
                   {(graphMetrics.most_struggled_concepts?.length ?? 0) > 0 ? (
                     <div className="space-y-2">
                       {graphMetrics.most_struggled_concepts.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-800/50">
-                          <span className="text-sm text-zinc-700 dark:text-zinc-300 capitalize">{item.concept}</span>
-                          <span className="text-xs font-medium text-red-500">{item.students} students</span>
+                        <div key={i} className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
+                          <span className="text-sm text-foreground capitalize">{item.concept}</span>
+                          <span className="text-xs font-medium text-danger">{item.students} students</span>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-sm text-zinc-400 text-center py-4">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-4">No data yet</p>}
                 </section>
 
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-green-400" /> Most Studied Topics
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-success" /> Most Studied Topics
                   </h3>
                   {(graphMetrics.most_studied_topics?.length ?? 0) > 0 ? (
                     <div className="space-y-2">
                       {graphMetrics.most_studied_topics.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-800/50">
-                          <span className="text-sm text-zinc-700 dark:text-zinc-300 capitalize">{item.topic}</span>
-                          <span className="text-xs font-medium text-green-500">{item.study_count} studies</span>
+                        <div key={i} className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2">
+                          <span className="text-sm text-foreground capitalize">{item.topic}</span>
+                          <span className="text-xs font-medium text-success">{item.study_count} studies</span>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-sm text-zinc-400 text-center py-4">No data yet</p>}
+                  ) : <p className="text-sm text-muted text-center py-4">No data yet</p>}
                 </section>
               </div>
 
               {/* Student engagement table */}
               {(graphMetrics.student_engagement?.length ?? 0) > 0 && (
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
-                    <Users className="h-4 w-4 text-blue-400" /> Student Engagement
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" /> Student Engagement
                   </h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 dark:text-zinc-400">
+                        <tr className="border-b border-line text-xs text-muted">
                           <th className="text-left py-2 px-3">Student</th>
                           <th className="text-right py-2 px-3">Queries</th>
                           <th className="text-right py-2 px-3">Sessions</th>
@@ -2702,11 +2705,11 @@ export function EvaluationContent() {
                       </thead>
                       <tbody>
                         {graphMetrics.student_engagement.map((s, i) => (
-                          <tr key={i} className="border-b border-zinc-100 dark:border-zinc-800">
-                            <td className="py-2 px-3 text-zinc-700 dark:text-zinc-300">{s.username}</td>
-                            <td className="py-2 px-3 text-right text-zinc-600 dark:text-zinc-400">{s.queries}</td>
-                            <td className="py-2 px-3 text-right text-zinc-600 dark:text-zinc-400">{s.sessions}</td>
-                            <td className="py-2 px-3 text-right text-zinc-600 dark:text-zinc-400">{s.doubts}</td>
+                          <tr key={i} className="border-b border-line">
+                            <td className="py-2 px-3 text-foreground">{s.username}</td>
+                            <td className="py-2 px-3 text-right text-muted">{s.queries}</td>
+                            <td className="py-2 px-3 text-right text-muted">{s.sessions}</td>
+                            <td className="py-2 px-3 text-right text-muted">{s.doubts}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2717,8 +2720,8 @@ export function EvaluationContent() {
 
               {/* Feedback sentiment */}
               {Object.keys(graphMetrics.feedback_sentiment_overview || {}).length > 0 && (
-                <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-                  <h3 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Feedback Sentiment</h3>
+                <section className="rounded-xl border border-line bg-surface p-6">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Feedback Sentiment</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       <Pie
@@ -2727,10 +2730,10 @@ export function EvaluationContent() {
                         dataKey="value" label
                       >
                         {Object.keys(graphMetrics.feedback_sentiment_overview).map((sentiment, i) => (
-                          <Cell key={i} fill={sentiment === "positive" ? "#10b981" : sentiment === "negative" ? "#ef4444" : "#6b7280"} />
+                          <Cell key={i} fill={sentiment === "positive" ? "var(--color-success)" : sentiment === "negative" ? "var(--color-danger)" : "var(--color-text-muted)"} />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                       <Legend />
                     </PieChart>
                   </ResponsiveContainer>
@@ -2738,7 +2741,7 @@ export function EvaluationContent() {
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
+            <div className="flex flex-col items-center justify-center py-16 text-muted">
               <GitBranch className="h-12 w-12 mb-3 opacity-30" />
               <p className="text-sm">Click Refresh to load knowledge graph metrics</p>
             </div>
@@ -2752,16 +2755,16 @@ export function EvaluationContent() {
           {/* Quiz Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <Target className="h-5 w-5 text-purple-500" />
+              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                <Target className="h-5 w-5 text-violet-700 dark:text-lavender" />
                 Quiz Analytics
               </h2>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">Student quiz performance across all users</p>
+              <p className="text-sm text-muted">Student quiz performance across all users</p>
             </div>
             <button
               onClick={fetchQuizMetricsData}
               disabled={quizMetricsLoading}
-              className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg border border-line bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${quizMetricsLoading ? "animate-spin" : ""}`} />
               Refresh
@@ -2770,10 +2773,10 @@ export function EvaluationContent() {
 
           {quizMetricsLoading && !quizMetrics ? (
             <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" />
+              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
             </div>
           ) : quizMetrics?.error && !quizMetrics.total_quizzes ? (
-            <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 text-sm text-red-700 dark:text-red-400">
+            <div className="rounded-xl bg-danger-bg border border-danger/30 p-4 text-sm text-danger">
               {quizMetrics.error}
             </div>
           ) : quizMetrics ? (
@@ -2781,28 +2784,28 @@ export function EvaluationContent() {
               {/* Summary Cards */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {[
-                  { label: "Total Quizzes", value: quizMetrics.total_quizzes, icon: FileText, color: "text-purple-600 dark:text-purple-400", bg: "bg-purple-100 dark:bg-purple-900/30" },
-                  { label: "Unique Students", value: quizMetrics.unique_users, icon: Brain, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-900/30" },
-                  { label: "Avg Score", value: `${quizMetrics.avg_percentage.toFixed(1)}%`, icon: Target, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/30" },
-                  { label: "Questions Answered", value: quizMetrics.total_questions_answered ?? 0, icon: CheckCircle, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-900/30" },
+                  { label: "Total Quizzes", value: quizMetrics.total_quizzes, icon: FileText, color: "text-violet-700 dark:text-lavender", bg: "bg-lavender/15" },
+                  { label: "Unique Students", value: quizMetrics.unique_users, icon: Brain, color: "text-primary", bg: "bg-primary-bg" },
+                  { label: "Avg Score", value: `${quizMetrics.avg_percentage.toFixed(1)}%`, icon: Target, color: "text-success", bg: "bg-success-bg" },
+                  { label: "Questions Answered", value: quizMetrics.total_questions_answered ?? 0, icon: CheckCircle, color: "text-warning", bg: "bg-warning-bg" },
                 ].map((card) => (
-                  <div key={card.label} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
+                  <div key={card.label} className="rounded-xl border border-line bg-surface p-5">
                     <div className="flex items-center gap-3 mb-2">
                       <div className={`p-2 rounded-lg ${card.bg}`}>
                         <card.icon className={`h-4 w-4 ${card.color}`} />
                       </div>
-                      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">{card.label}</span>
+                      <span className="text-xs font-medium text-muted uppercase tracking-wider">{card.label}</span>
                     </div>
-                    <p className="text-2xl font-bold text-zinc-900 dark:text-white">{card.value}</p>
+                    <p className="text-2xl font-bold text-foreground">{card.value}</p>
                   </div>
                 ))}
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* Score Distribution */}
-                <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-purple-500" />
+                <section className="rounded-xl border border-line bg-surface p-5">
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-violet-700 dark:text-lavender" />
                     Score Distribution
                   </h3>
                   <div className="h-64">
@@ -2813,20 +2816,20 @@ export function EvaluationContent() {
                           count: quizMetrics.score_distribution[bucket] ?? 0,
                         }))
                       }>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                        <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Quizzes" />
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                        <XAxis dataKey="range" tick={{ fontSize: 12, fill: "var(--color-text-muted)" }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "var(--color-text-muted)" }} />
+                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                        <Bar dataKey="count" fill="var(--color-lavender)" radius={[4, 4, 0, 0]} name="Quizzes" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </section>
 
                 {/* Recent Activity */}
-                <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-blue-500" />
+                <section className="rounded-xl border border-line bg-surface p-5">
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-primary" />
                     Last 7 Days Activity
                   </h3>
                   {quizMetrics.recent_activity.length > 0 ? (
@@ -2837,27 +2840,27 @@ export function EvaluationContent() {
                           quizzes: d.count,
                           avg_score: d.avg_score,
                         }))}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
-                          <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} />
-                          <Tooltip />
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                          <XAxis dataKey="date" tick={{ fontSize: 12, fill: "var(--color-text-muted)" }} />
+                          <YAxis tick={{ fontSize: 12, fill: "var(--color-text-muted)" }} />
+                          <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
                           <Legend />
-                          <Area type="monotone" dataKey="quizzes" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} name="Quizzes" />
-                          <Area type="monotone" dataKey="avg_score" stroke="#10b981" fill="#10b981" fillOpacity={0.1} name="Avg Score %" />
+                          <Area type="monotone" dataKey="quizzes" stroke="var(--color-lavender)" fill="var(--color-lavender)" fillOpacity={0.2} name="Quizzes" />
+                          <Area type="monotone" dataKey="avg_score" stroke="var(--color-secondary)" fill="var(--color-secondary)" fillOpacity={0.1} name="Avg Score %" />
                         </AreaChart>
                       </ResponsiveContainer>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-64 text-sm text-zinc-400">No quiz activity in the last 7 days</div>
+                    <div className="flex items-center justify-center h-64 text-sm text-muted">No quiz activity in the last 7 days</div>
                   )}
                 </section>
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* Popular Topics */}
-                <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
+                <section className="rounded-xl border border-line bg-surface p-5">
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-success" />
                     Popular Topics
                   </h3>
                   {quizMetrics.popular_topics.length > 0 ? (
@@ -2869,47 +2872,47 @@ export function EvaluationContent() {
                         return (
                           <div key={topic.folder}>
                             <div className="flex items-center justify-between text-sm mb-1">
-                              <span className="font-medium text-zinc-700 dark:text-zinc-300 truncate max-w-[200px]">{label}</span>
-                              <span className="text-zinc-500 dark:text-zinc-400">{topic.quiz_count} quizzes</span>
+                              <span className="font-medium text-foreground truncate max-w-[200px]">{label}</span>
+                              <span className="text-muted">{topic.quiz_count} quizzes</span>
                             </div>
-                            <div className="h-2 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                              <div className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-500" style={{ width: `${pct}%` }} />
+                            <div className="h-2 rounded-full bg-surface-2 overflow-hidden">
+                              <div className="h-full rounded-full bg-gradient-to-r from-[#1E3A8A] to-[#0D9488] dark:from-[#3B82F6] dark:to-[#14B8A6]" style={{ width: `${pct}%` }} />
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="text-sm text-zinc-400 text-center py-8">No topic data available</div>
+                    <div className="text-sm text-muted text-center py-8">No topic data available</div>
                   )}
                 </section>
 
                 {/* Top Performers */}
-                <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5">
-                  <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-amber-500" />
+                <section className="rounded-xl border border-line bg-surface p-5">
+                  <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-warning" />
                     Top Performers
                   </h3>
                   {quizMetrics.top_performers.length > 0 ? (
                     <div className="space-y-3">
                       {quizMetrics.top_performers.map((performer, i) => (
-                        <div key={performer.username} className="flex items-center gap-3 p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                        <div key={performer.username} className="flex items-center gap-3 p-3 rounded-lg bg-surface-2">
                           <span className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                            i === 0 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600" :
-                            i === 1 ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300" :
-                            i === 2 ? "bg-orange-100 dark:bg-orange-900/30 text-orange-600" :
-                            "bg-zinc-100 dark:bg-zinc-800 text-zinc-500"
+                            i === 0 ? "bg-warning-bg text-warning" :
+                            i === 1 ? "bg-line text-muted" :
+                            i === 2 ? "bg-warning-bg text-warning" :
+                            "bg-surface-2 text-muted"
                           }`}>
                             {i + 1}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">{performer.username}</p>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{performer.quizzes_taken} quizzes</p>
+                            <p className="text-sm font-medium text-foreground truncate">{performer.username}</p>
+                            <p className="text-xs text-muted">{performer.quizzes_taken} quizzes</p>
                           </div>
                           <span className={`text-sm font-bold ${
-                            performer.avg_score >= 80 ? "text-emerald-600 dark:text-emerald-400" :
-                            performer.avg_score >= 60 ? "text-amber-600 dark:text-amber-400" :
-                            "text-red-600 dark:text-red-400"
+                            performer.avg_score >= 80 ? "text-success" :
+                            performer.avg_score >= 60 ? "text-warning" :
+                            "text-danger"
                           }`}>
                             {performer.avg_score}%
                           </span>
@@ -2917,7 +2920,7 @@ export function EvaluationContent() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-zinc-400 text-center py-8">No quiz data available</div>
+                    <div className="text-sm text-muted text-center py-8">No quiz data available</div>
                   )}
                 </section>
               </div>
@@ -2944,7 +2947,7 @@ export default function EvaluationPage() {
     return (
       <PageShell>
         <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
         </div>
       </PageShell>
     );
@@ -2954,8 +2957,8 @@ export default function EvaluationPage() {
     return (
       <PageShell>
         <div className="flex flex-col items-center justify-center gap-3 py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">Redirecting to admin dashboard…</p>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
+          <p className="text-sm text-muted">Redirecting to admin dashboard…</p>
         </div>
       </PageShell>
     );
@@ -2964,9 +2967,9 @@ export default function EvaluationPage() {
   return (
     <PageShell>
       <div className="flex flex-col items-center justify-center gap-4 py-20">
-        <Lock className="h-12 w-12 text-zinc-400 dark:text-zinc-600" />
-        <h2 className="text-xl font-bold text-zinc-900 dark:text-white">Admin Only</h2>
-        <p className="max-w-md text-center text-sm text-zinc-500 dark:text-zinc-400">
+        <Lock className="h-12 w-12 text-muted/40" />
+        <h2 className="text-xl font-bold text-foreground">Admin Only</h2>
+        <p className="max-w-md text-center text-sm text-muted">
           The Evaluation Dashboard is restricted to administrators. Please contact an admin if you need access.
         </p>
       </div>

@@ -75,26 +75,26 @@ function VerifyPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4">
-      <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-surface-2 px-4">
+      <div className="w-full max-w-md rounded-3xl border border-line bg-surface p-8 shadow-sm">
         <div className="mb-6">
           <Link
             href="/login"
-            className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+            className="text-sm font-semibold text-primary hover:text-primary"
           >
             ← Back to sign in
           </Link>
-          <h1 className="mt-4 text-2xl font-bold text-zinc-900">
+          <h1 className="mt-4 text-2xl font-bold text-foreground">
             Verify your email
           </h1>
-          <p className="mt-2 text-sm text-zinc-600">
+          <p className="mt-2 text-sm text-muted">
             Enter the 6-digit code we sent to your email.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="username">
+            <label className="text-sm font-medium text-foreground" htmlFor="username">
               Username
             </label>
             <input
@@ -110,7 +110,7 @@ function VerifyPageContent() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="email">
+            <label className="text-sm font-medium text-foreground" htmlFor="email">
               Email (for resend)
             </label>
             <input
@@ -125,7 +125,7 @@ function VerifyPageContent() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-700" htmlFor="code">
+            <label className="text-sm font-medium text-foreground" htmlFor="code">
               Verification code
             </label>
             <input
@@ -143,12 +143,12 @@ function VerifyPageContent() {
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-xl border border-danger/30 bg-danger-bg px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
           {message && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            <div className="rounded-xl border border-success/30 bg-success-bg px-4 py-3 text-sm text-success">
               {message}
             </div>
           )}
@@ -178,8 +178,8 @@ function VerifyPageContent() {
 export default function VerifyPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
-        <p className="text-zinc-500">Loading...</p>
+      <div className="flex min-h-screen items-center justify-center bg-surface-2">
+        <p className="text-muted">Loading...</p>
       </div>
     }>
       <VerifyPageContent />

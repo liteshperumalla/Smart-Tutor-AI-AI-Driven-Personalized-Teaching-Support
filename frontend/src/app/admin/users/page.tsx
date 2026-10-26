@@ -85,7 +85,7 @@ export default function AdminUsersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
       </div>
     );
   }
@@ -93,53 +93,53 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-white">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
           <Users className="h-5 w-5" />
           User Management
-          <span className="ml-2 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="ml-2 rounded-full bg-line px-2.5 py-0.5 text-xs font-medium text-foreground">
             {users.length}
           </span>
         </h2>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <input
             type="text"
             placeholder="Search users…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-xl border border-zinc-200 bg-white py-2 pl-10 pr-4 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:focus:border-zinc-500"
+            className="rounded-xl border border-line bg-surface py-2 pl-10 pr-4 text-sm text-foreground outline-none focus:border-muted"
           />
         </div>
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400">
+        <div className="rounded-xl border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
           {error}
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-zinc-200 dark:border-zinc-800">
+      <div className="overflow-x-auto rounded-2xl border border-line">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900/60">
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Username</th>
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Email</th>
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Role</th>
-              <th className="hidden px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400 xl:table-cell">Created</th>
-              <th className="hidden px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400 xl:table-cell">Last Login</th>
-              <th className="px-4 py-3 font-medium text-zinc-500 dark:text-zinc-400">Actions</th>
+            <tr className="border-b border-line bg-surface-2">
+              <th className="px-4 py-3 font-medium text-muted">Username</th>
+              <th className="px-4 py-3 font-medium text-muted">Email</th>
+              <th className="px-4 py-3 font-medium text-muted">Role</th>
+              <th className="hidden px-4 py-3 font-medium text-muted xl:table-cell">Created</th>
+              <th className="hidden px-4 py-3 font-medium text-muted xl:table-cell">Last Login</th>
+              <th className="px-4 py-3 font-medium text-muted">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((user) => (
               <tr
                 key={user.username}
-                className="border-b border-zinc-100 transition hover:bg-zinc-50 dark:border-zinc-800/50 dark:hover:bg-zinc-900/40"
+                className="border-b border-line transition hover:bg-surface-2"
               >
-                <td className="px-4 py-3 font-medium text-zinc-900 dark:text-white">
+                <td className="px-4 py-3 font-medium text-foreground">
                   {user.username}
                 </td>
-                <td className="max-w-[16rem] truncate px-4 py-3 text-zinc-600 dark:text-zinc-400" title={user.email || undefined}>
+                <td className="max-w-[16rem] truncate px-4 py-3 text-muted" title={user.email || undefined}>
                   {user.email || "—"}
                 </td>
                 <td className="px-4 py-3">
@@ -150,8 +150,8 @@ export default function AdminUsersPage() {
                     className={[
                       "rounded-lg border px-3 py-1.5 text-xs font-medium outline-none transition",
                       user.role === "Admin"
-                        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
-                        : "border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+                        ? "border-warning/40 bg-warning-bg text-warning"
+                        : "border-line bg-surface-2 text-foreground",
                       "disabled:opacity-50",
                     ].join(" ")}
                   >
@@ -160,12 +160,12 @@ export default function AdminUsersPage() {
                   </select>
                 </td>
                 {/* Dates hide below xl so Role and Actions stay on screen next to the sidebar. */}
-                <td className="hidden px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400 xl:table-cell">
+                <td className="hidden px-4 py-3 text-xs text-muted xl:table-cell">
                   {user.created_at
                     ? new Date(user.created_at).toLocaleDateString()
                     : "—"}
                 </td>
-                <td className="hidden px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400 xl:table-cell">
+                <td className="hidden px-4 py-3 text-xs text-muted xl:table-cell">
                   {user.last_login
                     ? new Date(user.last_login).toLocaleDateString()
                     : "Never"}
@@ -176,13 +176,13 @@ export default function AdminUsersPage() {
                       <button
                         onClick={() => handleDelete(user.username)}
                         disabled={actionLoading === user.username}
-                        className="rounded-lg bg-red-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+                        className="rounded-lg bg-danger-solid px-3 py-1 text-xs font-medium text-white transition hover:brightness-110 disabled:opacity-50"
                       >
                         Confirm
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="rounded-lg bg-zinc-200 px-3 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600"
+                        className="rounded-lg bg-line px-3 py-1 text-xs font-medium text-foreground transition hover:bg-line"
                       >
                         Cancel
                       </button>
@@ -190,7 +190,7 @@ export default function AdminUsersPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(user.username)}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-danger transition hover:bg-danger-bg"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Delete
@@ -201,7 +201,7 @@ export default function AdminUsersPage() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-zinc-500 dark:text-zinc-400">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted">
                   {search ? "No users match your search." : "No users found."}
                 </td>
               </tr>

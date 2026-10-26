@@ -13,15 +13,15 @@ import { toast } from "sonner";
 import { Megaphone, Plus, Trash2, Edit2, Eye, EyeOff } from "lucide-react";
 
 const priorityStyles: Record<string, string> = {
-  info: "border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30",
-  warning: "border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30",
-  critical: "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30",
+  info: "border-primary/30 bg-primary-bg",
+  warning: "border-warning/40 bg-warning-bg",
+  critical: "border-danger/30 bg-danger-bg",
 };
 
 const priorityBadge: Record<string, string> = {
-  info: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400",
-  warning: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
-  critical: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400",
+  info: "bg-primary-bg text-primary",
+  warning: "bg-warning-bg text-warning",
+  critical: "bg-danger-bg text-danger",
 };
 
 export default function AdminAnnouncementsPage() {
@@ -135,17 +135,17 @@ export default function AdminAnnouncementsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-white">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
           <Megaphone className="h-5 w-5" />
           Announcements
-          <span className="ml-2 rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+          <span className="ml-2 rounded-full bg-line px-2.5 py-0.5 text-xs font-medium text-foreground">
             {announcements.length}
           </span>
         </h2>
         {!showForm && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="btn-primary btn-sm"
           >
             <Plus className="h-4 w-4" />
             New Announcement
@@ -155,8 +155,8 @@ export default function AdminAnnouncementsPage() {
 
       {/* Create / Edit Form */}
       {showForm && (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/60">
-          <h3 className="mb-4 text-sm font-semibold text-zinc-900 dark:text-white">
+        <div className="rounded-2xl border border-line bg-surface p-6">
+          <h3 className="mb-4 text-sm font-semibold text-foreground">
             {editingId ? "Edit Announcement" : "Create Announcement"}
           </h3>
           <div className="space-y-4">
@@ -165,17 +165,17 @@ export default function AdminAnnouncementsPage() {
               placeholder="Title"
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
             />
             <textarea
               placeholder="Content"
               value={formContent}
               onChange={(e) => setFormContent(e.target.value)}
               rows={4}
-              className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white"
+              className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm text-foreground outline-none focus:border-muted"
             />
             <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Priority:</label>
+              <label className="text-sm font-medium text-muted">Priority:</label>
               {(["info", "warning", "critical"] as const).map((p) => (
                 <button
                   key={p}
@@ -184,7 +184,7 @@ export default function AdminAnnouncementsPage() {
                     "rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition",
                     formPriority === p
                       ? priorityBadge[p]
-                      : "border border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400",
+                      : "border border-line text-muted",
                   ].join(" ")}
                 >
                   {p}
@@ -195,13 +195,13 @@ export default function AdminAnnouncementsPage() {
               <button
                 onClick={editingId ? handleUpdate : handleCreate}
                 disabled={saving || !formTitle.trim() || !formContent.trim()}
-                className="rounded-xl bg-zinc-900 px-6 py-2 text-sm font-medium text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                className="btn-primary btn-sm disabled:opacity-50"
               >
                 {saving ? "Saving…" : editingId ? "Update" : "Publish"}
               </button>
               <button
                 onClick={resetForm}
-                className="rounded-xl border border-zinc-200 px-6 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-xl border border-line px-6 py-2 text-sm font-medium text-foreground transition hover:bg-surface-2"
               >
                 Cancel
               </button>
@@ -213,10 +213,10 @@ export default function AdminAnnouncementsPage() {
       {/* Announcements List */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-900 dark:border-zinc-700 dark:border-t-white" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
         </div>
       ) : announcements.length === 0 ? (
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-8 text-center text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/30 dark:text-zinc-400">
+        <div className="rounded-2xl border border-line bg-surface-2 p-8 text-center text-muted">
           No announcements yet. Create one to get started.
         </div>
       ) : (
@@ -231,7 +231,7 @@ export default function AdminAnnouncementsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
+                    <h3 className="text-sm font-semibold text-foreground">
                       {ann.title}
                     </h3>
                     <span
@@ -242,13 +242,13 @@ export default function AdminAnnouncementsPage() {
                       {ann.priority}
                     </span>
                     {!ann.active && (
-                      <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-500 dark:bg-zinc-700 dark:text-zinc-400">
+                      <span className="rounded-full bg-line px-2 py-0.5 text-[10px] font-medium text-muted">
                         Inactive
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{ann.content}</p>
-                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="mt-1 text-sm text-foreground">{ann.content}</p>
+                  <p className="mt-2 text-xs text-muted">
                     by {ann.author} · {new Date(ann.created_at).toLocaleDateString()}
                   </p>
                 </div>
@@ -256,14 +256,14 @@ export default function AdminAnnouncementsPage() {
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => handleToggleActive(ann.id, ann.active)}
-                    className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="rounded-lg p-2 text-muted transition hover:bg-surface-2"
                     title={ann.active ? "Deactivate" : "Activate"}
                   >
                     {ann.active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => startEdit(ann)}
-                    className="rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="rounded-lg p-2 text-muted transition hover:bg-surface-2"
                     title="Edit"
                   >
                     <Edit2 className="h-4 w-4" />
@@ -272,13 +272,13 @@ export default function AdminAnnouncementsPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleDelete(ann.id)}
-                        className="rounded-lg bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                        className="rounded-lg bg-danger-solid px-2 py-1 text-xs text-white hover:brightness-110"
                       >
                         Yes
                       </button>
                       <button
                         onClick={() => setDeleteConfirm(null)}
-                        className="rounded-lg bg-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-zinc-300"
+                        className="rounded-lg bg-line px-2 py-1 text-xs text-foreground hover:bg-line"
                       >
                         No
                       </button>
@@ -286,7 +286,7 @@ export default function AdminAnnouncementsPage() {
                   ) : (
                     <button
                       onClick={() => setDeleteConfirm(ann.id)}
-                      className="rounded-lg p-2 text-red-500 transition hover:bg-red-50 dark:hover:bg-red-950/30"
+                      className="rounded-lg p-2 text-danger transition hover:bg-danger-bg"
                       title="Delete"
                     >
                       <Trash2 className="h-4 w-4" />
