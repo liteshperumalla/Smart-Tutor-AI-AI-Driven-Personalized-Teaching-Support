@@ -1,0 +1,41 @@
+name: SQS Jobs Queue
+
+# Creates/updates the SQS queue (and dead-letter queue) for background jobs
+# and grants the production EC2 instance role access to it. The worker
+# container itself is started by deploy-production.yml once the repository
+# variable JOBS_QUEUE_URL is set. See docs/aws/SQS_JOBS_SETUP.md.
+#
+# Runs on manual dispatch and whenever this workflow or its script change.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sqs-jobs-queue.yml'
+      - 'scripts/ci/setup_sqs_jobs_queue.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sqs-jobs-queue
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply jobs queue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Create or update the queues and IAM policy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+          INSTANCE_ID: i-0c35826b951e9dd6f
+        run: scripts/ci/setup_sqs_jobs_queue.sh

@@ -269,6 +269,37 @@ jobs:
 
             wait_for_backend_ready "Rolled back production backend" "smart-tutor-backend" 60 5
 
+            # Keep the jobs worker on the same image as the API. Images from
+            # before backend/jobs existed have no worker, so it's removed.
+            echo "=== Replacing jobs worker ==="
+            if docker ps -a --format '{{.Names}}' | grep -qx smart-tutor-worker; then
+              docker_with_timeout 150s docker stop -t 120 smart-tutor-worker || true
+              docker rm -f smart-tutor-worker 2>/dev/null || true
+            fi
+            if ! grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env"; then
+              echo "JOBS_QUEUE_URL not set -- jobs worker not started."
+            elif ! docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import backend.jobs.worker" >/dev/null 2>&1; then
+              echo "::warning::Rollback image has no jobs worker; queued jobs wait until a newer release is deployed."
+            else
+              docker run -d \
+                --name smart-tutor-worker \
+                --restart unless-stopped \
+                --network smart-tutor_smart-tutor-network \
+                --env-file "$HOME/smart-tutor.env" \
+                --stop-timeout 120 \
+                --health-cmd 'python -m backend.jobs healthcheck' \
+                --health-interval 30s \
+                --health-timeout 10s \
+                --health-start-period 60s \
+                --health-retries 3 \
+                -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+                -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+                -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+                "$BACKEND_IMAGE" \
+                python -m backend.jobs worker
+              echo "Jobs worker started on the rollback image."
+            fi
+
             docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
             rm -f "$BACKEND_IMAGE_ARCHIVE" 2>/dev/null || true
             docker image prune -af || true

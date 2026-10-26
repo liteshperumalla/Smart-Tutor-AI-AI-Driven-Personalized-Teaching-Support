@@ -33,6 +33,7 @@ docs/
 │   ├── AWS_MIGRATION_STATUS.md
 │   ├── AWS_PRODUCTION_STATUS.md
 │   ├── AWS_TEST_REPORT.md
+│   ├── SQS_JOBS_SETUP.md
 │   ├── FIX_AWS_ISSUES.md
 │   └── aws_migration_plan.md
 ├── deployment/              # Deployment & operations
