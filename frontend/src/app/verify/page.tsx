@@ -4,6 +4,7 @@ import { FormEvent, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
+import { SkeletonAuthForm } from "@/components/skeleton";
 
 function VerifyPageContent() {
   const searchParams = useSearchParams();
@@ -178,9 +179,7 @@ function VerifyPageContent() {
 export default function VerifyPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-surface-2">
-        <p className="text-muted">Loading...</p>
-      </div>
+      <SkeletonAuthForm label="Loading verification" fields={1} />
     }>
       <VerifyPageContent />
     </Suspense>

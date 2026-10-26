@@ -20,6 +20,7 @@ import { useActiveCourse } from "@/components/active-course-provider";
 import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
+import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
 export default function QuizPage() {
   const { token } = useAuthToken();
@@ -269,14 +270,14 @@ export default function QuizPage() {
                 Select Topics
               </label>
               {loadingFolders ? (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <SkeletonRegion label="Loading topics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="rounded-xl p-4 border border-line bg-surface-2 animate-pulse">
-                      <div className="h-4 w-3/4 bg-line rounded mb-2"></div>
-                      <div className="h-3 w-1/2 bg-line rounded"></div>
+                    <div key={i} className="rounded-xl border border-line bg-surface p-4">
+                      <Skeleton className="mb-2 h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
                   ))}
-                </div>
+                </SkeletonRegion>
               ) : folders.length === 0 ? (
                 <div className="rounded-xl border-2 border-dashed border-line bg-surface-2 p-8 text-center">
                   <div className="mx-auto h-12 w-12 rounded-full bg-surface-2 flex items-center justify-center mb-3">

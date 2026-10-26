@@ -6,6 +6,7 @@ import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { getGoogleOAuthRedirectUri } from "@/lib/google-oauth";
 import { getSafeNextPath } from "@/lib/safe-next";
+import { SkeletonAuthForm } from "@/components/skeleton";
 
 // This page uses useSearchParams(), so must be dynamic
 export const dynamic = "force-dynamic";
@@ -113,11 +114,7 @@ function GoogleCallbackContent() {
 export default function GoogleCallbackPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen flex-col items-center justify-center bg-surface-2 px-4 text-center">
-        <div className="max-w-md space-y-4 rounded-2xl border border-line bg-surface p-8 shadow">
-          <h1 className="text-xl font-semibold text-foreground">Loading…</h1>
-        </div>
-      </div>
+      <SkeletonAuthForm label="Signing you in with Google" fields={0} />
     }>
       <GoogleCallbackContent />
     </Suspense>

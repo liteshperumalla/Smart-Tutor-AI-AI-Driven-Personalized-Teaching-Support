@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { BarChart3, CheckCircle2, Database, FileWarning, Loader2, Plus, RefreshCw, RotateCw, UploadCloud } from "lucide-react";
+import { BarChart3, CheckCircle2, Database, FileWarning, Plus, RefreshCw, RotateCw, UploadCloud } from "lucide-react";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import {
   Course,
@@ -20,6 +20,7 @@ import {
   reindexCourseResource,
   uploadCourseResource,
 } from "@/lib/api";
+import { SkeletonCard, SkeletonRegion, SkeletonStatGrid } from "@/components/skeleton";
 
 export default function CourseQualityPage() {
   const { token } = useAuthToken({ redirectTo: "/login" });
@@ -145,7 +146,7 @@ export default function CourseQualityPage() {
         </div>
       </div>
 
-      {loading ? <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-muted" /></div> : noInstructorCourses ? <div className="rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">You are not an instructor for any course workspace yet.</div> : <>
+      {loading ? <SkeletonRegion label="Loading course quality" className="space-y-4"><SkeletonStatGrid /><SkeletonCard lines={3} /><SkeletonCard lines={3} /></SkeletonRegion> : noInstructorCourses ? <div className="rounded-2xl border border-line bg-surface p-8 text-center text-sm text-muted">You are not an instructor for any course workspace yet.</div> : <>
         <section className="grid gap-4 md:grid-cols-3">
           <Metric icon={UploadCloud} label="Course documents" value={ingestion?.total_documents ?? 0} detail={`${ingestion?.status_counts.complete ?? 0} indexed`} />
           <Metric icon={CheckCircle2} label="Objective coverage" value={`${coverage?.coverage_pct ?? 0}%`} detail={`${coverage?.covered_objectives ?? 0} of ${coverage?.total_objectives ?? 0} objectives have items`} />

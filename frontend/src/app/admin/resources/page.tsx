@@ -34,6 +34,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
+import { SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 const INDEXABLE_EXTENSIONS = new Set([".pdf", ".pptx", ".docx", ".txt", ".md", ".ipynb"]);
 
@@ -514,9 +515,9 @@ export default function AdminResourcesPage() {
 
       {/* Resource List */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-        </div>
+        <SkeletonRegion label="Loading resources">
+          <SkeletonList rows={5} />
+        </SkeletonRegion>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface-2 p-8 text-center">
           <FolderOpen className="h-10 w-10 text-muted/40" />

@@ -5,6 +5,7 @@ import { BookOpen, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { createCourse, fetchCourseMemberships, fetchCourses, removeCourseMembership, saveCourseMembership, type Course, type CourseMembership } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
+import { SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 function slug(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -110,7 +111,7 @@ export default function AdminCoursesPage() {
       </form>
       <section className="rounded-2xl border border-line bg-surface p-5">
         <h3 className="flex items-center gap-2 font-semibold text-foreground"><Users className="h-4 w-4" /> Course membership</h3>
-        {loading ? <p className="mt-4 text-sm text-muted">Loading courses…</p> : <>
+        {loading ? <SkeletonRegion label="Loading courses" className="mt-4"><SkeletonList rows={3} /></SkeletonRegion> : <>
           <label className="mt-4 block text-sm font-medium">Active course
             <select value={courseId} onChange={(event) => setCourseId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-line bg-surface px-3 py-2">
               {courses.map((course) => <option key={course.id} value={course.id}>{course.code} — {course.title}</option>)}

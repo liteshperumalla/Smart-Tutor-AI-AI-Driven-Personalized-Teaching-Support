@@ -8,6 +8,7 @@ import { useAuthToken } from "@/hooks/useAuthToken";
 import { Calendar, User, Mail, Clock, MessageSquare, Send, CheckCircle, CalendarDays, Users, FileText } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
+import { SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 const REASONS = [
   "Discuss course material/concepts",
@@ -277,14 +278,9 @@ export default function AppointmentsPage() {
 
             <div className="space-y-3">
               {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="rounded-xl bg-surface-2 p-4 animate-pulse">
-                      <div className="h-4 w-2/3 bg-line rounded mb-2"></div>
-                      <div className="h-3 w-1/2 bg-line rounded"></div>
-                    </div>
-                  ))}
-                </div>
+                <SkeletonRegion label="Loading appointments">
+                  <SkeletonList rows={3} />
+                </SkeletonRegion>
               ) : appointments.length === 0 ? (
                 <div className="rounded-xl border-2 border-dashed border-line bg-surface-2 p-8 text-center">
                   <div className="mx-auto h-12 w-12 rounded-full bg-surface-2 flex items-center justify-center mb-3">

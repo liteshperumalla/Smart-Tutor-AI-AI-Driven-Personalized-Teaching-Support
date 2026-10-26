@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { Users, ShieldAlert, Trash2, Search } from "lucide-react";
+import { Skeleton, SkeletonRegion, SkeletonTable } from "@/components/skeleton";
 
 export default function AdminUsersPage() {
   const { token } = useAuthToken({ redirectTo: "/login" });
@@ -84,9 +85,13 @@ export default function AdminUsersPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-      </div>
+      <SkeletonRegion label="Loading users" className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-10 w-56 rounded-md" />
+        </div>
+        <SkeletonTable rows={6} columns={4} />
+      </SkeletonRegion>
     );
   }
 

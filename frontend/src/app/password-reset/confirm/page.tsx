@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
+import { SkeletonAuthForm } from "@/components/skeleton";
 
 type PasswordErrorDetail = { message?: string; requirements?: string[] };
 
@@ -202,9 +203,7 @@ function PasswordResetConfirmPageContent() {
 export default function PasswordResetConfirmPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-surface-2">
-        <p className="text-muted">Loading...</p>
-      </div>
+      <SkeletonAuthForm label="Loading password reset" fields={3} />
     }>
       <PasswordResetConfirmPageContent />
     </Suspense>

@@ -27,6 +27,7 @@ import {
   MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote, ShieldAlert, BarChart3, Users, Settings
 } from "lucide-react";
 import { toast } from "sonner";
+import { SkeletonRegion } from "@/components/skeleton";
 
 function formatDate(value?: string) {
   if (!value) return "Unknown";
@@ -260,65 +261,67 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
-        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12 animate-pulse">
+        <SkeletonRegion label="Loading your profile" className="contents">
+        <header className="relative overflow-hidden rounded-3xl p-6 sm:p-8 lg:p-12">
           <div className="relative z-10 space-y-4">
-            <div className="h-10 w-64 bg-line rounded"></div>
-            <div className="h-6 w-96 bg-line rounded"></div>
+            <div className="skeleton h-10 w-64"></div>
+            <div className="skeleton h-6 w-96 max-w-full"></div>
           </div>
         </header>
 
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
           <article className="rounded-2xl border border-line bg-surface p-6 text-sm">
-            <div className="h-6 w-32 bg-line rounded mb-4"></div>
-            <div className="h-4 w-full bg-surface-2 rounded mb-2"></div>
+            <div className="skeleton h-6 w-32 mb-4"></div>
+            <div className="skeleton h-4 w-full mb-2"></div>
             <div className="flex flex-col items-center gap-3">
-              <div className="h-32 w-32 rounded-full bg-line"></div>
-              <div className="h-10 w-full bg-line rounded"></div>
+              <div className="skeleton h-32 w-32 rounded-full"></div>
+              <div className="skeleton h-10 w-full"></div>
             </div>
           </article>
           <article className="rounded-2xl border border-line bg-surface p-6">
-            <div className="h-6 w-48 bg-line rounded mb-2"></div>
-            <div className="h-4 w-32 bg-surface-2 rounded mb-4"></div>
-            <div className="h-4 w-full bg-surface-2 rounded mb-2"></div>
-            <div className="h-4 w-3/4 bg-surface-2 rounded mb-4"></div>
-            <div className="h-4 w-24 bg-surface-2 rounded"></div>
+            <div className="skeleton h-6 w-48 mb-2"></div>
+            <div className="skeleton h-4 w-32 mb-4"></div>
+            <div className="skeleton h-4 w-full mb-2"></div>
+            <div className="skeleton h-4 w-3/4 mb-4"></div>
+            <div className="skeleton h-4 w-24"></div>
           </article>
           <article className="rounded-2xl border border-line bg-surface p-6">
-            <div className="h-6 w-40 bg-line rounded mb-4"></div>
+            <div className="skeleton h-6 w-40 mb-4"></div>
             <div className="grid gap-3 text-sm">
               <div className="rounded-xl border border-line bg-surface-2 p-3">
-                <div className="h-3 w-16 bg-line rounded mb-2"></div>
-                <div className="h-6 w-12 bg-line rounded"></div>
+                <div className="skeleton h-3 w-16 mb-2"></div>
+                <div className="skeleton h-6 w-12"></div>
               </div>
               <div className="rounded-xl border border-line bg-surface-2 p-3">
-                <div className="h-3 w-20 bg-line rounded mb-2"></div>
-                <div className="h-6 w-12 bg-line rounded"></div>
+                <div className="skeleton h-3 w-20 mb-2"></div>
+                <div className="skeleton h-6 w-12"></div>
               </div>
             </div>
           </article>
         </section>
 
         <section className="rounded-2xl border border-line bg-surface p-6 shadow-sm">
-          <div className="h-6 w-40 bg-line rounded mb-4"></div>
+          <div className="skeleton h-6 w-40 mb-4"></div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="rounded-xl border border-line bg-surface-2 p-3">
-                  <div className="h-4 w-24 bg-line rounded mb-2"></div>
-                  <div className="h-3 w-32 bg-surface-2 rounded"></div>
+                  <div className="skeleton h-4 w-24 mb-2"></div>
+                  <div className="skeleton h-3 w-32"></div>
                 </div>
               ))}
             </div>
             <div className="space-y-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="rounded-xl border border-line bg-surface-2 p-3">
-                  <div className="h-4 w-24 bg-line rounded mb-2"></div>
-                  <div className="h-3 w-32 bg-surface-2 rounded"></div>
+                  <div className="skeleton h-4 w-24 mb-2"></div>
+                  <div className="skeleton h-3 w-32"></div>
                 </div>
               ))}
             </div>
           </div>
         </section>
+        </SkeletonRegion>
       </PageShell>
     );
   }
@@ -338,7 +341,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <PageShell className="max-w-5xl" contentClassName="gap-8" noCard>
+    <PageShell className="max-w-5xl" contentClassName="gap-8 animate-fade-in-up" noCard>
       <PageHero
         icon={User}
         title="Manage your"

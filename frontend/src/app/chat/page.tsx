@@ -45,6 +45,7 @@ import { StreamingPhaseIndicator } from "@/components/chat/streaming-phase-indic
 import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-preview-grid";
 import { ResearchSidebar } from "@/components/chat/research-sidebar";
 import { toast } from "sonner";
+import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
 // Model ID → display name map (module-level for ChatBubble access)
 const MODEL_DISPLAY_NAMES: Record<string, string> = {
@@ -2872,34 +2873,32 @@ export default function ChatWorkspace() {
 
 function ChatWorkspaceSkeleton() {
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <SkeletonRegion label="Loading chat" className="flex flex-col h-full min-h-0">
       {/* Header skeleton */}
       <div className="flex-shrink-0 sticky top-0 z-10 bg-surface border-b border-line">
         <div className="flex items-center px-6 py-3 max-w-5xl mx-auto">
-          <div className="h-5 w-32 bg-line rounded animate-pulse"></div>
+          <Skeleton className="h-5 w-32" />
         </div>
       </div>
 
       {/* Welcome screen skeleton */}
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-6 max-w-4xl mx-auto w-full">
-        <div className="h-10 w-48 bg-line rounded animate-pulse mb-3"></div>
-        <div className="h-6 w-64 bg-line rounded animate-pulse"></div>
+        <Skeleton className="h-10 w-48 mb-3" />
+        <Skeleton className="h-6 w-64 max-w-full" />
       </div>
 
-      {/* Input skeleton */}
+      {/* Composer skeleton: pill input + gradient send button */}
       <div className="flex-shrink-0 max-w-4xl mx-auto w-full px-4 pb-4 pt-2">
-        <div className="rounded-3xl bg-surface-2 px-4 py-3">
-          <div className="h-6 w-full bg-line rounded animate-pulse"></div>
-          <div className="flex items-center justify-end mt-2">
-            <div className="h-9 w-9 bg-primary-solid rounded-full animate-pulse"></div>
-          </div>
+        <div className="flex items-center gap-3 rounded-full border-2 border-line bg-surface py-1.5 pl-[18px] pr-1.5">
+          <Skeleton className="h-4 flex-1" />
+          <div className="h-[38px] w-[38px] shrink-0 rounded-full gradient-primary opacity-40" />
         </div>
         <div className="flex justify-center gap-2 mt-4">
-          <div className="h-10 w-32 bg-line rounded-full animate-pulse"></div>
-          <div className="h-10 w-24 bg-line rounded-full animate-pulse"></div>
-          <div className="h-10 w-28 bg-line rounded-full animate-pulse"></div>
+          <Skeleton className="h-10 w-32 rounded-full" />
+          <Skeleton className="h-10 w-24 rounded-full" />
+          <Skeleton className="h-10 w-28 rounded-full" />
         </div>
       </div>
-    </div>
+    </SkeletonRegion>
   );
 }

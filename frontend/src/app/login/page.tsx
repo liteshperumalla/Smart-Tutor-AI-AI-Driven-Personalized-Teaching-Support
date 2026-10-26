@@ -9,6 +9,7 @@ import { GoogleAuthButton } from "@/components/google-auth-button";
 import { LogoMark } from "@/components/logo-mark";
 import { getSafeNextPath } from "@/lib/safe-next";
 import { User, Lock, LogIn, ArrowLeft } from "lucide-react";
+import { SkeletonAuthForm } from "@/components/skeleton";
 
 type LoginResponse = {
   user: {
@@ -299,9 +300,7 @@ function LoginPageContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-surface-2">
-        <p className="text-muted">Loading...</p>
-      </div>
+      <SkeletonAuthForm label="Loading sign in" />
     }>
       <LoginPageContent />
     </Suspense>

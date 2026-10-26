@@ -65,6 +65,7 @@ import {
   FileText, Layers, Shield, Info, Download, Calendar, ShieldAlert,
   Lock, GitBranch, Users
 } from "lucide-react";
+import { Skeleton, SkeletonDashboard, SkeletonList, SkeletonRegion, SkeletonStatGrid } from "@/components/skeleton";
 
 // Recharts tooltips follow the theme: surface card, 1px border, theme text.
 const CHART_TOOLTIP_STYLE = {
@@ -747,9 +748,9 @@ export function EvaluationContent() {
           </div>
 
           {realtimeLoading && !realtimeMetrics ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
-            </div>
+            <SkeletonRegion label="Loading metrics">
+              <SkeletonDashboard />
+            </SkeletonRegion>
           ) : realtimeMetrics?.status === "no_data" ? (
             <div className="flex flex-col items-center justify-center py-16 text-center rounded-2xl border border-line bg-surface">
               <Brain className="h-16 w-16 text-muted/40 mb-4" />
@@ -1526,9 +1527,9 @@ export function EvaluationContent() {
           </div>
 
           {metricsLoading && !websiteMetrics ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
-            </div>
+            <SkeletonRegion label="Loading metrics">
+              <SkeletonDashboard />
+            </SkeletonRegion>
           ) : websiteMetrics ? (
             <>
               <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -1711,9 +1712,9 @@ export function EvaluationContent() {
           </div>
 
           {awsLoading && !awsMetrics ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
-            </div>
+            <SkeletonRegion label="Loading metrics">
+              <SkeletonDashboard />
+            </SkeletonRegion>
           ) : awsMetrics ? (
             <>
               {/* AWS Summary Cards */}
@@ -2086,10 +2087,10 @@ export function EvaluationContent() {
               </div>
 
               {loading ? (
-                <div className="space-y-4">
-                  <div className="h-10 w-full bg-line rounded animate-pulse" />
-                  <div className="h-8 w-32 bg-line rounded animate-pulse" />
-                </div>
+                <SkeletonRegion label="Loading test cases" className="space-y-4">
+                  <Skeleton className="h-10 w-full rounded-md" />
+                  <Skeleton className="h-8 w-32 rounded-md" />
+                </SkeletonRegion>
               ) : cases.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-center">
                   <BarChart3 className="h-12 w-12 text-muted/40 mb-3" />
@@ -2275,9 +2276,9 @@ export function EvaluationContent() {
                 </div>
               )
             ) : (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 text-muted animate-spin" />
-              </div>
+              <SkeletonRegion label="Loading log summary">
+                <SkeletonStatGrid count={3} className="sm:grid-cols-3 lg:grid-cols-3" />
+              </SkeletonRegion>
             )}
           </section>
 
@@ -2307,9 +2308,9 @@ export function EvaluationContent() {
             )}
 
             {runsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="h-6 w-6 text-muted animate-spin" />
-              </div>
+              <SkeletonRegion label="Loading scheduled runs">
+                <SkeletonList rows={3} />
+              </SkeletonRegion>
             ) : evaluationRuns.length === 0 ? (
               <p className="text-sm text-muted">No scheduled runs recorded yet.</p>
             ) : (
@@ -2772,9 +2773,9 @@ export function EvaluationContent() {
           </div>
 
           {quizMetricsLoading && !quizMetrics ? (
-            <div className="flex items-center justify-center py-16">
-              <RefreshCw className="h-8 w-8 text-muted animate-spin" />
-            </div>
+            <SkeletonRegion label="Loading metrics">
+              <SkeletonDashboard />
+            </SkeletonRegion>
           ) : quizMetrics?.error && !quizMetrics.total_quizzes ? (
             <div className="rounded-xl bg-danger-bg border border-danger/30 p-4 text-sm text-danger">
               {quizMetrics.error}
@@ -2946,9 +2947,15 @@ export default function EvaluationPage() {
   if (isLoading) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-        </div>
+        <SkeletonRegion label="Loading evaluation dashboard" className="space-y-6">
+          <Skeleton className="h-8 w-64" />
+          <div className="flex gap-2">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-10 w-28 rounded-md" />
+            ))}
+          </div>
+          <SkeletonDashboard />
+        </SkeletonRegion>
       </PageShell>
     );
   }

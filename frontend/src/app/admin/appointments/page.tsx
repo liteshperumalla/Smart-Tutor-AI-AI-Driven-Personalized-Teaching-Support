@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { CalendarDays, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { toast } from "sonner";
+import { SkeletonList, SkeletonRegion } from "@/components/skeleton";
 
 type AppointmentFilter = "all" | "pending" | "confirmed" | "cancelled" | "completed";
 
@@ -98,9 +99,9 @@ export default function AdminAppointmentsPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-        </div>
+        <SkeletonRegion label="Loading appointment requests">
+          <SkeletonList rows={4} />
+        </SkeletonRegion>
       ) : entries.length === 0 ? (
         <div className="rounded-2xl border border-line bg-surface-2 p-8 text-center text-muted">
           No appointment requests found.

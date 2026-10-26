@@ -19,6 +19,7 @@ import {
   Share2,
   ChevronRight,
 } from "lucide-react";
+import { Skeleton, SkeletonList, SkeletonRegion, SkeletonStatGrid } from "@/components/skeleton";
 
 export default function AdminDashboard() {
   const { token } = useAuthToken({ redirectTo: "/login" });
@@ -39,9 +40,15 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary" />
-      </div>
+      <SkeletonRegion label="Loading admin dashboard" className="space-y-6">
+        <Skeleton className="h-3 w-28" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SkeletonList rows={1} />
+          <SkeletonList rows={1} />
+        </div>
+        <Skeleton className="h-3 w-20" />
+        <SkeletonStatGrid count={6} className="lg:grid-cols-3" />
+      </SkeletonRegion>
     );
   }
 

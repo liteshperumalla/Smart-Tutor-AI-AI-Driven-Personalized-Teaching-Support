@@ -6,6 +6,7 @@ import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { CheckCircle, XCircle } from "lucide-react";
+import { SkeletonAuthForm } from "@/components/skeleton";
 
 const SETUP_TOKEN_STORAGE_KEY = "password_setup_token";
 const SETUP_USERNAME_STORAGE_KEY = "password_setup_username";
@@ -253,11 +254,7 @@ function PasswordSetupContent() {
 export default function PasswordSetupPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center bg-surface-2 px-4">
-        <div className="w-full max-w-md rounded-3xl border border-line bg-surface p-8 shadow-sm">
-          <h1 className="text-2xl font-bold text-foreground">Loading…</h1>
-        </div>
-      </div>
+      <SkeletonAuthForm label="Loading password setup" />
     }>
       <PasswordSetupContent />
     </Suspense>
