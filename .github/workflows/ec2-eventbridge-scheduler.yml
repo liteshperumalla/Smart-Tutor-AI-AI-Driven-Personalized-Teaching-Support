@@ -1,0 +1,42 @@
+name: EC2 EventBridge Scheduler
+
+# Creates/updates the AWS EventBridge Scheduler schedules that start the
+# production EC2 instance at 08:50 and stop it at 17:30 (Mon-Fri,
+# America/Chicago). GitHub cron alone has missed the morning start;
+# EventBridge fires on time. ec2-schedule.yml keeps running as the
+# deploy-aware reconciler (and the only one that stops on weekends).
+#
+# Runs on manual dispatch and whenever this workflow or its script change.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ec2-eventbridge-scheduler.yml'
+      - 'scripts/ci/setup_ec2_eventbridge_schedules.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ec2-eventbridge-scheduler
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Apply EC2 start/stop schedules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Create or update schedules
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
+          INSTANCE_ID: i-0c35826b951e9dd6f
+        run: scripts/ci/setup_ec2_eventbridge_schedules.sh

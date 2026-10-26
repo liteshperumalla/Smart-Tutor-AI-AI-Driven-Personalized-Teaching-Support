@@ -13,6 +13,10 @@ name: EC2 Schedule (weekday business hours)
 # delays of an hour or more have been observed on this repo — still
 # converges to the right state instead of silently no-op'ing the way an
 # exact-hour match would.
+#
+# AWS EventBridge Scheduler (ec2-eventbridge-scheduler.yml) also starts the
+# instance at 08:50 and stops it at 17:30 on weekdays, so a late or skipped
+# GitHub run no longer leaves the app down at 09:00.
 
 on:
   schedule:
@@ -82,11 +86,15 @@ jobs:
 
           NOW="$(TZ='America/Chicago' date '+%A %Y-%m-%d %H:%M %Z')"
           HOUR="$(TZ='America/Chicago' date +%-H)"
+          MINUTE="$(TZ='America/Chicago' date +%-M)"
           DOW="$(TZ='America/Chicago' date +%u)"   # 1=Mon .. 7=Sun
+          MINUTES=$(( HOUR * 60 + MINUTE ))
           echo "Central time: $NOW (hour=$HOUR dow=$DOW)"
 
-          if [ "$DOW" -le 5 ] && [ "$HOUR" -ge 9 ] && [ "$HOUR" -lt 17 ]; then
-            echo "Within Mon-Fri 09:00-17:00 — desired=running"
+          # Window opens at 08:50 to match the EventBridge start, so a run
+          # landing between 08:50 and 09:00 doesn't stop what it just started.
+          if [ "$DOW" -le 5 ] && [ "$MINUTES" -ge $(( 8 * 60 + 50 )) ] && [ "$HOUR" -lt 17 ]; then
+            echo "Within Mon-Fri 08:50-17:00 — desired=running"
             echo "desired=running" >> "$GITHUB_OUTPUT"
           else
             echo "Outside business hours — desired=stopped"
