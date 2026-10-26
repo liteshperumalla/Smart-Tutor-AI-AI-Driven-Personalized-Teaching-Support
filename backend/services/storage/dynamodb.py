@@ -110,13 +110,21 @@ class DynamoDBStorageBackend(BaseStorageBackend):
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         """List all chat sessions for a user"""
         try:
-            response = self.table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': username},
-                ScanIndexForward=False,  # Sort by session_id (UUID), we re-sort by updated_at below
-            )
-
-            items = response.get('Items', [])
+            # Strongly consistent: the chat page re-lists right after a reply
+            # is saved, and an eventually consistent read can miss it.
+            query_kwargs = {
+                'KeyConditionExpression': 'user_id = :user_id',
+                'ExpressionAttributeValues': {':user_id': username},
+                'ConsistentRead': True,
+            }
+            items = []
+            while True:
+                response = self.table.query(**query_kwargs)
+                items.extend(response.get('Items', []))
+                last_key = response.get('LastEvaluatedKey')
+                if not last_key:
+                    break
+                query_kwargs['ExclusiveStartKey'] = last_key
 
             def parse_timestamp(value: Optional[str]) -> datetime:
                 if not value:
@@ -172,11 +180,14 @@ class DynamoDBStorageBackend(BaseStorageBackend):
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
         """Load a specific chat session"""
         try:
+            # Strongly consistent: append_and_save loads, appends and puts the
+            # whole item, so a stale read would drop the previous message.
             response = self.table.get_item(
                 Key={
                     'user_id': username,
                     'session_id': session_id
-                }
+                },
+                ConsistentRead=True,
             )
 
             item = response.get('Item')

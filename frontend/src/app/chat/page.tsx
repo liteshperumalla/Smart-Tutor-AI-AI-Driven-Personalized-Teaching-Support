@@ -305,6 +305,10 @@ function ChatWorkspaceContent() {
   const recognitionRef = useRef<any>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Session whose just-streamed reply must survive a server copy that hasn't
+  // caught up yet (fewer messages than shown locally). Cleared once it has.
+  const keepLocalRef = useRef<string | null>(null);
+
   const refreshSessions = useCallback(async () => {
     if (!isLoggedIn || !token) {
       setSessions([]);
@@ -313,7 +317,19 @@ function ChatWorkspaceContent() {
     }
     try {
       const data = await listChatSessions(token);
-      setSessions(data);
+      setSessions((prev) => {
+        const keepId = keepLocalRef.current;
+        const local = keepId ? prev.find((s) => s.id === keepId) : undefined;
+        if (!local) return data;
+        return data.map((s) => {
+          if (s.id !== keepId) return s;
+          if ((s.messages?.length ?? 0) < (local.messages?.length ?? 0)) {
+            return { ...s, messages: local.messages };
+          }
+          keepLocalRef.current = null;
+          return s;
+        });
+      });
       if (data.length > 0) {
         const querySession = searchParams.get("session");
         const validSessions = data.filter((s): s is ChatSessionDTO => Boolean(s && typeof s === 'object' && 'id' in s));
@@ -757,6 +773,7 @@ function ChatWorkspaceContent() {
         );
       }
 
+      keepLocalRef.current = sessionId;
       await refreshSessions();
       dispatchChatSessionsUpdated();
       fetchModelQuota();
@@ -901,6 +918,7 @@ function ChatWorkspaceContent() {
   const handleEditMessage = useCallback(async (messageIndex: number, newContent: string) => {
     if (!token || !isLoggedIn || !selectedSessionId || isStreaming || isEditSending) return;
 
+    keepLocalRef.current = null;
     setIsEditSending(true);
     setStreamError(null);
 
@@ -1102,6 +1120,7 @@ function ChatWorkspaceContent() {
       setStreamError("Cannot regenerate: No user message found before this response.");
       return;
     }
+    keepLocalRef.current = null;
 
     const userQuery = activeSession.messages[userMessageIndex].content;
     setRegeneratingMessageIndex(messageIndex);
