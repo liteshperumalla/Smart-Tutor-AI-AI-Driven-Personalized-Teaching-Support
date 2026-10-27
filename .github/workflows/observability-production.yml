@@ -245,6 +245,24 @@ jobs:
             alertmanager_receivers+=$'\n'
           fi
 
+          # Grafana IRM: its Alert Groups and Incident insights only have data
+          # when alerts reach an IRM integration. Create an "Alertmanager"
+          # integration in Grafana Cloud (Alerts & IRM > IRM > Integrations)
+          # and put its URL in the app env file as GRAFANA_IRM_ALERTMANAGER_URL.
+          if [ -n "${GRAFANA_IRM_ALERTMANAGER_URL:-}" ]; then
+            alertmanager_route_entries+=$'    - receiver: "grafana-irm"\n      continue: true\n'
+            alertmanager_receivers+="$(
+              printf '%s\n' '  - name: "grafana-irm"'
+              printf '%s\n' '    webhook_configs:'
+              printf '%s\n' "      - url: \"${GRAFANA_IRM_ALERTMANAGER_URL}\""
+              printf '%s\n' '        send_resolved: true'
+              printf '%s\n' '        max_alerts: 0'
+            )"
+            alertmanager_receivers+=$'\n'
+          else
+            echo "::warning::GRAFANA_IRM_ALERTMANAGER_URL is not set; alerts will not reach Grafana IRM, so its Alert Groups and Incident insights stay empty."
+          fi
+
           if [ -n "${alertmanager_route_entries}" ]; then
             alertmanager_routes_block=$(printf '  routes:\n%s' "${alertmanager_route_entries}")
           else
