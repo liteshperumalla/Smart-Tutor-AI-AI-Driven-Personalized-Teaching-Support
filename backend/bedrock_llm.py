@@ -623,16 +623,19 @@ class BedrockLLM:
         """
         generation = None
         try:
-            from backend.langfuse_setup import get_langfuse_client
+            from backend.langfuse_setup import get_langfuse_client, request_trace_scope
 
             client = get_langfuse_client()
             if client is not None:
-                generation = client.start_observation(
-                    name="bedrock-generation",
-                    as_type="generation",
-                    model=model_id,
-                    input=prompt[:4000] if isinstance(prompt, str) else None,
-                )
+                # Tag the generation with the requesting user (pseudonym),
+                # chat session and feature so Langfuse can group it.
+                with request_trace_scope():
+                    generation = client.start_observation(
+                        name="bedrock-generation",
+                        as_type="generation",
+                        model=model_id,
+                        input=prompt[:4000] if isinstance(prompt, str) else None,
+                    )
         except Exception as e:  # tracing must never break generation
             logger.debug(f"[Bedrock] Langfuse generation skipped: {e}")
         return _LLMCall(time.monotonic(), generation)

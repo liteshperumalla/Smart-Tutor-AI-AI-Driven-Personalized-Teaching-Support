@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional
 
 from backend.config import config
@@ -188,21 +189,73 @@ def propagate_attributes(
         yield None
         return
 
+    # In SDK 4.x propagate_attributes is a module-level function, not a
+    # client method; the old hasattr(client, ...) check made this a no-op.
     try:
-        if hasattr(_langfuse_client, "propagate_attributes"):
+        from langfuse import propagate_attributes as _propagate
+
+        cm = _propagate(
             # Langfuse traces/sessions show user_id; send a pseudonym only.
-            with _langfuse_client.propagate_attributes(
-                user_id=user_ref(user_id) if user_id else None,
-                session_id=session_id,
-                metadata=metadata,
-                tags=tags,
-            ) as ctx:
-                yield ctx
-        else:
-            yield None
+            user_id=user_ref(user_id) if user_id else None,
+            session_id=session_id,
+            metadata=metadata,
+            tags=tags,
+        )
     except Exception as exc:
         logger.debug("propagate_attributes failed: %s", exc)
         yield None
+        return
+    with cm as ctx:
+        yield ctx
+
+
+# ── Request-scoped trace attributes ──────────────────────────────────
+#
+# LLM generations are opened deep inside the Bedrock client, far from the
+# route that knows who is asking. The authenticated request records its
+# user / chat session / feature here (get_current_session), and
+# request_trace_scope() applies them when a generation is created, so
+# Langfuse can group traces by user and session and split them by feature.
+
+_request_trace_attributes: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+    "langfuse_request_trace_attributes", default=None
+)
+
+
+def set_request_trace_attributes(
+    *,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    feature: Optional[str] = None,
+) -> None:
+    attrs: Dict[str, Any] = {}
+    if user_id:
+        attrs["user_id"] = user_ref(user_id)
+    if session_id:
+        attrs["session_id"] = str(session_id)[:200]
+    if feature:
+        attrs["tags"] = [feature]
+        attrs["trace_name"] = feature
+    _request_trace_attributes.set(attrs or None)
+
+
+@contextmanager
+def request_trace_scope():
+    """Apply the current request's trace attributes to spans opened inside."""
+    attrs = _request_trace_attributes.get()
+    if not attrs or _langfuse_client is None:
+        yield
+        return
+    try:
+        from langfuse import propagate_attributes as _propagate
+
+        cm = _propagate(**attrs)
+    except Exception as exc:
+        logger.debug("request_trace_scope failed: %s", exc)
+        yield
+        return
+    with cm:
+        yield
 
 
 def observe(*args, **kwargs) -> Callable:
