@@ -290,14 +290,18 @@ def login(
         CSRFProtection.set_csrf_cookie(response)
 
         # SECURITY: Log successful login
+        # Key events on the canonical username: users may sign in with their
+        # email, which would otherwise split one person into two.
+        canonical_username = user.get("username") or payload.username
+
         SecurityLogger.log_login_success(
-            username=payload.username,
+            username=canonical_username,
             ip_address=get_client_ip(request),
             user_agent=get_user_agent(request),
         )
 
         posthog_tracker.capture(
-            distinct_id=payload.username,
+            distinct_id=canonical_username,
             event="login",
             properties={"method": "password"},
         )
