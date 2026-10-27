@@ -75,13 +75,14 @@ function GoogleCallbackContent() {
               token: payload.password_setup_token,
               username: payload.username,
             });
-            // Without storage the setup page could not get the token: fall
-            // back to the query string (that page removes it from the URL).
-            const params = stashed
-              ? new URLSearchParams()
-              : new URLSearchParams({ token: payload.password_setup_token, username: payload.username });
-          params.set("next", returnTo);
-          router.replace(`/password-setup?${params.toString()}`);
+            // Never put the setup token in the URL; without storage the
+            // user has to allow it and sign in again.
+            if (!stashed) {
+              throw new Error(
+                "Couldn't continue sign-in because this browser blocked session storage. Allow site storage (or leave private browsing) and sign in with Google again.",
+              );
+            }
+            router.replace(`/password-setup?${new URLSearchParams({ next: returnTo }).toString()}`);
             return;
           }
           throw new Error("Password setup required but token missing.");

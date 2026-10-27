@@ -309,8 +309,9 @@ jobs:
           elif command -v setfacl >/dev/null 2>&1 && chmod 600 "${am_config}" && setfacl -m u:65534:r "${am_config}"; then
             :
           else
-            chmod 644 "${am_config}"
-            echo "::warning::Could not restrict ${am_config} to Alertmanager; it stays readable by local users."
+            rm -f "${am_config}"
+            echo "::error::Could not restrict ${am_config} to Alertmanager (needs passwordless sudo or setfacl); refusing to leave its secrets world-readable."
+            exit 1
           fi
 
           docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
