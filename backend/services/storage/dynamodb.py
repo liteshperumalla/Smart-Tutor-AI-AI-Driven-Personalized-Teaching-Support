@@ -13,6 +13,7 @@ from backend.config import config
 from backend.logger import get_logger
 from backend.services.storage.base import BaseStorageBackend
 from backend.services.models import ChatSession, QuizResult
+from backend.log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -174,7 +175,7 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             return sessions
 
         except Exception as e:
-            logger.error(f"Error listing chat sessions for {username}: {e}")
+            logger.error(f"Error listing chat sessions for {user_ref(username)}: {e}")
             return []
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
@@ -205,7 +206,7 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             return session
 
         except Exception as e:
-            logger.error(f"Error loading chat session {session_id} for {username}: {e}")
+            logger.error(f"Error loading chat session {session_id} for {user_ref(username)}: {e}")
             return None
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
@@ -248,10 +249,10 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             # Save to DynamoDB
             self.table.put_item(Item=item)
 
-            logger.debug(f"Saved chat session {item['session_id']} for {username}")
+            logger.debug(f"Saved chat session {item['session_id']} for {user_ref(username)}")
 
         except Exception as e:
-            logger.error(f"Error saving chat session for {username}: {e}")
+            logger.error(f"Error saving chat session for {user_ref(username)}: {e}")
             raise
 
     def delete_chat_session(self, username: str, session_id: str) -> bool:
@@ -263,11 +264,11 @@ class DynamoDBStorageBackend(BaseStorageBackend):
                     'session_id': session_id
                 }
             )
-            logger.info(f"Deleted chat session {session_id} for {username}")
+            logger.info(f"Deleted chat session {session_id} for {user_ref(username)}")
             return True
 
         except Exception as e:
-            logger.error(f"Error deleting chat session {session_id} for {username}: {e}")
+            logger.error(f"Error deleting chat session {session_id} for {user_ref(username)}: {e}")
             return False
 
     # These methods are not used by DynamoDB (users/quizzes are in PostgreSQL)

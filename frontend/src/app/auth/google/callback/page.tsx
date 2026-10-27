@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
+import { stashAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
@@ -70,10 +71,11 @@ function GoogleCallbackContent() {
 
         if (response.status === 428 && payload.requires_password_setup) {
           if (payload.password_setup_token && payload.username) {
-            const params = new URLSearchParams({
+            stashAuthHandoff("password-setup", {
               token: payload.password_setup_token,
               username: payload.username,
             });
+            const params = new URLSearchParams();
           params.set("next", returnTo);
           router.replace(`/password-setup?${params.toString()}`);
             return;

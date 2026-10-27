@@ -15,6 +15,7 @@ import json
 from .config import config
 from .logger import get_logger
 from .exceptions import SessionExpiredError
+from .log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -132,7 +133,7 @@ class JWTService:
 
         signing_key = self._get_signing_key()
         token = jwt.encode(claims, signing_key, algorithm=self.algorithm)
-        logger.debug(f"Created access token for user: {username} using {self.algorithm}")
+        logger.debug(f"Created access token for user: {user_ref(username)} using {self.algorithm}")
         return token
 
     def create_refresh_token(
@@ -166,7 +167,7 @@ class JWTService:
 
         signing_key = self._get_signing_key()
         token = jwt.encode(claims, signing_key, algorithm=self.algorithm)
-        logger.debug(f"Created refresh token for user: {username} using {self.algorithm}")
+        logger.debug(f"Created refresh token for user: {user_ref(username)} using {self.algorithm}")
         return token
 
     def verify_token(self, token: str, token_type: str = "access") -> Dict[str, Any]:

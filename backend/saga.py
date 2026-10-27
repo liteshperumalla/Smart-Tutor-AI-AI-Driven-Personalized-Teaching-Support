@@ -16,6 +16,7 @@ from typing import Callable, List, Dict, Any, Optional
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import uuid
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -398,7 +399,7 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
     def validate_quiz(ctx: Dict[str, Any]) -> bool:
         quiz_id = ctx.get("quiz_id")
         user_id = ctx.get("user_id")
-        logger.info("Validating quiz %s for user %s", quiz_id, user_id)
+        logger.info("Validating quiz %s for user %s", quiz_id, user_ref(user_id))
         if not quiz_id:
             raise ValueError("quiz_id is required")
         return True
@@ -485,7 +486,7 @@ def create_quiz_submission_saga() -> SagaOrchestrator:
         grade_result = ctx.get("grade_quiz_result", {})
         result = ctx.get("quiz_result")
         metadata = (result.metadata if result else {}) or {}
-        logger.info("Sending grade notification to user: %s", user_id)
+        logger.info("Sending grade notification to user: %s", user_ref(user_id))
         try:
             from backend.events.event_schemas import QuizGradedEvent
             from backend.events.event_bus import publish_event

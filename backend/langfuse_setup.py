@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional
 
 from backend.config import config
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -189,8 +190,9 @@ def propagate_attributes(
 
     try:
         if hasattr(_langfuse_client, "propagate_attributes"):
+            # Langfuse traces/sessions show user_id; send a pseudonym only.
             with _langfuse_client.propagate_attributes(
-                user_id=user_id,
+                user_id=user_ref(user_id) if user_id else None,
                 session_id=session_id,
                 metadata=metadata,
                 tags=tags,
@@ -246,7 +248,7 @@ def create_trace(
     try:
         kwargs: Dict[str, Any] = {"name": name}
         if user_id:
-            kwargs["user_id"] = user_id
+            kwargs["user_id"] = user_ref(user_id)
         if session_id:
             kwargs["session_id"] = session_id
         if input is not None:

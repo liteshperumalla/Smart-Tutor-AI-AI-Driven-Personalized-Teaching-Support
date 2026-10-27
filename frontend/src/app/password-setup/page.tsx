@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { readAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
@@ -65,9 +66,11 @@ function PasswordSetupContent() {
   const allRulesPassed = passwordRuleResults.every((r) => r.passed);
 
   useEffect(() => {
-    // Read token and username from URL query params (passed by the Google callback).
-    const urlToken = searchParams.get("token");
-    const urlUsername = searchParams.get("username");
+    // Token and username are handed over by the Google callback through
+    // sessionStorage; older links may still carry them in the query string.
+    const handoff = readAuthHandoff("password-setup", searchParams);
+    const urlToken = handoff.token;
+    const urlUsername = handoff.username;
 
     if (urlToken) {
       sessionStorage.setItem(SETUP_TOKEN_STORAGE_KEY, urlToken);

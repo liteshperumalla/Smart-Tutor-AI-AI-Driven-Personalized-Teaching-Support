@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from backend.log_redaction import user_ref
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
@@ -83,7 +84,7 @@ class LLMOpsLogger:
             request_id=uuid.uuid4().hex,
             timestamp=datetime.now(timezone.utc).isoformat(),
             model=model or "unknown",
-            user_id=user_id,
+            user_id=user_ref(user_id) if user_id else None,
             session_id=session_id,
             latency_ms=round(latency_ms, 1),
             output_chars=output_chars,
@@ -111,7 +112,7 @@ class LLMOpsLogger:
                 _ph.api_key = Config.POSTHOG_API_KEY
                 _ph.host = Config.POSTHOG_HOST
                 _ph.capture(
-                    distinct_id=rec.user_id or "anonymous",
+                    distinct_id=user_ref(rec.user_id),
                     event="llm_response_streamed",
                     properties={
                         "model": rec.model,

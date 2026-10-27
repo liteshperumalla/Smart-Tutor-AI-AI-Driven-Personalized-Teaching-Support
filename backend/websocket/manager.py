@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 import json
 import logging
 from datetime import datetime, timezone
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ class ConnectionManager:
         self.active_connections[user_id].append(websocket)
         self.connection_users[websocket] = user_id
 
-        logger.info(f"WebSocket connected: user={user_id}, total_connections={len(self.active_connections[user_id])}")
+        logger.info(f"WebSocket connected: user={user_ref(user_id)}, total_connections={len(self.active_connections[user_id])}")
 
         # Send connection confirmation
         await self.send_personal_message(
@@ -55,7 +56,7 @@ class ConnectionManager:
 
             del self.connection_users[websocket]
 
-            logger.info(f"WebSocket disconnected: user={user_id}")
+            logger.info(f"WebSocket disconnected: user={user_ref(user_id)}")
 
     async def send_personal_message(self, message: str, user_id: str):
         """Send message to all connections of a specific user"""
@@ -66,7 +67,7 @@ class ConnectionManager:
                 try:
                     await connection.send_text(message)
                 except Exception as e:
-                    logger.error(f"Failed to send message to user {user_id}: {e}")
+                    logger.error(f"Failed to send message to user {user_ref(user_id)}: {e}")
                     disconnected.append(connection)
 
             # Clean up failed connections

@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Any
 from enum import Enum
 
+from backend.log_redaction import install as install_redaction, user_ref
+
 # Configure security logger
 security_logger = logging.getLogger("security")
 security_logger.setLevel(logging.INFO)
@@ -51,7 +53,7 @@ class SecurityLogFormatter(logging.Formatter):
 
 
 security_handler.setFormatter(SecurityLogFormatter())
-security_logger.addHandler(security_handler)
+security_logger.addHandler(install_redaction(security_handler))
 
 
 class SecurityEventType(str, Enum):
@@ -124,9 +126,12 @@ class SecurityLogger:
             details: Additional details about the event
             severity: Log level (INFO, WARNING, ERROR)
         """
+        # Pseudonymized: security logs are retained and shipped off-box, so
+        # they carry a stable user reference rather than the username.
+        user = user_ref(username)
         extra_data = {
             "event_type": event_type.value,
-            "username": username or "anonymous",
+            "username": user,
             "ip_address": ip_address or "unknown",
             "user_agent": user_agent or "unknown",
             "success": success,
@@ -150,7 +155,7 @@ class SecurityLogger:
         # Create log record with extra data
         security_logger.log(
             log_level,
-            f"{event_type.value}: {username or 'anonymous'} from {ip_address or 'unknown'}",
+            f"{event_type.value}: {user} from {ip_address or 'unknown'}",
             extra={"extra_data": extra_data}
         )
 

@@ -10,6 +10,7 @@ from backend.logger import get_logger
 from backend.rate_limiter import get_rate_limiter
 import json
 import asyncio
+from backend.log_redaction import user_ref
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger(__name__)
@@ -95,7 +96,7 @@ async def websocket_chat_endpoint(
             await websocket.close(code=1003, reason="Session not found")
             return
 
-        logger.info(f"WebSocket chat started: user={user_id}, session={session_id}")
+        logger.info(f"WebSocket chat started: user={user_ref(user_id)}, session={session_id}")
 
         # Main message loop
         while True:
@@ -224,7 +225,7 @@ async def websocket_chat_endpoint(
                 })
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user_id}, session={session_id}")
+        logger.info(f"WebSocket disconnected: user={user_ref(user_id)}, session={session_id}")
         manager.disconnect(websocket)
 
     except Exception as e:

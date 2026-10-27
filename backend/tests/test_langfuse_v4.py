@@ -91,7 +91,9 @@ class TestLangfuseV4(unittest.TestCase):
         with patch("backend.langfuse_setup._langfuse_client", mock_client):
             trace = create_trace("root-interaction", user_id="u1", session_id="s1")
             self.assertEqual(trace, mock_trace)
-            mock_client.trace.assert_called_once_with(name="root-interaction", user_id="u1", session_id="s1")
+            # Langfuse receives a pseudonym, never the raw username.
+            from backend.log_redaction import user_ref
+            mock_client.trace.assert_called_once_with(name="root-interaction", user_id=user_ref("u1"), session_id="s1")
 
             update_trace(trace, output={"status": "completed"})
             mock_trace.update.assert_called_once_with(output={"status": "completed"})

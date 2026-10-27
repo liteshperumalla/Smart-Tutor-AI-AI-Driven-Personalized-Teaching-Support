@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from logging.handlers import RotatingFileHandler
 from .config import config
+from .log_redaction import install as install_redaction
 
 
 class JsonFormatter(logging.Formatter):
@@ -149,7 +150,7 @@ def setup_logging(
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(numeric_level)
     console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
+    root_logger.addHandler(install_redaction(console_handler))
 
     # File handler (if log file is specified)
     if log_file:
@@ -167,7 +168,7 @@ def setup_logging(
             )
             file_handler.setLevel(numeric_level)
             file_handler.setFormatter(formatter)
-            root_logger.addHandler(file_handler)
+            root_logger.addHandler(install_redaction(file_handler))
         except Exception as e:
             root_logger.error(f"Failed to setup file logging: {e}")
 

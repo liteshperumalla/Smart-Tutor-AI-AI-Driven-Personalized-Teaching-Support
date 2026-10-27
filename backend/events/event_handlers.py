@@ -8,6 +8,7 @@ from typing import Callable, Dict, List, Any, Optional
 from functools import wraps
 
 from .event_schemas import BaseEvent, EventType
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +120,7 @@ def log_user_registration(event: BaseEvent):
     """Log user registration"""
     user_id = event.data.get('user_id')
     email = event.data.get('email')
-    logger.info(f"New user registered: {email} (ID: {user_id})")
+    logger.info(f"New user registered: {user_ref(email)} (ID: {user_ref(user_id)})")
 
 
 @event_handler(EventType.QUIZ_GRADED)
@@ -189,7 +190,7 @@ def update_user_index_stats(event: BaseEvent):
         user_meta["index_stats"] = index_stats
         svc.update_profile(user_id, {"metadata": user_meta})
     except Exception as exc:
-        logger.warning("update_user_index_stats failed for user %s: %s", user_id, exc)
+        logger.warning("update_user_index_stats failed for user %s: %s", user_ref(user_id), exc)
 
 
 @event_handler(EventType.CIRCUIT_BREAKER_OPENED)

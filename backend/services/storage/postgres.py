@@ -329,7 +329,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 return None
 
         except Exception as e:
-            logger.error(f"Error getting user {username}: {e}")
+            logger.error(f"Error getting user {user_ref(username)}: {e}")
             return None
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
@@ -375,7 +375,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                     return self._enrich_user_dict(dict(user))
                 return None
         except Exception as e:
-            logger.error(f"Error getting user by email {email}: {e}")
+            logger.error(f"Error getting user by email {user_ref(email)}: {e}")
             return None
 
     def create_user(self, username: str, password_hash: str, **extras) -> dict:
@@ -426,13 +426,13 @@ class PostgresStorageBackend(BaseStorageBackend):
                         raise
 
                 user = cursor.fetchone()
-                logger.info(f"Created user: {username}")
+                logger.info(f"Created user: {user_ref(username)}")
                 return self._enrich_user_dict(dict(user))
 
         except psycopg2.IntegrityError:
             raise ValueError(f"User {username} already exists")
         except Exception as e:
-            logger.error(f"Error creating user {username}: {e}")
+            logger.error(f"Error creating user {user_ref(username)}: {e}")
             raise
 
     def increment_login_attempts(self, username: str) -> int:
@@ -455,7 +455,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                     return 0
                 return int(row["login_attempts"])
         except Exception as e:
-            logger.error(f"Error incrementing login attempts for {username}: {e}")
+            logger.error(f"Error incrementing login attempts for {user_ref(username)}: {e}")
             raise
 
     def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
@@ -551,13 +551,13 @@ class PostgresStorageBackend(BaseStorageBackend):
                             )
                     raise ValueError(f"User {username} not found")
 
-                logger.debug(f"Updated user: {username} (new version: {user['version']})")
+                logger.debug(f"Updated user: {user_ref(username)} (new version: {user['version']})")
                 return self._enrich_user_dict(dict(user))
 
         except OptimisticLockError:
             raise
         except Exception as e:
-            logger.error(f"Error updating user {username}: {e}")
+            logger.error(f"Error updating user {user_ref(username)}: {e}")
             raise
 
     # Additional user methods (for auth_service compatibility)
@@ -635,7 +635,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                         psycopg2.extras.Json(result.metadata) if result.metadata else None,
                     )
                 )
-                logger.info(f"Saved quiz result for {result.user_id}: {result.id}")
+                logger.info(f"Saved quiz result for {user_ref(result.user_id)}: {result.id}")
 
         except Exception as e:
             logger.error(f"Error saving quiz result: {e}")
@@ -673,7 +673,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 return results
 
         except Exception as e:
-            logger.error(f"Error listing quiz results for {username}: {e}")
+            logger.error(f"Error listing quiz results for {user_ref(username)}: {e}")
             return []
 
     def list_users(self) -> List[dict]:
@@ -721,11 +721,11 @@ class PostgresStorageBackend(BaseStorageBackend):
             with self._get_cursor(read_only=False) as cursor:
                 cursor.execute("DELETE FROM users WHERE username = %s", (username,))
                 if cursor.rowcount > 0:
-                    logger.info(f"Deleted user: {username}")
+                    logger.info(f"Deleted user: {user_ref(username)}")
                     return True
                 return False
         except Exception as e:
-            logger.error(f"Error deleting user {username}: {e}")
+            logger.error(f"Error deleting user {user_ref(username)}: {e}")
             return False
 
     def emit_outbox_event(

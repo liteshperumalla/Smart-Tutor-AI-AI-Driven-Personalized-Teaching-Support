@@ -13,6 +13,7 @@ from backend.rag.service import RAGService, RAGVariant
 from backend.api.dependencies import get_current_user, get_rate_limiter_dep
 from backend.config import config
 from backend.rate_limiter import limiter, PerUserRateLimiter
+from backend.log_redaction import user_ref
 
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ async def rag_query(
             max_retrieval=payload.max_retrieval
         )
 
-        logger.info(f"RAG query processed for user {user_id}: {payload.query[:50]}...")
+        logger.info(f"RAG query processed for user {user_ref(user_id)}: {payload.query[:50]}...")
 
         return RAGQueryResponse(**result)
 
@@ -177,7 +178,7 @@ async def ingest_document(
             metadata=metadata
         )
 
-        logger.info(f"Document ingested by user {current_user.get('email')}: {metadata.get('source', 'unknown')}")
+        logger.info(f"Document ingested by user {user_ref(current_user.get('email'))}: {metadata.get('source', 'unknown')}")
 
         return DocumentIngestionResponse(**result)
 
@@ -203,7 +204,7 @@ async def get_stats(
     """
     try:
         stats = rag_service.get_stats()
-        logger.info(f"RAG stats requested by user {current_user.get('email')}")
+        logger.info(f"RAG stats requested by user {user_ref(current_user.get('email'))}")
         return RAGStatsResponse(**stats)
 
     except Exception as e:

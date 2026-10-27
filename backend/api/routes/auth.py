@@ -28,6 +28,7 @@ from backend.rate_limiter import (
     PerUserRateLimiter,
 )  # Import from rate_limiter to avoid circular imports
 from backend.csrf_protection import csrf_protect
+from backend.log_redaction import user_ref
 
 if TYPE_CHECKING:
     from backend.auth_service import AuthService
@@ -440,7 +441,7 @@ def setup_password(
     except EmailNotVerifiedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except Exception as exc:
-        logger.warning("Password setup failed for %s: %s", payload.username, exc)
+        logger.warning("Password setup failed for %s: %s", user_ref(payload.username), exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password setup failed")
 
 

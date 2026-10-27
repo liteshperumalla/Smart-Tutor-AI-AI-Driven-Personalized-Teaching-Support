@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState, Suspense } from "react";
+import { stashAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
@@ -249,7 +250,7 @@ function LoginPageContent() {
                 >
                   {isResending ? "Resending…" : "Resend code"}
                 </button>
-                <Link href={`/verify?username=${encodeURIComponent(username.trim())}`} className="btn-secondary">
+                <Link href="/verify" onClick={() => stashAuthHandoff("verify", { username: username.trim() })} className="btn-secondary">
                   Enter code
                 </Link>
               </div>
