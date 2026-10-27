@@ -84,7 +84,7 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "sum(increase(http_requests_total{endpoint=~\"/api/v1/(chat|quiz).*\"}[1h]))",
+          "expr": "sum(increase(http_requests_total{endpoint=~\"(/api/v1)?/(chat|quiz)(/.*)?\"}[1h]))",
           "refId": "A"
         }
       ]
@@ -293,7 +293,7 @@
         "y": 14
       },
       "id": 301,
-      "title": "Cumulative LLM Spend ($ USD)",
+      "title": "LLM Spend, Rolling 1h ($ USD)",
       "type": "timeseries",
       "targets": [
         {
@@ -419,9 +419,9 @@
           "legendFormat": "RAG {{query_type}} p95"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le, database)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (le, database, operation)) * 1000",
           "refId": "B",
-          "legendFormat": "DB {{database}} p95"
+          "legendFormat": "DB {{database}} {{operation}} p95"
         }
       ]
     },

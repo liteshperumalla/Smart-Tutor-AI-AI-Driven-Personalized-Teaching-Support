@@ -25,8 +25,26 @@ from backend.logger import get_logger
 from backend.exceptions import OptimisticLockError
 from backend.services.storage.base import BaseStorageBackend
 from backend.services.models import ChatSession, QuizResult
+from backend.log_redaction import user_ref
 
 logger = get_logger(__name__)
+
+
+def _record_db_duration(operation: str, seconds: float) -> None:
+    """Feed db_query_duration_seconds (Grafana: RAG Retrieval & Database Latency)."""
+    try:
+        from backend.metrics import track_db_query
+        track_db_query("postgres", operation, seconds)
+    except Exception:  # metrics must never break a query
+        pass
+
+
+def _record_db_error(error_type: str) -> None:
+    try:
+        from backend.metrics import track_db_error
+        track_db_error("postgres", error_type)
+    except Exception:
+        pass
 
 
 class PostgresStorageBackend(BaseStorageBackend):
@@ -228,6 +246,8 @@ class PostgresStorageBackend(BaseStorageBackend):
     @contextmanager
     def _get_cursor(self, cursor_factory=RealDictCursor, read_only: bool = False):
         """Get cursor with automatic commit/rollback and read/write pool routing"""
+        operation = "read" if read_only else "write"
+        started = time.monotonic()
         with self._get_connection(read_only=read_only) as conn:
             cursor = conn.cursor(cursor_factory=cursor_factory)
             try:
@@ -238,9 +258,11 @@ class PostgresStorageBackend(BaseStorageBackend):
                 if not read_only:
                     conn.rollback()
                 logger.error(f"Database error: {e}", exc_info=True)
+                _record_db_error(type(e).__name__)
                 raise
             finally:
                 cursor.close()
+                _record_db_duration(operation, time.monotonic() - started)
 
     def check_health(self) -> None:
         """Raise when PostgreSQL cannot serve a simple query."""
