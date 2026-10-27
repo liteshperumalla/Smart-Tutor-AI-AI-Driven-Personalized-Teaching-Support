@@ -305,6 +305,8 @@ def run_agent_pipeline(
 
     def _on_error(exc: Exception) -> str:
         logger.error("LLM stream failed for %s: %s", agent_name, exc)
+        # Flag the trace; _on_complete still runs afterwards and ends it.
+        update_trace(main_trace, level="ERROR", end=False)
         return (
             "I'm sorry, I encountered an issue generating a response. "
             "Could you try rephrasing your question?"

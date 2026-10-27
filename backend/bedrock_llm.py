@@ -8,7 +8,7 @@ import boto3
 import json
 import time
 from typing import Optional, Dict, Any, Generator
-from datetime import datetime
+from datetime import datetime, timezone
 from backend.config import config
 from backend.model_usage import record_model_used
 from backend.logger import get_logger
@@ -25,6 +25,14 @@ class _LLMCall:
     def __init__(self, t0: float, generation: Any = None):
         self.t0 = t0
         self.generation = generation
+
+    def first_token(self) -> None:
+        """Mark time to first token on the Langfuse generation (TTFT charts)."""
+        if self.generation is not None:
+            try:
+                self.generation.update(completion_start_time=datetime.now(timezone.utc))
+            except Exception:  # tracing must never break streaming
+                pass
 
 
 class BedrockLLM:
@@ -287,6 +295,7 @@ class BedrockLLM:
                 if text:
                     if not recorded:
                         record_model_used(self.model_id)
+                        started.first_token()
                         recorded = True
                     yield text
                 stop = event.get("messageStop", {}).get("stopReason")
@@ -595,6 +604,7 @@ class BedrockLLM:
                     if text:
                         if not recorded:
                             record_model_used(self.model_id)
+                            started.first_token()
                             recorded = True
                         yield text
             stream_status = "success"

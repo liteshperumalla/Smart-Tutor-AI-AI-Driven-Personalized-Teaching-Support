@@ -735,6 +735,11 @@ def submit_message_feedback(
             track_llm_satisfaction(vote=feedback_type)
         except Exception:
             pass
+        try:
+            from backend.langfuse_setup import score_session_feedback
+            score_session_feedback(session_id, feedback_type)
+        except Exception:
+            pass
 
     return MessageFeedbackResponse(
         success=True,

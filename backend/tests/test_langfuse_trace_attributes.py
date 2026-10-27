@@ -63,3 +63,52 @@ def test_generation_outside_a_request_has_no_user(offline_langfuse):
     attrs = dict(call.generation._otel_span.attributes)
     call.generation.end()
     assert "user.id" not in attrs
+
+
+def test_agent_trace_root_and_children_are_v4_observations(offline_langfuse):
+    """create_trace/traced_span used the removed v2 client.trace() API, so the
+    agent pipeline's traces never reached Langfuse."""
+    root = langfuse_setup.create_trace(
+        "agent-pipeline", user_id="alice", session_id="s-1", tags=["agent"], input={"query": "q"}
+    )
+    assert root is not None
+    with langfuse_setup.traced_span(root, "agent-rag-retrieval", input={"query": "q"}) as child:
+        assert child is not None
+    langfuse_setup.update_trace(root, output={"ok": True})
+
+    root_span, child_span = root._otel_span, child._otel_span
+    assert child_span.parent.span_id == root_span.context.span_id
+    for span in (root_span, child_span):
+        assert span.attributes["user.id"] == user_ref("alice")
+        assert span.attributes["session.id"] == "s-1"
+        assert tuple(span.attributes["langfuse.trace.tags"]) == ("agent",)
+        assert span.end_time is not None  # only ended spans are exported
+
+
+def test_update_trace_can_flag_without_ending(offline_langfuse):
+    root = langfuse_setup.create_trace("agent-pipeline", user_id="alice")
+    langfuse_setup.update_trace(root, level="ERROR", end=False)
+    assert root._otel_span.end_time is None
+    langfuse_setup.update_trace(root, output={"done": True})
+    assert root._otel_span.end_time is not None
+
+
+def test_session_feedback_becomes_a_langfuse_score(offline_langfuse, monkeypatch):
+    calls = []
+    monkeypatch.setattr(offline_langfuse, "create_score", lambda **kw: calls.append(kw))
+
+    assert langfuse_setup.score_session_feedback("s-1", "thumbs_up")
+    assert langfuse_setup.score_session_feedback("s-1", "thumbs_down")
+    assert not langfuse_setup.score_session_feedback("s-1", "meh")
+
+    assert [c["value"] for c in calls] == [1.0, 0.0]
+    assert all(c["name"] == "user_feedback" and c["session_id"] == "s-1" for c in calls)
+
+
+def test_first_token_sets_completion_start_time(offline_langfuse):
+    """Langfuse derives time-to-first-token from completion_start_time."""
+    call = BedrockLLM._begin_call(BedrockLLM.__new__(BedrockLLM), "model-x", "hi")
+    call.first_token()
+    attrs = dict(call.generation._otel_span.attributes)
+    call.generation.end()
+    assert any("completion_start_time" in key for key in attrs), attrs

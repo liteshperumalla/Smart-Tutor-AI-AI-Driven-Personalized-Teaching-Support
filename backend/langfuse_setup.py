@@ -295,29 +295,44 @@ def create_trace(
     tags: Optional[List[str]] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ):
-    """Create a root Langfuse trace.  Returns ``None`` if tracing is disabled."""
+    """Open the root observation of a new trace.  Returns ``None`` if tracing is disabled.
+
+    SDK 4.x has no ``client.trace()`` (the old call raised and was swallowed,
+    so these traces never reached Langfuse). The root is an "agent"
+    observation; user (pseudonym), session, tags and trace name are attached
+    through ``langfuse.propagate_attributes`` and re-applied to child spans.
+    The root must be closed with ``update_trace`` (which ends it) or it is
+    never exported.
+    """
     if _langfuse_client is None:
         return None
+    attrs: Dict[str, Any] = {"trace_name": name}
+    if user_id:
+        attrs["user_id"] = user_ref(user_id)
+    if session_id:
+        attrs["session_id"] = str(session_id)[:200]
+    if tags:
+        attrs["tags"] = list(tags)
     try:
-        kwargs: Dict[str, Any] = {"name": name}
-        if user_id:
-            kwargs["user_id"] = user_ref(user_id)
-        if session_id:
-            kwargs["session_id"] = session_id
-        if input is not None:
-            kwargs["input"] = input
-        if tags:
-            kwargs["tags"] = tags
-        if metadata:
-            kwargs["metadata"] = metadata
-        return _langfuse_client.trace(**kwargs)
+        from langfuse import propagate_attributes as _propagate
+
+        with _propagate(**attrs):
+            root = _langfuse_client.start_observation(
+                name=name, as_type="agent", input=input, metadata=metadata
+            )
+        _TRACE_ATTRS[id(root)] = attrs
+        return root
     except Exception as exc:
         logger.debug("create_trace failed: %s", exc)
         return None
 
 
-def update_trace(trace, *, output=None, metadata=None, level=None) -> None:
-    """Safely update a trace with output/metadata."""
+# Trace attributes of open roots, re-applied when their children are created.
+_TRACE_ATTRS: Dict[int, Dict[str, Any]] = {}
+
+
+def update_trace(trace, *, output=None, metadata=None, level=None, end: bool = True) -> None:
+    """Record the trace's output/metadata on its root and (by default) end it."""
     if trace is None:
         return
     try:
@@ -328,7 +343,11 @@ def update_trace(trace, *, output=None, metadata=None, level=None) -> None:
             kwargs["metadata"] = metadata
         if level is not None:
             kwargs["level"] = level
-        trace.update(**kwargs)
+        if kwargs:
+            trace.update(**kwargs)
+        if end:
+            _TRACE_ATTRS.pop(id(trace), None)
+            trace.end()
     except Exception as exc:
         logger.debug("update_trace failed: %s", exc)
 
@@ -340,10 +359,13 @@ def create_span(trace, name: str, *, input: Optional[Any] = None):
     if trace is None:
         return None
     try:
-        kwargs: Dict[str, Any] = {"name": name}
-        if input is not None:
-            kwargs["input"] = input
-        return trace.span(**kwargs)
+        attrs = _TRACE_ATTRS.get(id(trace))
+        if attrs:
+            from langfuse import propagate_attributes as _propagate
+
+            with _propagate(**attrs):
+                return trace.start_observation(name=name, as_type="span", input=input)
+        return trace.start_observation(name=name, as_type="span", input=input)
     except Exception as exc:
         logger.debug("create_span failed: %s", exc)
         return None
@@ -354,10 +376,9 @@ def end_span(span, *, output: Optional[Any] = None) -> None:
     if span is None:
         return
     try:
-        kwargs: Dict[str, Any] = {}
         if output is not None:
-            kwargs["output"] = output
-        span.end(**kwargs)
+            span.update(output=output)
+        span.end()
     except Exception as exc:
         logger.debug("end_span failed: %s", exc)
 
@@ -410,12 +431,34 @@ def score_observation(
         if comment:
             kwargs["comment"] = comment
 
-        if hasattr(_langfuse_client, "score"):
-            _langfuse_client.score(**kwargs)
-            return True
-        return False
+        # SDK 4.x: create_score (client.score no longer exists).
+        _langfuse_client.create_score(**kwargs)
+        return True
     except Exception as exc:
         logger.debug("score_observation failed: %s", exc)
+        return False
+
+
+def score_session_feedback(session_id: str, vote: str, *, comment: Optional[str] = None) -> bool:
+    """Record a user's thumbs up/down on a chat session as a Langfuse score.
+
+    Scored per session (the conversation the user rated), as ``user_feedback``
+    = 1 for thumbs_up and 0 for thumbs_down, so Langfuse can chart
+    satisfaction next to cost and latency.
+    """
+    if _langfuse_client is None or not session_id or vote not in ("thumbs_up", "thumbs_down"):
+        return False
+    try:
+        _langfuse_client.create_score(
+            name="user_feedback",
+            value=1.0 if vote == "thumbs_up" else 0.0,
+            session_id=str(session_id)[:200],
+            data_type="NUMERIC",
+            comment=comment,
+        )
+        return True
+    except Exception as exc:
+        logger.debug("score_session_feedback failed: %s", exc)
         return False
 
 

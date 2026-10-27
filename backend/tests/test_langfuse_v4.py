@@ -65,7 +65,7 @@ class TestLangfuseV4(unittest.TestCase):
             self.assertFalse(success)
 
     def test_score_observation_with_mock_client(self):
-        """Verify score_observation calls client.score with correct v4 arguments."""
+        """Verify score_observation calls client.create_score (SDK 4.x) with the right arguments."""
         mock_client = MagicMock()
         with patch("backend.langfuse_setup._langfuse_client", mock_client):
             success = score_observation(
@@ -75,7 +75,7 @@ class TestLangfuseV4(unittest.TestCase):
                 trace_id="tr_xyz789",
             )
             self.assertTrue(success)
-            mock_client.score.assert_called_once_with(
+            mock_client.create_score.assert_called_once_with(
                 name="relevance",
                 value=1.0,
                 observation_id="obs_abc123",
@@ -86,30 +86,32 @@ class TestLangfuseV4(unittest.TestCase):
         """Verify create_trace and update_trace with mock client."""
         mock_client = MagicMock()
         mock_trace = MagicMock()
-        mock_client.trace.return_value = mock_trace
+        mock_client.start_observation.return_value = mock_trace
 
         with patch("backend.langfuse_setup._langfuse_client", mock_client):
             trace = create_trace("root-interaction", user_id="u1", session_id="s1")
             self.assertEqual(trace, mock_trace)
-            # Langfuse receives a pseudonym, never the raw username.
-            from backend.log_redaction import user_ref
-            mock_client.trace.assert_called_once_with(name="root-interaction", user_id=user_ref("u1"), session_id="s1")
+            # SDK 4.x: the root is an observation (client.trace() no longer exists).
+            mock_client.start_observation.assert_called_once_with(
+                name="root-interaction", as_type="agent", input=None, metadata=None
+            )
 
             update_trace(trace, output={"status": "completed"})
             mock_trace.update.assert_called_once_with(output={"status": "completed"})
+            mock_trace.end.assert_called_once_with()
 
     def test_traced_span_context(self):
         """Verify traced_span correctly tracks duration."""
         mock_trace = MagicMock()
         mock_span = MagicMock()
-        mock_trace.span.return_value = mock_span
+        mock_trace.start_observation.return_value = mock_span
 
         with traced_span(mock_trace, "sub-step", input={"q": "test"}) as span:
             self.assertEqual(span, mock_span)
 
-        mock_trace.span.assert_called_once_with(name="sub-step", input={"q": "test"})
+        mock_trace.start_observation.assert_called_once_with(name="sub-step", as_type="span", input={"q": "test"})
         self.assertTrue(mock_span.end.called)
-        kwargs = mock_span.end.call_args[1]
+        kwargs = mock_span.update.call_args[1]
         self.assertIn("output", kwargs)
         self.assertIn("duration_ms", kwargs["output"])
 
