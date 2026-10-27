@@ -4,6 +4,7 @@ Tracks and logs RAG pipeline metrics for continuous improvement
 """
 
 import json
+import math
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -233,10 +234,13 @@ class RAGEvaluationMetrics:
                 for r in records:
                     value = (r.get(section) or {}).get(key)
                     try:
-                        if value is not None:
-                            out.append(float(value))
+                        number = float(value) if value is not None else None
                     except (TypeError, ValueError):
                         continue
+                    # json allows NaN/Infinity; one would make every mean NaN
+                    # and fail strict JSON serialization of the response.
+                    if number is not None and math.isfinite(number):
+                        out.append(number)
                 return out
 
             def mean(vals: List[float]) -> float:

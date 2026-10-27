@@ -71,11 +71,15 @@ function GoogleCallbackContent() {
 
         if (response.status === 428 && payload.requires_password_setup) {
           if (payload.password_setup_token && payload.username) {
-            stashAuthHandoff("password-setup", {
+            const stashed = stashAuthHandoff("password-setup", {
               token: payload.password_setup_token,
               username: payload.username,
             });
-            const params = new URLSearchParams();
+            // Without storage the setup page could not get the token: fall
+            // back to the query string (that page removes it from the URL).
+            const params = stashed
+              ? new URLSearchParams()
+              : new URLSearchParams({ token: payload.password_setup_token, username: payload.username });
           params.set("next", returnTo);
           router.replace(`/password-setup?${params.toString()}`);
             return;

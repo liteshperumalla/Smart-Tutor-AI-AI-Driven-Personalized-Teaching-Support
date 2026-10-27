@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
-import { readAuthHandoff } from "@/lib/auth-handoff";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
@@ -137,6 +137,7 @@ function PasswordSetupContent() {
       }
       sessionStorage.removeItem(SETUP_TOKEN_STORAGE_KEY);
       sessionStorage.removeItem(SETUP_USERNAME_STORAGE_KEY);
+      clearAuthHandoff("password-setup");
       saveAuthToken("authenticated");
       router.replace("/");
     } catch (err) {

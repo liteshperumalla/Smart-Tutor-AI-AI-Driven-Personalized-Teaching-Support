@@ -10,7 +10,9 @@ answer "Invalid or expired session".
 import sys
 from unittest.mock import MagicMock, patch
 
-if "psycopg2" not in sys.modules or sys.modules["psycopg2"] is None:
+try:  # use the real driver when installed; never shadow it for later tests
+    import psycopg2  # noqa: F401
+except ImportError:
     mock_psycopg = MagicMock()
     mock_psycopg.extensions.STATUS_READY = 0
     sys.modules["psycopg2"] = mock_psycopg
@@ -41,6 +43,7 @@ def _backend(pool):
 def test_checkout_replaces_dead_idle_connection():
     dead, live = _conn(alive=False), _conn(alive=True)
     pool = MagicMock()
+    pool.maxconn = 2
     pool.getconn.side_effect = [dead, live]
     backend = _backend(pool)
 
@@ -52,6 +55,7 @@ def test_checkout_discards_closed_connection_without_ping():
     closed, live = _conn(alive=True), _conn(alive=True)
     closed.closed = 1
     pool = MagicMock()
+    pool.maxconn = 2
     pool.getconn.side_effect = [closed, live]
     backend = _backend(pool)
 
@@ -72,3 +76,18 @@ def test_recently_used_connection_is_not_pinged():
 
     assert backend._checkout(pool) is conn
     conn.cursor.assert_not_called()
+
+
+def test_checkout_validates_every_connection_and_raises_when_none_is_live():
+    pool = MagicMock()
+    pool.maxconn = 2
+    pool.getconn.side_effect = [_conn(alive=False) for _ in range(3)]
+    backend = _backend(pool)
+
+    try:
+        backend._checkout(pool)
+    except ConnectionError:
+        pass
+    else:
+        raise AssertionError("a dead connection was handed out")
+    assert pool.getconn.call_count == 3

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
-import { readAuthHandoff } from "@/lib/auth-handoff";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
@@ -47,6 +47,7 @@ function VerifyPageContent() {
       if (!response.ok) {
         throw new Error(payload.detail || "Unable to verify account");
       }
+      clearAuthHandoff("verify");
       setMessage("Email verified successfully. You can now sign in.");
       setTimeout(() => router.push("/login?signup=verified"), 800);
     } catch (err) {

@@ -391,3 +391,16 @@ def test_update_appointment_status_requires_existing_entry(monkeypatch, tmp_path
 
     assert updated is not None
     assert updated["status"] == "confirmed"
+
+
+def test_summary_stats_skip_non_finite_values(tmp_path):
+    log_file = tmp_path / "rag_metrics.jsonl"
+    log_file.write_text(
+        '{"retrieval_metrics": {"avg_relevance_score": NaN}}\n'
+        '{"retrieval_metrics": {"avg_relevance_score": Infinity}}\n'
+        '{"retrieval_metrics": {"avg_relevance_score": 0.6}}\n',
+        encoding="utf-8",
+    )
+    summary = RAGEvaluationMetrics(str(log_file)).get_summary_stats(last_n=10)
+    assert summary["avg_relevance_score"] == 0.6
+    json.dumps(summary, allow_nan=False)

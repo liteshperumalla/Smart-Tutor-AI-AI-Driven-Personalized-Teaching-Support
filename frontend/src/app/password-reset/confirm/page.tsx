@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState, Suspense } from "react";
-import { readAuthHandoff } from "@/lib/auth-handoff";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
@@ -93,6 +93,7 @@ function PasswordResetConfirmPageContent() {
         throw new Error(parseApiError(payload));
       }
 
+      clearAuthHandoff("password-reset");
       setStatus("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to reset password.");

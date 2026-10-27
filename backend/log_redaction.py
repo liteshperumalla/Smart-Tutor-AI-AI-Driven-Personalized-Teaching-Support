@@ -23,10 +23,19 @@ import re
 from typing import Any, Optional
 
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
-_REF_RE = re.compile(r"^u_[0-9a-f]{12}$")
 
 # Structured fields whose values identify a person.
-_IDENTITY_KEYS = {"username", "user", "user_id", "email", "distinct_id", "actual_username"}
+_IDENTITY_KEYS = {
+    "username", "user", "user_id", "email", "distinct_id", "actual_username", "deleted_by",
+}
+
+
+class UserRef(str):
+    """A pseudonym produced by user_ref().
+
+    Marked by type rather than recognised by shape: a user may register a
+    username that looks like a pseudonym, and that must still be hashed.
+    """
 
 
 def _key() -> bytes:
@@ -35,14 +44,20 @@ def _key() -> bytes:
 
 
 def user_ref(value: Optional[str]) -> str:
-    """Stable, non-reversible reference for a username or email."""
+    """Stable, non-reversible reference for a username or email.
+
+    Usernames are case-sensitive in the account stores ("Alice" and "alice"
+    can be different accounts), so only emails are case-folded.
+    """
+    if isinstance(value, UserRef):
+        return value
     if not value:
-        return "anonymous"
-    normalized = str(value).strip().lower()
-    if normalized in ("anonymous", "unknown") or _REF_RE.match(normalized):
-        return normalized
+        return UserRef("anonymous")
+    normalized = str(value).strip()
+    if "@" in normalized:
+        normalized = normalized.lower()
     digest = hmac.new(_key(), normalized.encode(), hashlib.sha256).hexdigest()
-    return f"u_{digest[:12]}"
+    return UserRef(f"u_{digest[:12]}")
 
 
 def redact_text(text: str) -> str:
@@ -77,7 +92,19 @@ class RedactionFilter(logging.Filter):
         for key in _IDENTITY_KEYS | {"extra_data"}:
             if hasattr(record, key):
                 setattr(record, key, _redact_value(key, getattr(record, key)))
+        # Tracebacks are formatted after filtering, so render and redact the
+        # exception here; formatters use record.exc_text when it is set.
+        if record.exc_info and not record.exc_text:
+            try:
+                record.exc_text = redact_text(_TRACEBACK_FORMATTER.formatException(record.exc_info))
+            except Exception:
+                pass
+        elif record.exc_text:
+            record.exc_text = redact_text(record.exc_text)
         return True
+
+
+_TRACEBACK_FORMATTER = logging.Formatter()
 
 
 def install(handler: logging.Handler) -> logging.Handler:

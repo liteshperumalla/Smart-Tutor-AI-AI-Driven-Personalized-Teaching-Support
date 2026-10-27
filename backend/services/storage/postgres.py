@@ -206,9 +206,13 @@ class PostgresStorageBackend(BaseStorageBackend):
         first query after downtime fail ("server closed the connection
         unexpectedly"), and because get_user() maps errors to "not found",
         the first login was rejected and /auth/me reported an expired session.
-        Idle connections are pinged and dead ones replaced before use.
+        Idle connections are pinged and dead ones replaced before use. Every
+        idle connection may be stale after downtime, so up to pool size + 1
+        are checked (the last one is a freshly opened connection); if none is
+        live the database is down and that is raised, not a dead connection.
         """
-        for _ in range(3):
+        attempts = int(getattr(pool, "maxconn", 10) or 10) + 1
+        for _ in range(attempts):
             conn = pool.getconn()
             if self._is_alive(conn):
                 return conn
@@ -217,7 +221,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 pool.putconn(conn, close=True)
             except Exception:
                 pass
-        return pool.getconn()
+        raise ConnectionError("PostgreSQL: no live connection available")
 
     def _is_alive(self, conn) -> bool:
         if conn.closed:

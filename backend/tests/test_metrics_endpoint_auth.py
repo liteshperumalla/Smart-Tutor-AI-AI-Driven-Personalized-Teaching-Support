@@ -31,3 +31,10 @@ def test_metrics_serves_admin_cookie_session(test_client, test_user, auth_token)
     response = test_client.get("/metrics")
     assert response.status_code == 200
     assert "http_requests_total" in response.text
+
+
+def test_metrics_rejects_a_disabled_admin(test_client, test_user, auth_token):
+    _make_admin(test_user["username"])
+    get_user_db().update_user(test_user["username"], {"disabled": True})
+    test_client.cookies.set("access_token", auth_token)
+    assert test_client.get("/metrics").status_code == 401

@@ -300,6 +300,19 @@ jobs:
             printf '%s\n' "${alertmanager_receivers}"
           } > monitoring/alertmanager/alertmanager.yml
 
+          # The rendered config holds the Slack webhook, SMTP password and IRM
+          # URL. Make it readable by Alertmanager (the container runs as
+          # nobody, uid/gid 65534) but not by other local users.
+          am_config=monitoring/alertmanager/alertmanager.yml
+          if sudo -n chgrp 65534 "${am_config}" 2>/dev/null; then
+            chmod 640 "${am_config}"
+          elif command -v setfacl >/dev/null 2>&1 && chmod 600 "${am_config}" && setfacl -m u:65534:r "${am_config}"; then
+            :
+          else
+            chmod 644 "${am_config}"
+            echo "::warning::Could not restrict ${am_config} to Alertmanager; it stays readable by local users."
+          fi
+
           docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
             docker network create smart-tutor_smart-tutor-network
 

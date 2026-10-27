@@ -24,13 +24,27 @@ function storage(): Storage | null {
   }
 }
 
-export function stashAuthHandoff(page: string, values: AuthHandoff): void {
+/**
+ * Returns false when the values could not be stored (storage blocked or
+ * full), so a caller that cannot continue without them can fall back.
+ */
+export function stashAuthHandoff(page: string, values: AuthHandoff): boolean {
   const store = storage();
-  if (!store) return;
+  if (!store) return false;
   try {
     store.setItem(PREFIX + page, JSON.stringify(values));
+    return true;
   } catch {
-    // Storage full or blocked: the next page simply asks the user again.
+    return false;
+  }
+}
+
+/** Forget a handoff once its flow has completed. */
+export function clearAuthHandoff(page: string): void {
+  try {
+    storage()?.removeItem(PREFIX + page);
+  } catch {
+    // Nothing to clear.
   }
 }
 

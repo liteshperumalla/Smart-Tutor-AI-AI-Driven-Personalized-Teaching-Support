@@ -31,7 +31,10 @@ class JsonFormatter(logging.Formatter):
         }
 
         # Add exception info if present
-        if record.exc_info:
+        if record.exc_text:
+            # Already rendered (and redacted) by log_redaction.RedactionFilter.
+            log_data["exception"] = record.exc_text
+        elif record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
         # Add custom fields from extra parameter

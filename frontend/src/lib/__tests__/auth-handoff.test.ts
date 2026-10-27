@@ -2,7 +2,7 @@
  * Identity fields travel between auth pages through sessionStorage, not the URL.
  */
 
-import { readAuthHandoff, stashAuthHandoff } from '../auth-handoff'
+import { clearAuthHandoff, readAuthHandoff, stashAuthHandoff } from '../auth-handoff'
 
 const noQuery = new URLSearchParams()
 
@@ -33,5 +33,24 @@ describe('auth handoff', () => {
     stashAuthHandoff('verify', { username: 'ada' })
     readAuthHandoff('verify', noQuery)
     expect(readAuthHandoff('verify', noQuery).username).toBe('ada')
+  })
+})
+
+describe('auth handoff completion and failures', () => {
+  beforeEach(() => sessionStorage.clear())
+
+  it('clears a completed handoff so a later visit does not prefill it', () => {
+    stashAuthHandoff('verify', { username: 'ada' })
+    clearAuthHandoff('verify')
+    expect(readAuthHandoff('verify', new URLSearchParams()).username).toBeUndefined()
+  })
+
+  it('reports when storage rejects the write', () => {
+    const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
+    })
+    expect(stashAuthHandoff('password-setup', { token: 't' })).toBe(false)
+    spy.mockRestore()
+    expect(stashAuthHandoff('password-setup', { token: 't' })).toBe(true)
   })
 })

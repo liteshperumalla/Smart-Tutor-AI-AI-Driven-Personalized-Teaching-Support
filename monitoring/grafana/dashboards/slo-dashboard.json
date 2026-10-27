@@ -22,7 +22,7 @@
       },
       "targets": [
         {
-          "expr": "1 - ((1 - (sum(rate(http_requests_total{job=\"backend-api\",status!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend-api\"}[30d])))) / (1 - 0.999))",
+          "expr": "(1 - (sum(rate(http_requests_total{job=\"backend-api\",status!~\"5..\"}[30d])) / sum(rate(http_requests_total{job=\"backend-api\"}[30d])))) / (1 - 0.999)",
           "refId": "A",
           "legendFormat": "Error Budget Used",
           "datasource": {
@@ -67,7 +67,8 @@
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
-      }
+      },
+      "description": "Share of the 30-day error budget (0.1% of requests for a 99.9% SLO) already used by 5xx responses. Above 100% means the SLO is breached."
     },
     {
       "id": 2,
@@ -270,7 +271,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (endpoint) (rate(http_requests_total{job=\"backend-api\",status!~\"5..\"}[5m])) / sum by (endpoint) (rate(http_requests_total{job=\"backend-api\"}[5m]))",
+          "expr": "1 - (((sum by (endpoint) (rate(http_requests_total{job=\"backend-api\",status=~\"5..\"}[5m]))) or (sum by (endpoint) (rate(http_requests_total{job=\"backend-api\"}[5m])) * 0)) / sum by (endpoint) (rate(http_requests_total{job=\"backend-api\"}[5m])))",
           "refId": "A",
           "format": "table",
           "instant": true,
@@ -332,7 +333,8 @@
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
-      }
+      },
+      "description": "Share of non-5xx responses per endpoint over 5 minutes. Endpoints that return only 5xx show 0% rather than disappearing."
     },
     {
       "id": 7,
