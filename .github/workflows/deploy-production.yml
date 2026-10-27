@@ -419,12 +419,16 @@ jobs:
           # no-op: bedrock_llm.py only applies a guardrail when configured.
           BEDROCK_GUARDRAIL_ID: ${{ vars.BEDROCK_GUARDRAIL_ID || '' }}
           BEDROCK_GUARDRAIL_VERSION: ${{ vars.BEDROCK_GUARDRAIL_VERSION || '1' }}
+          # SQS queue for background jobs (see docs/aws/SQS_JOBS_SETUP.md).
+          # Set: the API queues jobs and the smart-tutor-worker container runs
+          # them. Empty: no worker; jobs run in a thread inside the API.
+          JOBS_QUEUE_URL: ${{ vars.JOBS_QUEUE_URL || '' }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL
           script: |
             set -euo pipefail
 
@@ -460,6 +464,15 @@ jobs:
                 docker network connect smart-tutor-sandbox "$1" 2>/dev/null || true
               fi
             }
+
+            echo "=== Syncing jobs queue into smart-tutor.env ==="
+            sed -i '/^JOBS_QUEUE_URL=/d' ~/smart-tutor.env
+            if [ -n "${JOBS_QUEUE_URL:-}" ]; then
+              echo "JOBS_QUEUE_URL=${JOBS_QUEUE_URL}" >> ~/smart-tutor.env
+              echo "Jobs queue configured; smart-tutor-worker will run background jobs."
+            else
+              echo "No JOBS_QUEUE_URL repo variable set -- background jobs run inside the API."
+            fi
 
             echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
             sed -i '/^TRUSTED_HOSTS=/d' ~/smart-tutor.env
@@ -596,6 +609,61 @@ jobs:
                 "$1" 2>/dev/null || true
             }
 
+            # Background-jobs worker: same image as the API, different command.
+            # SIGTERM lets a running job finish for up to 120s; a job cut off
+            # after that reappears on the queue and runs again.
+            replace_jobs_worker() {
+              if docker_container_exists smart-tutor-worker; then
+                echo "Stopping jobs worker"
+                docker_with_timeout 150s docker stop -t 120 smart-tutor-worker || true
+                docker_force_remove smart-tutor-worker
+              fi
+
+              if [ -z "${JOBS_QUEUE_URL:-}" ]; then
+                echo "JOBS_QUEUE_URL not set -- jobs worker not started."
+                return 0
+              fi
+
+              echo "=== Starting jobs worker ==="
+              docker run -d \
+                --name smart-tutor-worker \
+                --restart unless-stopped \
+                --network smart-tutor_smart-tutor-network \
+                --env-file ~/smart-tutor.env \
+                --log-driver=awslogs \
+                --log-opt awslogs-region=${AWS_REGION:-us-east-1} \
+                --log-opt awslogs-group=/smart-ai-tutor/backend \
+                --log-opt awslogs-stream=worker \
+                --log-opt awslogs-create-group=true \
+                --log-opt tag=smart-tutor-worker \
+                --stop-timeout 120 \
+                --health-cmd 'python -m backend.jobs healthcheck' \
+                --health-interval 30s \
+                --health-timeout 10s \
+                --health-start-period 60s \
+                --health-retries 3 \
+                -v /home/ubuntu/smart-tutor-data/logs:/app/logs \
+                -v /home/ubuntu/smart-tutor-data/user_data:/app/user_data \
+                -v /home/ubuntu/smart-tutor-data/chroma_db:/app/chroma_db \
+                "$BACKEND_IMAGE" \
+                python -m backend.jobs worker
+
+              # The worker polls within seconds of starting; give it a minute.
+              for i in $(seq 1 12); do
+                if [ "$(get_container_health smart-tutor-worker)" = "healthy" ]; then
+                  echo "Jobs worker healthy after $(((i - 1) * 5))s"
+                  return 0
+                fi
+                if ! docker ps --format '{{.Names}}' | grep -qx smart-tutor-worker; then
+                  break
+                fi
+                sleep 5
+              done
+              echo "::error::Jobs worker did not become healthy. Check the queue URL and the instance role's SQS permissions."
+              docker logs smart-tutor-worker --tail 100 || true
+              return 1
+            }
+
             probe_backend_container() {
               local container="$1"
               local health_status
@@ -710,6 +778,8 @@ jobs:
               5; then
               exit 1
             fi
+
+            replace_jobs_worker
 
             echo "=== Cleaning up candidate container ==="
             docker rm -f smart-tutor-backend-candidate 2>/dev/null || true

@@ -493,6 +493,11 @@ class Config:
         for email in os.getenv("ADMIN_NOTIFICATION_EMAILS", "").split(",")
         if email.strip()
     ]
+
+    # Background jobs (backend/jobs). Without a queue URL, jobs run in a
+    # thread inside the API process, as before.
+    JOBS_QUEUE_URL = os.getenv("JOBS_QUEUE_URL", "").strip()
+    JOBS_REGION = os.getenv("JOBS_REGION") or os.getenv("AWS_REGION", "us-east-1")
     USER_DATA_SHARED_STORAGE = (
         os.getenv("USER_DATA_SHARED_STORAGE", "false").lower() == "true"
     )
