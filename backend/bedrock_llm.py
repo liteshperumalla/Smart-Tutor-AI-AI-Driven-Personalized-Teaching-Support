@@ -659,7 +659,8 @@ class BedrockLLM:
         status: str = "success",
     ) -> None:
         """Send one call's latency, tokens and cost to Prometheus and Langfuse."""
-        cost = self._calculate_cost(input_tokens, output_tokens, model_id)
+        input_cost, output_cost = self._cost_split(input_tokens, output_tokens, model_id)
+        cost = input_cost + output_cost
         try:
             from backend.metrics import record_llm_usage
 
@@ -677,7 +678,8 @@ class BedrockLLM:
             try:
                 started.generation.update(
                     usage_details={"input": input_tokens, "output": output_tokens},
-                    cost_details={"total": cost},
+                    # Split so Langfuse can chart prompt vs completion cost.
+                    cost_details={"input": input_cost, "output": output_cost, "total": cost},
                     level="ERROR" if status == "error" else "DEFAULT",
                     status_message=None if status == "success" else status,
                 )
@@ -697,12 +699,15 @@ class BedrockLLM:
         Returns:
             Cost in USD
         """
-        pricing = self.PRICING.get(model_id or self.model_id, {"input": 0, "output": 0})
-
-        input_cost = (input_tokens / 1000) * pricing["input"]
-        output_cost = (output_tokens / 1000) * pricing["output"]
-
+        input_cost, output_cost = self._cost_split(input_tokens, output_tokens, model_id)
         return input_cost + output_cost
+
+    def _cost_split(
+        self, input_tokens: int, output_tokens: int, model_id: Optional[str] = None
+    ) -> tuple:
+        """(input_cost, output_cost) in USD for one call."""
+        pricing = self.PRICING.get(model_id or self.model_id, {"input": 0, "output": 0})
+        return (input_tokens / 1000) * pricing["input"], (output_tokens / 1000) * pricing["output"]
 
     def _log_cost(
         self, input_tokens: int, output_tokens: int, cost: float, prompt_preview: str

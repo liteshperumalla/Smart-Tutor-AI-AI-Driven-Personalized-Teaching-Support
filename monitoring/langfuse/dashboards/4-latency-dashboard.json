@@ -1,110 +1,278 @@
 {
   "id": "langfuse-latency-dashboard",
-  "name": "Langfuse Latency Dashboard",
-  "description": "Multi-tier latency analytics, TTFT distribution, retrieval execution times, synthesis streaming velocity, and tail-latency SLA tracking",
-  "version": "4.0",
-  "schema_version": "v4",
-  "data_source": "langfuse_v4_observations",
-  "filters": [],
-  "metrics": [
+  "name": "Smart AI Tutor - Latency",
+  "description": "Model response latency, time to first token and retrieval step timings (ms).",
+  "format": "langfuse-metrics-v2",
+  "scope": "environment = production (set from ENVIRONMENT by backend/langfuse_setup.py)",
+  "how_to_build": "Built in Langfuse by `python scripts/ci/sync_langfuse_dashboards.py` (edit this file, not the Langfuse UI: the sync deletes and recreates its dashboards). Each widget's `query` is the exact GET /api/public/v2/metrics query it charts; check them all against live data with `python scripts/langfuse/check_dashboards.py`.",
+  "widgets": [
     {
-      "id": "e2e_latency_percentiles",
-      "name": "End-to-End Latency Percentiles",
-      "aggregation": "PERCENTILES",
-      "field": "duration_ms",
-      "percentiles": [50, 75, 90, 95, 99],
-      "unit": "ms",
-      "description": "Comprehensive percentile distribution for full user request-response lifecycles"
+      "title": "Generation latency p50 / p90 / p95 / p99 (ms)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p50"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p90"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p95"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p99"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "ttft_by_model",
-      "name": "Time to First Token (TTFT)",
-      "aggregation": "PERCENTILE(90)",
-      "field": "attributes.time_to_first_token_ms",
-      "group_by": ["model_id"],
-      "unit": "ms",
-      "target": "< 600ms",
-      "description": "90th percentile initial token streaming delay across configured LLMs"
+      "title": "Generation latency percentiles per day (ms)",
+      "chartType": "LINE_TIME_SERIES",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p50"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p90"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p99"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "day"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "generation_throughput_tps",
-      "name": "Tokens Generated per Second (TPS)",
-      "formula": "SUM(completion_tokens) / (SUM(duration_ms) / 1000)",
-      "group_by": ["model_id"],
-      "unit": "tokens/sec",
-      "description": "Effective generation speed during token synthesis"
+      "title": "Time to first token by model (ms)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "Set on the first streamed token (completion_start_time).",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "timeToFirstToken",
+            "aggregation": "p50"
+          },
+          {
+            "measure": "timeToFirstToken",
+            "aggregation": "p95"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "providedModelName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "vector_retrieval_latency",
-      "name": "ChromaDB / Vector Search Latency",
-      "aggregation": "PERCENTILE(95)",
-      "field": "duration_ms",
-      "filter": "name = 'rag-retrieval'",
-      "unit": "ms",
-      "target": "< 250ms",
-      "description": "95th percentile dense vector similarity retrieval time"
+      "title": "Output tokens per second by model",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "Streaming throughput.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "outputTokensPerSecond",
+            "aggregation": "avg"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "providedModelName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "graph_retrieval_latency",
-      "name": "Neo4j Knowledge Graph Latency",
-      "aggregation": "PERCENTILE(95)",
-      "field": "duration_ms",
-      "filter": "name = 'graph-retrieval'",
-      "unit": "ms",
-      "target": "< 150ms",
-      "description": "95th percentile multi-hop graph traversal time"
+      "title": "Latency distribution (ms)",
+      "chartType": "HISTOGRAM",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "histogram"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "chartConfig": {
+        "bins": 20
+      },
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "web_search_latency",
-      "name": "External Web Search Latency (SerpAPI)",
-      "aggregation": "PERCENTILE(95)",
-      "field": "duration_ms",
-      "filter": "name = 'web-search-execution'",
-      "unit": "ms",
-      "target": "< 1200ms",
-      "description": "95th percentile SerpAPI web query execution time"
-    },
-    {
-      "id": "outlier_traces",
-      "name": "SLA Breach Traces (> 3000ms)",
-      "aggregation": "COUNT",
-      "filter": "duration_ms > 3000",
-      "unit": "traces",
-      "description": "Volume of traces violating the 3-second SLA threshold"
-    }
-  ],
-  "panels": [
-    {
-      "title": "Latency Percentile Highlights",
-      "type": "stat_row",
-      "cards": [
-        { "title": "P50 (Median) Response", "metric": "e2e_latency_percentiles", "percentile": 50, "unit": "ms" },
-        { "title": "P90 Response", "metric": "e2e_latency_percentiles", "percentile": 90, "unit": "ms" },
-        { "title": "P95 Response", "metric": "e2e_latency_percentiles", "percentile": 95, "unit": "ms" },
-        { "title": "P99 Tail Latency", "metric": "e2e_latency_percentiles", "percentile": 99, "unit": "ms", "thresholds": { "green": 2000, "yellow": 3000, "red": 5000 } }
-      ]
-    },
-    {
-      "title": "Latency Percentiles Over Time (P50, P90, P99)",
-      "type": "multi_line_chart",
-      "metric": "e2e_latency_percentiles",
-      "time_bucket": "5m"
-    },
-    {
-      "title": "Time to First Token (TTFT) by Model",
-      "type": "bar_chart",
-      "metric": "ttft_by_model"
-    },
-    {
-      "title": "Pipeline Component Breakdown (Vector vs Graph vs Web vs LLM)",
-      "type": "stacked_bar_breakdown",
-      "metrics": ["vector_retrieval_latency", "graph_retrieval_latency", "web_search_latency"]
-    },
-    {
-      "title": "Slow Traces & Outlier Log (> 3000ms)",
-      "type": "table",
-      "columns": ["timestamp", "trace_id", "user_id", "model", "duration_ms", "dominant_step", "error"],
-      "filter": "duration_ms > 3000"
+      "title": "Retrieval and pipeline steps p95 (ms)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "LlamaIndex retrieve/query spans and agent steps.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p95"
+          },
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "name"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "type",
+            "operator": "=",
+            "value": "SPAN",
+            "type": "string"
+          }
+        ],
+        "orderBy": [
+          {
+            "field": "p95_latency",
+            "direction": "desc"
+          }
+        ],
+        "config": {
+          "row_limit": 15
+        }
+      },
+      "chartConfig": {
+        "row_limit": 15
+      },
+      "layout": {
+        "x": 6,
+        "y": 12,
+        "width": 6,
+        "height": 6
+      }
     }
   ]
 }

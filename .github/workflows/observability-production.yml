@@ -9,6 +9,7 @@ on:
       - 'monitoring/**'
       - 'docker-compose.observability.yml'
       - '.github/workflows/observability-production.yml'
+      - 'scripts/ci/sync_langfuse_dashboards.py'
   schedule:
     # Weekdays only, 90 minutes after the 09:00 America/Chicago EC2 start
     # (see ec2-schedule.yml) so the app has finished booting. 15:30 UTC is
@@ -604,6 +605,28 @@ jobs:
 
       - name: Upload dashboards
         run: python3 scripts/ci/sync_grafana_cloud_dashboards.py
+
+  sync-langfuse-dashboards:
+    # Builds the dashboards in monitoring/langfuse/dashboards in Langfuse.
+    # The sync deletes and recreates them, so it runs when they change, not on
+    # the daily schedule (that would give them new URLs every day).
+    name: Sync Dashboards To Langfuse
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      LANGFUSE_HOST: ${{ vars.LANGFUSE_HOST || secrets.LANGFUSE_HOST || '' }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY || '' }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY || '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Build dashboards
+        run: python3 scripts/ci/sync_langfuse_dashboards.py
 
   notify-observability-smart-tutor-ai:
     name: Notify Observability Deploy (#smart-tutor-ai)

@@ -125,3 +125,18 @@ def test_suite_never_exports_to_a_real_langfuse_project():
     from backend.config import config
 
     assert config.LANGFUSE_ENABLED is False
+
+
+def test_generation_reports_input_and_output_cost(offline_langfuse):
+    llm = BedrockLLM.__new__(BedrockLLM)
+    llm.model_id = "us.anthropic.claude-sonnet-5-5"
+    call = llm._begin_call(llm.model_id, "hi")
+    generation = call.generation
+    captured = {}
+    original_update = generation.update
+    generation.update = lambda **kw: (captured.update(kw), original_update(**kw))[1]
+    llm._record_usage(llm.model_id, call, input_tokens=1000, output_tokens=1000)
+
+    cost = captured["cost_details"]
+    assert cost["input"] == 0.003 and cost["output"] == 0.015
+    assert abs(cost["total"] - 0.018) < 1e-9

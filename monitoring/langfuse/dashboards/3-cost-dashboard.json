@@ -1,113 +1,330 @@
 {
   "id": "langfuse-cost-dashboard",
-  "name": "Langfuse Cost Dashboard",
-  "description": "Granular token accounting, provider cost tracking, model pricing allocation, feature burn rate, and financial FinOps governance",
-  "version": "4.0",
-  "schema_version": "v4",
-  "data_source": "langfuse_v4_observations",
-  "filters": [
-    { "field": "observation_type", "operator": "eq", "value": "generation" }
-  ],
-  "model_pricing_reference": {
-    "us.anthropic.claude-sonnet-5-5": { "input_cost_per_m": 3.00, "output_cost_per_m": 15.00 },
-    "us.anthropic.claude-haiku-5-5": { "input_cost_per_m": 0.80, "output_cost_per_m": 4.00 },
-    "us.openai.gpt-6-luna": { "input_cost_per_m": 2.00, "output_cost_per_m": 8.00 },
-    "meta.llama-3-3-70b-instruct": { "input_cost_per_m": 0.72, "output_cost_per_m": 0.72 },
-    "amazon.titan-embed-text-v2": { "input_cost_per_m": 0.02, "output_cost_per_m": 0.00 }
-  },
-  "metrics": [
+  "name": "Smart AI Tutor - Cost",
+  "description": "Model spend by day, model, feature, user and chat session (cost_details reported by backend/bedrock_llm.py).",
+  "format": "langfuse-metrics-v2",
+  "scope": "environment = production (set from ENVIRONMENT by backend/langfuse_setup.py)",
+  "how_to_build": "Built in Langfuse by `python scripts/ci/sync_langfuse_dashboards.py` (edit this file, not the Langfuse UI: the sync deletes and recreates its dashboards). Each widget's `query` is the exact GET /api/public/v2/metrics query it charts; check them all against live data with `python scripts/langfuse/check_dashboards.py`.",
+  "widgets": [
     {
-      "id": "cumulative_spend_usd",
-      "name": "Total Cumulative Spend",
-      "aggregation": "SUM",
-      "field": "calculated_cost_usd",
-      "unit": "$",
-      "description": "Total spend across all generations in selected time window"
+      "title": "Total spend (USD)",
+      "chartType": "NUMBER",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "daily_burn_rate_usd",
-      "name": "Daily Burn Rate",
-      "formula": "SUM(calculated_cost_usd) / DATEDIFF_DAYS",
-      "unit": "$/day",
-      "description": "Projected daily expenditure based on trailing activity"
+      "title": "Input vs output cost (USD)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "Prompt and completion cost.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "inputCost",
+            "aggregation": "sum"
+          },
+          {
+            "measure": "outputCost",
+            "aggregation": "sum"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "cost_by_model",
-      "name": "Cost Breakdown by Model",
-      "aggregation": "SUM",
-      "field": "calculated_cost_usd",
-      "group_by": ["model_id"],
-      "unit": "$",
-      "description": "Dollar spend split by LLM architecture"
+      "title": "Spend per day (USD)",
+      "chartType": "BAR_TIME_SERIES",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "day"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "token_cost_split",
-      "name": "Input vs Output Spend",
-      "metrics": [
-        { "name": "Prompt Token Cost", "formula": "SUM(prompt_tokens * model_input_rate)" },
-        { "name": "Completion Token Cost", "formula": "SUM(completion_tokens * model_output_rate)" }
-      ],
-      "unit": "$",
-      "description": "Comparison of prompt ingestion cost vs completion synthesis cost"
+      "title": "Spend by model (USD)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          },
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "providedModelName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "orderBy": [
+          {
+            "field": "sum_totalCost",
+            "direction": "desc"
+          }
+        ]
+      },
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "cost_by_feature",
-      "name": "Cost by Product Feature",
-      "aggregation": "SUM",
-      "field": "calculated_cost_usd",
-      "group_by": ["tags"],
-      "features": ["chat-assistant", "code-sandbox", "quiz-generator", "rag-retrieval", "document-indexing"],
-      "unit": "$",
-      "description": "Financial allocation mapped to user-facing capabilities"
+      "title": "Spend by feature (USD)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "chat, quiz, code, research, rag.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "traceName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "orderBy": [
+          {
+            "field": "sum_totalCost",
+            "direction": "desc"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "avg_cost_per_session",
-      "name": "Average Cost per User Session",
-      "formula": "SUM(calculated_cost_usd) / COUNT_DISTINCT(session_id)",
-      "unit": "$/session",
-      "description": "Unit economics: average dollar cost of one interactive student session"
+      "title": "Top 10 users by spend",
+      "chartType": "PIVOT_TABLE",
+      "description": "Pseudonymous user ids; map one back with backend.log_redaction.user_ref(username).",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          },
+          {
+            "measure": "totalTokens",
+            "aggregation": "sum"
+          },
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "userId"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "orderBy": [
+          {
+            "field": "sum_totalCost",
+            "direction": "desc"
+          }
+        ],
+        "config": {
+          "row_limit": 10
+        }
+      },
+      "chartConfig": {
+        "row_limit": 10
+      },
+      "layout": {
+        "x": 0,
+        "y": 18,
+        "width": 12,
+        "height": 7
+      }
     },
     {
-      "id": "top_spenders",
-      "name": "Top User Spend",
-      "aggregation": "SUM",
-      "field": "calculated_cost_usd",
-      "group_by": ["user_id"],
-      "sort": "DESC",
-      "limit": 10,
-      "description": "Top consuming accounts ranked by cumulative dollar spend"
-    }
-  ],
-  "panels": [
-    {
-      "title": "FinOps Summary Cards",
-      "type": "stat_row",
-      "cards": [
-        { "title": "Total Spend (Period)", "metric": "cumulative_spend_usd", "unit": "$" },
-        { "title": "Estimated Daily Burn", "metric": "daily_burn_rate_usd", "unit": "$/day" },
-        { "title": "Avg Cost / Session", "metric": "avg_cost_per_session", "unit": "$" }
-      ]
-    },
-    {
-      "title": "Cost by LLM Model",
-      "type": "stacked_bar_chart",
-      "metric": "cost_by_model"
-    },
-    {
-      "title": "Prompt vs Completion Cost Split",
-      "type": "pie_chart",
-      "metric": "token_cost_split"
-    },
-    {
-      "title": "Cost by Application Feature",
-      "type": "horizontal_bar_chart",
-      "metric": "cost_by_feature"
-    },
-    {
-      "title": "Top 10 Consuming Users / Workspaces",
-      "type": "table",
-      "metric": "top_spenders",
-      "columns": ["user_id", "total_spend_usd", "total_tokens", "session_count"]
+      "title": "Top 10 chat sessions by spend",
+      "chartType": "PIVOT_TABLE",
+      "description": "",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          },
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "sessionId"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "orderBy": [
+          {
+            "field": "sum_totalCost",
+            "direction": "desc"
+          }
+        ],
+        "config": {
+          "row_limit": 10
+        }
+      },
+      "chartConfig": {
+        "row_limit": 10
+      },
+      "layout": {
+        "x": 0,
+        "y": 25,
+        "width": 12,
+        "height": 7
+      }
     }
   ]
 }
