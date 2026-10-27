@@ -10,6 +10,7 @@ from backend.logger import get_logger
 from backend.rate_limiter import get_rate_limiter
 import json
 import asyncio
+from backend.log_redaction import user_ref
 
 router = APIRouter(tags=["websocket"])
 logger = get_logger(__name__)
@@ -73,6 +74,10 @@ async def websocket_chat_endpoint(
         auth_service = get_auth_service()
         user = auth_service.validate_session(effective_token)
         user_id = user["username"]
+        # Same Langfuse attributes as authenticated HTTP requests (see
+        # api/dependencies.py); asyncio.to_thread copies this context.
+        from backend.langfuse_setup import set_request_trace_attributes
+        set_request_trace_attributes(user_id=user_id, session_id=session_id, feature="chat")
     except Exception as e:
         logger.warning(f"WebSocket authentication failed: {e}")
         await websocket.close(code=1008, reason="Invalid authentication token")
@@ -95,7 +100,7 @@ async def websocket_chat_endpoint(
             await websocket.close(code=1003, reason="Session not found")
             return
 
-        logger.info(f"WebSocket chat started: user={user_id}, session={session_id}")
+        logger.info(f"WebSocket chat started: user={user_ref(user_id)}, session={session_id}")
 
         # Main message loop
         while True:
@@ -224,7 +229,7 @@ async def websocket_chat_endpoint(
                 })
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: user={user_id}, session={session_id}")
+        logger.info(f"WebSocket disconnected: user={user_ref(user_id)}, session={session_id}")
         manager.disconnect(websocket)
 
     except Exception as e:

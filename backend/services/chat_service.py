@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 import re
 import threading
 import weakref
@@ -31,12 +32,6 @@ def generate_response_stream_and_sources(*args, **kwargs):
     from utils import generate_response_stream_and_sources
 
     return generate_response_stream_and_sources(*args, **kwargs)
-
-
-def sanitize_filename(value: str) -> str:
-    from utils import sanitize_filename
-
-    return sanitize_filename(value)
 
 
 def make_session_title(messages):
@@ -112,7 +107,10 @@ class ChatService:
         title: Optional[str] = None,
         course_id: Optional[str] = None,
     ) -> ChatSession:
-        session_id = sanitize_filename(title or f"{username}-{datetime.now(timezone.utc).timestamp()}")
+        # Opaque random ID: session IDs end up in URLs (/chat?session=…), share
+        # links and logs, so they must not embed the username or the title
+        # (titles also collided, letting a new chat overwrite an old one).
+        session_id = uuid.uuid4().hex
         default_title = _normalize_session_title(title)
         session = ChatSession(
             id=session_id,

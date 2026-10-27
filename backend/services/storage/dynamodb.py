@@ -13,6 +13,7 @@ from backend.config import config
 from backend.logger import get_logger
 from backend.services.storage.base import BaseStorageBackend
 from backend.services.models import ChatSession, QuizResult
+from backend.log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -110,13 +111,21 @@ class DynamoDBStorageBackend(BaseStorageBackend):
     def list_chat_sessions(self, username: str) -> List[ChatSession]:
         """List all chat sessions for a user"""
         try:
-            response = self.table.query(
-                KeyConditionExpression='user_id = :user_id',
-                ExpressionAttributeValues={':user_id': username},
-                ScanIndexForward=False,  # Sort by session_id (UUID), we re-sort by updated_at below
-            )
-
-            items = response.get('Items', [])
+            # Strongly consistent: the chat page re-lists right after a reply
+            # is saved, and an eventually consistent read can miss it.
+            query_kwargs = {
+                'KeyConditionExpression': 'user_id = :user_id',
+                'ExpressionAttributeValues': {':user_id': username},
+                'ConsistentRead': True,
+            }
+            items = []
+            while True:
+                response = self.table.query(**query_kwargs)
+                items.extend(response.get('Items', []))
+                last_key = response.get('LastEvaluatedKey')
+                if not last_key:
+                    break
+                query_kwargs['ExclusiveStartKey'] = last_key
 
             def parse_timestamp(value: Optional[str]) -> datetime:
                 if not value:
@@ -166,17 +175,20 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             return sessions
 
         except Exception as e:
-            logger.error(f"Error listing chat sessions for {username}: {e}")
+            logger.error(f"Error listing chat sessions for {user_ref(username)}: {e}")
             return []
 
     def load_chat_session(self, username: str, session_id: str) -> Optional[ChatSession]:
         """Load a specific chat session"""
         try:
+            # Strongly consistent: append_and_save loads, appends and puts the
+            # whole item, so a stale read would drop the previous message.
             response = self.table.get_item(
                 Key={
                     'user_id': username,
                     'session_id': session_id
-                }
+                },
+                ConsistentRead=True,
             )
 
             item = response.get('Item')
@@ -194,7 +206,7 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             return session
 
         except Exception as e:
-            logger.error(f"Error loading chat session {session_id} for {username}: {e}")
+            logger.error(f"Error loading chat session {session_id} for {user_ref(username)}: {e}")
             return None
 
     def save_chat_session(self, username: str, session: ChatSession) -> None:
@@ -237,10 +249,10 @@ class DynamoDBStorageBackend(BaseStorageBackend):
             # Save to DynamoDB
             self.table.put_item(Item=item)
 
-            logger.debug(f"Saved chat session {item['session_id']} for {username}")
+            logger.debug(f"Saved chat session {item['session_id']} for {user_ref(username)}")
 
         except Exception as e:
-            logger.error(f"Error saving chat session for {username}: {e}")
+            logger.error(f"Error saving chat session for {user_ref(username)}: {e}")
             raise
 
     def delete_chat_session(self, username: str, session_id: str) -> bool:
@@ -252,11 +264,11 @@ class DynamoDBStorageBackend(BaseStorageBackend):
                     'session_id': session_id
                 }
             )
-            logger.info(f"Deleted chat session {session_id} for {username}")
+            logger.info(f"Deleted chat session {session_id} for {user_ref(username)}")
             return True
 
         except Exception as e:
-            logger.error(f"Error deleting chat session {session_id} for {username}: {e}")
+            logger.error(f"Error deleting chat session {session_id} for {user_ref(username)}: {e}")
             return False
 
     # These methods are not used by DynamoDB (users/quizzes are in PostgreSQL)

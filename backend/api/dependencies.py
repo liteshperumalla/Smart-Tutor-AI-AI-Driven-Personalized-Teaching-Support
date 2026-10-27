@@ -112,7 +112,30 @@ async def get_current_session(
             detail="Account is disabled or no longer exists",
         )
 
+    _set_trace_attributes(request, username)
     return token, user
+
+
+def _set_trace_attributes(request: Request, username: str) -> None:
+    """Record who/what this request is for, for the LLM traces it creates.
+
+    This dependency is async, so it runs in the request's own task and the
+    context variable stays visible to the endpoint and its streaming body.
+    """
+    try:
+        from backend.langfuse_setup import set_request_trace_attributes
+
+        path = request.url.path
+        if path.startswith("/api/v1/"):
+            path = path[len("/api/v1"):]
+        feature = path.strip("/").split("/", 1)[0] or None
+        set_request_trace_attributes(
+            user_id=username,
+            session_id=request.path_params.get("session_id"),
+            feature=feature,
+        )
+    except Exception:  # tracing must never break authentication
+        pass
 
 
 async def get_current_user(session=Depends(get_current_session)):

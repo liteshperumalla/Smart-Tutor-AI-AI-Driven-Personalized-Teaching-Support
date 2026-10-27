@@ -1,15 +1,13 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
 import { CheckCircle, XCircle } from "lucide-react";
 import { SkeletonAuthForm } from "@/components/skeleton";
-
-const SETUP_TOKEN_STORAGE_KEY = "password_setup_token";
-const SETUP_USERNAME_STORAGE_KEY = "password_setup_username";
 
 type PydanticDetail = { loc: string[]; msg: string; type: string };
 type PasswordErrorDetail = { message?: string; requirements?: string[] };
@@ -65,29 +63,16 @@ function PasswordSetupContent() {
   const allRulesPassed = passwordRuleResults.every((r) => r.passed);
 
   useEffect(() => {
-    // Read token and username from URL query params (passed by the Google callback).
-    const urlToken = searchParams.get("token");
-    const urlUsername = searchParams.get("username");
+    // Token and username are handed over by the Google callback through
+    // sessionStorage; older links may still carry them in the query string.
+    const handoff = readAuthHandoff("password-setup", searchParams);
+    const urlToken = handoff.token;
+    const urlUsername = handoff.username;
 
-    if (urlToken) {
-      sessionStorage.setItem(SETUP_TOKEN_STORAGE_KEY, urlToken);
-      setToken(urlToken);
-    } else {
-      const cachedToken = sessionStorage.getItem(SETUP_TOKEN_STORAGE_KEY);
-      if (cachedToken) {
-        setToken(cachedToken);
-      }
-    }
-
-    if (urlUsername) {
-      sessionStorage.setItem(SETUP_USERNAME_STORAGE_KEY, urlUsername);
-      setUsername(urlUsername);
-    } else {
-      const cachedUsername = sessionStorage.getItem(SETUP_USERNAME_STORAGE_KEY);
-      if (cachedUsername) {
-        setUsername(cachedUsername);
-      }
-    }
+    // The handoff stays in sessionStorage until setup completes, so a
+    // refresh keeps working without a second copy of the token.
+    if (urlToken) setToken(urlToken);
+    if (urlUsername) setUsername(urlUsername);
 
     // Immediately strip the sensitive token from the URL so it does not linger
     // in the browser history or server logs.
@@ -132,8 +117,7 @@ function PasswordSetupContent() {
       if (!response.ok) {
         throw new Error(parseApiError(payload));
       }
-      sessionStorage.removeItem(SETUP_TOKEN_STORAGE_KEY);
-      sessionStorage.removeItem(SETUP_USERNAME_STORAGE_KEY);
+      clearAuthHandoff("password-setup");
       saveAuthToken("authenticated");
       router.replace("/");
     } catch (err) {

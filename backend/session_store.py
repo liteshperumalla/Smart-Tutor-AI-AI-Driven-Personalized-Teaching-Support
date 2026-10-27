@@ -10,6 +10,7 @@ import json
 from .config import config
 from .logger import get_logger
 from .redis_cache import get_redis_cache
+from .log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -72,7 +73,7 @@ class RedisSessionStore:
                 self.redis.client.sadd(user_key, token_id)
                 self.redis.expire(user_key, ttl)
 
-                logger.debug(f"Stored refresh token for {username}")
+                logger.debug(f"Stored refresh token for {user_ref(username)}")
 
             return success
 
@@ -118,7 +119,7 @@ class RedisSessionStore:
                 user_key = self._user_sessions_key(username)
                 self.redis.client.srem(user_key, token_id)
 
-                logger.debug(f"Deleted refresh token for {username}")
+                logger.debug(f"Deleted refresh token for {user_ref(username)}")
 
             return success
 
@@ -167,7 +168,7 @@ class RedisSessionStore:
             user_key = self._user_sessions_key(username)
             self.redis.delete(user_key)
 
-            logger.info(f"Revoked {count} sessions for {username}")
+            logger.info(f"Revoked {count} sessions for {user_ref(username)}")
             return count
 
         except Exception as e:
@@ -218,14 +219,14 @@ class RedisSessionStore:
             count = self.get_session_count(username)
 
             if count >= max_sessions:
-                logger.warning(f"User {username} has {count} sessions (max: {max_sessions})")
+                logger.warning(f"User {user_ref(username)} has {count} sessions (max: {max_sessions})")
                 # Get all sessions and remove oldest
                 sessions = self.get_user_sessions(username)
                 if sessions:
                     # Remove the first session (oldest)
                     oldest = sessions[0]
                     self.delete_refresh_token(oldest, username)
-                    logger.info(f"Removed oldest session for {username}")
+                    logger.info(f"Removed oldest session for {user_ref(username)}")
 
             return True
 

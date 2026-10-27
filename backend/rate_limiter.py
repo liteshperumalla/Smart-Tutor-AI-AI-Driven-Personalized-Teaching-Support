@@ -15,6 +15,7 @@ import os
 from .config import config
 from .logger import get_logger
 from .redis_cache import RedisCache
+from .log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -248,12 +249,12 @@ class PerUserRateLimiter:
 
             # Execute atomic INCR and EXPIRE using Lua script
             current_count = redis_client.eval(self._RATE_LIMIT_LUA_SCRIPT, 1, key, window_secs, max_requests)
-            logger.debug(f"Rate limit for {username} on {endpoint}: {current_count}/{max_requests}")
+            logger.debug(f"Rate limit for {user_ref(username)} on {endpoint}: {current_count}/{max_requests}")
 
             # Check if limit exceeded
             if current_count > max_requests:
                 # Rate limit exceeded
-                logger.warning(f"Rate limit exceeded for {username} on {endpoint}: {current_count}/{max_requests}")
+                logger.warning(f"Rate limit exceeded for {user_ref(username)} on {endpoint}: {current_count}/{max_requests}")
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail={
@@ -265,7 +266,7 @@ class PerUserRateLimiter:
                     }
                 )
 
-            logger.debug(f"Rate limit for {username} on {endpoint}: {current_count}/{max_requests}")
+            logger.debug(f"Rate limit for {user_ref(username)} on {endpoint}: {current_count}/{max_requests}")
 
         except HTTPException:
             raise  # Re-raise HTTP exceptions
@@ -349,7 +350,7 @@ class PerUserRateLimiter:
                 ttl = redis_client.ttl(key)
                 retry_after = ttl if ttl > 0 else window_secs
                 logger.warning(
-                    f"Model rate limit exceeded for {username} on {family}: {current_count}/{limit}"
+                    f"Model rate limit exceeded for {user_ref(username)} on {family}: {current_count}/{limit}"
                 )
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -412,7 +413,7 @@ class PerUserRateLimiter:
             if current_micros > budget_micros:
                 spent_usd = current_micros / 1_000_000
                 logger.warning(
-                    f"Daily cost budget exceeded for {username}: ~${spent_usd:.4f}/${budget_usd:.2f}"
+                    f"Daily cost budget exceeded for {user_ref(username)}: ~${spent_usd:.4f}/${budget_usd:.2f}"
                 )
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,

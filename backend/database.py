@@ -20,6 +20,7 @@ from .exceptions import (
     OptimisticLockError
 )
 from .validators import PathValidator
+from .log_redaction import user_ref
 
 logger = get_logger(__name__)
 
@@ -190,7 +191,7 @@ class UserDatabase:
 
         with self.db.transaction() as users:
             if username in users:
-                logger.warning(f"Attempt to create existing user: {username}")
+                logger.warning(f"Attempt to create existing user: {user_ref(username)}")
                 raise UserAlreadyExistsError(username)
 
             normalized_hash = hash_value if isinstance(hash_value, str) else hash_value.decode('utf-8')
@@ -215,7 +216,7 @@ class UserDatabase:
             }
 
             users[username] = user_data
-            logger.info(f"User created successfully: {username}")
+            logger.info(f"User created successfully: {user_ref(username)}")
 
             return user_data
 
@@ -234,7 +235,7 @@ class UserDatabase:
         """
         user_data = self.db.get(username)
         if not user_data:
-            logger.warning(f"User not found: {username}")
+            logger.warning(f"User not found: {user_ref(username)}")
             raise UserNotFoundError(username)
         if "password_hash" not in user_data and "hashed_password" in user_data:
             user_data = dict(user_data)
@@ -301,7 +302,7 @@ class UserDatabase:
 
             users[username]["version"] = users[username].get("version", 1) + 1
             users[username]['updated_at'] = datetime.now(timezone.utc).isoformat()
-            logger.info(f"User updated: {username}, fields: {list(updates.keys())}, version: {users[username]['version']}")
+            logger.info(f"User updated: {user_ref(username)}, fields: {list(updates.keys())}, version: {users[username]['version']}")
 
             return users[username]
 
@@ -317,9 +318,9 @@ class UserDatabase:
         """
         success = self.db.delete(username)
         if success:
-            logger.info(f"User deleted: {username}")
+            logger.info(f"User deleted: {user_ref(username)}")
         else:
-            logger.warning(f"Attempted to delete non-existent user: {username}")
+            logger.warning(f"Attempted to delete non-existent user: {user_ref(username)}")
         return success
 
     def user_exists(self, username: str) -> bool:
@@ -334,7 +335,7 @@ class UserDatabase:
                 'login_attempts': 0  # Reset login attempts on successful login
             })
         except UserNotFoundError:
-            logger.error(f"Cannot update last login for non-existent user: {username}")
+            logger.error(f"Cannot update last login for non-existent user: {user_ref(username)}")
 
     def increment_login_attempts(self, username: str) -> int:
         """
@@ -359,7 +360,7 @@ class UserDatabase:
         """Reset failed login attempts to zero"""
         try:
             self.update_user(username, {'login_attempts': 0})
-            logger.debug(f"Reset login attempts for user: {username}")
+            logger.debug(f"Reset login attempts for user: {user_ref(username)}")
         except UserNotFoundError:
             pass
 
@@ -369,7 +370,7 @@ class UserDatabase:
             self.update_user(username, {
                 'locked_until': until.isoformat()
             })
-            logger.warning(f"Account locked: {username} until {until}")
+            logger.warning(f"Account locked: {user_ref(username)} until {until}")
         except UserNotFoundError:
             pass
 
@@ -451,7 +452,7 @@ class ChatSessionDatabase:
 
         try:
             _atomic_write_json(chat_path, chat_data, indent=2)
-            logger.debug(f"Chat saved: user={user_id}, chat={chat_id}")
+            logger.debug(f"Chat saved: user={user_ref(user_id)}, chat={chat_id}")
         except Exception as e:
             logger.error(f"Failed to save chat: {e}")
             tmp_path = f"{chat_path}.tmp"
@@ -508,7 +509,7 @@ class ChatSessionDatabase:
         try:
             if os.path.exists(chat_path):
                 os.remove(chat_path)
-                logger.info(f"Chat deleted: user={user_id}, chat={chat_id}")
+                logger.info(f"Chat deleted: user={user_ref(user_id)}, chat={chat_id}")
                 return True
             return False
         except Exception as e:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+from backend.log_redaction import user_ref
 from backend.logger import get_logger
 
 logger = get_logger(__name__)
@@ -88,8 +89,9 @@ def capture(
         if not _init():
             return
         import posthog
+        # PostHog persons are keyed by a pseudonym, never the username/email.
         posthog.capture(
-            distinct_id=distinct_id or "anonymous",
+            distinct_id=user_ref(distinct_id),
             event=event,
             properties=properties or {},
         )
@@ -117,7 +119,7 @@ def feature_enabled(
         if not _init():
             return default
         import posthog
-        result = posthog.feature_enabled(flag_name, distinct_id or "anonymous")
+        result = posthog.feature_enabled(flag_name, user_ref(distinct_id))
         return bool(result) if result is not None else default
     except Exception as exc:
         logger.warning("PostHog feature_enabled(%s) failed: %s", flag_name, exc)
@@ -139,7 +141,7 @@ def get_flag_payload(
         if not _init():
             return default
         import posthog
-        payload = posthog.get_feature_flag_payload(flag_name, distinct_id or "anonymous")
+        payload = posthog.get_feature_flag_payload(flag_name, user_ref(distinct_id))
         return payload if payload is not None else default
     except Exception as exc:
         logger.warning("PostHog get_flag_payload(%s) failed: %s", flag_name, exc)

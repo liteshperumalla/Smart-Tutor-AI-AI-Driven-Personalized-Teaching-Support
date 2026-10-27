@@ -1,113 +1,253 @@
 {
   "id": "langfuse-agent-dashboard",
-  "name": "Langfuse Agent Dashboard",
-  "description": "Comprehensive agent orchestration, multi-step execution, tool calls, reasoning turns, and failure analysis for Smart AI Tutor",
-  "version": "4.0",
-  "schema_version": "v4",
-  "data_source": "langfuse_v4_observations",
-  "filters": [
-    { "field": "observation_type", "operator": "in", "values": ["span", "generation", "agent_step"] },
-    { "field": "tags", "operator": "contains", "values": ["agent", "rag", "code-sandbox", "quiz"] }
-  ],
-  "metrics": [
+  "name": "Smart AI Tutor - Agents",
+  "description": "Multi-agent pipeline (backend/agents): run volume, users, latency per pipeline step and failures. Agent runs are 'agent-pipeline' traces when the agent-system-enabled flag is on.",
+  "format": "langfuse-metrics-v2",
+  "scope": "environment = production (set from ENVIRONMENT by backend/langfuse_setup.py)",
+  "how_to_build": "Built in Langfuse by `python scripts/ci/sync_langfuse_dashboards.py` (edit this file, not the Langfuse UI: the sync deletes and recreates its dashboards). Each widget's `query` is the exact GET /api/public/v2/metrics query it charts; check them all against live data with `python scripts/langfuse/check_dashboards.py`.",
+  "widgets": [
     {
-      "id": "agent_session_volume",
-      "name": "Total Agent Sessions",
-      "aggregation": "COUNT_DISTINCT",
-      "field": "session_id",
-      "time_bucket": "1h",
-      "description": "Number of unique agent-driven interactive sessions"
+      "title": "Agent runs",
+      "chartType": "NUMBER",
+      "description": "Agent pipeline runs in the period.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "agent_success_rate",
-      "name": "Agent Run Success Rate",
-      "formula": "(COUNT(status = 'SUCCESS') / COUNT(*)) * 100",
-      "unit": "percent",
-      "target": ">= 99.0%",
-      "description": "Percentage of agent runs completing without unhandled tool or synthesis exceptions"
+      "title": "Agent users",
+      "chartType": "NUMBER",
+      "description": "Distinct users (pseudonymous u_\u2026 ids) who ran the agent pipeline.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "uniqueUserIds",
+            "aggregation": "uniq"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "tool_call_breakdown",
-      "name": "Tool Execution Volume by Tool",
-      "aggregation": "COUNT",
-      "group_by": ["attributes.tool_name"],
-      "tools": [
-        "rag-retrieval",
-        "web-search-decision",
-        "web-search-execution",
-        "llm-synthesis",
-        "code-sandbox-eval",
-        "quiz-generation-pipeline"
-      ],
-      "description": "Distribution of tool invocations across all active agent runs"
+      "title": "Agent runs over time",
+      "chartType": "BAR_TIME_SERIES",
+      "description": "Daily agent pipeline runs.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "agent_reasoning_turns",
-      "name": "Reasoning Steps per Session",
-      "aggregation": "AVG",
-      "field": "attributes.step_count",
-      "percentiles": [50, 90, 95, 99],
-      "description": "Average and tail number of recursive turns / tool executions per user session"
+      "title": "Agent run latency p50 / p95 (ms)",
+      "chartType": "LINE_TIME_SERIES",
+      "description": "End-to-end agent pipeline latency.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p50"
+          },
+          {
+            "measure": "latency",
+            "aggregation": "p95"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "tool_latency_p95",
-      "name": "Tool Latency (P95)",
-      "aggregation": "PERCENTILE(95)",
-      "field": "duration_ms",
-      "group_by": ["attributes.tool_name"],
-      "unit": "ms",
-      "description": "95th percentile latency per tool invocation"
+      "title": "Pipeline step latency p95 (ms)",
+      "chartType": "HORIZONTAL_BAR",
+      "description": "p95 per step: load-student-profile, agent-rag-retrieval, log-interaction.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p95"
+          },
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "name"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "traceName",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          },
+          {
+            "column": "type",
+            "operator": "=",
+            "value": "SPAN",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 6,
+        "y": 6,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "agent_fallback_rate",
-      "name": "Agent Fallback / Retry Rate",
-      "formula": "(COUNT(attributes.retry_count > 0) / COUNT(*)) * 100",
-      "unit": "percent",
-      "description": "Frequency of agent re-planning or retrying failed tool steps"
-    },
-    {
-      "id": "tool_error_distribution",
-      "name": "Tool Errors by Category",
-      "aggregation": "COUNT",
-      "field": "error_code",
-      "group_by": ["attributes.error_type", "attributes.tool_name"],
-      "description": "Categorized tool failures (timeout, upstream rate-limit, empty retrieval, syntax validation)"
-    }
-  ],
-  "panels": [
-    {
-      "title": "Agent Execution Overview",
-      "type": "stat_row",
-      "cards": [
-        { "title": "Active Agent Sessions (24h)", "metric": "agent_session_volume" },
-        { "title": "Agent Success Rate", "metric": "agent_success_rate", "thresholds": { "green": 99.0, "yellow": 95.0, "red": 0.0 } },
-        { "title": "Avg Reasoning Turns / Session", "metric": "agent_reasoning_turns" },
-        { "title": "Fallback / Retry Rate", "metric": "agent_fallback_rate", "thresholds": { "green": 2.0, "yellow": 5.0, "red": 10.0 } }
-      ]
-    },
-    {
-      "title": "Tool Execution Distribution",
-      "type": "donut_chart",
-      "metric": "tool_call_breakdown"
-    },
-    {
-      "title": "Tool Latency Breakdown (P50, P90, P99 ms)",
-      "type": "time_series_bar",
-      "metrics": ["tool_latency_p95"],
-      "group_by": "attributes.tool_name"
-    },
-    {
-      "title": "Agent Step Latency & Reasoning Depth Timeline",
-      "type": "scatter_timeline",
-      "x_axis": "timestamp",
-      "y_axis": "duration_ms",
-      "color_by": "attributes.step_count"
-    },
-    {
-      "title": "Agent Failure & Fallback Event Feed",
-      "type": "trace_table",
-      "columns": ["timestamp", "trace_id", "session_id", "tool_name", "error_message", "recovery_action"],
-      "filter": "level = 'ERROR' OR attributes.retry_count > 0"
+      "title": "Failed agent runs over time",
+      "chartType": "BAR_TIME_SERIES",
+      "description": "Agent runs flagged ERROR (LLM stream failed).",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "agent-pipeline",
+            "type": "string"
+          },
+          {
+            "column": "level",
+            "operator": "=",
+            "value": "ERROR",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "auto"
+        }
+      },
+      "layout": {
+        "x": 0,
+        "y": 12,
+        "width": 6,
+        "height": 6
+      }
     }
   ]
 }

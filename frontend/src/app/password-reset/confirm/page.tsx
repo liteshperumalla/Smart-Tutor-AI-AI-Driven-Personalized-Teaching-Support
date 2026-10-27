@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState, Suspense } from "react";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { SkeletonAuthForm } from "@/components/skeleton";
 
@@ -33,6 +34,7 @@ function parseApiError(payload: unknown): string {
 
 function PasswordResetConfirmPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [username, setUsername] = useState("");
   const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
@@ -41,15 +43,18 @@ function PasswordResetConfirmPageContent() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const qpToken = searchParams.get("token");
-    const qpUser = searchParams.get("username");
-    if (qpToken) {
-      setToken(qpToken);
+    const handoff = readAuthHandoff("password-reset", searchParams);
+    if (handoff.token) {
+      setToken(handoff.token);
     }
-    if (qpUser) {
-      setUsername(qpUser);
+    if (handoff.username) {
+      setUsername(handoff.username);
     }
-  }, [searchParams]);
+    // Keep the reset token and username out of history, logs and Referer.
+    if (handoff.fromUrl) {
+      router.replace("/password-reset/confirm");
+    }
+  }, [router, searchParams]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -88,6 +93,7 @@ function PasswordResetConfirmPageContent() {
         throw new Error(parseApiError(payload));
       }
 
+      clearAuthHandoff("password-reset");
       setStatus("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to reset password.");

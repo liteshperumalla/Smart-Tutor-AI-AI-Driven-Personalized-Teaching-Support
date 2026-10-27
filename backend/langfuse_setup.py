@@ -20,9 +20,11 @@ from __future__ import annotations
 import logging
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Callable, Dict, List, Optional
 
 from backend.config import config
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,20 @@ _init_error: Optional[str] = None
 
 
 # ── Initialization / Shutdown ────────────────────────────────────────
+
+def _langfuse_environment() -> str:
+    """Deployment environment for every trace (production, development, ...).
+
+    Without it all traces landed in "default", so production traffic could
+    not be separated from local and test runs on any Langfuse dashboard.
+    Langfuse requires lowercase [a-z0-9-_], at most 40 chars, no "langfuse" prefix.
+    """
+    import re
+
+    raw = str(getattr(config, "ENVIRONMENT", "") or "development").lower()
+    env = re.sub(r"[^a-z0-9_-]", "-", raw)[:40].strip("-") or "development"
+    return f"app-{env}" if env.startswith("langfuse") else env
+
 
 def init_langfuse(force: bool = False) -> bool:
     """Idempotent Langfuse v4 initialization.
@@ -86,17 +102,20 @@ def init_langfuse(force: bool = False) -> bool:
 
         from langfuse import Langfuse
 
+        environment = _langfuse_environment()
         try:
             client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
                 base_url=host,
+                environment=environment,
             )
         except (TypeError, ValueError):
             client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
                 host=host,
+                environment=environment,
             )
 
         _langfuse_client = client
@@ -187,20 +206,73 @@ def propagate_attributes(
         yield None
         return
 
+    # In SDK 4.x propagate_attributes is a module-level function, not a
+    # client method; the old hasattr(client, ...) check made this a no-op.
     try:
-        if hasattr(_langfuse_client, "propagate_attributes"):
-            with _langfuse_client.propagate_attributes(
-                user_id=user_id,
-                session_id=session_id,
-                metadata=metadata,
-                tags=tags,
-            ) as ctx:
-                yield ctx
-        else:
-            yield None
+        from langfuse import propagate_attributes as _propagate
+
+        cm = _propagate(
+            # Langfuse traces/sessions show user_id; send a pseudonym only.
+            user_id=user_ref(user_id) if user_id else None,
+            session_id=session_id,
+            metadata=metadata,
+            tags=tags,
+        )
     except Exception as exc:
         logger.debug("propagate_attributes failed: %s", exc)
         yield None
+        return
+    with cm as ctx:
+        yield ctx
+
+
+# ── Request-scoped trace attributes ──────────────────────────────────
+#
+# LLM generations are opened deep inside the Bedrock client, far from the
+# route that knows who is asking. The authenticated request records its
+# user / chat session / feature here (get_current_session), and
+# request_trace_scope() applies them when a generation is created, so
+# Langfuse can group traces by user and session and split them by feature.
+
+_request_trace_attributes: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
+    "langfuse_request_trace_attributes", default=None
+)
+
+
+def set_request_trace_attributes(
+    *,
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    feature: Optional[str] = None,
+) -> None:
+    attrs: Dict[str, Any] = {}
+    if user_id:
+        attrs["user_id"] = user_ref(user_id)
+    if session_id:
+        attrs["session_id"] = str(session_id)[:200]
+    if feature:
+        attrs["tags"] = [feature]
+        attrs["trace_name"] = feature
+    _request_trace_attributes.set(attrs or None)
+
+
+@contextmanager
+def request_trace_scope():
+    """Apply the current request's trace attributes to spans opened inside."""
+    attrs = _request_trace_attributes.get()
+    if not attrs or _langfuse_client is None:
+        yield
+        return
+    try:
+        from langfuse import propagate_attributes as _propagate
+
+        cm = _propagate(**attrs)
+    except Exception as exc:
+        logger.debug("request_trace_scope failed: %s", exc)
+        yield
+        return
+    with cm:
+        yield
 
 
 def observe(*args, **kwargs) -> Callable:
@@ -240,29 +312,44 @@ def create_trace(
     tags: Optional[List[str]] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ):
-    """Create a root Langfuse trace.  Returns ``None`` if tracing is disabled."""
+    """Open the root observation of a new trace.  Returns ``None`` if tracing is disabled.
+
+    SDK 4.x has no ``client.trace()`` (the old call raised and was swallowed,
+    so these traces never reached Langfuse). The root is an "agent"
+    observation; user (pseudonym), session, tags and trace name are attached
+    through ``langfuse.propagate_attributes`` and re-applied to child spans.
+    The root must be closed with ``update_trace`` (which ends it) or it is
+    never exported.
+    """
     if _langfuse_client is None:
         return None
+    attrs: Dict[str, Any] = {"trace_name": name}
+    if user_id:
+        attrs["user_id"] = user_ref(user_id)
+    if session_id:
+        attrs["session_id"] = str(session_id)[:200]
+    if tags:
+        attrs["tags"] = list(tags)
     try:
-        kwargs: Dict[str, Any] = {"name": name}
-        if user_id:
-            kwargs["user_id"] = user_id
-        if session_id:
-            kwargs["session_id"] = session_id
-        if input is not None:
-            kwargs["input"] = input
-        if tags:
-            kwargs["tags"] = tags
-        if metadata:
-            kwargs["metadata"] = metadata
-        return _langfuse_client.trace(**kwargs)
+        from langfuse import propagate_attributes as _propagate
+
+        with _propagate(**attrs):
+            root = _langfuse_client.start_observation(
+                name=name, as_type="agent", input=input, metadata=metadata
+            )
+        _TRACE_ATTRS[id(root)] = attrs
+        return root
     except Exception as exc:
         logger.debug("create_trace failed: %s", exc)
         return None
 
 
-def update_trace(trace, *, output=None, metadata=None, level=None) -> None:
-    """Safely update a trace with output/metadata."""
+# Trace attributes of open roots, re-applied when their children are created.
+_TRACE_ATTRS: Dict[int, Dict[str, Any]] = {}
+
+
+def update_trace(trace, *, output=None, metadata=None, level=None, end: bool = True) -> None:
+    """Record the trace's output/metadata on its root and (by default) end it."""
     if trace is None:
         return
     try:
@@ -273,7 +360,11 @@ def update_trace(trace, *, output=None, metadata=None, level=None) -> None:
             kwargs["metadata"] = metadata
         if level is not None:
             kwargs["level"] = level
-        trace.update(**kwargs)
+        if kwargs:
+            trace.update(**kwargs)
+        if end:
+            _TRACE_ATTRS.pop(id(trace), None)
+            trace.end()
     except Exception as exc:
         logger.debug("update_trace failed: %s", exc)
 
@@ -285,10 +376,13 @@ def create_span(trace, name: str, *, input: Optional[Any] = None):
     if trace is None:
         return None
     try:
-        kwargs: Dict[str, Any] = {"name": name}
-        if input is not None:
-            kwargs["input"] = input
-        return trace.span(**kwargs)
+        attrs = _TRACE_ATTRS.get(id(trace))
+        if attrs:
+            from langfuse import propagate_attributes as _propagate
+
+            with _propagate(**attrs):
+                return trace.start_observation(name=name, as_type="span", input=input)
+        return trace.start_observation(name=name, as_type="span", input=input)
     except Exception as exc:
         logger.debug("create_span failed: %s", exc)
         return None
@@ -299,10 +393,9 @@ def end_span(span, *, output: Optional[Any] = None) -> None:
     if span is None:
         return
     try:
-        kwargs: Dict[str, Any] = {}
         if output is not None:
-            kwargs["output"] = output
-        span.end(**kwargs)
+            span.update(output=output)
+        span.end()
     except Exception as exc:
         logger.debug("end_span failed: %s", exc)
 
@@ -355,12 +448,57 @@ def score_observation(
         if comment:
             kwargs["comment"] = comment
 
-        if hasattr(_langfuse_client, "score"):
-            _langfuse_client.score(**kwargs)
-            return True
-        return False
+        # SDK 4.x: create_score (client.score no longer exists).
+        _langfuse_client.create_score(**kwargs)
+        return True
     except Exception as exc:
         logger.debug("score_observation failed: %s", exc)
+        return False
+
+
+def _feedback_score_id(session_id: str, message_index: int) -> str:
+    """One score per rated message, so a changed vote replaces the old one."""
+    import hashlib
+
+    return hashlib.sha256(f"user_feedback:{session_id}:{message_index}".encode()).hexdigest()[:32]
+
+
+def score_session_feedback(
+    session_id: str, vote: str, *, message_index: int, comment: Optional[str] = None
+) -> bool:
+    """Record a user's thumbs up/down on a chat message as a Langfuse score.
+
+    Scored on the session (the conversation the user rated), as
+    ``user_feedback`` = 1 for thumbs_up and 0 for thumbs_down, so Langfuse can
+    chart satisfaction next to cost and latency. The score ID is derived from
+    the session and message, so changing a vote updates the existing score.
+    """
+    if _langfuse_client is None or not session_id or vote not in ("thumbs_up", "thumbs_down"):
+        return False
+    try:
+        _langfuse_client.create_score(
+            name="user_feedback",
+            value=1.0 if vote == "thumbs_up" else 0.0,
+            session_id=str(session_id)[:200],
+            score_id=_feedback_score_id(session_id, message_index),
+            data_type="NUMERIC",
+            comment=comment,
+        )
+        return True
+    except Exception as exc:
+        logger.debug("score_session_feedback failed: %s", exc)
+        return False
+
+
+def remove_session_feedback(session_id: str, message_index: int) -> bool:
+    """Delete the score of a vote the user took back."""
+    if _langfuse_client is None or not session_id:
+        return False
+    try:
+        _langfuse_client.api.legacy.score_v1.delete(_feedback_score_id(session_id, message_index))
+        return True
+    except Exception as exc:
+        logger.debug("remove_session_feedback failed: %s", exc)
         return False
 
 

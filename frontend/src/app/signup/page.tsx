@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { stashAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
@@ -100,11 +101,8 @@ export default function SignupPage() {
         throw new Error(parseApiError(payload));
       }
 
-      const params = new URLSearchParams({
-        username: username.trim(),
-        email: email.trim(),
-      });
-      router.push(`/verify?${params.toString()}`);
+      stashAuthHandoff("verify", { username: username.trim(), email: email.trim() });
+      router.push("/verify");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error");
     } finally {

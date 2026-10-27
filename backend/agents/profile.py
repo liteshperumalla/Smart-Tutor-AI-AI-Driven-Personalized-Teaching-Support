@@ -14,6 +14,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from backend.config import config
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +182,7 @@ def _quiz_profile(username: str) -> Dict[str, Any]:
             "weak_topics": weak_topics,
         }
     except Exception as exc:
-        logger.warning("quiz_profile failed for %s: %s", username, exc)
+        logger.warning("quiz_profile failed for %s: %s", user_ref(username), exc)
         return {}
 
 
@@ -229,7 +230,7 @@ def _graph_profile(username: str) -> Dict[str, Any]:
             "total_interactions": total,
         }
     except Exception as exc:
-        logger.warning("graph_profile failed for %s: %s", username, exc)
+        logger.warning("graph_profile failed for %s: %s", user_ref(username), exc)
         return {}
 
 
