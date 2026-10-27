@@ -6,9 +6,9 @@ widget's ``query`` is the GET /api/public/v2/metrics query it charts, so the
 same file is checked against live data by scripts/langfuse/check_dashboards.py.
 
 Uses the Langfuse unstable dashboards API. Dashboards and widgets this script
-owns carry MARKER in their description; re-running deletes them (and the
-dashboards of the same names, plus the legacy single dashboard) and builds
-them again, so edits belong in the JSON files, not in the UI.
+owns carry MARKER in their description; re-running builds them again and then
+deletes the previous ones (and dashboards of the same names, plus the legacy
+single dashboard), so edits belong in the JSON files, not in the UI.
 
 Env: LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST
 (e.g. https://us.cloud.langfuse.com).
@@ -106,18 +106,20 @@ def main() -> int:
     pk, sk = os.environ.get("LANGFUSE_PUBLIC_KEY", ""), os.environ.get("LANGFUSE_SECRET_KEY", "")
     if not (host and pk and sk):
         print("LANGFUSE_HOST / LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set; nothing to do.")
+        if os.environ.get("GITHUB_ACTIONS"):
+            print("::warning::Langfuse dashboards were not synced: set the LANGFUSE_HOST, "
+                  "LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY repository secrets or variables.")
         return 0
     api = Api(host, pk, sk)
     managed_names = {spec["name"] for spec in specs} | LEGACY_DASHBOARDS
 
     try:
-        # Dashboards first: a widget can't be deleted while it is placed.
-        for dash in api.list_all("/dashboards"):
-            if dash.get("name") in managed_names:
-                api.call("DELETE", f"/dashboards/{dash['id']}")
-        for widget in api.list_all("/dashboard-widgets"):
-            if MARKER in (widget.get("description") or ""):
-                api.call("DELETE", f"/dashboard-widgets/{widget['id']}")
+        # Build the new dashboards before retiring the old ones, so a failed
+        # sync leaves the existing dashboards in place.
+        old_dashboards = [d["id"] for d in api.list_all("/dashboards") if d.get("name") in managed_names]
+        old_widgets = [
+            w["id"] for w in api.list_all("/dashboard-widgets") if MARKER in (w.get("description") or "")
+        ]
 
         for spec in specs:
             dashboard = api.call("POST", "/dashboards", {
@@ -130,6 +132,13 @@ def main() -> int:
                     "type": "widget", "widgetId": created["id"], **widget["layout"],
                 })
             print(f"Dashboard '{spec['name']}' ready ({dashboard['id']}, {len(spec['widgets'])} widgets).")
+
+        # Dashboards first: a widget can't be deleted while it is placed.
+        for dashboard_id in old_dashboards:
+            api.call("DELETE", f"/dashboards/{dashboard_id}")
+        for widget_id in old_widgets:
+            api.call("DELETE", f"/dashboard-widgets/{widget_id}")
+        print(f"Removed {len(old_dashboards)} old dashboard(s).")
     except urllib.error.HTTPError as exc:
         print(f"Langfuse API error: HTTP {exc.code} {exc.read().decode(errors='replace')[:500]}", file=sys.stderr)
         return 1

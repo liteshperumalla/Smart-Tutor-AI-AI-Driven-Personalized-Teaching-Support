@@ -14,6 +14,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from backend.config import config
 from backend.langfuse_setup import create_trace, update_trace, traced_span
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +106,32 @@ def run_agent_pipeline(
         input={"query": query},
         tags=["agent", "langgraph"],
     )
+    try:
+        return _run_agent_pipeline(
+            main_trace, start_time, query, user_id, session_id,
+            model_id, source_prefixes, answer_instructions,
+        )
+    except Exception as exc:
+        # The stream callbacks end the root on the normal paths; a failure
+        # before the stream exists must end it here or it is never exported.
+        update_trace(main_trace, level="ERROR", output={"error": type(exc).__name__})
+        raise
 
+
+def _run_agent_pipeline(
+    main_trace,
+    start_time: float,
+    query: str,
+    user_id: str,
+    session_id: Optional[str],
+    model_id: Optional[str],
+    source_prefixes: Optional[List[str]],
+    answer_instructions: Optional[str],
+) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
     # ── 1. Student profile ────────────────────────────────────────
     from backend.agents.profile import load_student_profile
 
-    with traced_span(main_trace, "load-student-profile", input={"user_id": user_id}) as profile_span:
+    with traced_span(main_trace, "load-student-profile", input={"user_id": user_ref(user_id)}) as profile_span:
         profile = load_student_profile(user_id)
 
     # ── 2. RAG retrieval (reuse existing S3/Chroma logic) ─────────
@@ -225,7 +247,7 @@ def run_agent_pipeline(
             generation_elapsed=generation_elapsed,
             sources=sources,
         )
-        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_id, agent_name)
+        logger.info("Chat cache HIT user=%s agent=%s (skipped LLM)", user_ref(user_id), agent_name)
         generator = stream_agent_response(
             response_text=cached_response,
             agent_name=agent_name,

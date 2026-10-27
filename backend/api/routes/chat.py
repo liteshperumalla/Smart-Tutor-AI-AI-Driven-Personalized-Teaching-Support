@@ -713,6 +713,11 @@ def submit_message_feedback(
             feedback_service.remove_feedback(
                 username, session_id, message_index, feedback_type
             )
+            try:
+                from backend.langfuse_setup import remove_session_feedback
+                remove_session_feedback(session_id, message_index)
+            except Exception:
+                pass
             return MessageFeedbackResponse(
                 success=True,
                 feedback_type=None,
@@ -737,7 +742,7 @@ def submit_message_feedback(
             pass
         try:
             from backend.langfuse_setup import score_session_feedback
-            score_session_feedback(session_id, feedback_type)
+            score_session_feedback(session_id, feedback_type, message_index=message_index)
         except Exception:
             pass
 

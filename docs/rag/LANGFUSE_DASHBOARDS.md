@@ -5,18 +5,18 @@ Five dashboards in Langfuse, defined in [`monitoring/langfuse/dashboards/`](../.
 | Dashboard in Langfuse | Definition | Shows |
 |---|---|---|
 | **Smart AI Tutor - Home** | [`2-home-dashboard.json`](../../monitoring/langfuse/dashboards/2-home-dashboard.json) | Traces, active users, chat sessions, spend, failed generations, traffic by feature, model mix, p95 latency |
-| **Smart AI Tutor - Cost** | [`3-cost-dashboard.json`](../../monitoring/langfuse/dashboards/3-cost-dashboard.json) | Spend in total, per day, by model and feature, input vs output, top users and chat sessions |
+| **Smart AI Tutor - Cost** | [`3-cost-dashboard.json`](../../monitoring/langfuse/dashboards/3-cost-dashboard.json) | Spend in total, over time, by model and feature, input vs output, top users and chat sessions |
 | **Smart AI Tutor - Latency** | [`4-latency-dashboard.json`](../../monitoring/langfuse/dashboards/4-latency-dashboard.json) | Response latency percentiles, time to first token, tokens per second, latency distribution, retrieval and pipeline steps |
-| **Smart AI Tutor - Usage** | [`5-usage-management.json`](../../monitoring/langfuse/dashboards/5-usage-management.json) | Tokens per day, by feature and by user; user satisfaction from chat thumbs up/down |
+| **Smart AI Tutor - Usage** | [`5-usage-management.json`](../../monitoring/langfuse/dashboards/5-usage-management.json) | Tokens over time, by feature and by user; user satisfaction from chat thumbs up/down |
 | **Smart AI Tutor - Agents** | [`1-agent-dashboard.json`](../../monitoring/langfuse/dashboards/1-agent-dashboard.json) | Agent pipeline runs and users, run latency, latency per pipeline step, failed runs |
 
 These replace the earlier single dashboard **Smart AI Tutor - Production LLM**, which the next sync deletes.
 
 ## How they are built
 
-- Each widget's `query` in the JSON files is the exact `GET /api/public/v2/metrics` query it charts: view, metrics (measure and aggregation), breakdown dimensions, filters and time granularity.
+- Each widget's `query` in the JSON files is the exact `GET /api/public/v2/metrics` query it charts: view, metrics (measure and aggregation), breakdown dimensions and filters. Time series use `auto` granularity, as the dashboard widgets do: Langfuse picks the bucket size from the dashboard's date range.
 - The sync runs in **Sync Dashboards To Langfuse** in `.github/workflows/observability-production.yml` when the definitions change on `main`, or manually with `python scripts/ci/sync_langfuse_dashboards.py` (`--dry-run` prints the widgets without calling Langfuse).
-- It deletes and recreates the dashboards it manages, so change the JSON files, not the Langfuse UI.
+- It builds the dashboards it manages again and then deletes the previous copies (a failed sync leaves them in place), so change the JSON files, not the Langfuse UI.
 - Every widget is limited to `environment = production`.
 - `python scripts/langfuse/check_dashboards.py` runs every widget query against live data and fails on a query Langfuse rejects. `--environment development` points it at another environment.
 
@@ -31,6 +31,6 @@ These replace the earlier single dashboard **Smart AI Tutor - Production LLM**, 
 | Retrieval steps | LlamaIndex callback spans (`retrieve`, `LlamaIndex_query`, ...) |
 | User satisfaction | Score `user_feedback` (1 = thumbs up, 0 = thumbs down) on the chat session, from `backend/api/routes/chat.py` |
 
-To find one user in these dashboards, compute their reference with `backend.log_redaction.user_ref("<username>")`.
+To find one user in these dashboards, compute their reference with `backend.log_redaction.user_ref("<username>")` on the production backend (for example in a shell inside its container), so it uses the production `LOG_PSEUDONYM_KEY` (or `SECRET_KEY`). Run elsewhere, it uses a different key and the reference won't match. Don't pass the key on a command line or print it.
 
 Rate limiting (HTTP 429), cache hit rate and infrastructure metrics live in Grafana, not Langfuse.

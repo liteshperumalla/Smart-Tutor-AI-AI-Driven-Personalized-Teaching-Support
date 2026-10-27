@@ -42,7 +42,7 @@
       }
     },
     {
-      "title": "Input vs output tokens per day",
+      "title": "Input vs output tokens over time",
       "chartType": "BAR_TIME_SERIES",
       "description": "",
       "query": {
@@ -73,7 +73,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {
@@ -227,7 +227,7 @@
       }
     },
     {
-      "title": "User satisfaction per day",
+      "title": "User satisfaction over time",
       "chartType": "LINE_TIME_SERIES",
       "description": "",
       "query": {
@@ -258,7 +258,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {

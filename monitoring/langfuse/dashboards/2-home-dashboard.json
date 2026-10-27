@@ -188,7 +188,7 @@
       }
     },
     {
-      "title": "Traces per day by feature",
+      "title": "Traces over time by feature",
       "chartType": "BAR_TIME_SERIES",
       "description": "Feature = trace name: chat, quiz, code, research, rag, agent-pipeline.",
       "query": {
@@ -219,7 +219,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {
@@ -296,7 +296,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {

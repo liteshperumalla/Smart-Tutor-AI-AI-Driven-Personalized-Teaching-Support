@@ -77,7 +77,7 @@
       }
     },
     {
-      "title": "Agent runs per day",
+      "title": "Agent runs over time",
       "chartType": "BAR_TIME_SERIES",
       "description": "Daily agent pipeline runs.",
       "query": {
@@ -104,7 +104,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {
@@ -146,7 +146,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {
@@ -206,7 +206,7 @@
       }
     },
     {
-      "title": "Failed agent runs per day",
+      "title": "Failed agent runs over time",
       "chartType": "BAR_TIME_SERIES",
       "description": "Agent runs flagged ERROR (LLM stream failed).",
       "query": {
@@ -239,7 +239,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {

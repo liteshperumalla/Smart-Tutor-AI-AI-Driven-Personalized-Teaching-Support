@@ -81,7 +81,7 @@
       }
     },
     {
-      "title": "Spend per day (USD)",
+      "title": "Spend over time (USD)",
       "chartType": "BAR_TIME_SERIES",
       "description": "",
       "query": {
@@ -108,7 +108,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {

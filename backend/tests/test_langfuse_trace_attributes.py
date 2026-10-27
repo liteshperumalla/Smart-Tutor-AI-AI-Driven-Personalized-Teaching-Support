@@ -97,12 +97,51 @@ def test_session_feedback_becomes_a_langfuse_score(offline_langfuse, monkeypatch
     calls = []
     monkeypatch.setattr(offline_langfuse, "create_score", lambda **kw: calls.append(kw))
 
-    assert langfuse_setup.score_session_feedback("s-1", "thumbs_up")
-    assert langfuse_setup.score_session_feedback("s-1", "thumbs_down")
-    assert not langfuse_setup.score_session_feedback("s-1", "meh")
+    assert langfuse_setup.score_session_feedback("s-1", "thumbs_up", message_index=1)
+    assert langfuse_setup.score_session_feedback("s-1", "thumbs_down", message_index=1)
+    assert langfuse_setup.score_session_feedback("s-1", "thumbs_up", message_index=3)
+    assert not langfuse_setup.score_session_feedback("s-1", "meh", message_index=1)
 
-    assert [c["value"] for c in calls] == [1.0, 0.0]
+    assert [c["value"] for c in calls] == [1.0, 0.0, 1.0]
     assert all(c["name"] == "user_feedback" and c["session_id"] == "s-1" for c in calls)
+    # A changed vote on the same message reuses its score ID (Langfuse upserts).
+    assert calls[0]["score_id"] == calls[1]["score_id"] != calls[2]["score_id"]
+
+
+def test_removed_feedback_deletes_its_score(offline_langfuse, monkeypatch):
+    deleted = []
+    monkeypatch.setattr(offline_langfuse.api.legacy.score_v1, "delete", deleted.append)
+    created = []
+    monkeypatch.setattr(offline_langfuse, "create_score", lambda **kw: created.append(kw))
+
+    langfuse_setup.score_session_feedback("s-1", "thumbs_up", message_index=1)
+    assert langfuse_setup.remove_session_feedback("s-1", 1)
+    assert deleted == [created[0]["score_id"]]
+
+
+def test_agent_root_is_ended_when_the_pipeline_fails_early(offline_langfuse, monkeypatch):
+    import backend.agents as agents
+    import backend.agents.profile as profile
+
+    roots = []
+    real_create = langfuse_setup.create_trace
+
+    def create(*args, **kwargs):
+        roots.append(real_create(*args, **kwargs))
+        return roots[-1]
+
+    def boom(_user_id):
+        raise RuntimeError("profile store down")
+
+    monkeypatch.setattr(agents, "create_trace", create)
+    monkeypatch.setattr(profile, "load_student_profile", boom)
+
+    with pytest.raises(RuntimeError):
+        agents.run_agent_pipeline("q", "alice", session_id="s-1")
+
+    root = roots[0]
+    assert root._otel_span.end_time is not None
+    assert id(root) not in langfuse_setup._TRACE_ATTRS
 
 
 def test_first_token_sets_completion_start_time(offline_langfuse):

@@ -622,7 +622,7 @@ jobs:
 
   sync-langfuse-dashboards:
     # Builds the dashboards in monitoring/langfuse/dashboards in Langfuse.
-    # The sync deletes and recreates them, so it runs when they change, not on
+    # The sync replaces them, so it runs when they change, not on
     # the daily schedule (that would give them new URLs every day).
     name: Sync Dashboards To Langfuse
     if: github.event_name != 'schedule'

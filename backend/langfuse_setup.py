@@ -456,12 +456,22 @@ def score_observation(
         return False
 
 
-def score_session_feedback(session_id: str, vote: str, *, comment: Optional[str] = None) -> bool:
-    """Record a user's thumbs up/down on a chat session as a Langfuse score.
+def _feedback_score_id(session_id: str, message_index: int) -> str:
+    """One score per rated message, so a changed vote replaces the old one."""
+    import hashlib
 
-    Scored per session (the conversation the user rated), as ``user_feedback``
-    = 1 for thumbs_up and 0 for thumbs_down, so Langfuse can chart
-    satisfaction next to cost and latency.
+    return hashlib.sha256(f"user_feedback:{session_id}:{message_index}".encode()).hexdigest()[:32]
+
+
+def score_session_feedback(
+    session_id: str, vote: str, *, message_index: int, comment: Optional[str] = None
+) -> bool:
+    """Record a user's thumbs up/down on a chat message as a Langfuse score.
+
+    Scored on the session (the conversation the user rated), as
+    ``user_feedback`` = 1 for thumbs_up and 0 for thumbs_down, so Langfuse can
+    chart satisfaction next to cost and latency. The score ID is derived from
+    the session and message, so changing a vote updates the existing score.
     """
     if _langfuse_client is None or not session_id or vote not in ("thumbs_up", "thumbs_down"):
         return False
@@ -470,12 +480,25 @@ def score_session_feedback(session_id: str, vote: str, *, comment: Optional[str]
             name="user_feedback",
             value=1.0 if vote == "thumbs_up" else 0.0,
             session_id=str(session_id)[:200],
+            score_id=_feedback_score_id(session_id, message_index),
             data_type="NUMERIC",
             comment=comment,
         )
         return True
     except Exception as exc:
         logger.debug("score_session_feedback failed: %s", exc)
+        return False
+
+
+def remove_session_feedback(session_id: str, message_index: int) -> bool:
+    """Delete the score of a vote the user took back."""
+    if _langfuse_client is None or not session_id:
+        return False
+    try:
+        _langfuse_client.api.legacy.score_v1.delete(_feedback_score_id(session_id, message_index))
+        return True
+    except Exception as exc:
+        logger.debug("remove_session_feedback failed: %s", exc)
         return False
 
 

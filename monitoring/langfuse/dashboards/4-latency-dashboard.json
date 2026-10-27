@@ -54,7 +54,7 @@
       }
     },
     {
-      "title": "Generation latency percentiles per day (ms)",
+      "title": "Generation latency percentiles over time (ms)",
       "chartType": "LINE_TIME_SERIES",
       "description": "",
       "query": {
@@ -89,7 +89,7 @@
           }
         ],
         "timeDimension": {
-          "granularity": "day"
+          "granularity": "auto"
         }
       },
       "layout": {

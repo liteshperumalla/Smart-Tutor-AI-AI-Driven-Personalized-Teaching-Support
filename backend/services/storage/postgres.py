@@ -78,6 +78,9 @@ class PostgresStorageBackend(BaseStorageBackend):
             "keepalives_idle": 30,
             "keepalives_interval": 10,
             "keepalives_count": 3,
+            # Bound how long a query on a dead socket (e.g. the stale-connection
+            # ping in _checkout) can wait for an acknowledgement.
+            "tcp_user_timeout": 5000,
         }
         # id(conn) -> monotonic time it was last returned to a pool
         self._conn_last_used: Dict[int, float] = {}
@@ -170,17 +173,24 @@ class PostgresStorageBackend(BaseStorageBackend):
         use_reader = read_only and self.reader_pool is not None and self.reader_pool is not self.pool
         target_pool = self.reader_pool if use_reader else self.pool
         conn = None
+        started = time.monotonic()
         try:
-            conn = self._checkout(target_pool)
-        except Exception as exc:
-            if use_reader:
+            try:
+                conn = self._checkout(target_pool)
+            except Exception as exc:
+                if not use_reader:
+                    raise
                 logger.warning(
                     f"Failed to obtain connection from read replica ({exc}); falling back to primary pool"
                 )
                 target_pool = self.pool
                 conn = self._checkout(self.pool)
-            else:
-                raise
+        except Exception as exc:
+            # Query errors are recorded by _get_cursor; this covers the
+            # requests that never got a connection.
+            _record_db_error(type(exc).__name__)
+            _record_db_duration("read" if read_only else "write", time.monotonic() - started)
+            raise
         try:
             yield conn
         finally:
@@ -196,6 +206,8 @@ class PostgresStorageBackend(BaseStorageBackend):
 
     # Pooled connections idle longer than this are pinged before reuse.
     _IDLE_PING_SECONDS = 30.0
+    # Give up looking for a live connection after this long.
+    _CHECKOUT_BUDGET_SECONDS = 15.0
 
     def _checkout(self, pool):
         """Take a live connection from ``pool``.
@@ -212,7 +224,10 @@ class PostgresStorageBackend(BaseStorageBackend):
         live the database is down and that is raised, not a dead connection.
         """
         attempts = int(getattr(pool, "maxconn", 10) or 10) + 1
+        deadline = time.monotonic() + self._CHECKOUT_BUDGET_SECONDS
         for _ in range(attempts):
+            if time.monotonic() > deadline:
+                break
             conn = pool.getconn()
             if self._is_alive(conn):
                 return conn
