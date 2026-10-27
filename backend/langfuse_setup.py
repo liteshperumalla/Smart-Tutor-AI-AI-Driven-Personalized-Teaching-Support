@@ -37,6 +37,20 @@ _init_error: Optional[str] = None
 
 # ── Initialization / Shutdown ────────────────────────────────────────
 
+def _langfuse_environment() -> str:
+    """Deployment environment for every trace (production, development, ...).
+
+    Without it all traces landed in "default", so production traffic could
+    not be separated from local and test runs on any Langfuse dashboard.
+    Langfuse requires lowercase [a-z0-9-_], at most 40 chars, no "langfuse" prefix.
+    """
+    import re
+
+    raw = str(getattr(config, "ENVIRONMENT", "") or "development").lower()
+    env = re.sub(r"[^a-z0-9_-]", "-", raw)[:40].strip("-") or "development"
+    return f"app-{env}" if env.startswith("langfuse") else env
+
+
 def init_langfuse(force: bool = False) -> bool:
     """Idempotent Langfuse v4 initialization.
 
@@ -88,17 +102,20 @@ def init_langfuse(force: bool = False) -> bool:
 
         from langfuse import Langfuse
 
+        environment = _langfuse_environment()
         try:
             client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
                 base_url=host,
+                environment=environment,
             )
         except (TypeError, ValueError):
             client = Langfuse(
                 public_key=public_key,
                 secret_key=secret_key,
                 host=host,
+                environment=environment,
             )
 
         _langfuse_client = client

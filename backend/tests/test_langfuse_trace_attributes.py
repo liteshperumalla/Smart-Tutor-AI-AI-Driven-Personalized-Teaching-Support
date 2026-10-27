@@ -112,3 +112,16 @@ def test_first_token_sets_completion_start_time(offline_langfuse):
     attrs = dict(call.generation._otel_span.attributes)
     call.generation.end()
     assert any("completion_start_time" in key for key in attrs), attrs
+
+
+def test_traces_are_tagged_with_the_deployment_environment(monkeypatch):
+    """All traces used to land in Langfuse's "default" environment."""
+    for raw, expected in [("production", "production"), ("Staging", "staging"), ("langfuse-x", "app-langfuse-x"), ("", "development")]:
+        monkeypatch.setattr(langfuse_setup.config, "ENVIRONMENT", raw)
+        assert langfuse_setup._langfuse_environment() == expected
+
+
+def test_suite_never_exports_to_a_real_langfuse_project():
+    from backend.config import config
+
+    assert config.LANGFUSE_ENABLED is False

@@ -20,6 +20,8 @@ os.environ["SMTP_SERVER"] = ""  # Disable email sending in tests
 # Analytics off: config.py falls back to the production PostHog project key,
 # so test runs (locally and in CI) were sending events to production.
 os.environ["POSTHOG_ENABLED"] = "false"
+# Never send test traces to a real Langfuse project (keys may be in the env).
+os.environ["LANGFUSE_ENABLED"] = "false"
 
 from backend.api.main import app
 from backend.database import get_user_db
