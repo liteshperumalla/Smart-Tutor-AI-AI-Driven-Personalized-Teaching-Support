@@ -1,4 +1,4 @@
-import { AUTH_EXPIRED_EVENT, clearAuthToken } from "./auth";
+import { AUTH_EXPIRED_EVENT, clearAuthToken, refreshSession } from "./auth";
 
 const EXPLICIT_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 const DEFAULT_API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8000";
@@ -54,6 +54,13 @@ function joinApiUrl(baseUrl: string, path: string): string {
 }
 
 const CSRF_MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// A 401 from an /auth/* call (bad password, refresh itself failing) is the
+// real answer; anywhere else it may only mean the 15-minute access token
+// lapsed, so the session is renewed once before giving up.
+function canRefreshFor(path: string): boolean {
+  return !path.startsWith("/auth/");
+}
 
 // The csrf_token cookie is set with HttpOnly=false (backend/csrf_protection.py)
 // precisely so the browser can echo it back as X-CSRF-Token for the
@@ -120,12 +127,17 @@ async function adminRequest<T>(
 
   for (const url of targets) {
     try {
-      const res = await fetch(url, {
-        ...rest,
-        headers,
-        cache: "no-store",
-        credentials: "include",
-      });
+      const send = () =>
+        fetch(url, {
+          ...rest,
+          headers,
+          cache: "no-store",
+          credentials: "include",
+        });
+      let res = await send();
+      if (res.status === 401 && canRefreshFor(path) && (await refreshSession(resolveApiBaseUrl()))) {
+        res = await send();
+      }
 
       if (!res.ok) {
         lastError = await parseRequestError(res);
@@ -705,13 +717,18 @@ async function request<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl}${path}`, {
-      ...rest,
-      headers,
-      cache: "no-store",
-      credentials: "include", // SECURITY: Send HttpOnly cookies with all requests
-      signal: controller.signal,
-    });
+    const send = () =>
+      fetch(`${baseUrl}${path}`, {
+        ...rest,
+        headers,
+        cache: "no-store",
+        credentials: "include", // SECURITY: Send HttpOnly cookies with all requests
+        signal: controller.signal,
+      });
+    res = await send();
+    if (res.status === 401 && canRefreshFor(path) && (await refreshSession(baseUrl))) {
+      res = await send();
+    }
   } catch (error) {
     if (timeoutId) clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {

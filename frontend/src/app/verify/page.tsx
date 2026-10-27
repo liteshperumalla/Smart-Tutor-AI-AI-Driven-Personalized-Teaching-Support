@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { clearAuthHandoff, readAuthHandoff } from "@/lib/auth-handoff";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
@@ -9,8 +10,14 @@ import { SkeletonAuthForm } from "@/components/skeleton";
 function VerifyPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [username, setUsername] = useState(searchParams.get("username") || "");
-  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const [handoff] = useState(() => readAuthHandoff("verify", searchParams));
+  const [username, setUsername] = useState(handoff.username ?? "");
+  const [email, setEmail] = useState(handoff.email ?? "");
+
+  useEffect(() => {
+    // Drop identity fields from the address bar, history and Referer.
+    if (handoff.fromUrl) router.replace("/verify");
+  }, [handoff.fromUrl, router]);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,6 +47,7 @@ function VerifyPageContent() {
       if (!response.ok) {
         throw new Error(payload.detail || "Unable to verify account");
       }
+      clearAuthHandoff("verify");
       setMessage("Email verified successfully. You can now sign in.");
       setTimeout(() => router.push("/login?signup=verified"), 800);
     } catch (err) {

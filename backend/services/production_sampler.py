@@ -21,6 +21,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from backend.config import config
 from backend.services import get_storage_backend
 from backend.services.models import ChatMessage, ChatSession
+from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,7 @@ def _iter_user_query_pairs(
         try:
             sessions: List[ChatSession] = storage.list_chat_sessions(username) or []
         except Exception as exc:
-            logger.debug("Skipping user %s (list_chat_sessions failed: %s)", username, exc)
+            logger.debug("Skipping user %s (list_chat_sessions failed: %s)", user_ref(username), exc)
             continue
 
         for session in sessions:

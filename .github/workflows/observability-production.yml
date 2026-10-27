@@ -9,6 +9,7 @@ on:
       - 'monitoring/**'
       - 'docker-compose.observability.yml'
       - '.github/workflows/observability-production.yml'
+      - 'scripts/ci/sync_langfuse_dashboards.py'
   schedule:
     # Weekdays only, 90 minutes after the 09:00 America/Chicago EC2 start
     # (see ec2-schedule.yml) so the app has finished booting. 15:30 UTC is
@@ -245,6 +246,24 @@ jobs:
             alertmanager_receivers+=$'\n'
           fi
 
+          # Grafana IRM: its Alert Groups and Incident insights only have data
+          # when alerts reach an IRM integration. Create an "Alertmanager"
+          # integration in Grafana Cloud (Alerts & IRM > IRM > Integrations)
+          # and put its URL in the app env file as GRAFANA_IRM_ALERTMANAGER_URL.
+          if [ -n "${GRAFANA_IRM_ALERTMANAGER_URL:-}" ]; then
+            alertmanager_route_entries+=$'    - receiver: "grafana-irm"\n      continue: true\n'
+            alertmanager_receivers+="$(
+              printf '%s\n' '  - name: "grafana-irm"'
+              printf '%s\n' '    webhook_configs:'
+              printf '%s\n' "      - url: \"${GRAFANA_IRM_ALERTMANAGER_URL}\""
+              printf '%s\n' '        send_resolved: true'
+              printf '%s\n' '        max_alerts: 0'
+            )"
+            alertmanager_receivers+=$'\n'
+          else
+            echo "::warning::GRAFANA_IRM_ALERTMANAGER_URL is not set; alerts will not reach Grafana IRM, so its Alert Groups and Incident insights stay empty."
+          fi
+
           if [ -n "${alertmanager_route_entries}" ]; then
             alertmanager_routes_block=$(printf '  routes:\n%s' "${alertmanager_route_entries}")
           else
@@ -280,6 +299,20 @@ jobs:
             printf '\n'
             printf '%s\n' "${alertmanager_receivers}"
           } > monitoring/alertmanager/alertmanager.yml
+
+          # The rendered config holds the Slack webhook, SMTP password and IRM
+          # URL. Make it readable by Alertmanager (the container runs as
+          # nobody, uid/gid 65534) but not by other local users.
+          am_config=monitoring/alertmanager/alertmanager.yml
+          if sudo -n chgrp 65534 "${am_config}" 2>/dev/null; then
+            chmod 640 "${am_config}"
+          elif command -v setfacl >/dev/null 2>&1 && chmod 600 "${am_config}" && setfacl -m u:65534:r "${am_config}"; then
+            :
+          else
+            rm -f "${am_config}"
+            echo "::error::Could not restrict ${am_config} to Alertmanager (needs passwordless sudo or setfacl); refusing to leave its secrets world-readable."
+            exit 1
+          fi
 
           docker network inspect smart-tutor_smart-tutor-network >/dev/null 2>&1 || \
             docker network create smart-tutor_smart-tutor-network
@@ -586,6 +619,28 @@ jobs:
 
       - name: Upload dashboards
         run: python3 scripts/ci/sync_grafana_cloud_dashboards.py
+
+  sync-langfuse-dashboards:
+    # Builds the dashboards in monitoring/langfuse/dashboards in Langfuse.
+    # The sync replaces them, so it runs when they change, not on
+    # the daily schedule (that would give them new URLs every day).
+    name: Sync Dashboards To Langfuse
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      LANGFUSE_HOST: ${{ vars.LANGFUSE_HOST || secrets.LANGFUSE_HOST || '' }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY || '' }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY || '' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Build dashboards
+        run: python3 scripts/ci/sync_langfuse_dashboards.py
 
   notify-observability-smart-tutor-ai:
     name: Notify Observability Deploy (#smart-tutor-ai)

@@ -212,7 +212,7 @@ db_connection_pool_idle = Gauge(
 db_query_duration_seconds = Histogram(
     name="db_query_duration_seconds",
     documentation="Database query duration in seconds",
-    labelnames=["database", "operation"],  # operation: select, insert, update, delete
+    labelnames=["database", "operation"],  # database: postgres; operation: read, write
     buckets=(0.001, 0.01, 0.05, 0.1, 0.5, 1.0, 2.0),
     registry=REGISTRY,
 )

@@ -48,7 +48,7 @@ Grafana Cloud allows you to ship all system and application metrics to a fully m
    - **Password / API Token**: Create or copy an API Token with the `MetricsPublisher` (or Admin) role.
 
 ### Step 2: Configure `remote_write` in Prometheus
-Open [`monitoring/prometheus/prometheus.yml`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/prometheus/prometheus.yml) (or [`monitoring/prometheus/prometheus-ec2.yml`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/prometheus/prometheus-ec2.yml) for EC2/production) and uncomment the `remote_write` block:
+Open [`monitoring/prometheus/prometheus.yml`](../../monitoring/prometheus/prometheus.yml) (or [`monitoring/prometheus/prometheus-ec2.yml`](../../monitoring/prometheus/prometheus-ec2.yml) for EC2/production) and uncomment the `remote_write` block:
 
 ```yaml
 remote_write:
@@ -75,9 +75,9 @@ curl -X POST http://localhost:9090/-/reload
 ### Step 4: Import Smart AI Tutor Dashboards into Grafana Cloud
 1. In Grafana Cloud, navigate to **Dashboards** -> **New** -> **Import**.
 2. Upload the JSON files from the project repository:
-   - [`monitoring/grafana/dashboards/application-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/grafana/dashboards/application-dashboard.json) — API requests, latency (P50/P90/P99), error rate (4xx/5xx).
-   - [`monitoring/grafana/dashboards/rag-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/grafana/dashboards/rag-dashboard.json) — LLM tokens, model response latency, RAG cache hit rate.
-   - [`monitoring/grafana/dashboards/infrastructure-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/grafana/dashboards/infrastructure-dashboard.json) — CPU, RAM, Disk, and container metrics.
+   - [`monitoring/grafana/dashboards/application-dashboard.json`](../../monitoring/grafana/dashboards/application-dashboard.json) — API requests, latency (P50/P90/P99), error rate (4xx/5xx).
+   - [`monitoring/grafana/dashboards/rag-dashboard.json`](../../monitoring/grafana/dashboards/rag-dashboard.json) — LLM tokens, model response latency, RAG cache hit rate.
+   - [`monitoring/grafana/dashboards/infrastructure-dashboard.json`](../../monitoring/grafana/dashboards/infrastructure-dashboard.json) — CPU, RAM, Disk, and container metrics.
 3. Select your Grafana Cloud Prometheus data source when prompted and click **Import**.
 
 ---
@@ -112,7 +112,7 @@ Ensure your Prometheus instance is reachable from your external Grafana server:
 5. Click **Save & Test**. You will see: *"Successfully queried the Prometheus API."*
 
 ### Step 3: Import Pre-built Dashboards
-Import the dashboards located in [`monitoring/grafana/dashboards/`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/grafana/dashboards/).
+Import the dashboards located in [`monitoring/grafana/dashboards/`](../../monitoring/grafana/dashboards/).
 
 ---
 

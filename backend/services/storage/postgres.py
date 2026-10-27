@@ -18,14 +18,33 @@ except ImportError:
     sql = None
 from contextlib import contextmanager
 import re
+import time
 
 from backend.config import config
 from backend.logger import get_logger
 from backend.exceptions import OptimisticLockError
 from backend.services.storage.base import BaseStorageBackend
 from backend.services.models import ChatSession, QuizResult
+from backend.log_redaction import user_ref
 
 logger = get_logger(__name__)
+
+
+def _record_db_duration(operation: str, seconds: float) -> None:
+    """Feed db_query_duration_seconds (Grafana: RAG Retrieval & Database Latency)."""
+    try:
+        from backend.metrics import track_db_query
+        track_db_query("postgres", operation, seconds)
+    except Exception:  # metrics must never break a query
+        pass
+
+
+def _record_db_error(error_type: str) -> None:
+    try:
+        from backend.metrics import track_db_error
+        track_db_error("postgres", error_type)
+    except Exception:
+        pass
 
 
 class PostgresStorageBackend(BaseStorageBackend):
@@ -53,7 +72,18 @@ class PostgresStorageBackend(BaseStorageBackend):
             "password": password,
             "sslmode": config.POSTGRES_SSL_MODE,
             "connect_timeout": 5,  # Fail fast if database is unreachable
+            # Detect peers that went away (RDS restart, NAT/idle timeout) instead
+            # of handing a half-open socket to the next request.
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+            # Bound how long a query on a dead socket (e.g. the stale-connection
+            # ping in _checkout) can wait for an acknowledgement.
+            "tcp_user_timeout": 5000,
         }
+        # id(conn) -> monotonic time it was last returned to a pool
+        self._conn_last_used: Dict[int, float] = {}
 
         # Add SSL root certificate if provided (for RDS)
         if config.POSTGRES_SSL_ROOT_CERT:
@@ -143,17 +173,24 @@ class PostgresStorageBackend(BaseStorageBackend):
         use_reader = read_only and self.reader_pool is not None and self.reader_pool is not self.pool
         target_pool = self.reader_pool if use_reader else self.pool
         conn = None
+        started = time.monotonic()
         try:
-            conn = target_pool.getconn()
-        except Exception as exc:
-            if use_reader:
+            try:
+                conn = self._checkout(target_pool)
+            except Exception as exc:
+                if not use_reader:
+                    raise
                 logger.warning(
                     f"Failed to obtain connection from read replica ({exc}); falling back to primary pool"
                 )
                 target_pool = self.pool
-                conn = self.pool.getconn()
-            else:
-                raise
+                conn = self._checkout(self.pool)
+        except Exception as exc:
+            # Query errors are recorded by _get_cursor; this covers the
+            # requests that never got a connection.
+            _record_db_error(type(exc).__name__)
+            _record_db_duration("read" if read_only else "write", time.monotonic() - started)
+            raise
         try:
             yield conn
         finally:
@@ -161,9 +198,60 @@ class PostgresStorageBackend(BaseStorageBackend):
                 # Return broken connections to pool with close=True
                 status_ready = psycopg2.extensions.STATUS_READY if psycopg2 and hasattr(psycopg2, "extensions") else 0
                 if conn.closed or conn.status != status_ready:
+                    self._conn_last_used.pop(id(conn), None)
                     target_pool.putconn(conn, close=True)
                 else:
+                    self._conn_last_used[id(conn)] = time.monotonic()
                     target_pool.putconn(conn)
+
+    # Pooled connections idle longer than this are pinged before reuse.
+    _IDLE_PING_SECONDS = 30.0
+    # Give up looking for a live connection after this long.
+    _CHECKOUT_BUDGET_SECONDS = 15.0
+
+    def _checkout(self, pool):
+        """Take a live connection from ``pool``.
+
+        Pooled connections go stale while they sit idle — the database
+        restarts, the EC2 instance comes back from its nightly stop, or a
+        NAT/idle timeout drops the socket. Handing one of those out made the
+        first query after downtime fail ("server closed the connection
+        unexpectedly"), and because get_user() maps errors to "not found",
+        the first login was rejected and /auth/me reported an expired session.
+        Idle connections are pinged and dead ones replaced before use. Every
+        idle connection may be stale after downtime, so up to pool size + 1
+        are checked (the last one is a freshly opened connection); if none is
+        live the database is down and that is raised, not a dead connection.
+        """
+        attempts = int(getattr(pool, "maxconn", 10) or 10) + 1
+        deadline = time.monotonic() + self._CHECKOUT_BUDGET_SECONDS
+        for _ in range(attempts):
+            if time.monotonic() > deadline:
+                break
+            conn = pool.getconn()
+            if self._is_alive(conn):
+                return conn
+            self._conn_last_used.pop(id(conn), None)
+            try:
+                pool.putconn(conn, close=True)
+            except Exception:
+                pass
+        raise ConnectionError("PostgreSQL: no live connection available")
+
+    def _is_alive(self, conn) -> bool:
+        if conn.closed:
+            return False
+        last_used = self._conn_last_used.get(id(conn))
+        if last_used is not None and time.monotonic() - last_used < self._IDLE_PING_SECONDS:
+            return True
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            conn.rollback()
+            return True
+        except Exception as exc:
+            logger.warning(f"Discarding stale PostgreSQL connection: {exc}")
+            return False
 
     @staticmethod
     def _is_valid_field_name(field_name: str) -> bool:
@@ -177,6 +265,8 @@ class PostgresStorageBackend(BaseStorageBackend):
     @contextmanager
     def _get_cursor(self, cursor_factory=RealDictCursor, read_only: bool = False):
         """Get cursor with automatic commit/rollback and read/write pool routing"""
+        operation = "read" if read_only else "write"
+        started = time.monotonic()
         with self._get_connection(read_only=read_only) as conn:
             cursor = conn.cursor(cursor_factory=cursor_factory)
             try:
@@ -187,9 +277,11 @@ class PostgresStorageBackend(BaseStorageBackend):
                 if not read_only:
                     conn.rollback()
                 logger.error(f"Database error: {e}", exc_info=True)
+                _record_db_error(type(e).__name__)
                 raise
             finally:
                 cursor.close()
+                _record_db_duration(operation, time.monotonic() - started)
 
     def check_health(self) -> None:
         """Raise when PostgreSQL cannot serve a simple query."""
@@ -256,7 +348,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 return None
 
         except Exception as e:
-            logger.error(f"Error getting user {username}: {e}")
+            logger.error(f"Error getting user {user_ref(username)}: {e}")
             return None
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
@@ -302,7 +394,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                     return self._enrich_user_dict(dict(user))
                 return None
         except Exception as e:
-            logger.error(f"Error getting user by email {email}: {e}")
+            logger.error(f"Error getting user by email {user_ref(email)}: {e}")
             return None
 
     def create_user(self, username: str, password_hash: str, **extras) -> dict:
@@ -353,13 +445,13 @@ class PostgresStorageBackend(BaseStorageBackend):
                         raise
 
                 user = cursor.fetchone()
-                logger.info(f"Created user: {username}")
+                logger.info(f"Created user: {user_ref(username)}")
                 return self._enrich_user_dict(dict(user))
 
         except psycopg2.IntegrityError:
             raise ValueError(f"User {username} already exists")
         except Exception as e:
-            logger.error(f"Error creating user {username}: {e}")
+            logger.error(f"Error creating user {user_ref(username)}: {e}")
             raise
 
     def increment_login_attempts(self, username: str) -> int:
@@ -382,7 +474,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                     return 0
                 return int(row["login_attempts"])
         except Exception as e:
-            logger.error(f"Error incrementing login attempts for {username}: {e}")
+            logger.error(f"Error incrementing login attempts for {user_ref(username)}: {e}")
             raise
 
     def update_user(self, username: str, updates: dict, expected_version: Optional[int] = None) -> dict:
@@ -478,13 +570,13 @@ class PostgresStorageBackend(BaseStorageBackend):
                             )
                     raise ValueError(f"User {username} not found")
 
-                logger.debug(f"Updated user: {username} (new version: {user['version']})")
+                logger.debug(f"Updated user: {user_ref(username)} (new version: {user['version']})")
                 return self._enrich_user_dict(dict(user))
 
         except OptimisticLockError:
             raise
         except Exception as e:
-            logger.error(f"Error updating user {username}: {e}")
+            logger.error(f"Error updating user {user_ref(username)}: {e}")
             raise
 
     # Additional user methods (for auth_service compatibility)
@@ -562,7 +654,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                         psycopg2.extras.Json(result.metadata) if result.metadata else None,
                     )
                 )
-                logger.info(f"Saved quiz result for {result.user_id}: {result.id}")
+                logger.info(f"Saved quiz result for {user_ref(result.user_id)}: {result.id}")
 
         except Exception as e:
             logger.error(f"Error saving quiz result: {e}")
@@ -600,7 +692,7 @@ class PostgresStorageBackend(BaseStorageBackend):
                 return results
 
         except Exception as e:
-            logger.error(f"Error listing quiz results for {username}: {e}")
+            logger.error(f"Error listing quiz results for {user_ref(username)}: {e}")
             return []
 
     def list_users(self) -> List[dict]:
@@ -648,11 +740,11 @@ class PostgresStorageBackend(BaseStorageBackend):
             with self._get_cursor(read_only=False) as cursor:
                 cursor.execute("DELETE FROM users WHERE username = %s", (username,))
                 if cursor.rowcount > 0:
-                    logger.info(f"Deleted user: {username}")
+                    logger.info(f"Deleted user: {user_ref(username)}")
                     return True
                 return False
         except Exception as e:
-            logger.error(f"Error deleting user {username}: {e}")
+            logger.error(f"Error deleting user {user_ref(username)}: {e}")
             return False
 
     def emit_outbox_event(

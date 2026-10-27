@@ -36,6 +36,17 @@ class TestChatSessions:
         data = response.json()
         assert data["session"]["title"] == "My Custom Chat"
 
+    def test_session_id_is_opaque(self, test_client, auth_headers, test_user):
+        """Session IDs appear in URLs and logs: no username, no title, no collisions."""
+        ids = [
+            test_client.post("/chat/sessions?title=Same Title", headers=auth_headers).json()["session"]["id"]
+            for _ in range(2)
+        ]
+        assert ids[0] != ids[1]
+        for session_id in ids:
+            assert test_user["username"] not in session_id
+            assert "same" not in session_id.lower()
+
     def test_list_sessions(self, test_client, auth_headers):
         """Test listing user's chat sessions"""
         # Create a session first

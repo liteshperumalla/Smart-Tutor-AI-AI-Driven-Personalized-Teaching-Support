@@ -324,7 +324,11 @@ async def metrics(
     """
     from backend.auth_service import get_auth_service
 
-    # SECURITY: Require authentication for metrics endpoint
+    # SECURITY: Require authentication for metrics endpoint. The admin
+    # evaluation dashboard calls this from the browser, which authenticates
+    # with the HttpOnly access_token cookie rather than a header.
+    if not authorization and request is not None and request.cookies.get("access_token"):
+        authorization = f"Bearer {request.cookies['access_token']}"
     if not authorization:
         # Allow unauthenticated access only from explicitly trusted scrapers
         client_host = request.client.host if request and request.client else None
@@ -359,10 +363,25 @@ async def metrics(
         # Validate token if provided
         try:
             token = authorization.split(" ")[1] if " " in authorization else authorization
-            auth_service = get_auth_service()
-            user = auth_service.validate_session(token)
+            # Same rules as get_current_session + get_admin_session: the
+            # account must still exist and be enabled (tokens outlive a
+            # disable), and be Admin by role or metadata.is_admin. Both
+            # lookups hit the database, so they run off the event loop.
+            from backend.database import get_user_db
 
-            if user.get("role") != "Admin":
+            def _validate():
+                user = get_auth_service().validate_session(token)
+                try:
+                    record = get_user_db().get_user(user.get("username") or user.get("sub"))
+                except Exception:
+                    record = None
+                return user, record
+
+            user, record = await asyncio.to_thread(_validate)
+            if record is None or record.get("disabled") is True:
+                raise HTTPException(status_code=401, detail="Account is disabled or no longer exists")
+            is_admin = user.get("role") == "Admin" or (user.get("metadata") or {}).get("is_admin", False)
+            if not is_admin:
                 raise HTTPException(status_code=403, detail="Admin access required")
         except HTTPException:
             raise

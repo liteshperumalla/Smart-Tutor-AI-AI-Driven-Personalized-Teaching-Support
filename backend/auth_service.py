@@ -20,6 +20,7 @@ from .database import get_user_db
 from .validators import PasswordValidator, UserLogin, UserRegistration
 from .jwt_service import get_jwt_service
 from .jwt_blacklist import init_jwt_blacklist
+from .log_redaction import user_ref
 from .exceptions import (
     InvalidCredentialsError, UserAlreadyExistsError,
     AccountLockedError, PasswordValidationError,
@@ -157,7 +158,7 @@ class AuthService:
             locked_until = user.get('locked_until', '')
             if locked_until:
                 unlock_time = datetime.fromisoformat(locked_until)
-                logger.warning(f"Login attempt on locked account: {username}")
+                logger.warning(f"Login attempt on locked account: {user_ref(username)}")
                 raise AccountLockedError(unlock_time.strftime("%Y-%m-%d %H:%M:%S"))
 
     def _handle_failed_login(self, username: str) -> None:
@@ -166,13 +167,13 @@ class AuthService:
             return
 
         attempts = self.user_db.increment_login_attempts(username)
-        logger.warning(f"Failed login attempt #{attempts} for user: {username}")
+        logger.warning(f"Failed login attempt #{attempts} for user: {user_ref(username)}")
 
         if attempts >= config.MAX_LOGIN_ATTEMPTS:
             # Lock account
             unlock_time = datetime.now(timezone.utc) + timedelta(seconds=config.LOCKOUT_DURATION)
             self.user_db.lock_account(username, unlock_time)
-            logger.warning(f"Account locked due to failed attempts: {username}")
+            logger.warning(f"Account locked due to failed attempts: {user_ref(username)}")
 
     def register_user(self, username: str, password: str,
                      confirm_password: str, email: Optional[str] = None,
@@ -211,7 +212,7 @@ class AuthService:
 
         # Check if user exists
         if self.user_db.user_exists(username):
-            logger.warning(f"Registration attempt with existing username: {username}")
+            logger.warning(f"Registration attempt with existing username: {user_ref(username)}")
             raise UserAlreadyExistsError(username)
 
         # Hash password
@@ -235,7 +236,7 @@ class AuthService:
         except Exception as e:
             logger.warning(f"Email verification send failed during registration (non-fatal): {e}")
 
-        logger.info(f"User registered successfully: {username}")
+        logger.info(f"User registered successfully: {user_ref(username)}")
 
         # Return user data without password
         safe_user = {k: v for k, v in user.items() if k not in ['password_hash', 'hashed_password']}
@@ -276,7 +277,7 @@ class AuthService:
                 actual_username = user.get("username", username)
 
         if not user:
-            logger.warning(f"Login attempt with non-existent user: {username}")
+            logger.warning(f"Login attempt with non-existent user: {user_ref(username)}")
             raise InvalidCredentialsError()
 
         # Check if account is locked
@@ -285,13 +286,13 @@ class AuthService:
         # Verify password
         password_hash = user.get("password_hash") or user.get("hashed_password")
         if not password_hash or not self._verify_password(password, password_hash):
-            logger.warning(f"Invalid password for user: {actual_username}")
+            logger.warning(f"Invalid password for user: {user_ref(actual_username)}")
             self._handle_failed_login(actual_username)
             raise InvalidCredentialsError()
 
         metadata = self._normalize_metadata(user)
         if metadata.get("email_verified") is False:
-            logger.warning(f"Login blocked - email not verified: {actual_username}")
+            logger.warning(f"Login blocked - email not verified: {user_ref(actual_username)}")
             raise EmailNotVerifiedError("Email not verified. Check your inbox for the code.")
 
         # Reset failed login attempts on successful login
@@ -305,7 +306,7 @@ class AuthService:
         access_token = self.jwt_service.create_access_token(username=actual_username, email=email)
         refresh_token = self.jwt_service.create_refresh_token(username=actual_username, email=email)
 
-        logger.info(f"User logged in successfully: {actual_username}")
+        logger.info(f"User logged in successfully: {user_ref(actual_username)}")
 
         # Return tokens and user data without password
         safe_user = {k: v for k, v in user.items() if k not in ['hashed_password', 'password_hash']}
@@ -494,7 +495,7 @@ class AuthService:
             metadata["password_set"] = False
             metadata["auth_provider"] = "google"
             self.user_db.update_user(username, {"metadata": metadata})
-            logger.info(f"Created new Google-linked user: {username}")
+            logger.info(f"Created new Google-linked user: {user_ref(username)}")
         else:
             existing = self.user_db.get_user(username)
             metadata = self._normalize_metadata(existing)
@@ -802,7 +803,7 @@ class AuthService:
         if session_token in self.sessions:
             username = self.sessions[session_token]['username']
             del self.sessions[session_token]
-            logger.info(f"User logged out (legacy session): {username}")
+            logger.info(f"User logged out (legacy session): {user_ref(username)}")
             return
 
         # For JWT tokens, add to blacklist
@@ -822,9 +823,9 @@ class AuthService:
             # Add to blacklist
             if self.jwt_blacklist:
                 self.jwt_blacklist.blacklist_token(session_token, expiry_seconds)
-                logger.info(f"User logged out and token blacklisted: {username}")
+                logger.info(f"User logged out and token blacklisted: {user_ref(username)}")
             else:
-                logger.warning(f"JWT blacklist not available, token not revoked for: {username}")
+                logger.warning(f"JWT blacklist not available, token not revoked for: {user_ref(username)}")
 
         except SessionExpiredError:
             # Token already expired, no need to blacklist
@@ -871,7 +872,7 @@ class AuthService:
         user = self.user_db.get_user(username)
         password_hash = user.get("password_hash") or user.get("hashed_password")
         if not password_hash or not self._verify_password(old_password, password_hash):
-            logger.warning(f"Failed password change attempt for: {username}")
+            logger.warning(f"Failed password change attempt for: {user_ref(username)}")
             raise InvalidCredentialsError("Current password is incorrect")
 
         # Validate new password
@@ -881,7 +882,7 @@ class AuthService:
         hashed_password = self._hash_password(new_password)
         self.user_db.update_user(username, {'password_hash': hashed_password})
 
-        logger.info(f"Password changed successfully for: {username}")
+        logger.info(f"Password changed successfully for: {user_ref(username)}")
 
     def reset_password(self, username: str, new_password: str, reset_token: str) -> None:
         """
@@ -936,7 +937,7 @@ class AuthService:
             'metadata': metadata if isinstance(metadata, dict) else {},
         })
 
-        logger.info(f"Password reset for: {username}")
+        logger.info(f"Password reset for: {user_ref(username)}")
 
     def create_password_reset_token(self, username: str) -> str:
         """Generate and store a password reset token."""

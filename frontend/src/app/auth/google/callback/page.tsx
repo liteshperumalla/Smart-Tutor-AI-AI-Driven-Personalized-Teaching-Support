@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
+import { stashAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
@@ -70,12 +71,18 @@ function GoogleCallbackContent() {
 
         if (response.status === 428 && payload.requires_password_setup) {
           if (payload.password_setup_token && payload.username) {
-            const params = new URLSearchParams({
+            const stashed = stashAuthHandoff("password-setup", {
               token: payload.password_setup_token,
               username: payload.username,
             });
-          params.set("next", returnTo);
-          router.replace(`/password-setup?${params.toString()}`);
+            // Never put the setup token in the URL; without storage the
+            // user has to allow it and sign in again.
+            if (!stashed) {
+              throw new Error(
+                "Couldn't continue sign-in because this browser blocked session storage. Allow site storage (or leave private browsing) and sign in with Google again.",
+              );
+            }
+            router.replace(`/password-setup?${new URLSearchParams({ next: returnTo }).toString()}`);
             return;
           }
           throw new Error("Password setup required but token missing.");

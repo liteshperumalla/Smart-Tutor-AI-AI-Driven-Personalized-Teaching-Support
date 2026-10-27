@@ -1,100 +1,310 @@
 {
   "id": "langfuse-home-dashboard",
-  "name": "Langfuse Home",
-  "description": "High-level system health, trace throughput, active user adoption, model traffic distribution, and key executive observability metrics",
-  "version": "4.0",
-  "schema_version": "v4",
-  "data_source": "langfuse_v4_observations",
-  "filters": [],
-  "metrics": [
+  "name": "Smart AI Tutor - Home",
+  "description": "Overall LLM usage: traces, active users, chat sessions, spend, errors, feature and model mix.",
+  "format": "langfuse-metrics-v2",
+  "scope": "environment = production (set from ENVIRONMENT by backend/langfuse_setup.py)",
+  "how_to_build": "Built in Langfuse by `python scripts/ci/sync_langfuse_dashboards.py` (edit this file, not the Langfuse UI: the sync deletes and recreates its dashboards). Each widget's `query` is the exact GET /api/public/v2/metrics query it charts; check them all against live data with `python scripts/langfuse/check_dashboards.py`.",
+  "widgets": [
     {
-      "id": "total_traces",
-      "name": "Total Ingested Traces",
-      "aggregation": "COUNT",
-      "field": "trace_id",
-      "time_bucket": "1h",
-      "description": "Gross number of LLM and agent traces ingested"
+      "title": "Traces",
+      "chartType": "NUMBER",
+      "description": "Root traces (one per LLM request or agent run).",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "isRootObservation",
+            "operator": "=",
+            "value": true,
+            "type": "boolean"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "request_throughput_qps",
-      "name": "Inference Request Throughput",
-      "formula": "COUNT(trace_id) / 60",
-      "unit": "req/min",
-      "description": "Live query processing velocity"
+      "title": "Active users",
+      "chartType": "NUMBER",
+      "description": "Distinct pseudonymous users.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "uniqueUserIds",
+            "aggregation": "uniq"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "isRootObservation",
+            "operator": "=",
+            "value": true,
+            "type": "boolean"
+          }
+        ]
+      },
+      "layout": {
+        "x": 3,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "active_users_dau",
-      "name": "Daily Active Users (DAU)",
-      "aggregation": "COUNT_DISTINCT",
-      "field": "user_id",
-      "time_window": "24h",
-      "description": "Unique users generating LLM or agent interactions in past 24 hours"
+      "title": "Chat sessions",
+      "chartType": "NUMBER",
+      "description": "Distinct chat sessions with LLM traffic.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "uniqueSessionIds",
+            "aggregation": "uniq"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "isRootObservation",
+            "operator": "=",
+            "value": true,
+            "type": "boolean"
+          }
+        ]
+      },
+      "layout": {
+        "x": 6,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "system_error_rate",
-      "name": "System Error Rate",
-      "formula": "(COUNT(level = 'ERROR') / COUNT(*)) * 100",
-      "unit": "percent",
-      "target": "< 1.0%",
-      "description": "Percentage of traces failing with unhandled errors or upstream LLM exceptions"
+      "title": "LLM spend (USD)",
+      "chartType": "NUMBER",
+      "description": "Total model cost from Bedrock usage.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "totalCost",
+            "aggregation": "sum"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 9,
+        "y": 0,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "model_traffic_distribution",
-      "name": "Model Traffic Share",
-      "aggregation": "COUNT",
-      "group_by": ["model_id"],
-      "models": [
-        "us.anthropic.claude-sonnet-5-5",
-        "us.anthropic.claude-haiku-5-5",
-        "us.openai.gpt-6-luna",
-        "meta.llama-3-3-70b-instruct"
-      ],
-      "description": "Volume share by underlying LLM model"
+      "title": "Failed generations",
+      "chartType": "NUMBER",
+      "description": "Generations that ended with level ERROR.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          },
+          {
+            "column": "level",
+            "operator": "=",
+            "value": "ERROR",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 4,
+        "width": 3,
+        "height": 4
+      }
     },
     {
-      "id": "global_p95_latency",
-      "name": "Global Latency (P95)",
-      "aggregation": "PERCENTILE(95)",
-      "field": "duration_ms",
-      "unit": "ms",
-      "description": "95th percentile end-to-end response time across all pipelines"
+      "title": "Traces over time by feature",
+      "chartType": "BAR_TIME_SERIES",
+      "description": "Feature = trace name: chat, quiz, code, research, rag, agent-pipeline.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "traceName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "isRootObservation",
+            "operator": "=",
+            "value": true,
+            "type": "boolean"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "auto"
+        }
+      },
+      "layout": {
+        "x": 3,
+        "y": 4,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "id": "total_cost_usd",
-      "name": "Total Spend (USD)",
-      "aggregation": "SUM",
-      "field": "calculated_cost_usd",
-      "unit": "$",
-      "description": "Aggregate cost of prompt and completion tokens across all providers"
-    }
-  ],
-  "panels": [
-    {
-      "title": "Core KPI Overview",
-      "type": "stat_row",
-      "cards": [
-        { "title": "Total Traces (24h)", "metric": "total_traces" },
-        { "title": "Active Users (DAU)", "metric": "active_users_dau" },
-        { "title": "System Error Rate", "metric": "system_error_rate", "thresholds": { "green": 0.5, "yellow": 1.0, "red": 2.0 } },
-        { "title": "P95 Response Time", "metric": "global_p95_latency", "unit": "ms" },
-        { "title": "Total LLM Spend (24h)", "metric": "total_cost_usd", "unit": "$" }
-      ]
+      "title": "Generations by model",
+      "chartType": "PIE",
+      "description": "Model that served each generation.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "count",
+            "aggregation": "count"
+          }
+        ],
+        "dimensions": [
+          {
+            "field": "providedModelName"
+          }
+        ],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 10,
+        "width": 6,
+        "height": 6
+      }
     },
     {
-      "title": "Throughput & Request Velocity (Traces / Min)",
-      "type": "time_series_area",
-      "metric": "request_throughput_qps"
-    },
-    {
-      "title": "Model Share & Invocations",
-      "type": "bar_breakdown",
-      "metric": "model_traffic_distribution"
-    },
-    {
-      "title": "Real-time Trace Ingestion Stream",
-      "type": "trace_feed",
-      "columns": ["timestamp", "name", "user_id", "session_id", "model", "latency_ms", "cost_usd", "status"],
-      "limit": 50
+      "title": "Generation latency p95 (ms)",
+      "chartType": "LINE_TIME_SERIES",
+      "description": "Daily p95 of a full model response.",
+      "query": {
+        "view": "observations",
+        "metrics": [
+          {
+            "measure": "latency",
+            "aggregation": "p95"
+          }
+        ],
+        "dimensions": [],
+        "filters": [
+          {
+            "column": "environment",
+            "operator": "=",
+            "value": "production",
+            "type": "string"
+          },
+          {
+            "column": "name",
+            "operator": "=",
+            "value": "bedrock-generation",
+            "type": "string"
+          }
+        ],
+        "timeDimension": {
+          "granularity": "auto"
+        }
+      },
+      "layout": {
+        "x": 6,
+        "y": 10,
+        "width": 6,
+        "height": 6
+      }
     }
   ]
 }

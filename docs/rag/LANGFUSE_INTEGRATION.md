@@ -405,17 +405,9 @@ Per the canonical Langfuse v4 migration workflow (`v4-project-migration.md`), th
 
 ---
 
-## 📊 Complete 5-Dashboard Suite
+## 📊 Dashboards
 
-All 5 core Langfuse dashboards have been defined with complete metrics, aggregations, and visual panel specs:
-
-1. **Langfuse Agent Dashboard**: [`monitoring/langfuse/dashboards/1-agent-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/langfuse/dashboards/1-agent-dashboard.json)
-2. **Langfuse Home**: [`monitoring/langfuse/dashboards/2-home-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/langfuse/dashboards/2-home-dashboard.json)
-3. **Langfuse Cost Dashboard**: [`monitoring/langfuse/dashboards/3-cost-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/langfuse/dashboards/3-cost-dashboard.json)
-4. **Langfuse Latency Dashboard**: [`monitoring/langfuse/dashboards/4-latency-dashboard.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/langfuse/dashboards/4-latency-dashboard.json)
-5. **Langfuse Usage Management**: [`monitoring/langfuse/dashboards/5-usage-management.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/langfuse/dashboards/5-usage-management.json)
-
-*Full documentation available at [`docs/rag/LANGFUSE_DASHBOARDS.md`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/docs/rag/LANGFUSE_DASHBOARDS.md).*
+Five Langfuse dashboards (Home, Cost, Latency, Usage, Agents) are defined in [`monitoring/langfuse/dashboards/`](../../monitoring/langfuse/dashboards/) and built by `scripts/ci/sync_langfuse_dashboards.py`. See [`LANGFUSE_DASHBOARDS.md`](LANGFUSE_DASHBOARDS.md).
 
 ---
 
@@ -425,7 +417,7 @@ Prometheus metrics scraping and telemetry forwarding are actively connected to G
 - **Remote Write Push URL**: `https://prometheus-prod-66-prod-us-east-3.grafana.net/api/prom/push`
 - **Instance ID / Username**: `3689873`
 - **Region**: `prod-us-east-3`
-- **Unified Grafana Dashboard**: [`monitoring/grafana/dashboards/langfuse-observability.json`](file:///Users/liteshperumalla/Projects/Smart%20AI%20Tutor/monitoring/grafana/dashboards/langfuse-observability.json)
+- **Unified Grafana Dashboard**: [`monitoring/grafana/dashboards/langfuse-observability.json`](../../monitoring/grafana/dashboards/langfuse-observability.json)
 
 ---
 

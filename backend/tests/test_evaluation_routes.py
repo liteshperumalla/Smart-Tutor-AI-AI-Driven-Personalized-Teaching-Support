@@ -10,6 +10,7 @@ from backend.api.routes.evaluation import (
     _run_dataset_quality,
     _resolve_dataset_quality_file,
     get_metrics_history,
+    get_realtime_rag_metrics,
 )
 from backend.config import config
 from backend.scripts.run_scheduled_evaluation import run_scheduled_evaluation
@@ -199,7 +200,8 @@ def test_metrics_history_ignores_nullable_log_fields(monkeypatch, tmp_path):
     assert len(history["data_points"]) == 1
     assert history["data_points"][0]["query_count"] == 2
     assert history["data_points"][0]["avg_latency"] == 1.1
-    assert history["data_points"][0]["avg_relevance"] == 0.45
+    # Only the record that has a relevance score counts towards its average.
+    assert history["data_points"][0]["avg_relevance"] == 0.9
     assert history["data_points"][0]["avg_docs_retrieved"] == 1.5
 
 
@@ -256,3 +258,30 @@ def test_run_scheduled_evaluation_wraps_result_and_record(monkeypatch):
     assert payload["run_record"]["source"] == "scheduled"
     assert payload["run_record"]["limit"] == 5
     assert payload["run_record"]["model_id"] == "model-x"
+
+
+def test_metrics_history_excludes_evaluation_suite_runs(monkeypatch, tmp_path):
+    ts = datetime.now(timezone.utc).isoformat()
+    live = {"timestamp": ts, "metadata": {"mode": "chat"}, "end_to_end_metrics": {"total_time_seconds": 1.0}}
+    suite = {"timestamp": ts, "metadata": {"mode": "evaluation"}, "end_to_end_metrics": {"total_time_seconds": 9.0}}
+    log_file = tmp_path / "metrics.jsonl"
+    log_file.write_text("\n".join(json.dumps(r) for r in (live, suite)), encoding="utf-8")
+    monkeypatch.setattr(config, "EVALUATION_LOG_FILE", str(log_file))
+
+    history = get_metrics_history(hours=24, granularity="hour", session=("admin", {}))["history"]
+
+    assert history["total_queries"] == 1
+    assert history["data_points"][0]["avg_latency"] == 1.0
+
+
+def test_realtime_metrics_count_live_traffic_only(monkeypatch, tmp_path):
+    live = {"metadata": {"mode": "chat"}, "retrieval_metrics": {"avg_relevance_score": 0.8}}
+    suite = {"metadata": {"mode": "evaluation"}, "retrieval_metrics": {"avg_relevance_score": 0.2}}
+    log_file = tmp_path / "metrics.jsonl"
+    log_file.write_text("\n".join(json.dumps(r) for r in (live, suite, suite)), encoding="utf-8")
+    monkeypatch.setattr(config, "EVALUATION_LOG_FILE", str(log_file))
+
+    summary = get_realtime_rag_metrics(last_n=100, session=("admin", {}))["realtime_metrics"]["summary"]
+
+    assert summary["total_queries_analyzed"] == 1
+    assert summary["avg_relevance_score"] == 0.8

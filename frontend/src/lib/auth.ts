@@ -58,6 +58,33 @@ export function clearAuthToken() {
   );
 }
 
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Renew the session from the HttpOnly refresh_token cookie.
+ *
+ * The access token lives 15 minutes and the refresh token 7 days, so a 401
+ * usually means "access token lapsed", not "signed out". Callers try this once
+ * before treating a 401 as an expired session. Concurrent 401s share a single
+ * refresh: the backend rotates the refresh token on every use, so a second
+ * parallel refresh would present an already-revoked token and fail.
+ */
+export function refreshSession(apiBaseUrl: string): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${apiBaseUrl}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    })
+      .then((response) => response.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
 /**
  * Check if user is authenticated by making an API call.
  * Since we can't read HttpOnly cookies, we need to call the backend.
@@ -67,13 +94,19 @@ export function clearAuthToken() {
  */
 export async function checkAuthStatus(apiBaseUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, {
-      method: "GET",
-      credentials: "include", // IMPORTANT: Send HttpOnly cookies
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    const fetchMe = () =>
+      fetch(`${apiBaseUrl}/auth/me`, {
+        method: "GET",
+        credentials: "include", // IMPORTANT: Send HttpOnly cookies
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+    let response = await fetchMe();
+    if (response.status === 401 && (await refreshSession(apiBaseUrl))) {
+      response = await fetchMe();
+    }
 
     if (!response.ok) {
       return false;
