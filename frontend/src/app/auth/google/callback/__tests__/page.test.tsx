@@ -14,10 +14,12 @@ jest.mock('next/navigation', () => ({
 }))
 
 describe('Google callback password-setup handoff', () => {
+  afterEach(() => jest.restoreAllMocks())
+
   beforeEach(() => {
     replace.mockReset()
     sessionStorage.clear()
-    document.cookie = 'google_oauth_nonce=n1; path=/'
+    jest.spyOn(document, 'cookie', 'get').mockReturnValue('google_oauth_nonce=n1')
     global.fetch = jest.fn().mockResolvedValue({
       status: 428,
       ok: false,
