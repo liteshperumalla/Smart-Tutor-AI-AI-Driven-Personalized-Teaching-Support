@@ -324,7 +324,11 @@ async def metrics(
     """
     from backend.auth_service import get_auth_service
 
-    # SECURITY: Require authentication for metrics endpoint
+    # SECURITY: Require authentication for metrics endpoint. The admin
+    # evaluation dashboard calls this from the browser, which authenticates
+    # with the HttpOnly access_token cookie rather than a header.
+    if not authorization and request is not None and request.cookies.get("access_token"):
+        authorization = f"Bearer {request.cookies['access_token']}"
     if not authorization:
         # Allow unauthenticated access only from explicitly trusted scrapers
         client_host = request.client.host if request and request.client else None
@@ -362,7 +366,9 @@ async def metrics(
             auth_service = get_auth_service()
             user = auth_service.validate_session(token)
 
-            if user.get("role") != "Admin":
+            # Same rule as get_admin_session: role or metadata.is_admin.
+            is_admin = user.get("role") == "Admin" or (user.get("metadata") or {}).get("is_admin", False)
+            if not is_admin:
                 raise HTTPException(status_code=403, detail="Admin access required")
         except HTTPException:
             raise

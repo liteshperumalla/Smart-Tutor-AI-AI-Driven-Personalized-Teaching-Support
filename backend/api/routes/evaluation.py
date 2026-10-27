@@ -352,8 +352,19 @@ def get_realtime_rag_metrics(
             }
         }
 
-    # Take last N records
-    records = records[-last_n:]
+    # Live traffic only (evaluation-suite runs share this log), last N of it.
+    from backend.rag_evaluation import is_live_record
+    records = [r for r in records if is_live_record(r)][-last_n:]
+    if not records:
+        return {
+            "realtime_metrics": {
+                "status": "no_data",
+                "message": "No live RAG queries logged yet. Start chatting to see metrics!",
+                "summary": None,
+                "recent_queries": [],
+                "performance": None,
+            }
+        }
     total_queries = len(records)
 
     # Calculate summary statistics
@@ -569,6 +580,8 @@ def get_metrics_history(
         }
 
     # Filter by time range
+    from backend.rag_evaluation import is_live_record
+
     cutoff = datetime.now(timezone.utc) - __import__('datetime').timedelta(hours=hours)
     filtered_records = []
     for r in records:
@@ -576,7 +589,7 @@ def get_metrics_history(
             ts = datetime.fromisoformat(r.get('timestamp', '').replace('Z', '+00:00'))
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=timezone.utc)
-            if ts >= cutoff:
+            if ts >= cutoff and is_live_record(r):
                 filtered_records.append((ts, r))
         except Exception as e:
             logger.debug(f"Skipping record with unparseable timestamp: {e}")
@@ -606,6 +619,7 @@ def get_metrics_history(
         "retrieval_latency": 0,
         "generation_latency": 0,
         "relevance_sum": 0,
+        "relevance_count": 0,
         "docs_retrieved": 0,
     })
 
@@ -617,14 +631,18 @@ def get_metrics_history(
         retrieval_time = _coerce_metric_float(ret_metrics.get('retrieval_time_seconds'))
         generation_time = _coerce_metric_float(gen_metrics.get('generation_time_seconds'))
         total_time = _coerce_metric_float(e2e_metrics.get('total_time_seconds'))
-        relevance_score = _coerce_metric_float(ret_metrics.get('avg_relevance_score'))
+        relevance_raw = ret_metrics.get('avg_relevance_score')
         docs_retrieved = _coerce_metric_int(ret_metrics.get('num_retrieved'))
 
         buckets[key]["count"] += 1
         buckets[key]["total_latency"] += total_time or (retrieval_time + generation_time)
         buckets[key]["retrieval_latency"] += retrieval_time
         buckets[key]["generation_latency"] += generation_time
-        buckets[key]["relevance_sum"] += relevance_score
+        # A record without scored sources has no relevance, not a relevance
+        # of 0; averaging it in made the chart disagree with the summary cards.
+        if relevance_raw is not None:
+            buckets[key]["relevance_sum"] += _coerce_metric_float(relevance_raw)
+            buckets[key]["relevance_count"] += 1
         buckets[key]["docs_retrieved"] += docs_retrieved
 
     # Convert to sorted list
@@ -638,7 +656,7 @@ def get_metrics_history(
             "avg_latency": round(b["total_latency"] / count, 3) if count else 0,
             "avg_retrieval_latency": round(b["retrieval_latency"] / count, 3) if count else 0,
             "avg_generation_latency": round(b["generation_latency"] / count, 3) if count else 0,
-            "avg_relevance": round(b["relevance_sum"] / count, 3) if count else 0,
+            "avg_relevance": round(b["relevance_sum"] / b["relevance_count"], 3) if b["relevance_count"] else 0,
             "avg_docs_retrieved": round(b["docs_retrieved"] / count, 2) if count else 0,
         })
 

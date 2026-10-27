@@ -5,14 +5,35 @@ Tracks and logs RAG pipeline metrics for continuous improvement
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
 
+from backend.log_redaction import user_ref
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _pseudonymize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """The JSONL log is kept on disk and shown in admin views: no raw usernames."""
+    meta = dict(metadata or {})
+    if meta.get("user_id"):
+        meta["user_id"] = user_ref(meta["user_id"])
+    return meta
+
+
+def is_live_record(record: Dict[str, Any]) -> bool:
+    """True for real user traffic; False for evaluation-suite runs.
+
+    The evaluation suite writes to the same log (metadata.mode="evaluation").
+    Counting those as live queries inflated volume and skewed the latency and
+    relevance numbers on the admin evaluation dashboard.
+    """
+    meta = record.get("metadata") or {}
+    return meta.get("mode") != "evaluation"
 
 
 class RAGEvaluationMetrics:
@@ -45,7 +66,7 @@ class RAGEvaluationMetrics:
         """Log a query when the caller already has raw runtime metrics."""
         try:
             metrics_record = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "query": query,
                 "response": response[:2000],
                 "context_passages": (context_passages or [])[:5],
@@ -67,7 +88,7 @@ class RAGEvaluationMetrics:
                     "total_time_seconds": round(retrieval_time + generation_time, 3),
                 },
                 "quality_metrics": quality_metrics,
-                "metadata": metadata or {},
+                "metadata": _pseudonymize_metadata(metadata),
             }
 
             self._append_record(metrics_record)
@@ -162,7 +183,7 @@ class RAGEvaluationMetrics:
             ) / max(num_retrieved, 1)
 
             metrics_record = {
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "query": query,
                 "type": "retrieval_only",
                 "retrieval_metrics": {
@@ -200,50 +221,38 @@ class RAGEvaluationMetrics:
                     except json.JSONDecodeError:
                         continue
 
-            # Take last N records
-            records = records[-last_n:]
+            # Live traffic only, then the last N of it.
+            records = [r for r in records if is_live_record(r)][-last_n:]
 
             if not records:
                 return {"error": "No valid records found"}
 
-            # Calculate summary statistics
-            total_queries = len(records)
+            def values(section: str, key: str) -> List[float]:
+                """Values present on a record; a missing metric is not a zero."""
+                out = []
+                for r in records:
+                    value = (r.get(section) or {}).get(key)
+                    try:
+                        if value is not None:
+                            out.append(float(value))
+                    except (TypeError, ValueError):
+                        continue
+                return out
 
-            def safe_metric(value: Any) -> float:
-                try:
-                    if value is None:
-                        return 0.0
-                    return float(value)
-                except (TypeError, ValueError):
-                    return 0.0
+            def mean(vals: List[float]) -> float:
+                return sum(vals) / len(vals) if vals else 0.0
 
-            avg_retrieval_time = sum(
-                safe_metric(r.get('retrieval_metrics', {}).get('retrieval_time_seconds', 0))
-                for r in records
-            ) / total_queries
-
-            avg_generation_time = sum(
-                safe_metric(r.get('generation_metrics', {}).get('generation_time_seconds', 0))
-                for r in records
-            ) / total_queries
-
-            avg_num_retrieved = sum(
-                safe_metric(r.get('retrieval_metrics', {}).get('num_retrieved', 0))
-                for r in records
-            ) / total_queries
-
-            avg_relevance_score = sum(
-                safe_metric(r.get('retrieval_metrics', {}).get('avg_relevance_score', 0))
-                for r in records
-            ) / total_queries
+            retrieval = values('retrieval_metrics', 'retrieval_time_seconds')
+            generation = values('generation_metrics', 'generation_time_seconds')
+            total = values('end_to_end_metrics', 'total_time_seconds')
 
             return {
-                "total_queries_analyzed": total_queries,
-                "avg_retrieval_time_seconds": round(avg_retrieval_time, 3),
-                "avg_generation_time_seconds": round(avg_generation_time, 3),
-                "avg_total_time_seconds": round(avg_retrieval_time + avg_generation_time, 3),
-                "avg_num_retrieved": round(avg_num_retrieved, 2),
-                "avg_relevance_score": round(avg_relevance_score, 4),
+                "total_queries_analyzed": len(records),
+                "avg_retrieval_time_seconds": round(mean(retrieval), 3),
+                "avg_generation_time_seconds": round(mean(generation), 3),
+                "avg_total_time_seconds": round(mean(total) if total else mean(retrieval) + mean(generation), 3),
+                "avg_num_retrieved": round(mean(values('retrieval_metrics', 'num_retrieved')), 2),
+                "avg_relevance_score": round(mean(values('retrieval_metrics', 'avg_relevance_score')), 4),
             }
 
         except Exception as e:

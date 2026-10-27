@@ -151,11 +151,37 @@ def test_summary_stats_ignore_nullable_metric_values(tmp_path):
 
     summary = RAGEvaluationMetrics(str(log_file)).get_summary_stats(last_n=10)
 
+    # A missing metric is excluded from its average, not counted as 0.
     assert summary["total_queries_analyzed"] == 2
-    assert summary["avg_retrieval_time_seconds"] == 0.25
-    assert summary["avg_generation_time_seconds"] == 0.75
-    assert summary["avg_num_retrieved"] == 2.0
-    assert summary["avg_relevance_score"] == 0.4
+    assert summary["avg_retrieval_time_seconds"] == 0.5
+    assert summary["avg_generation_time_seconds"] == 1.5
+    assert summary["avg_num_retrieved"] == 4.0
+    assert summary["avg_relevance_score"] == 0.8
+
+
+def test_summary_stats_exclude_evaluation_suite_runs(tmp_path):
+    log_file = tmp_path / "rag_metrics.jsonl"
+    live = {"metadata": {"mode": "chat"}, "retrieval_metrics": {"avg_relevance_score": 0.9}}
+    suite = {"metadata": {"mode": "evaluation"}, "retrieval_metrics": {"avg_relevance_score": 0.1}}
+    log_file.write_text("\n".join(json.dumps(r) for r in (live, suite, suite)), encoding="utf-8")
+
+    summary = RAGEvaluationMetrics(str(log_file)).get_summary_stats(last_n=10)
+
+    assert summary["total_queries_analyzed"] == 1
+    assert summary["avg_relevance_score"] == 0.9
+
+
+def test_runtime_metrics_log_pseudonymizes_user(tmp_path):
+    from backend.log_redaction import user_ref
+
+    log_file = tmp_path / "rag_metrics.jsonl"
+    RAGEvaluationMetrics(str(log_file)).log_runtime_metrics(
+        query="q", response="a", retrieval_time=0.1, generation_time=0.2,
+        metadata={"mode": "chat", "user_id": "alice"},
+    )
+    record = json.loads(log_file.read_text(encoding="utf-8"))
+    assert record["metadata"]["user_id"] == user_ref("alice")
+    assert record["timestamp"].endswith("+00:00")
 
 
 def test_update_feedback_status_requires_existing_entry(monkeypatch, tmp_path):
