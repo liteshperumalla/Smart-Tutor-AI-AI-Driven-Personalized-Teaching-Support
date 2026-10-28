@@ -1,5 +1,8 @@
 """Registered background jobs.
 
+The worker imports this module to find jobs, so every job must be defined
+here or in a module imported from here.
+
 Keep each job safe to run twice: SQS delivers at least once, and a job
 interrupted by a deploy runs again after its visibility timeout.
 """

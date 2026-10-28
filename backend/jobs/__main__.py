@@ -42,9 +42,15 @@ def main(argv: list[str]) -> int:
         if not config.JOBS_QUEUE_URL:
             print("JOBS_QUEUE_URL is not set; the ping would only run in this process.", file=sys.stderr)
             return 2
-        from backend.jobs import enqueue
+        from backend.jobs.queue import send_to_queue
 
-        print(f"queued ping {enqueue('ping', note=' '.join(argv[1:]))}")
+        # No in-process fallback here: the point is to prove SQS works.
+        try:
+            job_id = send_to_queue("ping", note=" ".join(argv[1:]))
+        except Exception as exc:
+            print(f"could not queue ping: {exc}", file=sys.stderr)
+            return 1
+        print(f"queued ping {job_id}")
         return 0
 
     print(__doc__, file=sys.stderr)

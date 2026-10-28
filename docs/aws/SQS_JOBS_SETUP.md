@@ -1,17 +1,28 @@
 # SQS background jobs
 
 Slow or retry-worthy work (document indexing, notification emails) can run
-outside the request path through `backend/jobs`:
+outside the request path through `backend/jobs`. Define the job in
+`backend/jobs/tasks.py`:
 
 ```python
-from backend.jobs import enqueue, job
-
+# backend/jobs/tasks.py
 @job("example.send_digest")
 def send_digest(user_id: str) -> None:
     ...
+```
+
+and queue it from wherever the work starts:
+
+```python
+from backend.jobs import enqueue
 
 enqueue("example.send_digest", user_id="u-123")
 ```
+
+The worker only knows the jobs that `backend/jobs/tasks.py` registers. A job
+defined in some other module must be imported from `tasks.py`. Otherwise the
+API can queue it, but the worker treats it as unknown, and the message retries
+until it lands in the dead-letter queue.
 
 | `JOBS_QUEUE_URL` | Where the job runs |
 |---|---|
@@ -19,7 +30,10 @@ enqueue("example.send_digest", user_id="u-123")
 | set | sent to SQS; the `smart-tutor-worker` container runs it |
 
 If SQS can't be reached when a job is queued, `enqueue` logs a warning and
-runs the job in-process instead, so work isn't lost.
+runs the job in a thread in the API process instead. **That fallback is best
+effort:** if the API restarts before the thread finishes, the job is lost,
+since no SQS message exists to retry it. Watch for `Could not queue job` in
+the backend logs.
 
 **Cost.** Within the always-free 1M SQS requests a month. An idle worker
 long-polls about three times a minute: roughly 130k requests a month even
@@ -47,10 +61,21 @@ DLQ after 5 failed receives.
    also runs on any push to `main` that changes the workflow or its script.
    The run summary shows the queue URL.
 
-   The script attaches the SQS policy to the instance's IAM role. If the
-   instance has no instance profile it prints a warning and the policy JSON
-   instead. Then attach that JSON to whichever IAM identity the backend uses
-   (the IAM user whose keys are in `~/smart-tutor.env`).
+   The script finds the production instance the way **Production Deploy**
+   does: from `EC2_INSTANCE_ID`, then the `EC2_INSTANCE_NAME` tag, then
+   `EC2_HOST`. The lookup is read-only, so it never starts the instance. The
+   script attaches the SQS policy to that instance's IAM role. If the instance
+   has no instance profile, it prints a warning and the policy JSON instead.
+   Then attach that JSON to whichever IAM identity the backend uses (the IAM
+   user whose keys are in `~/smart-tutor.env`).
+
+   If an AWS call fails, the run summary names the call and AWS's message.
+   An `AccessDenied` there means the IAM user behind the repository's
+   `AWS_ACCESS_KEY_ID` needs these permissions:
+   - `sqs:GetQueueUrl`, `sqs:CreateQueue`, `sqs:SetQueueAttributes` and
+     `sqs:GetQueueAttributes` on `smart-tutor-jobs*`.
+   - `ec2:DescribeInstances`.
+   - `iam:GetInstanceProfile`, plus `iam:PutRolePolicy` on the instance role.
 
 2. **Set the switch.** Settings → Secrets and variables → Actions →
    *Variables* → `JOBS_QUEUE_URL` = the queue URL from step 1.
@@ -66,6 +91,10 @@ DLQ after 5 failed receives.
    docker exec smart-tutor-backend python -m backend.jobs ping hello
    docker logs smart-tutor-worker --tail 20   # "Jobs ping received: hello" ... "done"
    ```
+
+   `ping` sends straight to SQS with no in-process fallback. If it prints
+   `could not queue ping: ...` and exits 1, the API can't reach the queue.
+   Check the URL, the region and the role's permissions.
 
    The worker's logs also go to CloudWatch: log group `/smart-ai-tutor/backend`,
    stream `worker`.
