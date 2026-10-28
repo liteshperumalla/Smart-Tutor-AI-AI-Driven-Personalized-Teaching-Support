@@ -37,5 +37,9 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION || 'us-east-1' }}
-          INSTANCE_ID: i-0c35826b951e9dd6f
+          # The same target settings Production Deploy uses, so the policy lands
+          # on the role of the instance that actually runs the API and worker.
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+          EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+          EC2_HOST: ${{ secrets.EC2_HOST || '' }}
         run: scripts/ci/setup_sqs_jobs_queue.sh

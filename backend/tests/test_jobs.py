@@ -98,6 +98,19 @@ class TestEnqueue:
             job("test.record")(lambda: None)
 
 
+class TestSqsClient:
+    def test_fails_fast_but_outlasts_the_long_poll(self):
+        queue.sqs_client.cache_clear()
+        try:
+            cfg = queue.sqs_client("us-east-1").meta.config
+        finally:
+            queue.sqs_client.cache_clear()
+        assert cfg.connect_timeout <= 5
+        assert cfg.read_timeout > 20
+        # botocore stores max_attempts (retries) as total_max_attempts (retries + 1).
+        assert cfg.retries["total_max_attempts"] <= 3
+
+
 class TestWorker:
     def make_worker(self, client, **kwargs):
         return Worker(QUEUE_URL, "us-east-1", client=client, alive_file=None, **kwargs)
@@ -123,8 +136,14 @@ class TestWorker:
             message("does.not.exist"),
             message(v=99),
             {"MessageId": "m-1", "ReceiptHandle": "rh-1", "Body": "not json"},
+            {"MessageId": "m-1", "ReceiptHandle": "rh-1", "Body": "[1]"},
+            {"MessageId": "m-1", "ReceiptHandle": "rh-1", "Body": "123"},
+            {"MessageId": "m-1", "ReceiptHandle": "rh-1", "Body": "null"},
+            message(args=None, job=["test.record"]),
+            {"MessageId": "m-1", "ReceiptHandle": "rh-1",
+             "Body": json.dumps({"v": 1, "id": "j", "job": "test.record", "args": [1]})},
         ],
-        ids=["unknown-job", "future-version", "malformed"],
+        ids=["unknown-job", "future-version", "malformed", "array", "number", "null", "job-not-str", "args-not-object"],
     )
     def test_unprocessable_messages_are_left_for_the_dlq(self, msg):
         client = MagicMock()
@@ -162,6 +181,16 @@ class TestWorker:
         assert kwargs["WaitTimeSeconds"] == 20
         assert calls == [{"n": 1}]
 
+    def test_an_unexpected_error_in_handle_does_not_crash_the_loop(self):
+        client = MagicMock()
+        client.receive_message.return_value = {"Messages": [message()]}
+        worker = self.make_worker(client)
+        with patch.object(worker, "handle", side_effect=AttributeError("surprise")):
+            assert worker.poll_once() is True
+        client.change_message_visibility.assert_called_once_with(
+            QueueUrl=QUEUE_URL, ReceiptHandle="rh-1", VisibilityTimeout=30
+        )
+
     def test_receive_errors_do_not_crash_the_loop(self):
         client = MagicMock()
         client.receive_message.side_effect = RuntimeError("throttled")
@@ -195,6 +224,11 @@ class TestCli:
         old = alive.stat().st_mtime - 300
         os.utime(alive, (old, old))
         assert jobs_cli(["healthcheck"]) == 1  # stuck
+
+    def test_ping_fails_when_sqs_is_unreachable(self, with_queue, capsys):
+        with_queue.send_message.side_effect = RuntimeError("AccessDenied")
+        assert jobs_cli(["ping"]) == 1
+        assert "AccessDenied" in capsys.readouterr().err
 
     def test_ping_queues_a_ping_job(self, with_queue):
         assert jobs_cli(["ping", "hello"]) == 0
