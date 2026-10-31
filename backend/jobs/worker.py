@@ -88,19 +88,30 @@ class Worker:
 
         messages = response.get("Messages", [])
         for message in messages:
-            self.handle(message)
+            try:
+                self.handle(message)
+            except Exception as exc:
+                # handle() shouldn't raise; if it does, keep the worker alive and
+                # let the message retry towards the DLQ instead of crash-looping.
+                logger.error(f"Unexpected error handling message {message.get('MessageId')}: {exc!r}", exc_info=True)
+                if "ReceiptHandle" in message:
+                    self._retry_later(message["ReceiptHandle"], _attempt(message))
         return bool(messages)
 
     def handle(self, message: dict[str, Any]) -> bool:
         """Run one message's job. Deletes it and returns True on success."""
         receipt = message["ReceiptHandle"]
-        attempt = int(message.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
+        attempt = _attempt(message)
 
         try:
             payload = json.loads(message["Body"])
+            if not isinstance(payload, dict):
+                raise TypeError(f"message body is {type(payload).__name__}, not an object")
             if payload.get("v") != MESSAGE_VERSION:
                 raise ValueError(f"unsupported message version {payload.get('v')!r}")
             name, job_id, args = payload["job"], payload["id"], payload.get("args") or {}
+            if not isinstance(name, str) or not isinstance(args, dict):
+                raise TypeError("job must be a string and args an object")
             func = get_job(name)
         except (ValueError, KeyError, TypeError, UnknownJobError) as exc:
             logger.error(f"Unprocessable job message {message.get('MessageId')} (attempt {attempt}): {exc!r}")
@@ -164,3 +175,10 @@ class Worker:
                 self.alive_file.touch()
             except OSError:
                 pass
+
+
+def _attempt(message: dict[str, Any]) -> int:
+    try:
+        return int(message.get("Attributes", {}).get("ApproximateReceiveCount", "1"))
+    except (TypeError, ValueError):
+        return 1

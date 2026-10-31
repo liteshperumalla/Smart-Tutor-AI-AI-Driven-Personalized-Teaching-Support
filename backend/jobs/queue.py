@@ -3,10 +3,16 @@
 A job is a plain function registered with ``@job("name")``. Its keyword
 arguments must be JSON-serialisable, since they travel in the SQS message.
 
+Define jobs in ``backend/jobs/tasks.py``, or in a module that file imports:
+the worker only knows the jobs that module registers, and treats any other
+name as unknown (it retries and ends up in the dead-letter queue).
+
 With ``config.JOBS_QUEUE_URL`` set, ``enqueue`` sends the job to SQS and the
 worker container (``python -m backend.jobs worker``) runs it. Without it, or
 if SQS can't be reached, the job runs in a daemon thread in this process,
-which is how background work ran before the queue existed.
+which is how background work ran before the queue existed. That fallback is
+best effort: if the API process restarts before the thread finishes, the job
+is lost, since there is no SQS message to retry.
 
 SQS delivers at least once, so a job may run more than once: jobs must be
 safe to repeat.
@@ -64,8 +70,15 @@ def _load_tasks() -> None:
 @lru_cache(maxsize=4)
 def sqs_client(region: str):
     import boto3
+    from botocore.config import Config
 
-    return boto3.client("sqs", region_name=region)
+    # Fail fast so enqueue() falls back quickly when SQS is unreachable.
+    # read_timeout stays above the worker's 20 s long poll.
+    return boto3.client(
+        "sqs",
+        region_name=region,
+        config=Config(connect_timeout=3, read_timeout=30, retries={"mode": "standard", "max_attempts": 2}),
+    )
 
 
 def build_message(name: str, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -90,15 +103,33 @@ def enqueue(name: str, **kwargs: Any) -> str:
 
     if config.JOBS_QUEUE_URL:
         try:
-            sqs_client(config.JOBS_REGION).send_message(QueueUrl=config.JOBS_QUEUE_URL, MessageBody=body)
+            _send(body)
             logger.info(f"Queued job {name} ({message['id']})")
             return message["id"]
         except Exception as exc:
-            # Don't lose the work because the queue is unreachable.
+            # Best effort rather than failing the caller; see the module docstring.
             logger.warning(f"Could not queue job {name} ({message['id']}), running it in-process: {exc}")
 
     _run_in_thread(func, name, message["id"], kwargs)
     return message["id"]
+
+
+def send_to_queue(name: str, **kwargs: Any) -> str:
+    """Send job ``name`` to SQS with no in-process fallback; SQS errors raise.
+
+    For checks such as ``python -m backend.jobs ping`` that must fail when
+    the queue can't be reached. Requires ``config.JOBS_QUEUE_URL``.
+    """
+    if not config.JOBS_QUEUE_URL:
+        raise RuntimeError("JOBS_QUEUE_URL is not set")
+    get_job(name)
+    message = build_message(name, kwargs)
+    _send(json.dumps(message))
+    return message["id"]
+
+
+def _send(body: str) -> None:
+    sqs_client(config.JOBS_REGION).send_message(QueueUrl=config.JOBS_QUEUE_URL, MessageBody=body)
 
 
 def _run_in_thread(func: JobFunc, name: str, job_id: str, kwargs: dict[str, Any]) -> None:

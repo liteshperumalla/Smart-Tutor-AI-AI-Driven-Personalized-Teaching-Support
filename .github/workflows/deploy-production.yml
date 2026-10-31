@@ -779,7 +779,10 @@ jobs:
               exit 1
             fi
 
-            replace_jobs_worker
+            # The new API is already live, so clean up even if the worker fails,
+            # then fail the step with the worker's status.
+            worker_status=0
+            replace_jobs_worker || worker_status=$?
 
             echo "=== Cleaning up candidate container ==="
             docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
@@ -787,6 +790,11 @@ jobs:
 
             echo "=== Pruning all unused images/layers ==="
             docker_with_timeout 10m docker image prune -af || true
+
+            if [ "$worker_status" -ne 0 ]; then
+              echo "::error::Backend deployed, but the jobs worker failed to start (see above)."
+              exit "$worker_status"
+            fi
 
       - name: Revoke temporary SSH ingress
         if: ${{ always() && steps.target.outputs.deploy_backend == 'true' }}
