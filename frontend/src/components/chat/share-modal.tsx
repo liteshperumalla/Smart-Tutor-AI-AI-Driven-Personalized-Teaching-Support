@@ -1,13 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import {
-  X,
-  Copy,
-  Check,
-  Link2,
-  MessageCircle,
-} from "lucide-react";
+import { X, Copy, Check, MessageCircle } from "lucide-react";
 import { shareChatSession, ensureAbsoluteAppUrl, trackChatShareAction } from "@/lib/api";
 
 // Social media icons as simple SVG components

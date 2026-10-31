@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MoreHorizontal, Trash2, Edit2, Pin, Archive, FileDown, Paperclip, X, FileText, Image, Share2 } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit2, Pin, Archive, Paperclip, X, FileText, Image, Share2 } from "lucide-react";
 import { type UploadedFileItem } from "@/components/chat/file-preview-grid";
 
 interface ChatHeaderActionsProps {

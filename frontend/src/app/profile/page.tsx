@@ -22,10 +22,7 @@ import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import { PageShell } from "@/components/page-shell";
 import { PageHero } from "@/components/page-hero";
-import {
-  User, Camera, Mail, Phone, Calendar, Trophy, Clock,
-  MessageSquare, Bug, Save, Lock, Shield, Trash2, StickyNote, ShieldAlert, BarChart3, Users, Settings
-} from "lucide-react";
+import { User, MessageSquare, Shield, ShieldAlert, BarChart3, Users } from "lucide-react";
 import { toast } from "sonner";
 import { SkeletonRegion } from "@/components/skeleton";
 

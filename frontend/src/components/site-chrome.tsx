@@ -6,19 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import { LogoMark } from "@/components/logo-mark";
-import {
-  listChatSessions,
-  ChatSessionDTO,
-  renameChatSession,
-  deleteChatSession,
-  fetchChatSession,
-  shareChatSession,
-  createChatSession,
-  pinChatSession,
-  archiveChatSession,
-  fetchCourses,
-  logout,
-} from "@/lib/api";
+import { listChatSessions, ChatSessionDTO, renameChatSession, deleteChatSession, shareChatSession, createChatSession, pinChatSession, archiveChatSession, fetchCourses, logout } from "@/lib/api";
 import { clearAuthToken } from "@/lib/auth";
 import { loginPathFor } from "@/lib/safe-next";
 import { CHAT_SESSION_SELECTED_EVENT, CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";

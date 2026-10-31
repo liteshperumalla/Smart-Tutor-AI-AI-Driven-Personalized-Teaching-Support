@@ -33,38 +33,11 @@ import {
   runDatasetQuality,
   DatasetQualityResult,
 } from "@/lib/api";
-import {
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+import { AreaChart, Area, BarChart, Bar, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useUser } from "@/hooks/useUser";
 import { PageShell } from "@/components/page-shell";
-import {
-  BarChart3, Play, RotateCcw, Filter, Clock, Target, Brain, Trash2,
-  Zap, Database, Server, Activity, TrendingUp, AlertTriangle, CheckCircle,
-  Cpu, HardDrive, Gauge, RefreshCw, Cloud, Box, Key, DollarSign,
-  FileText, Layers, Shield, Info, Download, Calendar, ShieldAlert,
-  Lock, GitBranch, Users
-} from "lucide-react";
+import { BarChart3, Play, RotateCcw, Filter, Clock, Target, Brain, Trash2, Zap, Database, Server, Activity, TrendingUp, AlertTriangle, CheckCircle, Cpu, HardDrive, Gauge, RefreshCw, Cloud, Box, DollarSign, FileText, Layers, Shield, Download, Calendar, Lock, GitBranch, Users } from "lucide-react";
 import { Skeleton, SkeletonDashboard, SkeletonList, SkeletonRegion, SkeletonStatGrid } from "@/components/skeleton";
 
 // Recharts tooltips follow the theme: surface card, 1px border, theme text.

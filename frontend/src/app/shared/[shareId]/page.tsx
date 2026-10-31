@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { getSharedChatSession, ChatMessageDTO, ChatSessionDTO } from "@/lib/api";
+import { getSharedChatSession, ChatSessionDTO } from "@/lib/api";
 import { PageShell } from "@/components/page-shell";
 import { SkeletonRegion } from "@/components/skeleton";
 
