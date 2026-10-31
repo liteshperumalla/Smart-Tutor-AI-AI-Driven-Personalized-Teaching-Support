@@ -34,13 +34,13 @@ const REQUEST_HEADER_ALLOWLIST = new Set([
 ]);
 
 // Exclude hop-by-hop headers and backend transport details. Set-Cookie is
-// copied separately because it can occur more than once.
+// copied separately because it can occur more than once. fetch() hands back
+// the body already decompressed, so content-encoding and content-length
+// (which describe the compressed bytes, e.g. from Cloudflare) are dropped.
 const RESPONSE_HEADER_ALLOWLIST = new Set([
   "cache-control",
   "content-disposition",
-  "content-encoding",
   "content-language",
-  "content-length",
   "content-range",
   "content-security-policy",
   "content-type",
@@ -147,15 +147,19 @@ function backendUnavailableResponse() {
   );
 }
 
-// Statuses Cloudflare itself returns when it can't reach the origin
-// (530 = tunnel not connected). The backend's own errors are JSON, so only an
-// HTML body from Cloudflare counts.
-const CLOUDFLARE_ORIGIN_ERROR_STATUSES = new Set([502, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530]);
+// Statuses only Cloudflare returns, when it can't reach the origin (530 =
+// tunnel not connected). Cloudflare may answer them as HTML or, given
+// Accept: application/json, as JSON, so the status alone decides.
+const CLOUDFLARE_ONLY_ERROR_STATUSES = new Set([520, 521, 522, 523, 524, 525, 526, 527, 530]);
+// 502/504 can also be the backend's own JSON errors; only Cloudflare's HTML
+// page counts for these.
+const CLOUDFLARE_HTML_ERROR_STATUSES = new Set([502, 504]);
 
 function isCloudflareOriginError(response: Response) {
+  if ((response.headers.get("server") || "").toLowerCase() !== "cloudflare") return false;
+  if (CLOUDFLARE_ONLY_ERROR_STATUSES.has(response.status)) return true;
   return (
-    CLOUDFLARE_ORIGIN_ERROR_STATUSES.has(response.status) &&
-    (response.headers.get("server") || "").toLowerCase() === "cloudflare" &&
+    CLOUDFLARE_HTML_ERROR_STATUSES.has(response.status) &&
     (response.headers.get("content-type") || "").includes("text/html")
   );
 }

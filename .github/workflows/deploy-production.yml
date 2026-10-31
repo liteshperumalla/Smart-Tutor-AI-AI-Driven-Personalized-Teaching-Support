@@ -484,6 +484,22 @@ jobs:
             # The tunnel hostname arrives as the Host header of tunnelled requests.
             echo "TRUSTED_HOSTS=127.0.0.1,localhost,${{ steps.ec2-target.outputs.host }}${BACKEND_PUBLIC_HOSTNAME:+,${BACKEND_PUBLIC_HOSTNAME}}" >> ~/smart-tutor.env
 
+            # Behind the tunnel, cloudflared (on the backend's Docker network)
+            # sets X-Forwarded-Proto: https. Uvicorn only trusts forwarded
+            # headers from FORWARDED_ALLOW_IPS (default 127.0.0.1), so without
+            # this ENFORCE_HTTPS would redirect every tunnelled request.
+            sed -i '/^FORWARDED_ALLOW_IPS=/d' ~/smart-tutor.env
+            if [ -n "${BACKEND_PUBLIC_HOSTNAME:-}" ]; then
+              backend_subnet="$(docker network inspect smart-tutor_smart-tutor-network \
+                --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | awk '{print $1}' || true)"
+              if [ -n "$backend_subnet" ]; then
+                echo "FORWARDED_ALLOW_IPS=127.0.0.1,${backend_subnet}" >> ~/smart-tutor.env
+                echo "Trusting forwarded headers from ${backend_subnet} (cloudflared)."
+              else
+                echo "::warning::Could not read the smart-tutor network subnet; forwarded headers stay limited to 127.0.0.1."
+              fi
+            fi
+
             docker_with_timeout() {
               local seconds="$1"
               shift
@@ -693,10 +709,19 @@ jobs:
               fi
 
               echo "=== Starting Cloudflare Tunnel ==="
-              (umask 077 && printf 'TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > "$env_file")
-              docker_with_timeout 5m docker pull "$CLOUDFLARED_IMAGE"
+              # Explicit failure checks: set -e doesn't apply inside a function
+              # called as `ensure_tunnel || ...`. Pull before removing the old
+              # container, so a failed pull leaves the running tunnel alone.
+              if ! docker_with_timeout 5m docker pull "$CLOUDFLARED_IMAGE"; then
+                echo "::error::Failed to pull ${CLOUDFLARED_IMAGE}; the existing tunnel container is unchanged."
+                return 1
+              fi
+              if ! (umask 077 && printf 'TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > "$env_file"); then
+                echo "::error::Could not write ${env_file}; the existing tunnel container is unchanged."
+                return 1
+              fi
               docker_force_remove smart-tutor-tunnel
-              docker run -d \
+              if ! docker run -d \
                 --name smart-tutor-tunnel \
                 --restart unless-stopped \
                 --network smart-tutor_smart-tutor-network \
@@ -709,7 +734,10 @@ jobs:
                 --log-opt awslogs-create-group=true \
                 -p 127.0.0.1:20241:20241 \
                 "$CLOUDFLARED_IMAGE" \
-                tunnel --no-autoupdate --metrics 0.0.0.0:20241 run
+                tunnel --no-autoupdate --metrics 0.0.0.0:20241 run; then
+                echo "::error::Failed to start the Cloudflare Tunnel container."
+                return 1
+              fi
 
               # /ready answers 200 once the tunnel holds a connection to Cloudflare.
               for i in $(seq 1 12); do

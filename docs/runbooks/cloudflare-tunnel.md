@@ -25,8 +25,20 @@ web port once the cutover is done.
 - waits for `cloudflared`'s `/ready` (connected to Cloudflare) and fails the
   deploy if it doesn't connect within a minute.
 
-When `BACKEND_PUBLIC_HOSTNAME` is set, it is added to `TRUSTED_HOSTS`;
-the backend rejects requests whose `Host` isn't listed.
+When `BACKEND_PUBLIC_HOSTNAME` is set:
+
+- it is added to `TRUSTED_HOSTS`; the backend rejects requests whose `Host`
+  isn't listed;
+- `FORWARDED_ALLOW_IPS` is set to the backend Docker network's subnet, so
+  Uvicorn trusts the `X-Forwarded-Proto: https` that `cloudflared` sends.
+  Without it, turning on `ENFORCE_HTTPS` would redirect every tunnelled
+  request.
+
+The Vercel proxy treats Cloudflare's own "origin unreachable" responses
+(520–527, 530, or an HTML 502/504) like a connection failure, so a stopped
+instance still shows the maintenance notice. It also drops `content-encoding`
+and `content-length` from proxied responses, since `fetch()` has already
+decompressed the body Cloudflare compressed.
 
 Without the secret nothing changes.
 
@@ -53,8 +65,9 @@ You need a domain whose DNS is on Cloudflare (any plan, including Free).
    ```
 5. **Switch Vercel to HTTPS:** Vercel project → Settings → Environment
    Variables → `BACKEND_API_BASE_URL` = `https://api.example.com` (Production),
-   then redeploy the frontend. Set the GitHub variable `PRODUCTION_API_URL` to
-   the same URL so the synthetic monitor and post-deploy smoke test use it.
+   then redeploy the frontend (variable changes only reach new
+   deployments). Set the GitHub variable `PRODUCTION_API_URL` to the same
+   URL so the synthetic monitor and post-deploy smoke test use it.
 6. **Close the public HTTP path** once the site works through the tunnel:
    EC2 → the instance's security group → delete the inbound rules for ports
    80 and 8010 (keep 22; deploys open and revoke it themselves). The backend
@@ -62,9 +75,16 @@ You need a domain whose DNS is on Cloudflare (any plan, including Free).
 
 ## Rolling back
 
-Set `BACKEND_API_BASE_URL` on Vercel back to the previous URL and re-add the
-security group rules. To remove the tunnel, delete the
-`CLOUDFLARE_TUNNEL_TOKEN` secret and run on the instance:
+In this order, so the site keeps working throughout:
+
+1. Re-add the security group rules for ports 80 and 8010.
+2. Set Vercel's `BACKEND_API_BASE_URL` back to the previous URL and
+   **redeploy the frontend**: Vercel applies variable changes only to new
+   deployments. Check the site works.
+3. Set the GitHub variable `PRODUCTION_API_URL` back to the previous URL
+   (synthetic monitor, post-deploy smoke test).
+4. To remove the tunnel, delete the `CLOUDFLARE_TUNNEL_TOKEN` secret and the
+   `BACKEND_PUBLIC_HOSTNAME` variable, then run on the instance:
 
 ```bash
 docker rm -f smart-tutor-tunnel && rm -f ~/smart-tutor-tunnel.env

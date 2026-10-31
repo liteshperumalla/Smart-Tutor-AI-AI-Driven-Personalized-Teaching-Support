@@ -152,4 +152,36 @@ describe("backend proxy contract", () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({ detail: "upstream model error" });
   });
+
+  it("treats Cloudflare's JSON tunnel error as the backend being unavailable", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: 1033, title: "Argo Tunnel error" }), {
+        status: 530,
+        headers: { server: "cloudflare", "content-type": "application/json" },
+      })
+    );
+    const response = await GET(
+      new NextRequest("http://localhost:4000/api/backend/health"),
+      { params: { path: ["health"] } }
+    );
+
+    expect(response.status).toBe(503);
+  });
+
+  it("drops encoding headers that describe the compressed upstream body", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: { "content-type": "application/json", "content-encoding": "br", "content-length": "17" },
+      })
+    );
+    const response = await GET(
+      new NextRequest("http://localhost:4000/api/backend/health"),
+      { params: { path: ["health"] } }
+    );
+
+    expect(response.headers.get("content-encoding")).toBeNull();
+    expect(response.headers.get("content-length")).toBeNull();
+    await expect(response.json()).resolves.toEqual({ status: "ok" });
+  });
 });
