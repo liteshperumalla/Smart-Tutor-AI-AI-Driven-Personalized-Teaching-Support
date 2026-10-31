@@ -152,7 +152,7 @@ Live benchmark on 20 exam-style questions (Claude 3 Haiku): mean latency 23.5 s,
 | Embeddings & vectors | Amazon Titan Text v2 (1,024-dim), custom S3 vector store |
 | Data | PostgreSQL, Redis, Neo4j Aura, S3, DynamoDB (hybrid storage option) |
 | Observability | Langfuse v4, PostHog, Prometheus, Grafana (+ Grafana Cloud), Alertmanager → Slack, CloudWatch Logs |
-| Infra & delivery | Docker, AWS EC2, Secrets Manager, GHCR, GitHub Actions; Terraform, Helm and Kubernetes manifests for a cluster deployment |
+| Infra & delivery | Docker, AWS EC2, Vercel, Secrets Manager, GHCR, GitHub Actions. Terraform, Helm and Kubernetes manifests describe a planned cluster deployment that is not live. |
 
 ---
 
@@ -209,7 +209,7 @@ Common tasks: `make test` (all tests), `make lint`, `make typecheck`, `make secu
 ├── e2e/                     Playwright end-to-end tests
 ├── scripts/                 ops, S3 vector index build, CI helpers, synthetic monitor
 ├── monitoring/              Prometheus rules, Grafana dashboards, Alertmanager, SLOs
-├── terraform/ k8s/ helm/ gitops/   infrastructure as code and cluster deployment
+├── terraform/ k8s/ helm/ gitops/   planned cluster deployment (reference, not live)
 ├── chaos-engineering/ compliance/  resilience experiments, compliance policies
 ├── docker/                  nginx, entrypoint, DB init · docker-compose*.yml at the root
 ├── docs/                    architecture (+ diagram sources), ADRs, runbooks, guides, reports

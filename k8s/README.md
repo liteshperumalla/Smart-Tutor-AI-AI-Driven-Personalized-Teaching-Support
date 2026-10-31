@@ -1,5 +1,10 @@
 # Kubernetes Deployment Manifests
 
+> **Status: not the live deployment.** Production runs on a single EC2 instance
+> (Docker, deployed by `.github/workflows/deploy-production.yml`) with the
+> frontend on Vercel; see the root README. These manifests describe a cluster
+> deployment that is not running, and CI does not validate them.
+
 Production-grade Kubernetes manifests for Smart AI Tutor platform.
 
 ## 📋 Overview
