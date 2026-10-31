@@ -34,13 +34,13 @@ const REQUEST_HEADER_ALLOWLIST = new Set([
 ]);
 
 // Exclude hop-by-hop headers and backend transport details. Set-Cookie is
-// copied separately because it can occur more than once.
+// copied separately because it can occur more than once. fetch() hands back
+// the body already decompressed, so content-encoding and content-length
+// (which describe the compressed bytes, e.g. from Cloudflare) are dropped.
 const RESPONSE_HEADER_ALLOWLIST = new Set([
   "cache-control",
   "content-disposition",
-  "content-encoding",
   "content-language",
-  "content-length",
   "content-range",
   "content-security-policy",
   "content-type",
@@ -119,6 +119,49 @@ function appendResponseHeaders(target: Headers, source: Headers) {
   for (const cookie of setCookies) {
     target.append("set-cookie", cookie);
   }
+}
+
+/**
+ * The backend is unreachable. This is expected during the scheduled stop
+ * window (see lib/maintenance + .github/workflows/ec2-schedule.yml), and
+ * otherwise indicates a real outage. Either way, return a clean 503 with a
+ * classified reason instead of letting the error surface as a 500.
+ */
+function backendUnavailableResponse() {
+  const { isDown, resumesLabel } = getMaintenanceState();
+  return new Response(
+    JSON.stringify({
+      detail: isDown
+        ? `Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT.${resumesLabel ? ` Service resumes ${resumesLabel}.` : ""}`
+        : "Backend temporarily unavailable. Please try again shortly.",
+      reason: isDown ? "scheduled_maintenance" : "backend_unavailable",
+      resumes: isDown ? resumesLabel : null,
+    }),
+    {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "300",
+      },
+    }
+  );
+}
+
+// Statuses only Cloudflare returns, when it can't reach the origin (530 =
+// tunnel not connected). Cloudflare may answer them as HTML or, given
+// Accept: application/json, as JSON, so the status alone decides.
+const CLOUDFLARE_ONLY_ERROR_STATUSES = new Set([520, 521, 522, 523, 524, 525, 526, 527, 530]);
+// 502/504 can also be the backend's own JSON errors; only Cloudflare's HTML
+// page counts for these.
+const CLOUDFLARE_HTML_ERROR_STATUSES = new Set([502, 504]);
+
+function isCloudflareOriginError(response: Response) {
+  if ((response.headers.get("server") || "").toLowerCase() !== "cloudflare") return false;
+  if (CLOUDFLARE_ONLY_ERROR_STATUSES.has(response.status)) return true;
+  return (
+    CLOUDFLARE_HTML_ERROR_STATUSES.has(response.status) &&
+    (response.headers.get("content-type") || "").includes("text/html")
+  );
 }
 
 function jsonError(status: number, detail: string) {
@@ -241,29 +284,14 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     if (error instanceof Error && error.name === "AbortError") {
       return jsonError(504, "The backend took too long to respond");
     }
-    // The backend is unreachable. This is expected during the scheduled
-    // stop window (see lib/maintenance + .github/workflows/ec2-schedule.yml),
-    // and otherwise indicates a real outage. Either way, return a clean 503
-    // with a classified reason instead of letting the error surface as a 500.
-    const { isDown, resumesLabel } = getMaintenanceState();
-    return new Response(
-      JSON.stringify({
-        detail: isDown
-          ? `Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT.${resumesLabel ? ` Service resumes ${resumesLabel}.` : ""}`
-          : "Backend temporarily unavailable. Please try again shortly.",
-        reason: isDown ? "scheduled_maintenance" : "backend_unavailable",
-        resumes: isDown ? resumesLabel : null,
-      }),
-      {
-        status: 503,
-        headers: {
-          "Content-Type": "application/json",
-          "Retry-After": "300",
-        },
-      }
-    );
+    return backendUnavailableResponse();
   } finally {
     clearTimeout(timeout);
+  }
+  if (isCloudflareOriginError(response)) {
+    // Through the Cloudflare Tunnel, a stopped instance doesn't fail the
+    // fetch: Cloudflare answers with its own HTML error page instead.
+    return backendUnavailableResponse();
   }
   const proxyHeaders = new Headers();
   appendResponseHeaders(proxyHeaders, response.headers);
