@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
@@ -12,25 +12,34 @@ import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
+// The Inter, Geist Mono and Space Grotesk files live in ./fonts (latin
+// subset, variable weight, OFL licensed) instead of coming from
+// next/font/google, so builds no longer download them from Google Fonts.
+
 // Body fallback until the self-hosted Cabinet Grotesk files are in
 // public/fonts (see the @font-face rules in globals.css).
-const inter = Inter({
+const inter = localFont({
+  src: "./fonts/Inter-Variable-latin.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-Variable-latin.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
+  fallback: ["ui-monospace", "monospace"],
+  adjustFontFallback: false,
 });
 
-// Heading fallback behind Clash Display. Loaded through next/font so it is
-// self-hosted with the build; the old Fontshare @import never reached the
-// bundled CSS.
-const spaceGrotesk = Space_Grotesk({
+// Heading fallback behind Clash Display.
+const spaceGrotesk = localFont({
+  src: "./fonts/SpaceGrotesk-Variable-latin.woff2",
   variable: "--font-space-grotesk",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: "300 700",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
