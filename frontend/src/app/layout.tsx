@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { extraSubsetFontFaces } from "./font-subsets";
 import "./globals.css";
 import { SiteChrome } from "@/components/site-chrome";
 import { ThemeProvider } from "@/context/theme-context";
@@ -12,34 +13,40 @@ import { PostHogProvider } from "@/components/posthog-provider";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 
-// The Inter, Geist Mono and Space Grotesk files live in ./fonts (latin
-// subset, variable weight, OFL licensed) instead of coming from
-// next/font/google, so builds no longer download them from Google Fonts.
+// Inter, Geist Mono and Space Grotesk are bundled in public/fonts/google
+// (variable weight, OFL licensed) instead of coming from next/font/google, so
+// builds no longer download them. next/font/local loads and preloads the
+// latin subset; the other subsets are added in <head> from font-subsets.ts.
+// next/font options must be literals, so Google's latin unicode-range is
+// repeated in each call.
 
 // Body fallback until the self-hosted Cabinet Grotesk files are in
 // public/fonts (see the @font-face rules in globals.css).
 const inter = localFont({
-  src: "./fonts/Inter-Variable-latin.woff2",
+  src: "../../public/fonts/google/Inter-Variable-latin.woff2",
   variable: "--font-inter",
   weight: "100 900",
   display: "swap",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" }],
 });
 
 const geistMono = localFont({
-  src: "./fonts/GeistMono-Variable-latin.woff2",
+  src: "../../public/fonts/google/GeistMono-Variable-latin.woff2",
   variable: "--font-geist-mono",
   weight: "100 900",
   display: "swap",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" }],
   fallback: ["ui-monospace", "monospace"],
   adjustFontFallback: false,
 });
 
 // Heading fallback behind Clash Display.
 const spaceGrotesk = localFont({
-  src: "./fonts/SpaceGrotesk-Variable-latin.woff2",
+  src: "../../public/fonts/google/SpaceGrotesk-Variable-latin.woff2",
   variable: "--font-space-grotesk",
   weight: "300 700",
   display: "swap",
+  declarations: [{ prop: "unicode-range", value: "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD" }],
 });
 
 export const metadata: Metadata = {
@@ -75,6 +82,15 @@ export default function RootLayout({
             preload the two faces nearly every page paints with. */}
         <link rel="preload" href="/fonts/ClashDisplay-Bold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         <link rel="preload" href="/fonts/CabinetGrotesk-Regular.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+        {/* Non-latin subsets of the bundled Google fonts (static strings). */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html:
+              extraSubsetFontFaces("Inter", inter.style.fontFamily) +
+              extraSubsetFontFaces("Geist Mono", geistMono.style.fontFamily) +
+              extraSubsetFontFaces("Space Grotesk", spaceGrotesk.style.fontFamily),
+          }}
+        />
       </head>
       <body className="antialiased">
         {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
