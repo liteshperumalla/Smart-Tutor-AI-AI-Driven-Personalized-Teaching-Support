@@ -149,9 +149,27 @@ class IPWhitelistMiddleware:
         await self.app(scope, receive, send)
 
 
+class RequestBodyTooLarge(HTTPException):
+    """Raised from the body stream once it passes the limit.
+
+    An HTTPException so FastAPI's body parsing re-raises it as a 413 instead
+    of wrapping it in a 400 "error parsing the body".
+    """
+
+    def __init__(self, max_size: int):
+        super().__init__(
+            status_code=413,
+            detail=f"Request body too large (max: {max_size} bytes)",
+        )
+
+
 class RequestSizeLimitMiddleware:
     """
-    Limit request body size to prevent DoS attacks
+    Limit request body size to prevent DoS attacks.
+
+    Rejects a declared Content-Length over the limit up front, and also counts
+    the body as it is received, so a chunked or under-declared request is cut
+    off at the limit instead of being buffered or spooled to disk in full.
     """
 
     def __init__(self, app, max_size: int = 10 * 1024 * 1024):  # 10MB default
@@ -175,15 +193,43 @@ class RequestSizeLimitMiddleware:
 
         if content_length > self.max_size:
             logger.warning(f"Request body too large: {content_length} bytes (max: {self.max_size})")
-
-            response = JSONResponse(
-                status_code=413,
-                content={"detail": f"Request body too large (max: {self.max_size} bytes)"}
-            )
-            await response(scope, receive, send)
+            await self._reject(scope, receive, send)
             return
 
-        await self.app(scope, receive, send)
+        received = 0
+        response_started = False
+
+        async def limited_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_size:
+                    logger.warning(f"Request body exceeded {self.max_size} bytes while streaming")
+                    raise RequestBodyTooLarge(self.max_size)
+            return message
+
+        async def tracking_send(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except RequestBodyTooLarge:
+            # Normally FastAPI turns it into a 413 itself; this covers a body
+            # read outside FastAPI's request handling.
+            if response_started:
+                raise
+            await self._reject(scope, receive, send)
+
+    async def _reject(self, scope, receive, send):
+        response = JSONResponse(
+            status_code=413,
+            content={"detail": f"Request body too large (max: {self.max_size} bytes)"}
+        )
+        await response(scope, receive, send)
 
 
 class SlowRequestDetectionMiddleware:
