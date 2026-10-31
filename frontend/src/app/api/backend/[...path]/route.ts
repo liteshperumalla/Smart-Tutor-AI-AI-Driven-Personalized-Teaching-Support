@@ -121,6 +121,45 @@ function appendResponseHeaders(target: Headers, source: Headers) {
   }
 }
 
+/**
+ * The backend is unreachable. This is expected during the scheduled stop
+ * window (see lib/maintenance + .github/workflows/ec2-schedule.yml), and
+ * otherwise indicates a real outage. Either way, return a clean 503 with a
+ * classified reason instead of letting the error surface as a 500.
+ */
+function backendUnavailableResponse() {
+  const { isDown, resumesLabel } = getMaintenanceState();
+  return new Response(
+    JSON.stringify({
+      detail: isDown
+        ? `Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT.${resumesLabel ? ` Service resumes ${resumesLabel}.` : ""}`
+        : "Backend temporarily unavailable. Please try again shortly.",
+      reason: isDown ? "scheduled_maintenance" : "backend_unavailable",
+      resumes: isDown ? resumesLabel : null,
+    }),
+    {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "300",
+      },
+    }
+  );
+}
+
+// Statuses Cloudflare itself returns when it can't reach the origin
+// (530 = tunnel not connected). The backend's own errors are JSON, so only an
+// HTML body from Cloudflare counts.
+const CLOUDFLARE_ORIGIN_ERROR_STATUSES = new Set([502, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530]);
+
+function isCloudflareOriginError(response: Response) {
+  return (
+    CLOUDFLARE_ORIGIN_ERROR_STATUSES.has(response.status) &&
+    (response.headers.get("server") || "").toLowerCase() === "cloudflare" &&
+    (response.headers.get("content-type") || "").includes("text/html")
+  );
+}
+
 function jsonError(status: number, detail: string) {
   return new Response(JSON.stringify({ detail }), {
     status,
@@ -241,29 +280,14 @@ async function proxyRequest(request: NextRequest, path: string[]) {
     if (error instanceof Error && error.name === "AbortError") {
       return jsonError(504, "The backend took too long to respond");
     }
-    // The backend is unreachable. This is expected during the scheduled
-    // stop window (see lib/maintenance + .github/workflows/ec2-schedule.yml),
-    // and otherwise indicates a real outage. Either way, return a clean 503
-    // with a classified reason instead of letting the error surface as a 500.
-    const { isDown, resumesLabel } = getMaintenanceState();
-    return new Response(
-      JSON.stringify({
-        detail: isDown
-          ? `Scheduled maintenance — the AI tutor is offline outside Mon–Fri 9 AM–5 PM CT.${resumesLabel ? ` Service resumes ${resumesLabel}.` : ""}`
-          : "Backend temporarily unavailable. Please try again shortly.",
-        reason: isDown ? "scheduled_maintenance" : "backend_unavailable",
-        resumes: isDown ? resumesLabel : null,
-      }),
-      {
-        status: 503,
-        headers: {
-          "Content-Type": "application/json",
-          "Retry-After": "300",
-        },
-      }
-    );
+    return backendUnavailableResponse();
   } finally {
     clearTimeout(timeout);
+  }
+  if (isCloudflareOriginError(response)) {
+    // Through the Cloudflare Tunnel, a stopped instance doesn't fail the
+    // fetch: Cloudflare answers with its own HTML error page instead.
+    return backendUnavailableResponse();
   }
   const proxyHeaders = new Headers();
   appendResponseHeaders(proxyHeaders, response.headers);

@@ -120,4 +120,36 @@ describe("backend proxy contract", () => {
       resumes: null,
     });
   });
+
+  it("treats Cloudflare's tunnel-down page as the backend being unavailable", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response("<html>Error 1033: Argo Tunnel error</html>", {
+        status: 530,
+        headers: { server: "cloudflare", "content-type": "text/html; charset=UTF-8" },
+      })
+    );
+    const response = await GET(
+      new NextRequest("http://localhost:4000/api/backend/health"),
+      { params: { path: ["health"] } }
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ reason: "backend_unavailable" });
+  });
+
+  it("passes the backend's own JSON errors through Cloudflare unchanged", async () => {
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "upstream model error" }), {
+        status: 502,
+        headers: { server: "cloudflare", "content-type": "application/json" },
+      })
+    );
+    const response = await GET(
+      new NextRequest("http://localhost:4000/api/backend/health"),
+      { params: { path: ["health"] } }
+    );
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ detail: "upstream model error" });
+  });
 });

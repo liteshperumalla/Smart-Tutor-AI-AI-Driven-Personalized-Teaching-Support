@@ -423,12 +423,17 @@ jobs:
           # Set: the API queues jobs and the smart-tutor-worker container runs
           # them. Empty: no worker; jobs run in a thread inside the API.
           JOBS_QUEUE_URL: ${{ vars.JOBS_QUEUE_URL || '' }}
+          # Cloudflare Tunnel (see docs/runbooks/cloudflare-tunnel.md). Set: a
+          # cloudflared container serves the backend over HTTPS at
+          # BACKEND_PUBLIC_HOSTNAME. Empty: no tunnel is managed.
+          CLOUDFLARE_TUNNEL_TOKEN: ${{ secrets.CLOUDFLARE_TUNNEL_TOKEN || '' }}
+          BACKEND_PUBLIC_HOSTNAME: ${{ vars.BACKEND_PUBLIC_HOSTNAME || '' }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL,CLOUDFLARE_TUNNEL_TOKEN,BACKEND_PUBLIC_HOSTNAME
           script: |
             set -euo pipefail
 
@@ -476,7 +481,8 @@ jobs:
 
             echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
             sed -i '/^TRUSTED_HOSTS=/d' ~/smart-tutor.env
-            echo "TRUSTED_HOSTS=127.0.0.1,localhost,${{ steps.ec2-target.outputs.host }}" >> ~/smart-tutor.env
+            # The tunnel hostname arrives as the Host header of tunnelled requests.
+            echo "TRUSTED_HOSTS=127.0.0.1,localhost,${{ steps.ec2-target.outputs.host }}${BACKEND_PUBLIC_HOSTNAME:+,${BACKEND_PUBLIC_HOSTNAME}}" >> ~/smart-tutor.env
 
             docker_with_timeout() {
               local seconds="$1"
@@ -664,6 +670,60 @@ jobs:
               return 1
             }
 
+            # Cloudflare Tunnel: cloudflared dials out to Cloudflare and serves the
+            # backend over HTTPS at BACKEND_PUBLIC_HOSTNAME, so no inbound web
+            # port is needed. The public hostname -> http://smart-tutor-backend:8000
+            # route lives in the Cloudflare dashboard. The container is only
+            # recreated when the image or token changes, so deploys don't drop it.
+            CLOUDFLARED_IMAGE="cloudflare/cloudflared:2026.9.3"
+            ensure_tunnel() {
+              if [ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
+                echo "No CLOUDFLARE_TUNNEL_TOKEN secret -- Cloudflare Tunnel not managed."
+                return 0
+              fi
+
+              local env_file="$HOME/smart-tutor-tunnel.env"
+              local want have running
+              want="$(printf '%s\n%s' "$CLOUDFLARED_IMAGE" "$CLOUDFLARE_TUNNEL_TOKEN" | sha256sum | cut -c1-16)"
+              have="$(docker inspect --format '{{index .Config.Labels "smart-tutor.tunnel-config"}}' smart-tutor-tunnel 2>/dev/null || true)"
+              running="$(docker inspect --format '{{.State.Running}}' smart-tutor-tunnel 2>/dev/null || true)"
+              if [ "$have" = "$want" ] && [ "$running" = "true" ]; then
+                echo "Cloudflare Tunnel already running with this image and token."
+                return 0
+              fi
+
+              echo "=== Starting Cloudflare Tunnel ==="
+              (umask 077 && printf 'TUNNEL_TOKEN=%s\n' "$CLOUDFLARE_TUNNEL_TOKEN" > "$env_file")
+              docker_with_timeout 5m docker pull "$CLOUDFLARED_IMAGE"
+              docker_force_remove smart-tutor-tunnel
+              docker run -d \
+                --name smart-tutor-tunnel \
+                --restart unless-stopped \
+                --network smart-tutor_smart-tutor-network \
+                --env-file "$env_file" \
+                --label "smart-tutor.tunnel-config=${want}" \
+                --log-driver=awslogs \
+                --log-opt awslogs-region=${AWS_REGION:-us-east-1} \
+                --log-opt awslogs-group=/smart-ai-tutor/backend \
+                --log-opt awslogs-stream=tunnel \
+                --log-opt awslogs-create-group=true \
+                -p 127.0.0.1:20241:20241 \
+                "$CLOUDFLARED_IMAGE" \
+                tunnel --no-autoupdate --metrics 0.0.0.0:20241 run
+
+              # /ready answers 200 once the tunnel holds a connection to Cloudflare.
+              for i in $(seq 1 12); do
+                if curl -sf --max-time 3 http://127.0.0.1:20241/ready >/dev/null; then
+                  echo "Cloudflare Tunnel connected after $(((i - 1) * 5))s"
+                  return 0
+                fi
+                sleep 5
+              done
+              echo "::error::Cloudflare Tunnel did not connect. Check the CLOUDFLARE_TUNNEL_TOKEN secret."
+              docker logs smart-tutor-tunnel --tail 50 || true
+              return 1
+            }
+
             probe_backend_container() {
               local container="$1"
               local health_status
@@ -783,6 +843,8 @@ jobs:
             # then fail the step with the worker's status.
             worker_status=0
             replace_jobs_worker || worker_status=$?
+            tunnel_status=0
+            ensure_tunnel || tunnel_status=$?
 
             echo "=== Cleaning up candidate container ==="
             docker rm -f smart-tutor-backend-candidate 2>/dev/null || true
@@ -794,6 +856,10 @@ jobs:
             if [ "$worker_status" -ne 0 ]; then
               echo "::error::Backend deployed, but the jobs worker failed to start (see above)."
               exit "$worker_status"
+            fi
+            if [ "$tunnel_status" -ne 0 ]; then
+              echo "::error::Backend deployed, but the Cloudflare Tunnel failed to connect (see above)."
+              exit "$tunnel_status"
             fi
 
       - name: Revoke temporary SSH ingress
