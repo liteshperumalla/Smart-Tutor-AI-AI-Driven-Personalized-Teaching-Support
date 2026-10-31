@@ -34,12 +34,15 @@ const customJestConfig = {
     '!src/**/*.stories.{js,jsx,ts,tsx}',
     '!src/**/__tests__/**',
   ],
+  // Floors at the measured baseline (Oct 2026: 9.3% statements, 5.9%
+  // branches, 6.9% functions, 9.6% lines) so coverage can't silently drop.
+  // Raise them as tests are added.
   coverageThreshold: {
     global: {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
+      branches: 5,
+      functions: 6,
+      lines: 9,
+      statements: 9,
     },
   },
   testMatch: [
