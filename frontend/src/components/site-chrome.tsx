@@ -6,19 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useTheme } from "@/context/theme-context";
 import { LogoMark } from "@/components/logo-mark";
-import {
-  listChatSessions,
-  ChatSessionDTO,
-  renameChatSession,
-  deleteChatSession,
-  fetchChatSession,
-  shareChatSession,
-  createChatSession,
-  pinChatSession,
-  archiveChatSession,
-  fetchCourses,
-  logout,
-} from "@/lib/api";
+import { listChatSessions, ChatSessionDTO, renameChatSession, deleteChatSession, shareChatSession, createChatSession, pinChatSession, archiveChatSession, fetchCourses, logout } from "@/lib/api";
 import { clearAuthToken } from "@/lib/auth";
 import { loginPathFor } from "@/lib/safe-next";
 import { CHAT_SESSION_SELECTED_EVENT, CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionsUpdated } from "@/lib/events";
@@ -419,7 +407,9 @@ export function SiteChrome({
   if (isStandaloneRoute) return <>{children}</>;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    // <body> is padded by the maintenance banner's height (--banner-h, 0 when
+    // hidden); fill the rest of the viewport.
+    <div className="flex overflow-hidden" style={{ height: "calc(100dvh - var(--banner-h, 0px))" }}>
       {/* ── Mobile: backdrop overlay ── */}
       {mobileNavOpen && (
         <div
@@ -430,7 +420,7 @@ export function SiteChrome({
       )}
 
       {/* ── Mobile: top header bar (only on < lg) ── */}
-      <header className="fixed top-0 left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/95 px-4 backdrop-blur lg:hidden">
+      <header style={{ top: "var(--banner-h, 0px)" }} className="fixed left-0 right-0 z-30 flex h-14 items-center justify-between border-b border-line bg-surface/95 px-4 backdrop-blur lg:hidden">
         <button
           onClick={() => setMobileNavOpen(true)}
           className={iconButtonClass}
@@ -456,8 +446,9 @@ export function SiteChrome({
       {/* Sidebar — desktop: full (w-64) or icon rail (w-16); mobile: slide-in drawer */}
       <aside
         aria-label="Main navigation"
+        style={{ top: "var(--banner-h, 0px)" }}
         className={[
-          "fixed left-0 top-0 bottom-0 z-50 flex w-72 flex-col border-r border-line bg-surface",
+          "fixed left-0 bottom-0 z-50 flex w-72 flex-col border-r border-line bg-surface",
           "transition-[transform,width] duration-300 ease-[var(--ease-out)]",
           mobileNavOpen ? "translate-x-0 shadow-lg" : "-translate-x-full",
           "lg:translate-x-0 lg:shadow-none",

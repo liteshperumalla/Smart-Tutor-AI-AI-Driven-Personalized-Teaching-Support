@@ -17,7 +17,7 @@ import {
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
-import { Brain, History, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
+import { Brain, Trophy, CheckCircle, XCircle, Folder, Sparkles, Target, Clock, Award, Lightbulb } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
 import { toast } from "sonner";
 import { Skeleton, SkeletonRegion } from "@/components/skeleton";

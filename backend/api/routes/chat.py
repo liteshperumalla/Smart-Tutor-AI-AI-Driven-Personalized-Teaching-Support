@@ -199,12 +199,32 @@ class ShareActionRequest(BaseModel):
     share_id: Optional[str] = Field(default=None, min_length=1, max_length=128)
 
 
+_UPLOAD_READ_CHUNK = 1024 * 1024
+
+
+async def _read_upload_capped(file: UploadFile, max_size: int) -> bytes:
+    """Read an upload in chunks, stopping as soon as it passes ``max_size``."""
+    chunks = []
+    total = 0
+    while chunk := await file.read(_UPLOAD_READ_CHUNK):
+        total += len(chunk)
+        if total > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size exceeds maximum allowed size of {max_size / (1024 * 1024):.1f}MB",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/uploads")
 async def upload_chat_file(
     session_data=Depends(get_current_session),
     file: UploadFile = File(...),
 ):
-    content = await file.read()
+    from backend.config import config
+
+    content = await _read_upload_capped(file, config.MAX_UPLOAD_SIZE)
     try:
         if len(content) == 0:
             raise ValueError("File is empty")

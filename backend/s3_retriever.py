@@ -146,9 +146,10 @@ class S3Retriever(BaseRetriever):
                 self._stats["errors"] += 1
             return []
 
-        raw_results = list(results)
-
         # ── Score filtering: drop low-relevance results ──────────
+        # When nothing clears the threshold, return nothing: the answering
+        # layers then say the course materials don't cover the question
+        # instead of answering from unrelated passages.
         min_score = config.MIN_RETRIEVAL_SCORE
         before_count = len(results)
         results = [(cid, sc, meta) for cid, sc, meta in results if sc >= min_score]
@@ -156,19 +157,16 @@ class S3Retriever(BaseRetriever):
             logger.info(
                 f"Score filter: {before_count} → {len(results)} (min={min_score})"
             )
-        if not results and raw_results:
-            # Returning zero nodes causes the answering layer to hallucinate on
-            # otherwise answerable questions. Fall back to the strongest raw
-            # candidates when thresholding is too aggressive.
-            fallback_count = min(self.similarity_top_k, len(raw_results))
-            results = raw_results[:fallback_count]
-            logger.warning(
-                "Score filter removed all %s retrieval candidates for query '%s...'; "
-                "falling back to top %s raw results",
-                before_count,
-                query_str[:50],
-                fallback_count,
-            )
+        if not results:
+            with self._stats_lock:
+                self._stats["total_retrievals"] += 1
+                self._stats["total_latency_ms"] += (time.time() - start_time) * 1000
+            if before_count:
+                logger.info(
+                    f"Score filter removed all {before_count} retrieval candidates "
+                    f"for query: '{query_str[:50]}...'"
+                )
+            return []
 
         # Fetch chunk texts for all remaining candidates
         chunk_ids = [chunk_id for chunk_id, _, _ in results]

@@ -24,12 +24,7 @@ import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
 import { CHAT_SESSIONS_UPDATED_EVENT, dispatchChatSessionSelected, dispatchChatSessionsUpdated } from "@/lib/events";
 import { formatMessageTime } from "@/lib/message-time";
-import { PageShell } from "@/components/page-shell";
-import {
-  MessageCircle, User, Bot, Send, Trash2, Mic, MicOff, Plus, X, Check, ChevronDown,
-  Globe, Paperclip, ChevronRight, Image, FileText, FlaskConical, ShieldAlert,
-  ShieldCheck, Sparkles
-} from "lucide-react";
+import { Send, Mic, Plus, X, Check, ChevronDown, Globe, Paperclip, ChevronRight, FileText, FlaskConical, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 import { useUser } from "@/hooks/useUser";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { ResponseActionBar } from "@/components/chat/response-action-bar";

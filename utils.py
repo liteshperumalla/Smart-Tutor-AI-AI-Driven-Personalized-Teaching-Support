@@ -147,6 +147,16 @@ WEB_SEARCH_TEMPLATE = PromptTemplate(
 )
 
 
+# Sent instead of an answer when no course material clears
+# config.MIN_RETRIEVAL_SCORE and web search adds nothing. Synthesizing from zero
+# nodes would return LlamaIndex's literal "Empty Response".
+NO_RELEVANT_MATERIAL_RESPONSE = (
+    "I couldn't find anything in your course materials that answers this question. "
+    "Could you rephrase it or add more detail, such as the topic, lecture or term it relates to? "
+    "If it's outside the course, turning on web search lets me look it up for you."
+)
+
+
 def _should_search_web(query: str, context: str, sources: List[Dict[str, Any]]) -> bool:
     """Return True when retrieved coursework context looks insufficient."""
     if not WEB_SEARCH_ENABLED:
@@ -621,6 +631,14 @@ def generate_response_with_sources(
                 }
             )
 
+        if not retrieved_nodes:
+            update_trace(
+                main_trace,
+                output={"response": NO_RELEVANT_MATERIAL_RESPONSE},
+                metadata={"num_retrieved_sources": 0, "abstained": True},
+            )
+            return NO_RELEVANT_MATERIAL_RESPONSE, []
+
         _ensure_response_llm_initialized()
         synth = get_response_synthesizer(response_mode="compact")
         response_obj = synth.synthesize(query=query, nodes=retrieved_nodes)
@@ -1048,6 +1066,18 @@ def generate_response_stream_and_sources(
                 nodes_for_prompt = retrieved_nodes
 
         logging.debug("Context passed to LLM (%d chars)", len(context_str))
+
+        if not nodes_for_prompt:
+            update_trace(
+                main_trace,
+                output={"response": NO_RELEVANT_MATERIAL_RESPONSE},
+                metadata={"num_retrieved_sources": 0, "web_search_used": False, "abstained": True},
+            )
+
+            def no_material_stream():
+                yield NO_RELEVANT_MATERIAL_RESPONSE
+
+            return no_material_stream(), []
 
         # ── Span: llm-synthesis ──────────────────────────────────────
         with traced_span(main_trace, "llm-synthesis", input={"query": query, "model_id": model_id}) as synth_span:

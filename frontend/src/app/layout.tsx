@@ -92,7 +92,8 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="antialiased">
+      {/* Padded below the fixed maintenance banner (--banner-h, 0 when hidden). */}
+      <body className="antialiased" style={{ paddingTop: "var(--banner-h, 0px)" }}>
         {/* Pre-paint theme: set the .dark/.theme-dark class before first paint so
             an OS-dark or previously-chosen-dark user doesn't flash a light screen.
             Mirrors theme-context.tsx (same storage key + initial logic). */}

@@ -9,7 +9,7 @@ import {
   AdminUser,
 } from "@/lib/api";
 import { toast } from "sonner";
-import { Users, ShieldAlert, Trash2, Search } from "lucide-react";
+import { Users, Trash2, Search } from "lucide-react";
 import { Skeleton, SkeletonRegion, SkeletonTable } from "@/components/skeleton";
 
 export default function AdminUsersPage() {

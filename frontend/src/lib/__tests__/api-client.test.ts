@@ -2,7 +2,7 @@
  * API Client Tests
  */
 
-import { apiRequest, APIError, NetworkError, AuthenticationError } from '../api-client'
+import { apiRequest, AuthenticationError } from '../api-client'
 
 describe('API Client', () => {
   beforeEach(() => {

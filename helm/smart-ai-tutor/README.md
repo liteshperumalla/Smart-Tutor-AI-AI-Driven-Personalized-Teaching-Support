@@ -1,5 +1,11 @@
 # Smart AI Tutor Helm Chart
 
+> **Status: not the live deployment.** Production runs on a single EC2 instance
+> (Docker, deployed by `.github/workflows/deploy-production.yml`) with the
+> frontend on Vercel; see the root README. No cluster runs this chart and CI
+> does not lint or template it. Production and rollback deploys only record
+> the deployed image tag in `values-production.yaml`.
+
 Official Helm chart for deploying Smart AI Tutor to Kubernetes.
 
 ## TL;DR

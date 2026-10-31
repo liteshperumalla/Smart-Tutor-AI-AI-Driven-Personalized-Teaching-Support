@@ -70,5 +70,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)" || exit 1
 
+# Uvicorn reads its worker count from WEB_CONCURRENCY. Default to one worker,
+# as production runs (deploy-production.yml passes --workers 1): each worker
+# loads the full ML/RAG stack, so measure memory per worker before raising it
+# inside the 2 GB container limit in docker-compose.yml.
+ENV WEB_CONCURRENCY=1
+
 # Run the application as non-root user
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

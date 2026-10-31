@@ -1,5 +1,11 @@
 # Smart AI Tutor - Terraform Infrastructure
 
+> **Status: not the live deployment.** Production runs on a single EC2 instance
+> (Docker, deployed by `.github/workflows/deploy-production.yml`) with the
+> frontend on Vercel; see the root README. This Terraform describes a planned
+> ECS-based architecture. It is not applied by CI and is not validated on pull
+> requests. Treat it as a reference design until it is adopted.
+
 This directory contains Infrastructure as Code (IaC) for deploying the Smart AI Tutor application to AWS using Terraform.
 
 ## Architecture Overview
@@ -22,36 +28,23 @@ Internet → Route 53 → CloudFront → API Gateway → WAF → ALB
 
 ## Directory Structure
 
+A single root module in this directory, selected per environment with the
+`environment` variable (`dev`, `staging` or `prod`) and a workspace:
+
 ```
 terraform/
-├── backend.tf              # S3 backend configuration
-├── provider.tf             # AWS provider setup
-├── variables.tf            # Global variables
-├── outputs.tf              # Global outputs
-├── environments/           # Environment-specific configurations
-│   ├── dev/
-│   │   ├── main.tf
-│   │   ├── terraform.tfvars
-│   │   └── ...
-│   ├── staging/
-│   │   └── ...
-│   └── prod/
-│       └── ...
-└── modules/                # Reusable Terraform modules
-    ├── vpc/                ✅ Complete
-    ├── security-groups/    ✅ Complete
-    ├── alb/                ⏳ Pending
-    ├── ecs-cluster/        ⏳ Pending
-    ├── ecs-service/        ⏳ Pending
-    ├── rds/                ⏳ Pending
-    ├── elasticache/        ⏳ Pending
-    ├── s3/                 ⏳ Pending
-    ├── dynamodb/           ⏳ Pending
-    ├── api-gateway/        ⏳ Pending
-    ├── cloudfront/         ⏳ Pending
-    ├── waf/                ⏳ Pending
-    ├── monitoring/         ⏳ Pending
-    └── secrets/            ⏳ Pending
+├── backend.tf                     # S3 state backend + DynamoDB lock table
+├── provider.tf                    # AWS provider setup
+├── main.tf                        # VPC, security groups, IAM, S3, DynamoDB, ECR,
+│                                  # ElastiCache, RDS, ALB, ECS, Route 53
+├── cost-optimization.tf           # CloudFront, Aurora Serverless, VPC endpoints
+├── variables.tf, cost-optimization-variables.tf
+├── outputs.tf
+├── modules/                       # alb, api-gateway, app-mesh, aurora-serverless,
+│                                  # cloudfront, dynamodb, ecr, ecs, elasticache,
+│                                  # eventbridge, iam, rds, route53, s3,
+│                                  # security-groups, vpc, vpc-endpoints
+└── test/                          # Terratest (vpc_test.go)
 ```
 
 ## Prerequisites
@@ -103,7 +96,7 @@ terraform/
 ### 1. Initialize Terraform
 
 ```bash
-cd terraform/environments/dev
+cd terraform
 terraform init
 ```
 
@@ -151,9 +144,9 @@ Cost-optimized configuration:
 - No cross-region replication
 
 ```bash
-cd terraform/environments/dev
+cd terraform
 terraform workspace select dev || terraform workspace new dev
-terraform apply -var-file=terraform.tfvars
+terraform apply -var-file=dev.tfvars   # create it from variables.tf; sets environment = "dev"
 ```
 
 **Estimated Cost**: ~$150/month
@@ -167,9 +160,9 @@ Production-like configuration:
 - Limited cross-region replication
 
 ```bash
-cd terraform/environments/staging
+cd terraform
 terraform workspace select staging || terraform workspace new staging
-terraform apply -var-file=terraform.tfvars
+terraform apply -var-file=staging.tfvars   # create it from variables.tf; sets environment = "staging"
 ```
 
 **Estimated Cost**: ~$500/month
@@ -185,9 +178,9 @@ Full production configuration:
 - DynamoDB Global Tables
 
 ```bash
-cd terraform/environments/prod
+cd terraform
 terraform workspace select prod || terraform workspace new prod
-terraform apply -var-file=terraform.tfvars
+terraform apply -var-file=prod.tfvars   # create it from variables.tf; sets environment = "prod"
 ```
 
 **Estimated Cost**: ~$1,235/month (with Savings Plans)
@@ -302,7 +295,7 @@ terraform workspace select dev
 
 ### 2. Use Variables Files
 
-Create `terraform.tfvars` for each environment:
+Create a `<env>.tfvars` file for each environment (not committed):
 
 ```hcl
 # dev.tfvars

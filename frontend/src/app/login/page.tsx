@@ -9,7 +9,6 @@ import { saveAuthToken } from "@/lib/auth";
 import { GoogleAuthButton } from "@/components/google-auth-button";
 import { LogoMark } from "@/components/logo-mark";
 import { getSafeNextPath } from "@/lib/safe-next";
-import { User, Lock, LogIn, ArrowLeft } from "lucide-react";
 import { SkeletonAuthForm } from "@/components/skeleton";
 
 type LoginResponse = {

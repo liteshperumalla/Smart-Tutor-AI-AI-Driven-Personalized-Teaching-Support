@@ -69,7 +69,9 @@ run_backend_tests() {
     sleep 3
   fi
 
-  local pytest_cmd="pytest tests/ -v --tb=short"
+  # The image's working directory is /app with the tests under
+  # /app/backend/tests; this is the same path CI runs from the repo root.
+  local pytest_cmd="pytest backend/tests/ -v --tb=short"
 
   if [[ -n "$MARKER" ]]; then
     pytest_cmd+=" -m $MARKER"

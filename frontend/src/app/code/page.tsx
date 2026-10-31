@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import Link from "next/link";
 
 import {
   CodeLanguage,
@@ -15,7 +14,6 @@ import {
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { PageShell } from "@/components/page-shell";
 import { toast } from "sonner";
-import { Code2, Play, Sparkles, Bug, BookOpen, Send, Bot, Terminal } from "lucide-react";
 
 const SUPPORTED_LANGUAGES: CodeLanguage[] = ["python", "javascript", "java"];
 
