@@ -18,6 +18,11 @@ from backend.log_redaction import user_ref
 
 logger = logging.getLogger(__name__)
 
+# Context passed to the agents when no course material clears
+# config.MIN_RETRIEVAL_SCORE; their prompts tell them to say so and ask a
+# clarifying question rather than answer as if from the course.
+NO_COURSE_MATERIAL = "No relevant course material found."
+
 # Agents whose responses are safe to cache across identical (user, query) pairs.
 # Skip personalised_agent (response is tailored to user tone/level by design)
 # and feedback_agent (no LLM call — already canned).
@@ -489,7 +494,7 @@ def _retrieve_rag_context(query: str, source_prefixes: Optional[List[str]] = Non
             })
             context_parts.append(f"[Source {i}: {file_name}]\n{text}")
 
-        context_str = "\n\n".join(context_parts) if context_parts else "No relevant context found."
+        context_str = "\n\n".join(context_parts) if context_parts else NO_COURSE_MATERIAL
         return context_str, sources
 
     except Exception as exc:
