@@ -14,7 +14,7 @@ This guide provides step-by-step instructions to connect your **Grafana** and **
 │  Metrics at: /metrics               Metrics at: /api/metrics           │
 └──────────────────┬─────────────────────────────┬───────────────────────┘
                    │                             │
-                   ▼ (Scrape every 10-15s)       ▼
+                   ▼ (Scrape every 30-60s)       ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                       Prometheus Scrape Engine                         │
 │  • Local: monitoring/prometheus/prometheus.yml                         │
@@ -35,50 +35,31 @@ This guide provides step-by-step instructions to connect your **Grafana** and **
 
 ---
 
-## Option 1: Connect Your Grafana Cloud Account (Recommended)
+## Option 1: Grafana Cloud (production, free tier)
 
-Grafana Cloud allows you to ship all system and application metrics to a fully managed cloud backend without hosting TSDB storage.
+Production Prometheus on EC2 ([`prometheus-ec2.yml`](../../monitoring/prometheus/prometheus-ec2.yml)) pushes metrics to Grafana Cloud with `remote_write`. The stack is on the **free tier**, which allows:
 
-### Step 1: Retrieve Your Grafana Cloud Remote Write Credentials
-1. Log in to your [Grafana Cloud Portal](https://grafana.com/).
-2. On your account launchpad, locate the **Prometheus** card and click **Send Metrics** (or **Details**).
-3. Note the following three values:
-   - **Remote Write Endpoint URL**: e.g., `https://prometheus-prod-XX-prod-us-central-0.grafana.net/api/prom/push`
-   - **Username / Instance ID**: e.g., `123456`
-   - **Password / API Token**: Create or copy an API Token with the `MetricsPublisher` (or Admin) role.
+| Limit | Free tier |
+|---|---|
+| Metrics | 10,000 active series |
+| Retention | 14 days |
+| Users | 3 active users (also 3 Grafana IRM users) |
 
-### Step 2: Configure `remote_write` in Prometheus
-Open [`monitoring/prometheus/prometheus.yml`](../../monitoring/prometheus/prometheus.yml) (or [`monitoring/prometheus/prometheus-ec2.yml`](../../monitoring/prometheus/prometheus-ec2.yml) for EC2/production) and uncomment the `remote_write` block:
+Grafana Cloud counts metrics usage as **max(active series, data points per minute)**, so a series scraped every 15s counts as four. The config is set up to stay well under the limit:
 
-```yaml
-remote_write:
-  - url: 'https://prometheus-prod-XX-prod-us-central-0.grafana.net/api/prom/push'
-    basic_auth:
-      username: '123456'
-      password: 'glc_YOUR_API_TOKEN_HERE'
-    queue_config:
-      max_samples_per_send: 1000
-      max_shards: 10
-      capacity: 2500
-```
+- **Scrape intervals:** 60s for every job except the backend, which is 30s because two alerts use 2-minute rate windows. Don't lower them without checking usage.
+- **Only dashboard metrics are sent:** `write_relabel_configs` keeps the metrics the dashboards in [`monitoring/grafana/dashboards/`](../../monitoring/grafana/dashboards/) query, plus `up`. cAdvisor, most node-exporter metrics, Prometheus' own metrics and Python runtime metrics stay in the local Prometheus, which alerting and the EC2 Grafana still use.
+- **New dashboard metric:** add it to that allowlist. `backend/tests/test_grafana_cloud_metrics.py` fails if a dashboard queries a metric the allowlist drops.
+- **Local development** ([`prometheus.yml`](../../monitoring/prometheus/prometheus.yml)) doesn't send anything to Grafana Cloud.
 
-### Step 3: Reload or Restart Prometheus
-Apply the updated configuration:
-```bash
-# If Prometheus is running locally via Docker:
-docker compose -f docker-compose.observability.yml restart prometheus
+To check usage, open the usage and billing dashboards in the Grafana Cloud portal; the "active series" and "DPM" panels show how close the stack is to the limit.
 
-# Or reload configuration live via HTTP POST:
-curl -X POST http://localhost:9090/-/reload
-```
+### Credentials
+- **Remote write:** the endpoint and instance ID are in `prometheus-ec2.yml`. The token (a Cloud Access Policy token with `metrics:write`) is written to `monitoring/prometheus/grafana-cloud-token` on the EC2 host by `.github/workflows/observability-production.yml`, never committed.
+- **Dashboard sync:** the **Sync Dashboards To Grafana Cloud** job uploads the dashboard JSON through the Grafana API. It needs `GRAFANA_CLOUD_STACK_URL` and `GRAFANA_CLOUD_DASHBOARD_TOKEN` (a service-account token with the Editor role).
 
-### Step 4: Import Smart AI Tutor Dashboards into Grafana Cloud
-1. In Grafana Cloud, navigate to **Dashboards** -> **New** -> **Import**.
-2. Upload the JSON files from the project repository:
-   - [`monitoring/grafana/dashboards/application-dashboard.json`](../../monitoring/grafana/dashboards/application-dashboard.json) — API requests, latency (P50/P90/P99), error rate (4xx/5xx).
-   - [`monitoring/grafana/dashboards/rag-dashboard.json`](../../monitoring/grafana/dashboards/rag-dashboard.json) — LLM tokens, model response latency, RAG cache hit rate.
-   - [`monitoring/grafana/dashboards/infrastructure-dashboard.json`](../../monitoring/grafana/dashboards/infrastructure-dashboard.json) — CPU, RAM, Disk, and container metrics.
-3. Select your Grafana Cloud Prometheus data source when prompted and click **Import**.
+### Idle stack
+A free-tier stack that nobody has used for a while is paused, and its API answers HTTP 503 while it resumes. The dashboard sync retries 429/502/503/504 for about four minutes before failing. If it still fails, open the stack in a browser to wake it, then re-run the workflow.
 
 ---
 
@@ -108,7 +89,7 @@ Ensure your Prometheus instance is reachable from your external Grafana server:
    - Reverse proxy: `https://<YOUR_DOMAIN>/prometheus`
 4. Under **Settings**:
    - HTTP Method: `POST`
-   - Scrape interval: `15s`
+   - Scrape interval: `60s` (the production default)
 5. Click **Save & Test**. You will see: *"Successfully queried the Prometheus API."*
 
 ### Step 3: Import Pre-built Dashboards

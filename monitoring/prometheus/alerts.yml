@@ -355,9 +355,11 @@ groups:
   - name: ddos_protection
     interval: 30s
     rules:
-      # RPS spike: current 1-min rate > 2x rolling 1-hour average
+      # RPS spike: current 2-min rate > 2x rolling 1-hour average (2m, not
+      # 1m: the backend is scraped every 30s to stay within Grafana Cloud's
+      # free tier, and a rate window needs several samples)
       - alert: RPSSpikeDetected
-        expr: sum(rate(http_requests_total[1m])) > 2 * sum(rate(http_requests_total[1h]))
+        expr: sum(rate(http_requests_total[2m])) > 2 * sum(rate(http_requests_total[1h]))
         for: 2m
         labels:
           severity: warning
@@ -379,7 +381,7 @@ groups:
 
       # Chat endpoint targeted directly (most expensive endpoint)
       - alert: ChatEndpointOverloaded
-        expr: sum(rate(http_requests_total{endpoint=~"(/api/v1)?/chat.*"}[1m])) > 50
+        expr: sum(rate(http_requests_total{endpoint=~"(/api/v1)?/chat.*"}[2m])) > 50
         for: 1m
         labels:
           severity: warning

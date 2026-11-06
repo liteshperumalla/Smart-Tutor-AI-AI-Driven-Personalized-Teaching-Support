@@ -424,7 +424,7 @@
       "pluginVersion": "8.0.0",
       "targets": [
         {
-          "expr": "sum by (status) (increase(http_requests_total[1m]))",
+          "expr": "sum by (status) (increase(http_requests_total[2m])) / 2",
           "refId": "A",
           "legendFormat": "HTTP {{status}}"
         }

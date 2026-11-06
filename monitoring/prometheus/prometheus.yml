@@ -17,21 +17,9 @@ global:
 rule_files:
   - 'alerts.yml'
 
-# Remote Write to Grafana Cloud Hosted Prometheus (Option A)
-remote_write:
-  - url: 'https://prometheus-prod-66-prod-us-east-3.grafana.net/api/prom/push'
-    basic_auth:
-      username: '3689873'
-      password_file: '/etc/prometheus/grafana-cloud-token'
-    send_exemplars: true
-    queue_config:
-      capacity: 10000
-      max_shards: 10
-      min_shards: 1
-      max_samples_per_send: 500
-      batch_send_deadline: 5s
-      min_backoff: 100ms
-      max_backoff: 5s
+# No remote_write here: this config is for local development
+# (docker-compose.yml). Only production (prometheus-ec2.yml) sends to
+# Grafana Cloud, whose free tier has a 10k active-series limit.
 
 # Scrape configurations
 scrape_configs:
