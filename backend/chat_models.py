@@ -35,18 +35,35 @@ def _catalog() -> List[ChatModel]:
     """Selectable models for the active LLM provider.
 
     The Bedrock list above only works on Bedrock. On another provider
-    (Groq, Gemini, ...) students get that provider's default model plus the
-    routing models, if configured.
+    (OpenRouter, Groq, ...) students get LLM_CHAT_MODELS ("id" or
+    "id=Label" entries), then the default and routing models if they aren't
+    listed already. A trailing "!admin" on an entry makes it admin-only,
+    e.g. "anthropic/claude-sonnet-4.5=Claude Sonnet!admin".
     """
     from backend.config import config
 
     if config.LLM_PROVIDER == "bedrock":
         return CHAT_MODELS
     models: List[ChatModel] = []
-    for model_id in (config.LLM_MODEL_ID, config.LLM_ROUTING_COMPLEX_MODEL, config.LLM_ROUTING_SIMPLE_MODEL):
+
+    def add(model_id: str, label: str, admin_only: bool = False) -> None:
         if model_id and all(m.model_id != model_id for m in models):
-            models.append(ChatModel(model_id, model_id))
+            models.append(ChatModel(model_id, label or model_id, admin_only))
+
+    for entry in config.LLM_CHAT_MODELS:
+        admin_only = entry.endswith("!admin")
+        entry = entry[: -len("!admin")] if admin_only else entry
+        model_id, _, label = entry.partition("=")
+        add(model_id.strip(), label.strip(), admin_only)
+    for model_id in (config.LLM_MODEL_ID, config.LLM_ROUTING_COMPLEX_MODEL, config.LLM_ROUTING_SIMPLE_MODEL):
+        add(model_id, _default_label(model_id))
     return models
+
+
+def _default_label(model_id: str) -> str:
+    if model_id == "openrouter/free":
+        return "Auto (free models)"
+    return model_id
 
 
 def _by_id() -> dict:

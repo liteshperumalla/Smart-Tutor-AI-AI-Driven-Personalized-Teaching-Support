@@ -261,7 +261,7 @@ class Config:
 
     # AWS Bedrock Settings (Phase 4)
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    # bedrock (AWS, default) | groq | gemini | ollama | openai_compat
+    # bedrock (AWS, default) | openrouter | groq | gemini | ollama | openai_compat
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock").strip().lower()
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
 
@@ -338,7 +338,17 @@ class Config:
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
     # OpenAI-compatible LLM providers (backend/openai_compat_llm.py), used
-    # when LLM_PROVIDER is groq, gemini, ollama or openai_compat.
+    # when LLM_PROVIDER is openrouter, groq, gemini, ollama or openai_compat.
+    #
+    # OpenRouter: one key for hundreds of models. Free models (IDs ending in
+    # ":free") are capped at 20 requests/min and 50/day (1,000/day once the
+    # account has bought $10 of credits); failed attempts count too.
+    # "openrouter/free" lets OpenRouter pick an available free model.
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL_ID = os.getenv("OPENROUTER_MODEL_ID", "openrouter/free")
+    # Optional app attribution headers (X-Title / HTTP-Referer).
+    OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "Smart Tutor AI")
+    OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -351,6 +361,20 @@ class Config:
     LLM_FALLBACK_PROVIDERS = [
         p.strip().lower() for p in os.getenv("LLM_FALLBACK_PROVIDERS", "").split(",") if p.strip()
     ]
+    # Other models on the primary provider to try before LLM_FALLBACK_PROVIDERS,
+    # e.g. "nvidia/nemotron-3.5-super-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free".
+    LLM_FALLBACK_MODELS = [
+        m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "").split(",") if m.strip()
+    ]
+    # Models students can pick in chat when not on Bedrock, as "id" or
+    # "id=Label", comma-separated. Empty = the default and routing models.
+    LLM_CHAT_MODELS = [
+        m.strip() for m in os.getenv("LLM_CHAT_MODELS", "").split(",") if m.strip()
+    ]
+    # Retries the OpenAI SDK makes on 429/5xx before falling back.
+    # -1 = provider default (0 for OpenRouter, whose failed calls count
+    # against the free daily cap; 2 elsewhere).
+    LLM_SDK_MAX_RETRIES = int(os.getenv("LLM_SDK_MAX_RETRIES", "-1"))
     # Optional moderation model (e.g. a Llama Guard model) checked before
     # each generation; replaces Bedrock Guardrails off AWS. Empty = off.
     LLM_MODERATION_MODEL = os.getenv("LLM_MODERATION_MODEL", "")
@@ -358,6 +382,7 @@ class Config:
     # "the default model" reads this rather than BEDROCK_MODEL_ID.
     LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "") or {
         "bedrock": BEDROCK_MODEL_ID,
+        "openrouter": OPENROUTER_MODEL_ID,
         "groq": GROQ_MODEL_ID,
         "gemini": GEMINI_MODEL_ID,
         "ollama": LLM_MODEL,

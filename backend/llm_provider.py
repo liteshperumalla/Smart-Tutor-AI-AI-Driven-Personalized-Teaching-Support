@@ -4,7 +4,7 @@ Provides a unified interface for switching between different LLM and embedding p
 
 LLM Providers:
 - AWS Bedrock (Claude, Llama, etc.)
-- Groq, Gemini, any OpenAI-compatible API (backend/openai_compat_llm.py)
+- OpenRouter, Groq, Gemini, any OpenAI-compatible API (backend/openai_compat_llm.py)
 - Ollama (local models)
 
 Embedding Providers:
@@ -25,6 +25,7 @@ logger = get_logger(__name__)
 class LLMProvider(Enum):
     """Supported LLM providers"""
     BEDROCK = "bedrock"
+    OPENROUTER = "openrouter"
     GROQ = "groq"
     GEMINI = "gemini"
     OPENAI_COMPAT = "openai_compat"
@@ -42,7 +43,7 @@ class LLMFactory:
         Create LLM instance based on provider
 
         Args:
-            provider: LLM provider name (bedrock, groq, gemini, openai_compat, ollama).
+            provider: LLM provider name (bedrock, openrouter, groq, gemini, openai_compat, ollama).
                 Uses config if not specified.
             **kwargs: Additional parameters for the LLM
 
@@ -237,6 +238,7 @@ class LLMFactory:
 
 
 _OPENAI_COMPAT_LLMS = (
+    LLMProvider.OPENROUTER.value,
     LLMProvider.GROQ.value,
     LLMProvider.GEMINI.value,
     LLMProvider.OPENAI_COMPAT.value,
@@ -248,7 +250,7 @@ def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = 
 
     Returns an object with ``generate`` / ``stream_generate`` / ``get_stats``
     and a ``model_id`` attribute: ``BedrockLLM`` when LLM_PROVIDER=bedrock,
-    otherwise ``OpenAICompatLLM`` (Groq, Gemini, Ollama, any OpenAI-compatible
+    otherwise ``OpenAICompatLLM`` (OpenRouter, Groq, Gemini, Ollama, any OpenAI-compatible
     endpoint). Use this instead of constructing ``BedrockLLM`` directly.
     """
     provider = (provider or config.LLM_PROVIDER).lower()

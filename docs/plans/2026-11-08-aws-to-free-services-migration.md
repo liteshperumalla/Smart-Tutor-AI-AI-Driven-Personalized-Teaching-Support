@@ -37,10 +37,10 @@ Services that are **not AWS** and stay: Vercel, GHCR, Cloudflare Tunnel, Neo4j (
 | EC2 | **Oracle Cloud Always Free Ampere A1** (up to 4 OCPU / 24 GB RAM ARM, 200 GB block storage) | Always free | `scripts/setup-oracle-vm.sh` already exists; enough RAM for backend + Postgres + Redis + Neo4j + local embeddings. |
 | Elastic IP | **Cloudflare Tunnel** (already used) + Cloudflare DNS | Free | No inbound ports or static IP needed. |
 | EventBridge Scheduler / EC2 start-stop | **Delete** | — | An always-free VM doesn't need to be stopped to save money. |
-| Bedrock LLM | **Groq API** (Llama 3.3 70B, OpenAI-compatible) as primary; **Google Gemini API** free tier as fallback; **Ollama** on the VM as last-resort offline fallback | Free with rate limits (requests/min and tokens/day) | Groq serves the same Llama 3.x 70B family the app defaults to, so prompts and RAG behaviour change the least. One OpenAI-compatible adapter covers Groq, Gemini, OpenRouter and Ollama. |
+| Bedrock LLM | **OpenRouter** (one key, many models; `LLM_PROVIDER=openrouter`) as primary; **Google Gemini API** free tier as fallback provider; **Ollama** on the VM as last-resort offline fallback. Groq also supported. | Free models (`:free`): 20 req/min and **50 req/day**, or **1,000 req/day after a one-time $10 credit purchase**; failed calls count. Gemini/Groq free tiers have their own limits. | OpenRouter gives students a choice of models (`LLM_CHAT_MODELS`) and same-provider fallback across free models (`LLM_FALLBACK_MODELS`). 50/day is too low for real use, so buy the $10 once or lean on the Gemini fallback. One OpenAI-compatible adapter covers all of these. |
 | Claude models via Bedrock | **Remove from `chat_models.py`** (or keep behind a paid `ANTHROPIC_API_KEY` flag) | No free option | No free hosted Claude access exists. |
 | Titan embeddings | **Local `sentence-transformers`** — `BAAI/bge-base-en-v1.5` (768-dim) or `bge-small-en-v1.5` (384-dim) on CPU | Free (runs on the VM) | `LLMFactory._create_huggingface_embeddings` already exists. No rate limits and no network calls per query. |
-| Bedrock Guardrails | **Llama Guard** (on Groq or local) + the existing regex/PII redaction in `log_redaction.py` | Free | Same job: prompt-attack and unsafe-content checks. |
+| Bedrock Guardrails | **Llama Guard** (via OpenRouter/Groq, or local) + the existing regex/PII redaction in `log_redaction.py` | Free | Same job: prompt-attack and unsafe-content checks. |
 | Bedrock KB | **Drop** | — | Already disabled. |
 | S3 | **Cloudflare R2** (S3-compatible API, 10 GB storage, no egress fees) — or the VM's disk via the existing `LocalFileStorage` | Free up to 10 GB | Works with boto3 by adding `endpoint_url`, so almost no code changes. Presigned URLs still work. |
 | Vector index (pickle in S3) | Keep the same pickled index, stored in R2 or on local disk. **Later option:** `pgvector` in Postgres | Free | Smallest change. pgvector would remove a moving part, but it's a separate project. |
@@ -71,7 +71,7 @@ Services that are **not AWS** and stay: Vercel, GHCR, Cloudflare Tunnel, Neo4j (
    `rag_quality_evaluator.py`, `rag/hyde.py`, `api/routes/code.py`, and `circuit_breaker.py`/`metrics.py`
    labels so they call the provider factory.
 4. Update `chat_models.py` and `llm_router.py` with the new model IDs (for example
-   `llama-3.3-70b-versatile` for complex queries and `llama-3.1-8b-instant` for simple ones on Groq).
+   a larger free model for complex queries and a small fast one for simple queries; on OpenRouter pick them from the current `:free` list).
    Remove the Claude entries or gate them behind a flag.
 5. Rate limits: use the existing `circuit_breaker.py` and `retry_policy.py` so that on HTTP 429 the
    app falls back to the next provider. Lower `LLM_MAX_CONCURRENT`. Cache answers in Redis
@@ -152,9 +152,9 @@ Every phase uses env flags, so each step can be undone by changing an env value 
 
 | Phase | Work | Exit criteria |
 |---|---|---|
-| **0. Prep** (½ day) | Create Oracle, Cloudflare R2, Groq, Gemini and Grafana Cloud accounts. Back up everything: `pg_dump` RDS, export DynamoDB to JSON, `aws s3 sync` all buckets to local disk. | Backups restore locally. |
+| **0. Prep** (½ day) | Create Oracle, Cloudflare R2, OpenRouter (buy the one-time $10 for 1,000 free requests/day), Gemini and Grafana Cloud accounts. Back up everything: `pg_dump` RDS, export DynamoDB to JSON, `aws s3 sync` all buckets to local disk. | Backups restore locally. |
 | **1. Abstractions** (2–3 days) | §3.1 provider adapter, §3.3 endpoint override, §3.5 Redis queue, §3.6 health/cost cleanup. AWS stays the default. | CI green; tests cover both paths. |
-| **2. LLM + embeddings** (2–3 days) | Switch dev/staging to Groq and bge. Re-index. Run the RAG eval before/after and re-tune thresholds. | Faithfulness, answer relevance and recall within an agreed margin of the Bedrock baseline. |
+| **2. LLM + embeddings** (2–3 days) | Switch dev/staging to OpenRouter and bge. Re-index. Run the RAG eval before/after and re-tune thresholds. | Faithfulness, answer relevance and recall within an agreed margin of the Bedrock baseline. |
 | **3. Oracle VM** (1–2 days) | Run `setup-oracle-vm.sh`, build multi-arch images, start Postgres, Redis, Neo4j, backend, worker and tunnel. Restore the Postgres dump, migrate DynamoDB sessions, rclone S3 to R2. Point a **staging** tunnel hostname at it. | Smoke tests (`post-deploy-smoke.yml`, e2e) pass against staging. |
 | **4. Cutover** (½ day, low-traffic window) | Final DB delta sync, point the production tunnel/`BACKEND_API_BASE_URL` at the VM, and keep EC2 stopped (not terminated) for 1–2 weeks. | Synthetic monitor green for 7 days; error rate and latency SLOs met. |
 | **5. Decommission** (1 day) | Terminate EC2, release the Elastic IP, delete RDS (keep a final snapshot exported to R2), DynamoDB, SQS, buckets, schedules, guardrail, IAM keys. Delete the AWS code, workflows and Terraform (§3.7). | AWS bill $0; `grep -ri boto3` only matches the R2 client. |
@@ -165,9 +165,11 @@ All new behaviour is opt-in through env vars; with none set the app runs on AWS 
 
 | Switch | Values | What it does |
 |---|---|---|
-| `LLM_PROVIDER` | `bedrock` (default), `groq`, `gemini`, `ollama`, `openai_compat` | `backend/openai_compat_llm.py` — one client for every OpenAI-compatible API, with the same tracing/metrics/cost as Bedrock (shared code moved to `backend/llm_core.py`). All direct `BedrockLLM()` call sites now use `llm_provider.create_llm_client()`. |
-| `GROQ_API_KEY`, `GEMINI_API_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID` | — | Provider keys/endpoints. `config.LLM_MODEL_ID` is now the app-wide default model (equals `BEDROCK_MODEL_ID` on Bedrock). |
+| `LLM_PROVIDER` | `bedrock` (default), `openrouter`, `groq`, `gemini`, `ollama`, `openai_compat` | `backend/openai_compat_llm.py` — one client for every OpenAI-compatible API, with the same tracing/metrics/cost as Bedrock (shared code moved to `backend/llm_core.py`). All direct `BedrockLLM()` call sites now use `llm_provider.create_llm_client()`. |
+| `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID` | — | Provider keys/endpoints. `config.LLM_MODEL_ID` is now the app-wide default model (equals `BEDROCK_MODEL_ID` on Bedrock). |
+| `LLM_FALLBACK_MODELS` | e.g. two other `:free` model IDs | Other models on the primary provider, tried before the fallback providers. |
 | `LLM_FALLBACK_PROVIDERS` | e.g. `gemini,ollama` | Tried in order when the primary fails before answering (rate limits). |
+| `LLM_CHAT_MODELS` | `id=Label,...` (`!admin` suffix = admin-only) | The chat model picker off Bedrock. |
 | `LLM_MODERATION_MODEL` | e.g. a Llama Guard model | Optional pre-check that replaces Bedrock Guardrails; fails open. |
 | `S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | R2 / MinIO | Every S3 client now goes through `cloud/aws_helpers.get_s3_client()`. |
 | `JOBS_BACKEND` | `sqs`, `redis`, `inline` | `backend/jobs/redis_queue.py` gives Redis the SQS calls the worker uses (visibility timeout, retries, DLQ at `JOBS_MAX_RECEIVES`). Deploy/rollback workflows start the worker for `redis` (repo variable `JOBS_BACKEND`). |
@@ -184,7 +186,7 @@ Not done in Phase 1, carried forward: verifying the ARM64 image build (needs Doc
 |---|---|
 | **Oracle A1 capacity**: "Out of host capacity" errors when creating the instance in popular regions | Retry, pick a less busy home region, or start with a smaller shape (e.g. 2 OCPU / 12 GB). Upgrading the account to Pay-As-You-Go usually gets capacity and you still pay nothing if you stay inside the Always Free limits. |
 | **Oracle reclaims idle Always Free instances** (low CPU/network/memory over 7 days) | Pay-As-You-Go accounts are exempt; the background worker and health checks also keep it from looking idle. |
-| **Free LLM rate limits / quota** (requests per minute, tokens per day) | Fall back to another provider (Groq → Gemini → Ollama), cache answers in Redis, lower concurrency, and use the small model for simple queries (`llm_router.py`). |
+| **Free LLM rate limits / quota** (requests per minute, tokens per day) | Fall back to other free models, then another provider (OpenRouter → Gemini → Ollama), cache answers in Redis, lower concurrency, and use the small model for simple queries (`llm_router.py`). |
 | **Answer quality changes** (no Claude; different embeddings) | Run the RAG eval before/after (Phase 2), re-tune thresholds, and keep the old Bedrock path behind a flag until Phase 5. |
 | **Free-tier terms change** | Everything is behind OpenAI-compatible / S3-compatible interfaces, so switching provider is a config change. |
 | **Self-managed Postgres** (backups and upgrades are now on you) | Nightly `pg_dump` to R2, a monthly restore drill, pinned image tags with Dependabot, or move to Neon if you'd rather it be managed. |
@@ -197,6 +199,6 @@ Not done in Phase 1, carried forward: verifying the ARM64 image build (needs Doc
   secrets (`SECRETS_PROVIDER=env`), event bus (`inmemory`), chat sessions in Postgres
   (`STORAGE_BACKEND=postgres`), local embeddings (`EMBEDDING_PROVIDER=huggingface`).
 - **Small code changes:** S3 → R2 (`endpoint_url`), SQS → Redis, CloudWatch → Grafana Cloud, remove STS/Pricing.
-- **Real work:** Bedrock LLM → Groq/Gemini adapter, re-indexing with new embeddings plus a quality check, and the
+- **Real work:** Bedrock LLM → OpenRouter/Gemini adapter, re-indexing with new embeddings plus a quality check, and the
   EC2/RDS → Oracle VM move with ARM64 images.
 - **Estimated effort:** about 8–12 working days for one developer, then 1–2 weeks with AWS kept as a fallback.

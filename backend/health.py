@@ -86,7 +86,7 @@ class HealthChecker:
 
     @staticmethod
     def check_llm_provider() -> Dict[str, Any]:
-        """Check an OpenAI-compatible LLM provider (Groq, Gemini, ...) is set up.
+        """Check an OpenAI-compatible LLM provider (OpenRouter, Groq, ...) is set up.
 
         Config-only: it doesn't call the provider, so health checks don't
         use up a free tier's request quota.
@@ -96,7 +96,7 @@ class HealthChecker:
             from backend.openai_compat_llm import resolve_endpoint
 
             endpoint = resolve_endpoint(config.LLM_PROVIDER)
-            needs_key = endpoint.provider in ("groq", "gemini")
+            needs_key = endpoint.provider in ("openrouter", "groq", "gemini")
             if needs_key and not endpoint.api_key:
                 return {
                     "status": "unhealthy",
@@ -124,7 +124,7 @@ class HealthChecker:
         try:
             from backend.config import config
 
-            if config.LLM_PROVIDER in ("groq", "gemini", "openai_compat"):
+            if config.LLM_PROVIDER in ("openrouter", "groq", "gemini", "openai_compat"):
                 return HealthChecker.check_llm_provider()
 
             if config.LLM_PROVIDER != "bedrock":

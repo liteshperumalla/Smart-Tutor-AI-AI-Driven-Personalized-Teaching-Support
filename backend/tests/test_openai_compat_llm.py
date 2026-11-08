@@ -65,6 +65,13 @@ def groq_config(monkeypatch):
     monkeypatch.setattr(config, "LLM_BASE_URL", "")
     monkeypatch.setattr(config, "LLM_API_KEY", "")
     monkeypatch.setattr(config, "LLM_FALLBACK_PROVIDERS", [])
+    monkeypatch.setattr(config, "LLM_FALLBACK_MODELS", [])
+    monkeypatch.setattr(config, "LLM_CHAT_MODELS", [])
+    monkeypatch.setattr(config, "LLM_SDK_MAX_RETRIES", -1)
+    monkeypatch.setattr(config, "OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setattr(config, "OPENROUTER_MODEL_ID", "openrouter/free")
+    monkeypatch.setattr(config, "OPENROUTER_APP_NAME", "Smart Tutor AI")
+    monkeypatch.setattr(config, "OPENROUTER_SITE_URL", "")
     monkeypatch.setattr(config, "LLM_MODERATION_MODEL", "")
     monkeypatch.setattr(config, "ENABLE_COST_TRACKING", False)
 
@@ -260,3 +267,83 @@ class TestChatModelCatalog:
         validate_model_choice("llama-3.1-8b-instant", is_admin=False)
         with pytest.raises(ModelChoiceError):
             validate_model_choice("us.anthropic.claude-sonnet-5-5", is_admin=True)
+
+
+class TestOpenRouter:
+    @pytest.fixture(autouse=True)
+    def openrouter(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_PROVIDER", "openrouter")
+        monkeypatch.setattr(config, "LLM_MODEL_ID", "openrouter/free")
+
+    def test_endpoint_defaults(self, monkeypatch):
+        monkeypatch.setattr(config, "OPENROUTER_SITE_URL", "https://tutor.example")
+        endpoint = resolve_endpoint("openrouter")
+        assert endpoint.base_url == "https://openrouter.ai/api/v1"
+        assert endpoint.api_key == "sk-or-test"
+        assert endpoint.default_model == "openrouter/free"
+        assert endpoint.headers == {"X-Title": "Smart Tutor AI", "HTTP-Referer": "https://tutor.example"}
+
+    def test_no_sdk_retries_by_default_because_failures_count_against_the_cap(self, monkeypatch):
+        assert resolve_endpoint("openrouter").max_retries == 0
+        assert resolve_endpoint("groq").max_retries == 2
+        monkeypatch.setattr(config, "LLM_SDK_MAX_RETRIES", 1)
+        assert resolve_endpoint("openrouter").max_retries == 1
+        assert resolve_endpoint("groq").max_retries == 1
+
+    def test_client_gets_headers_and_retries(self, monkeypatch):
+        import openai
+
+        seen = {}
+        monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: seen.update(kwargs) or object())
+        compat._openai_client(resolve_endpoint("openrouter"))
+        assert seen["base_url"] == "https://openrouter.ai/api/v1"
+        assert seen["max_retries"] == 0
+        assert seen["default_headers"] == {"X-Title": "Smart Tutor AI"}
+
+    def test_falls_back_across_models_then_providers(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_FALLBACK_MODELS", ["a/one:free", "b/two:free"])
+        log = []
+        router = FakeClient("openrouter", log, broken={"student/pick:free", "openrouter/free", "a/one:free"})
+        llm = _llm(log, model_id="student/pick:free", fallbacks=["gemini"], clients={"openrouter": router})
+        assert llm.generate("q") == "answer from openrouter/b/two:free"
+        assert [r["model"] for _, r in log] == ["student/pick:free", "openrouter/free", "a/one:free", "b/two:free"]
+
+    def test_then_the_fallback_provider(self, monkeypatch):
+        monkeypatch.setattr(config, "LLM_FALLBACK_MODELS", ["a/one:free"])
+        log = []
+        router = FakeClient("openrouter", log, broken={"*"})
+        llm = _llm(log, fallbacks=["gemini"], clients={"openrouter": router})
+        assert llm.generate("q") == "answer from gemini/gemini-2.5-flash"
+        assert [(p, r["model"]) for p, r in log] == [
+            ("openrouter", "openrouter/free"),
+            ("openrouter", "a/one:free"),
+            ("gemini", "gemini-2.5-flash"),
+        ]
+
+    def test_chat_picker_lists_configured_models(self, monkeypatch):
+        from backend.chat_models import ModelChoiceError, available_chat_models, model_label, validate_model_choice
+
+        monkeypatch.setattr(
+            config,
+            "LLM_CHAT_MODELS",
+            ["meta-llama/llama-3.3-70b-instruct:free=Llama 3.3 70B", "anthropic/claude-sonnet-4.5=Claude Sonnet!admin"],
+        )
+        monkeypatch.setattr(config, "LLM_ROUTING_SIMPLE_MODEL", "")
+        monkeypatch.setattr(config, "LLM_ROUTING_COMPLEX_MODEL", "")
+        student = [(m["model_id"], m["label"]) for m in available_chat_models(is_admin=False)]
+        assert student == [
+            ("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B"),
+            ("openrouter/free", "Auto (free models)"),
+        ]
+        assert len(available_chat_models(is_admin=True)) == 3
+        assert model_label("anthropic/claude-sonnet-4.5") == "Claude Sonnet"
+        with pytest.raises(ModelChoiceError) as err:
+            validate_model_choice("anthropic/claude-sonnet-4.5", is_admin=False)
+        assert err.value.status_code == 403
+
+    def test_health_needs_the_key(self, monkeypatch):
+        from backend.health import HealthChecker
+
+        assert HealthChecker.check_bedrock()["status"] == "healthy"
+        monkeypatch.setattr(config, "OPENROUTER_API_KEY", "")
+        assert HealthChecker.check_bedrock()["status"] == "unhealthy"

@@ -3,6 +3,7 @@
 One client covers the free providers in the AWS exit plan
 (docs/plans/2026-11-08-aws-to-free-services-migration.md):
 
+- ``openrouter``    OpenRouter: many models behind one key, https://openrouter.ai/api/v1
 - ``groq``          Groq (Llama 3.x), https://api.groq.com/openai/v1
 - ``gemini``        Google Gemini's OpenAI-compatible endpoint
 - ``ollama``        a local Ollama server (``OLLAMA_BASE_URL``/v1)
@@ -11,10 +12,11 @@ One client covers the free providers in the AWS exit plan
 It has the same ``generate`` / ``stream_generate`` interface as
 ``BedrockLLM`` and reports tokens, latency and cost the same way.
 
-When a call fails before any text is returned, the client tries the
-provider's default model (if a different model was asked for), then each
-provider in ``LLM_FALLBACK_PROVIDERS`` in order. This covers free-tier rate
-limits (HTTP 429).
+When a call fails before any text is returned, the client tries, in order:
+the provider's default model (if a different model was asked for), each
+model in ``LLM_FALLBACK_MODELS`` on the same provider, then each provider in
+``LLM_FALLBACK_PROVIDERS``. This covers free-tier rate limits (HTTP 429) and
+free models that come and go.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from backend.model_usage import record_model_used
 
 logger = get_logger(__name__)
 
-OPENAI_COMPAT_PROVIDERS = ("groq", "gemini", "ollama", "openai_compat")
+OPENAI_COMPAT_PROVIDERS = ("openrouter", "groq", "gemini", "ollama", "openai_compat")
 
 # Answer returned in place of the model's when the moderation model flags
 # the prompt (the same role Bedrock Guardrails' blocked message plays).
@@ -46,6 +48,16 @@ class Endpoint:
     base_url: str
     api_key: str
     default_model: str
+    # Extra HTTP headers on every request (OpenRouter app attribution).
+    headers: Optional[Dict[str, str]] = None
+    # Retries the OpenAI SDK makes on 429/5xx before we fall back. OpenRouter
+    # counts failed attempts against the free daily cap, so it gets none.
+    max_retries: int = 2
+
+
+def _sdk_retries(default: int) -> int:
+    """LLM_SDK_MAX_RETRIES if set (>= 0), else the provider's default."""
+    return config.LLM_SDK_MAX_RETRIES if config.LLM_SDK_MAX_RETRIES >= 0 else default
 
 
 def resolve_endpoint(provider: str) -> Endpoint:
@@ -61,12 +73,25 @@ def resolve_endpoint(provider: str) -> Endpoint:
     override_key = config.LLM_API_KEY if is_primary else ""
     override_model = config.LLM_MODEL_ID if is_primary else ""
 
+    if provider == "openrouter":
+        headers = {"X-Title": config.OPENROUTER_APP_NAME} if config.OPENROUTER_APP_NAME else {}
+        if config.OPENROUTER_SITE_URL:
+            headers["HTTP-Referer"] = config.OPENROUTER_SITE_URL
+        return Endpoint(
+            provider,
+            override_url or "https://openrouter.ai/api/v1",
+            override_key or config.OPENROUTER_API_KEY,
+            override_model or config.OPENROUTER_MODEL_ID,
+            headers=headers or None,
+            max_retries=_sdk_retries(default=0),
+        )
     if provider == "groq":
         return Endpoint(
             provider,
             override_url or "https://api.groq.com/openai/v1",
             override_key or config.GROQ_API_KEY,
             override_model or config.GROQ_MODEL_ID,
+            max_retries=_sdk_retries(default=2),
         )
     if provider == "gemini":
         return Endpoint(
@@ -74,6 +99,7 @@ def resolve_endpoint(provider: str) -> Endpoint:
             override_url or "https://generativelanguage.googleapis.com/v1beta/openai/",
             override_key or config.GEMINI_API_KEY,
             override_model or config.GEMINI_MODEL_ID,
+            max_retries=_sdk_retries(default=2),
         )
     if provider == "ollama":
         return Endpoint(
@@ -82,11 +108,18 @@ def resolve_endpoint(provider: str) -> Endpoint:
             # Ollama ignores the key, but the OpenAI SDK requires one.
             override_key or "ollama",
             override_model or config.LLM_MODEL,
+            max_retries=_sdk_retries(default=2),
         )
     if provider == "openai_compat":
         if not config.LLM_BASE_URL or not config.LLM_MODEL_ID:
             raise ValueError("LLM_PROVIDER=openai_compat needs LLM_BASE_URL and LLM_MODEL_ID")
-        return Endpoint(provider, config.LLM_BASE_URL, config.LLM_API_KEY or "none", config.LLM_MODEL_ID)
+        return Endpoint(
+            provider,
+            config.LLM_BASE_URL,
+            config.LLM_API_KEY or "none",
+            config.LLM_MODEL_ID,
+            max_retries=_sdk_retries(default=2),
+        )
     raise ValueError(
         f"Unknown OpenAI-compatible provider: {provider}. Supported: {OPENAI_COMPAT_PROVIDERS}"
     )
@@ -177,8 +210,9 @@ class OpenAICompatLLM(BaseLLMClient):
     def _attempts(self) -> List[tuple]:
         """(endpoint, model) pairs to try, in order."""
         attempts = [(self.endpoint, self.model_id)]
-        if self.model_id != self.endpoint.default_model:
-            attempts.append((self.endpoint, self.endpoint.default_model))
+        for model in [self.endpoint.default_model, *config.LLM_FALLBACK_MODELS]:
+            if model and all(model != m for _, m in attempts):
+                attempts.append((self.endpoint, model))
         for provider in self.fallback_providers:
             try:
                 endpoint = resolve_endpoint(provider)
@@ -324,5 +358,6 @@ def _openai_client(endpoint: Endpoint) -> Any:
         api_key=endpoint.api_key or "missing",
         timeout=config.LLM_REQUEST_TIMEOUT,
         # The SDK retries 429/5xx with backoff before we fall back.
-        max_retries=2,
+        max_retries=endpoint.max_retries,
+        default_headers=endpoint.headers,
     )

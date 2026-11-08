@@ -406,7 +406,7 @@ def get_system_status() -> Dict[str, Any]:
                 }
             except Exception as e:
                 llm_status = {"ready": False, "provider": "bedrock", "error": str(e)}
-    elif llm_provider in ("groq", "gemini", "openai_compat"):
+    elif llm_provider in ("openrouter", "groq", "gemini", "openai_compat"):
         from backend.health import HealthChecker
 
         check = HealthChecker.check_llm_provider()
