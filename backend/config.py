@@ -256,12 +256,13 @@ class Config:
 
     # Cloud Provider Settings (Multi-Cloud Abstraction)
     CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "aws")  # aws or local
-    OBJECT_STORAGE_PROVIDER = os.getenv("OBJECT_STORAGE_PROVIDER", "s3")  # s3 or local
+    OBJECT_STORAGE_PROVIDER = os.getenv("OBJECT_STORAGE_PROVIDER", "s3").lower()  # s3 (AWS or S3_ENDPOINT_URL) or local
     SECRETS_PROVIDER = os.getenv("SECRETS_PROVIDER", _secrets_provider)  # aws or env
 
     # AWS Bedrock Settings (Phase 4)
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
+    # bedrock (AWS, default) | groq | gemini | ollama | openai_compat
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock").strip().lower()
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
 
     # Bedrock Models
@@ -291,6 +292,16 @@ class Config:
     S3_DOCUMENTS_BUCKET = os.getenv(
         "S3_DOCUMENTS_BUCKET", "smart-ai-tutor-docs"
     )  # For course documents
+    # S3-compatible object storage (e.g. Cloudflare R2). Empty endpoint =
+    # AWS S3. For R2: https://<account_id>.r2.cloudflarestorage.com and
+    # S3_REGION=auto. S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY default to the
+    # AWS keys when unset.
+    S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "").strip()
+    S3_REGION = os.getenv("S3_REGION", "").strip()
+    S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "")
+    S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "")
+    # Root directory when OBJECT_STORAGE_PROVIDER=local.
+    LOCAL_STORAGE_ROOT = os.getenv("LOCAL_STORAGE_ROOT", "./local_storage")
     S3_VECTOR_INDEX_NAME = os.getenv(
         "S3_VECTOR_INDEX_NAME", ""
     )  # AWS S3 Vector Index name
@@ -325,6 +336,32 @@ class Config:
     LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:latest")
     LLM_REQUEST_TIMEOUT = float(os.getenv("LLM_REQUEST_TIMEOUT", "120.0"))
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # OpenAI-compatible LLM providers (backend/openai_compat_llm.py), used
+    # when LLM_PROVIDER is groq, gemini, ollama or openai_compat.
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
+    # Override the primary provider's base URL / key (required for openai_compat).
+    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
+    LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+    # Providers tried in order when the primary fails before answering
+    # (e.g. a free-tier rate limit), e.g. "gemini,ollama".
+    LLM_FALLBACK_PROVIDERS = [
+        p.strip().lower() for p in os.getenv("LLM_FALLBACK_PROVIDERS", "").split(",") if p.strip()
+    ]
+    # Optional moderation model (e.g. a Llama Guard model) checked before
+    # each generation; replaces Bedrock Guardrails off AWS. Empty = off.
+    LLM_MODERATION_MODEL = os.getenv("LLM_MODERATION_MODEL", "")
+    # The app's default model ID for the active provider. Code that needs
+    # "the default model" reads this rather than BEDROCK_MODEL_ID.
+    LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "") or {
+        "bedrock": BEDROCK_MODEL_ID,
+        "groq": GROQ_MODEL_ID,
+        "gemini": GEMINI_MODEL_ID,
+        "ollama": LLM_MODEL,
+    }.get(LLM_PROVIDER, "")
 
     # Retrieval Settings
     SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "3"))
@@ -497,6 +534,13 @@ class Config:
     # Background jobs (backend/jobs). Without a queue URL, jobs run in a
     # thread inside the API process, as before.
     JOBS_QUEUE_URL = os.getenv("JOBS_QUEUE_URL", "").strip()
+    # Queue backend: "sqs", "redis" or "inline". Empty = "sqs" when
+    # JOBS_QUEUE_URL is set, else "inline" (a thread in the API process).
+    JOBS_BACKEND = os.getenv("JOBS_BACKEND", "").strip().lower()
+    JOBS_REDIS_QUEUE = os.getenv("JOBS_REDIS_QUEUE", "smart-tutor:jobs")
+    # Receives before a failing job goes to the dead-letter queue (Redis;
+    # SQS sets this in its redrive policy).
+    JOBS_MAX_RECEIVES = int(os.getenv("JOBS_MAX_RECEIVES", "5"))
     JOBS_REGION = os.getenv("JOBS_REGION") or os.getenv("AWS_REGION", "us-east-1")
     USER_DATA_SHARED_STORAGE = (
         os.getenv("USER_DATA_SHARED_STORAGE", "false").lower() == "true"
@@ -523,7 +567,7 @@ class Config:
     # LLM Routing (Complexity-Based Model Selection)
     LLM_ROUTING_ENABLED = os.getenv("LLM_ROUTING_ENABLED", "false").lower() == "true"
     LLM_ROUTING_SIMPLE_MODEL = os.getenv("LLM_ROUTING_SIMPLE_MODEL", "")  # e.g. meta.llama3-8b-instruct-v1:0
-    LLM_ROUTING_COMPLEX_MODEL = os.getenv("LLM_ROUTING_COMPLEX_MODEL", "")  # falls back to BEDROCK_MODEL_ID
+    LLM_ROUTING_COMPLEX_MODEL = os.getenv("LLM_ROUTING_COMPLEX_MODEL", "")  # falls back to LLM_MODEL_ID
     LLM_ROUTING_COMPLEXITY_THRESHOLD = float(os.getenv("LLM_ROUTING_COMPLEXITY_THRESHOLD", "0.5"))
 
     # Cache Settings

@@ -276,10 +276,16 @@ jobs:
               docker_with_timeout 150s docker stop -t 120 smart-tutor-worker || true
               docker rm -f smart-tutor-worker 2>/dev/null || true
             fi
-            if ! grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env"; then
-              echo "JOBS_QUEUE_URL not set -- jobs worker not started."
-            elif ! docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import backend.jobs.worker" >/dev/null 2>&1; then
-              echo "::warning::Rollback image has no jobs worker; queued jobs wait until a newer release is deployed."
+            # A Redis queue (JOBS_BACKEND=redis) needs an image that has
+            # backend/jobs/redis_queue.py; older images only know SQS.
+            worker_module=backend.jobs.worker
+            if grep -q '^JOBS_BACKEND=redis$' "$HOME/smart-tutor.env"; then
+              worker_module=backend.jobs.redis_queue
+            fi
+            if [ "$worker_module" = backend.jobs.worker ] && ! grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env"; then
+              echo "No jobs queue configured -- jobs worker not started."
+            elif ! docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import ${worker_module}" >/dev/null 2>&1; then
+              echo "::warning::Rollback image has no jobs worker for this queue; queued jobs wait until a newer release is deployed."
             else
               docker run -d \
                 --name smart-tutor-worker \

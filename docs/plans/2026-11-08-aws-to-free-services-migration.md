@@ -1,6 +1,6 @@
 # Plan: Move off AWS to free services
 
-**Date:** 2026-11-08 · **Status:** Proposed · **Scope:** backend runtime, CI/CD, infra code, scripts
+**Date:** 2026-11-08 · **Status:** Phase 1 done (switches in place, AWS still the default) · **Scope:** backend runtime, CI/CD, infra code, scripts
 
 ## 1. What production uses today
 
@@ -158,6 +158,25 @@ Every phase uses env flags, so each step can be undone by changing an env value 
 | **3. Oracle VM** (1–2 days) | Run `setup-oracle-vm.sh`, build multi-arch images, start Postgres, Redis, Neo4j, backend, worker and tunnel. Restore the Postgres dump, migrate DynamoDB sessions, rclone S3 to R2. Point a **staging** tunnel hostname at it. | Smoke tests (`post-deploy-smoke.yml`, e2e) pass against staging. |
 | **4. Cutover** (½ day, low-traffic window) | Final DB delta sync, point the production tunnel/`BACKEND_API_BASE_URL` at the VM, and keep EC2 stopped (not terminated) for 1–2 weeks. | Synthetic monitor green for 7 days; error rate and latency SLOs met. |
 | **5. Decommission** (1 day) | Terminate EC2, release the Elastic IP, delete RDS (keep a final snapshot exported to R2), DynamoDB, SQS, buckets, schedules, guardrail, IAM keys. Delete the AWS code, workflows and Terraform (§3.7). | AWS bill $0; `grep -ri boto3` only matches the R2 client. |
+
+### Phase 1 status (done)
+
+All new behaviour is opt-in through env vars; with none set the app runs on AWS exactly as before.
+
+| Switch | Values | What it does |
+|---|---|---|
+| `LLM_PROVIDER` | `bedrock` (default), `groq`, `gemini`, `ollama`, `openai_compat` | `backend/openai_compat_llm.py` — one client for every OpenAI-compatible API, with the same tracing/metrics/cost as Bedrock (shared code moved to `backend/llm_core.py`). All direct `BedrockLLM()` call sites now use `llm_provider.create_llm_client()`. |
+| `GROQ_API_KEY`, `GEMINI_API_KEY`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_ID` | — | Provider keys/endpoints. `config.LLM_MODEL_ID` is now the app-wide default model (equals `BEDROCK_MODEL_ID` on Bedrock). |
+| `LLM_FALLBACK_PROVIDERS` | e.g. `gemini,ollama` | Tried in order when the primary fails before answering (rate limits). |
+| `LLM_MODERATION_MODEL` | e.g. a Llama Guard model | Optional pre-check that replaces Bedrock Guardrails; fails open. |
+| `S3_ENDPOINT_URL`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | R2 / MinIO | Every S3 client now goes through `cloud/aws_helpers.get_s3_client()`. |
+| `JOBS_BACKEND` | `sqs`, `redis`, `inline` | `backend/jobs/redis_queue.py` gives Redis the SQS calls the worker uses (visibility timeout, retries, DLQ at `JOBS_MAX_RECEIVES`). Deploy/rollback workflows start the worker for `redis` (repo variable `JOBS_BACKEND`). |
+| `CLOUD_PROVIDER` | `aws` (default), anything else | Off AWS, `/evaluation/aws-metrics` skips the Pricing, CloudWatch and STS calls. |
+| `SECRETS_PROVIDER`, `OBJECT_STORAGE_PROVIDER` | existing | Health checks now skip Secrets Manager unless `aws`, and check the local disk for `local`. |
+
+Also: health reports an OpenAI-compatible provider under the existing `bedrock` key (so deploy gates don't change), and the chat model picker lists the provider's own models off Bedrock.
+
+Not done in Phase 1, carried forward: verifying the ARM64 image build (needs Docker/buildx in CI, do it at the start of Phase 3), renaming `cloud/aws_helpers.py` (Phase 5), and Langfuse dashboards still filter on the `bedrock-generation` trace name, which every provider keeps using.
 
 ## 5. Risks and mitigations
 

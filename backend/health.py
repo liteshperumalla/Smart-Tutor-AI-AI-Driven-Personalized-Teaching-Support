@@ -6,6 +6,7 @@ Provides detailed health checks for all application dependencies
 from datetime import datetime, timezone
 from typing import Dict, Any
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +85,47 @@ class HealthChecker:
             }
 
     @staticmethod
-    def check_bedrock() -> Dict[str, Any]:
-        """Check AWS Bedrock connectivity"""
+    def check_llm_provider() -> Dict[str, Any]:
+        """Check an OpenAI-compatible LLM provider (Groq, Gemini, ...) is set up.
+
+        Config-only: it doesn't call the provider, so health checks don't
+        use up a free tier's request quota.
+        """
         try:
             from backend.config import config
+            from backend.openai_compat_llm import resolve_endpoint
+
+            endpoint = resolve_endpoint(config.LLM_PROVIDER)
+            needs_key = endpoint.provider in ("groq", "gemini")
+            if needs_key and not endpoint.api_key:
+                return {
+                    "status": "unhealthy",
+                    "provider": endpoint.provider,
+                    "error": f"No API key set for {endpoint.provider}",
+                }
+            return {
+                "status": "healthy",
+                "provider": endpoint.provider,
+                "model": endpoint.default_model,
+                "fallback_providers": config.LLM_FALLBACK_PROVIDERS,
+                "message": "LLM provider configured",
+            }
+        except Exception as e:
+            logger.error(f"LLM provider health check failed: {e}")
+            return {"status": "unhealthy", "error": str(e)}
+
+    @staticmethod
+    def check_bedrock() -> Dict[str, Any]:
+        """Check the LLM backend: AWS Bedrock, or the configured provider.
+
+        The result stays under the "bedrock" key of the health report so
+        existing dashboards and deploy gates keep working.
+        """
+        try:
+            from backend.config import config
+
+            if config.LLM_PROVIDER in ("groq", "gemini", "openai_compat"):
+                return HealthChecker.check_llm_provider()
 
             if config.LLM_PROVIDER != "bedrock":
                 return {
@@ -105,7 +143,7 @@ class HealthChecker:
             return {
                 "status": "healthy",
                 "region": config.AWS_REGION,
-                "model": config.BEDROCK_MODEL_ID,
+                "model": config.LLM_MODEL_ID,
                 "account": identity.get("Account", "unknown"),
                 "message": "AWS credentials valid"
             }
@@ -164,6 +202,18 @@ class HealthChecker:
                     "message": "S3_DOCUMENTS_BUCKET is not set"
                 }
 
+            if config.OBJECT_STORAGE_PROVIDER == "local":
+                from pathlib import Path
+
+                root = Path(config.LOCAL_STORAGE_ROOT)
+                ok = root.is_dir() and os.access(root, os.W_OK)
+                return {
+                    "status": "healthy" if ok else "unhealthy",
+                    "provider": "local",
+                    "root": str(root),
+                    **({} if ok else {"error": f"{root} is missing or not writable"}),
+                }
+
             from backend.cloud.aws_helpers import get_boto3_client
 
             s3 = get_boto3_client("s3")
@@ -172,6 +222,8 @@ class HealthChecker:
             return {
                 "status": "healthy",
                 "bucket": config.S3_DOCUMENTS_BUCKET,
+                # Set for S3-compatible stores such as Cloudflare R2.
+                "endpoint": config.S3_ENDPOINT_URL or "aws",
                 "message": "Accessible"
             }
 
@@ -192,6 +244,12 @@ class HealthChecker:
                 return {
                     "status": "not_applicable",
                     "message": "Secrets Manager only used in production"
+                }
+
+            if config.SECRETS_PROVIDER != "aws":
+                return {
+                    "status": "not_applicable",
+                    "message": f"Secrets come from SECRETS_PROVIDER={config.SECRETS_PROVIDER or 'env'}"
                 }
 
             from backend.cloud.aws_helpers import get_boto3_client

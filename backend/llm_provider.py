@@ -4,6 +4,7 @@ Provides a unified interface for switching between different LLM and embedding p
 
 LLM Providers:
 - AWS Bedrock (Claude, Llama, etc.)
+- Groq, Gemini, any OpenAI-compatible API (backend/openai_compat_llm.py)
 - Ollama (local models)
 
 Embedding Providers:
@@ -24,6 +25,9 @@ logger = get_logger(__name__)
 class LLMProvider(Enum):
     """Supported LLM providers"""
     BEDROCK = "bedrock"
+    GROQ = "groq"
+    GEMINI = "gemini"
+    OPENAI_COMPAT = "openai_compat"
     OLLAMA = "ollama"
     HUGGINGFACE = "huggingface"  # Local embeddings using SentenceTransformer
     LOCAL = "local"  # Alias for HUGGINGFACE
@@ -38,7 +42,8 @@ class LLMFactory:
         Create LLM instance based on provider
 
         Args:
-            provider: LLM provider name (bedrock, ollama). Uses config if not specified.
+            provider: LLM provider name (bedrock, groq, gemini, openai_compat, ollama).
+                Uses config if not specified.
             **kwargs: Additional parameters for the LLM
 
         Returns:
@@ -53,6 +58,9 @@ class LLMFactory:
 
         if provider == LLMProvider.BEDROCK.value:
             return LLMFactory._create_bedrock_llm(**kwargs)
+
+        elif provider in _OPENAI_COMPAT_LLMS:
+            return LLMFactory._create_openai_compat_llm(provider, **kwargs)
 
         elif provider == LLMProvider.OLLAMA.value:
             return LLMFactory._create_ollama_llm(**kwargs)
@@ -85,6 +93,15 @@ class LLMFactory:
         except Exception as e:
             logger.error(f"Failed to create Bedrock LLM: {e}", exc_info=True)
             raise
+
+    @staticmethod
+    def _create_openai_compat_llm(provider: str, **kwargs) -> Any:
+        """Create a LlamaIndex LLM for Groq / Gemini / an OpenAI-compatible API."""
+        from backend.llamaindex_compat import OpenAICompatLlamaIndexLLM
+
+        model_id = kwargs.get("model_id") or config.LLM_MODEL_ID or None
+        logger.info(f"✓ Using {provider} for LLM: {model_id}")
+        return OpenAICompatLlamaIndexLLM(model_id=model_id, provider=provider)
 
     @staticmethod
     def _create_ollama_llm(**kwargs) -> Any:
@@ -205,6 +222,11 @@ class LLMFactory:
                 "region": config.AWS_REGION,
                 "enabled": config.LLM_PROVIDER == LLMProvider.BEDROCK.value
             },
+            "openai_compat": {
+                "model_id": config.LLM_MODEL_ID,
+                "fallback_providers": config.LLM_FALLBACK_PROVIDERS,
+                "enabled": config.LLM_PROVIDER in _OPENAI_COMPAT_LLMS,
+            },
             "ollama": {
                 "model": config.LLM_MODEL,
                 "base_url": config.OLLAMA_BASE_URL,
@@ -212,6 +234,32 @@ class LLMFactory:
                 "enabled": config.LLM_PROVIDER == LLMProvider.OLLAMA.value
             }
         }
+
+
+_OPENAI_COMPAT_LLMS = (
+    LLMProvider.GROQ.value,
+    LLMProvider.GEMINI.value,
+    LLMProvider.OPENAI_COMPAT.value,
+)
+
+
+def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = None) -> Any:
+    """Direct (non-LlamaIndex) LLM client for the active provider.
+
+    Returns an object with ``generate`` / ``stream_generate`` / ``get_stats``
+    and a ``model_id`` attribute: ``BedrockLLM`` when LLM_PROVIDER=bedrock,
+    otherwise ``OpenAICompatLLM`` (Groq, Gemini, Ollama, any OpenAI-compatible
+    endpoint). Use this instead of constructing ``BedrockLLM`` directly.
+    """
+    provider = (provider or config.LLM_PROVIDER).lower()
+    if provider == LLMProvider.BEDROCK.value:
+        from backend.bedrock_llm import BedrockLLM
+
+        return BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+
+    from backend.openai_compat_llm import OpenAICompatLLM
+
+    return OpenAICompatLLM(model_id=model_id, provider=provider)
 
 
 # Convenience functions

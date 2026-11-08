@@ -423,6 +423,9 @@ jobs:
           # Set: the API queues jobs and the smart-tutor-worker container runs
           # them. Empty: no worker; jobs run in a thread inside the API.
           JOBS_QUEUE_URL: ${{ vars.JOBS_QUEUE_URL || '' }}
+          # "redis" runs the same worker on the Redis container instead of
+          # SQS (no JOBS_QUEUE_URL needed). Empty keeps the behaviour above.
+          JOBS_BACKEND: ${{ vars.JOBS_BACKEND || '' }}
           # Cloudflare Tunnel (see docs/runbooks/cloudflare-tunnel.md). Set: a
           # cloudflared container serves the backend over HTTPS at
           # BACKEND_PUBLIC_HOSTNAME. Empty: no tunnel is managed.
@@ -433,7 +436,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL,CLOUDFLARE_TUNNEL_TOKEN,BACKEND_PUBLIC_HOSTNAME
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL,JOBS_BACKEND,CLOUDFLARE_TUNNEL_TOKEN,BACKEND_PUBLIC_HOSTNAME
           script: |
             set -euo pipefail
 
@@ -471,12 +474,19 @@ jobs:
             }
 
             echo "=== Syncing jobs queue into smart-tutor.env ==="
-            sed -i '/^JOBS_QUEUE_URL=/d' ~/smart-tutor.env
+            sed -i '/^JOBS_QUEUE_URL=/d; /^JOBS_BACKEND=/d' ~/smart-tutor.env
+            if [ -n "${JOBS_BACKEND:-}" ]; then
+              echo "JOBS_BACKEND=${JOBS_BACKEND}" >> ~/smart-tutor.env
+            fi
             if [ -n "${JOBS_QUEUE_URL:-}" ]; then
               echo "JOBS_QUEUE_URL=${JOBS_QUEUE_URL}" >> ~/smart-tutor.env
-              echo "Jobs queue configured; smart-tutor-worker will run background jobs."
+            fi
+            if [ "${JOBS_BACKEND:-}" = "redis" ]; then
+              echo "Jobs queue on Redis; smart-tutor-worker will run background jobs."
+            elif [ -n "${JOBS_QUEUE_URL:-}" ] && [ "${JOBS_BACKEND:-}" != "inline" ]; then
+              echo "Jobs queue on SQS; smart-tutor-worker will run background jobs."
             else
-              echo "No JOBS_QUEUE_URL repo variable set -- background jobs run inside the API."
+              echo "No jobs queue configured -- background jobs run inside the API."
             fi
 
             echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
@@ -641,8 +651,9 @@ jobs:
                 docker_force_remove smart-tutor-worker
               fi
 
-              if [ -z "${JOBS_QUEUE_URL:-}" ]; then
-                echo "JOBS_QUEUE_URL not set -- jobs worker not started."
+              # Mirrors backend.jobs.queue.jobs_backend().
+              if [ "${JOBS_BACKEND:-}" != "redis" ] && { [ -z "${JOBS_QUEUE_URL:-}" ] || [ "${JOBS_BACKEND:-}" = "inline" ]; }; then
+                echo "No jobs queue configured -- jobs worker not started."
                 return 0
               fi
 

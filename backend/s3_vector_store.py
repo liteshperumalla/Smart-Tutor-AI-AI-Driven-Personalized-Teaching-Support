@@ -3,7 +3,6 @@ S3 Vector Store for RAG
 Implements vector similarity search using S3 + local index
 """
 
-import boto3
 import io
 import json
 import numpy as np
@@ -38,13 +37,13 @@ class S3VectorStore:
             connect_timeout=120, read_timeout=180, retries={"max_attempts": 3}
         )
 
-        client_kwargs = {"region_name": self.region, "config": boto_config}
-        if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
-            client_kwargs["aws_access_key_id"] = config.AWS_ACCESS_KEY_ID
-            client_kwargs["aws_secret_access_key"] = config.AWS_SECRET_ACCESS_KEY
-            if config.AWS_SESSION_TOKEN:
-                client_kwargs["aws_session_token"] = config.AWS_SESSION_TOKEN
-        self.s3 = boto3.client("s3", **client_kwargs)
+        from backend.cloud.aws_helpers import get_s3_client
+
+        # Shared factory: AWS S3, or an S3-compatible store via S3_ENDPOINT_URL.
+        client_kwargs = {"config": boto_config}
+        if region:
+            client_kwargs["region_name"] = region
+        self.s3 = get_s3_client(**client_kwargs)
         self.index_cache_path = index_cache_path
         self.s3_index_key = s3_index_key
 

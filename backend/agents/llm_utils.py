@@ -78,7 +78,7 @@ def stream_complete_with_model_fallback(
         primary_exc = exc
 
     if not yielded_any:
-        fallback_model_id = config.BEDROCK_MODEL_ID
+        fallback_model_id = config.LLM_MODEL_ID
         if model_id and model_id != fallback_model_id:
             logger.warning(
                 "Primary streaming model %s failed (%s). Falling back to %s.",
@@ -113,7 +113,7 @@ def complete_with_model_fallback(
     try:
         return _complete(model_id)
     except Exception as exc:
-        fallback_model_id = config.BEDROCK_MODEL_ID
+        fallback_model_id = config.LLM_MODEL_ID
         if model_id and model_id != fallback_model_id:
             logger.warning(
                 "Primary model %s failed (%s). Retrying with default model %s.",

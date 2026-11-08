@@ -36,7 +36,7 @@ async def rag_health_check(session=Depends(get_admin_session)) -> Dict[str, Any]
             "use_s3_vectors": config.USE_S3_VECTORS,
             "documents_bucket": config.S3_DOCUMENTS_BUCKET,
             "embedding_model": config.BEDROCK_EMBEDDING_MODEL_ID,
-            "llm_model": config.BEDROCK_MODEL_ID,
+            "llm_model": config.LLM_MODEL_ID,
         }
 
         if config.USE_S3_VECTORS:

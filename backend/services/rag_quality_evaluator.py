@@ -29,7 +29,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from backend.bedrock_llm import BedrockLLM
+from backend.llm_provider import create_llm_client
 from backend.config import config
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ def _evaluate_split(
     model_id: Optional[str],
 ) -> Dict[str, Any]:
     """Score the 4 metrics with 4 separate LLM calls (anti-halo)."""
-    llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
+    llm = create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
     results: Dict[str, float] = {}
     reasonings: List[str] = []
     inputs = {
@@ -309,7 +309,7 @@ def evaluate_quality(
     )
 
     try:
-        llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
+        llm = create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
         raw_response = llm.generate(
             prompt=prompt,
             max_tokens=300,

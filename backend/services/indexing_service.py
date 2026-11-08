@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import boto3
 
 from backend.config import config
 
@@ -70,7 +69,9 @@ def _clean_text(text: str) -> str:
 class IndexingService:
     def __init__(self, redis_cache=None):
         self.redis = redis_cache
-        self.s3 = boto3.client("s3", region_name=config.AWS_REGION)
+        from backend.cloud.aws_helpers import get_s3_client
+
+        self.s3 = get_s3_client()
         self.bucket = config.S3_DOCUMENTS_BUCKET
 
     # ── Progress helpers ───────────────────────────────────────────────────────
