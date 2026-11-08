@@ -46,6 +46,20 @@ On the next staging deploy, `deploy-staging.yml` writes each value that is set
 into `~/smart-tutor-staging.env` on the server (mode 600). Values you leave
 unset keep whatever the file already has.
 
+If that file doesn't exist yet (the first staging deploy), the workflow
+creates it with isolated settings:
+- `ENVIRONMENT=staging` and `SECRETS_PROVIDER=env`, so staging never loads
+  production's Secrets Manager entry or its database credentials;
+- its own generated `SECRET_KEY` and `JWT_SECRET_KEY`;
+- `STORAGE_BACKEND=filesystem`, so users are stored in the staging data
+  directory rather than a database;
+- `USE_REDIS_CACHE=false` and `JOBS_BACKEND=inline`;
+- the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` and
+  `S3_DOCUMENTS_BUCKET` lines only, copied from `~/smart-tutor.env`, to read
+  the course chunks.
+
+It never edits an existing file beyond the LLM settings above.
+
 > **Don't set `LLM_PROVIDER` or `EMBEDDING_PROVIDER` as repository variables
 > yet.** The production deploy reads repository-level variables, so that
 > would switch production too. Repository-level *secrets* (the keys) are

@@ -320,9 +320,45 @@ jobs:
             # Cap staging so it can't starve the production containers it shares the host with.
             STAGING_LIMITS=(--memory "${STAGING_MEMORY_LIMIT:-1g}" --cpus "${STAGING_CPU_LIMIT:-1.0}")
 
+            # First deploy: create an isolated staging env file. It never
+            # copies the production file wholesale: staging gets its own
+            # secrets, stores users on its own disk (no production database),
+            # runs without Redis, and must not load production's Secrets
+            # Manager entry. Only the AWS key, region and documents-bucket
+            # lines are copied, to read course chunks from S3. An existing
+            # file is never touched here.
             if [ ! -f "${STAGING_ENV_FILE}" ]; then
-              echo "::error::Missing ${STAGING_ENV_FILE} on the host. Create it with staging-only settings (separate DB/Redis/S3 prefixes, ENVIRONMENT=staging); do not copy the production env file."
-              exit 1
+              echo "=== Creating ${STAGING_ENV_FILE} (first staging deploy) ==="
+              random_hex() {
+                if command -v openssl >/dev/null 2>&1; then
+                  openssl rand -hex 32
+                else
+                  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+                fi
+              }
+              # Owner-only from creation; the subshell keeps umask local.
+              ( umask 077; : > "${STAGING_ENV_FILE}" )
+              {
+                echo "ENVIRONMENT=staging"
+                echo "SECRETS_PROVIDER=env"
+                echo "SECRET_KEY=$(random_hex)"
+                echo "JWT_SECRET_KEY=$(random_hex)"
+                echo "STORAGE_BACKEND=filesystem"
+                echo "USE_REDIS_CACHE=false"
+                echo "JOBS_BACKEND=inline"
+                echo "CLOUD_PROVIDER=aws"
+                echo "OBJECT_STORAGE_PROVIDER=s3"
+                echo "USE_S3_VECTORS=true"
+                echo "ENFORCE_HTTPS=false"
+              } > "${STAGING_ENV_FILE}"
+              if [ -f "$HOME/smart-tutor.env" ]; then
+                grep -E '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|S3_DOCUMENTS_BUCKET)=' \
+                  "$HOME/smart-tutor.env" >> "${STAGING_ENV_FILE}" || true
+              else
+                echo "::warning::$HOME/smart-tutor.env not found; staging has no AWS keys or documents bucket and can't read course chunks until they are added to ${STAGING_ENV_FILE}."
+              fi
+              chmod 600 "${STAGING_ENV_FILE}"
+              echo "Created with: $(cut -d= -f1 "${STAGING_ENV_FILE}" | tr '\n' ' ')"
             fi
 
             echo "=== Syncing LLM provider settings into the staging env file ==="
