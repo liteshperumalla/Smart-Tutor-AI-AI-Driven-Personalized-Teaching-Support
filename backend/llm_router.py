@@ -108,10 +108,10 @@ def classify_query_complexity(query: str) -> Tuple[str, float]:
 
 def select_model_for_complexity(tier: str) -> str:
     """
-    Select the appropriate Bedrock model ID for the given complexity tier.
+    Select the appropriate model ID for the given complexity tier.
 
     Returns:
-        A model ID string. Falls back to the default BEDROCK_MODEL_ID
+        A model ID string. Falls back to the default LLM_MODEL_ID
         if no tier-specific model is configured.
     """
     from backend.config import config
@@ -122,4 +122,4 @@ def select_model_for_complexity(tier: str) -> str:
         return config.LLM_ROUTING_COMPLEX_MODEL
 
     # Fallback to default model
-    return config.BEDROCK_MODEL_ID
+    return config.LLM_MODEL_ID

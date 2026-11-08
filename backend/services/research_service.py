@@ -40,6 +40,7 @@ from youtube_transcript_api import (
     NoTranscriptFound,
 )
 
+from backend.cloud.aws_helpers import get_boto3_client
 from backend.config import config
 from backend.s3_retriever import S3Retriever
 from backend.s3_vector_store import S3VectorStore
@@ -114,11 +115,7 @@ class ResearchService:
     def _ensure_bucket_exists(self):
         """Ensure the uploads bucket exists, create if needed"""
         try:
-            import boto3
-
-            s3 = boto3.resource("s3")
-            bucket = s3.Bucket(self._uploads_bucket)
-            bucket.meta.client.head_bucket(Bucket=self._uploads_bucket)
+            get_boto3_client("s3").head_bucket(Bucket=self._uploads_bucket)
         except Exception as e:
             logger.info(f"Bucket {self._uploads_bucket} may not exist or error: {e}")
             pass
@@ -575,8 +572,7 @@ class ResearchService:
     ) -> List[Dict[str, Any]]:
         """Fetch all text chunks for the given uploaded file IDs (by metadata lookup)."""
         try:
-            import boto3
-            s3 = boto3.client("s3", region_name=config.AWS_REGION)
+            s3 = get_boto3_client("s3")
             all_chunks: List[Dict[str, Any]] = []
 
             for fid in file_ids:
@@ -719,9 +715,9 @@ class ResearchService:
 
                 combined_context = "\n\n".join(answer_parts[:3])
 
-                from backend.bedrock_llm import BedrockLLM
+                from backend.llm_provider import create_llm_client
 
-                llm = BedrockLLM()
+                llm = create_llm_client()
                 answer = llm.generate(
                     prompt=f"Based on the following context, answer the question: {query}\n\nContext:\n{combined_context[:3000]}",
                     max_tokens=1024,
@@ -1005,7 +1001,7 @@ class ResearchService:
         uploaded_only: bool = True,
     ) -> Dict[str, Any]:
         """Compare information across uploaded documents on a topic."""
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
 
         try:
             chunks = self._search_uploaded_chunks(topic, top_k=20)
@@ -1040,7 +1036,7 @@ class ResearchService:
                 )
                 analyzed += 1
 
-            llm = BedrockLLM()
+            llm = create_llm_client()
             prompt = f"""Compare these sources on the topic "{topic}" and identify agreements and contradictions:
 
 Sources analyzed: {len(comparisons)}
@@ -1073,7 +1069,7 @@ Sources analyzed: {len(comparisons)}
         self, document_id: Optional[str] = None, format_style: str = "apa"
     ) -> Dict[str, Any]:
         """Extract and format citations from uploaded documents."""
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
 
         try:
             chunks = self._search_uploaded_chunks(
@@ -1149,13 +1145,13 @@ Sources analyzed: {len(comparisons)}
         max_length: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Generate summary of uploaded documents."""
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
 
         try:
             chunks = self._search_uploaded_chunks("", top_k=10)
             content = "\n".join([c.get("text", "") for c in chunks])[:5000]
 
-            llm = BedrockLLM()
+            llm = create_llm_client()
             prompt = f"Generate a {mode} summary of the following content:\n\n{content}"
 
             if max_length:
@@ -1186,7 +1182,7 @@ Sources analyzed: {len(comparisons)}
         count: int = 5,
     ) -> Dict[str, Any]:
         """Generate study questions from uploaded documents."""
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
 
         question_types = question_types or ["mcq", "short_answer"]
         difficulty_levels = {
@@ -1199,7 +1195,7 @@ Sources analyzed: {len(comparisons)}
             chunks = self._search_uploaded_chunks("", top_k=10)
             content = "\n".join([c.get("text", "") for c in chunks])[:4000]
 
-            llm = BedrockLLM()
+            llm = create_llm_client()
             prompt = f"""Generate {count} {difficulty_levels.get(difficulty, "moderate")} study questions from this content. 
 Question types: {", ".join(question_types)}
 
@@ -1246,7 +1242,7 @@ Format as JSON array with: question, type, difficulty, answer (for reference), e
         self, claim: str, uploaded_only: bool = True, include_web: bool = False
     ) -> Dict[str, Any]:
         """Cross-reference claims against sources."""
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
 
         try:
             sources = self._search_uploaded_chunks(claim, top_k=10)

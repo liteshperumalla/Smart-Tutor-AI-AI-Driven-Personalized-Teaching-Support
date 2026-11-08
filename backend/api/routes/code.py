@@ -154,10 +154,15 @@ class CodeChatResponse(BaseModel):
 
 def _code_llm_model_id() -> str:
     """Resolve the code LLM model id, overridable via CODE_LLM_MODEL_ID."""
-    return os.environ.get(
-        "CODE_LLM_MODEL_ID",
-        "us.anthropic.claude-sonnet-5-5",
-    )
+    from backend.config import config
+
+    override = os.environ.get("CODE_LLM_MODEL_ID")
+    if override:
+        return override
+    # Claude Sonnet on Bedrock; the provider's default model elsewhere.
+    if config.LLM_PROVIDER == "bedrock":
+        return "us.anthropic.claude-sonnet-5-5"
+    return config.LLM_MODEL_ID
 
 
 def _get_code_llm():
@@ -167,19 +172,19 @@ def _get_code_llm():
     Falls back gracefully to default Bedrock model (Llama) if unavailable.
     """
     try:
-        from backend.bedrock_llm import BedrockLLM
+        from backend.llm_provider import create_llm_client
         from backend.config import config
 
-        return BedrockLLM(model_id=_code_llm_model_id(), region=config.AWS_REGION)
+        return create_llm_client(model_id=_code_llm_model_id())
     except Exception:
-        logger.exception("Failed to initialize Bedrock LLM with code model, attempting default model")
+        logger.exception("Failed to initialize LLM with code model, attempting default model")
         try:
-            from backend.bedrock_llm import BedrockLLM
+            from backend.llm_provider import create_llm_client
             from backend.config import config
 
-            return BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+            return create_llm_client(model_id=config.LLM_MODEL_ID)
         except Exception:
-            logger.exception("Unexpected error initializing fallback Bedrock LLM")
+            logger.exception("Unexpected error initializing fallback LLM")
             return None
 
 
@@ -299,10 +304,10 @@ async def generate_code(
         logger.exception("Code generation failed: %s", e)
         # Attempt fallback to default Bedrock model
         try:
-            from backend.bedrock_llm import BedrockLLM
+            from backend.llm_provider import create_llm_client
             from backend.config import config
-            if llm.model_id != config.BEDROCK_MODEL_ID:
-                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+            if llm.model_id != config.LLM_MODEL_ID:
+                fallback_llm = create_llm_client(model_id=config.LLM_MODEL_ID)
                 response = fallback_llm.generate(
                     prompt=f"Request: {payload.prompt}\n\nCode:",
                     system_prompt=system_prompt,
@@ -352,10 +357,10 @@ async def explain_code(
     except Exception as e:
         logger.exception("Code explanation failed: %s", e)
         try:
-            from backend.bedrock_llm import BedrockLLM
+            from backend.llm_provider import create_llm_client
             from backend.config import config
-            if llm.model_id != config.BEDROCK_MODEL_ID:
-                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+            if llm.model_id != config.LLM_MODEL_ID:
+                fallback_llm = create_llm_client(model_id=config.LLM_MODEL_ID)
                 response = fallback_llm.generate(
                     prompt=f"Code:\n{payload.code}\n\nExplanation:",
                     system_prompt=system_prompt,
@@ -424,10 +429,10 @@ async def debug_code(
     except Exception as e:
         logger.exception("Debug code failed: %s", e)
         try:
-            from backend.bedrock_llm import BedrockLLM
+            from backend.llm_provider import create_llm_client
             from backend.config import config
-            if llm.model_id != config.BEDROCK_MODEL_ID:
-                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+            if llm.model_id != config.LLM_MODEL_ID:
+                fallback_llm = create_llm_client(model_id=config.LLM_MODEL_ID)
                 response = fallback_llm.generate(
                     prompt=f"Code:\n{payload.code}\n\nDebugging:",
                     system_prompt=system_prompt,
@@ -500,10 +505,10 @@ async def chat_with_code_llm(
     except Exception as e:
         logger.exception("Code chat failed: %s", e)
         try:
-            from backend.bedrock_llm import BedrockLLM
+            from backend.llm_provider import create_llm_client
             from backend.config import config
-            if llm.model_id != config.BEDROCK_MODEL_ID:
-                fallback_llm = BedrockLLM(model_id=config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+            if llm.model_id != config.LLM_MODEL_ID:
+                fallback_llm = create_llm_client(model_id=config.LLM_MODEL_ID)
                 response = fallback_llm.generate(
                     prompt=f"{context}User: {payload.message}\nAssistant:",
                     system_prompt=system_prompt,

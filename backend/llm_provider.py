@@ -4,6 +4,7 @@ Provides a unified interface for switching between different LLM and embedding p
 
 LLM Providers:
 - AWS Bedrock (Claude, Llama, etc.)
+- OpenRouter, Groq, Gemini, any OpenAI-compatible API (backend/openai_compat_llm.py)
 - Ollama (local models)
 
 Embedding Providers:
@@ -24,6 +25,10 @@ logger = get_logger(__name__)
 class LLMProvider(Enum):
     """Supported LLM providers"""
     BEDROCK = "bedrock"
+    OPENROUTER = "openrouter"
+    GROQ = "groq"
+    GEMINI = "gemini"
+    OPENAI_COMPAT = "openai_compat"
     OLLAMA = "ollama"
     HUGGINGFACE = "huggingface"  # Local embeddings using SentenceTransformer
     LOCAL = "local"  # Alias for HUGGINGFACE
@@ -38,7 +43,8 @@ class LLMFactory:
         Create LLM instance based on provider
 
         Args:
-            provider: LLM provider name (bedrock, ollama). Uses config if not specified.
+            provider: LLM provider name (bedrock, openrouter, groq, gemini, openai_compat, ollama).
+                Uses config if not specified.
             **kwargs: Additional parameters for the LLM
 
         Returns:
@@ -53,6 +59,9 @@ class LLMFactory:
 
         if provider == LLMProvider.BEDROCK.value:
             return LLMFactory._create_bedrock_llm(**kwargs)
+
+        elif provider in _OPENAI_COMPAT_LLMS:
+            return LLMFactory._create_openai_compat_llm(provider, **kwargs)
 
         elif provider == LLMProvider.OLLAMA.value:
             return LLMFactory._create_ollama_llm(**kwargs)
@@ -87,12 +96,24 @@ class LLMFactory:
             raise
 
     @staticmethod
+    def _create_openai_compat_llm(provider: str, **kwargs) -> Any:
+        """Create a LlamaIndex LLM for Groq / Gemini / an OpenAI-compatible API."""
+        from backend.llamaindex_compat import OpenAICompatLlamaIndexLLM
+
+        model_id = kwargs.get("model_id")
+        if not model_id and provider == config.LLM_PROVIDER:
+            model_id = config.LLM_MODEL_ID or None
+        # model_id None = that provider's own default model.
+        logger.info(f"✓ Using {provider} for LLM: {model_id}")
+        return OpenAICompatLlamaIndexLLM(model_id=model_id, provider=provider)
+
+    @staticmethod
     def _create_ollama_llm(**kwargs) -> Any:
         """Create Ollama local LLM instance"""
         try:
             from llama_index.llms.ollama import Ollama
 
-            model = kwargs.get('model', config.LLM_MODEL)
+            model = kwargs.get('model') or kwargs.get('model_id') or config.LLM_MODEL
             base_url = kwargs.get('base_url', config.OLLAMA_BASE_URL)
             timeout = kwargs.get('request_timeout', config.LLM_REQUEST_TIMEOUT)
 
@@ -205,6 +226,11 @@ class LLMFactory:
                 "region": config.AWS_REGION,
                 "enabled": config.LLM_PROVIDER == LLMProvider.BEDROCK.value
             },
+            "openai_compat": {
+                "model_id": config.LLM_MODEL_ID,
+                "fallback_providers": config.LLM_FALLBACK_PROVIDERS,
+                "enabled": config.LLM_PROVIDER in _OPENAI_COMPAT_LLMS,
+            },
             "ollama": {
                 "model": config.LLM_MODEL,
                 "base_url": config.OLLAMA_BASE_URL,
@@ -212,6 +238,76 @@ class LLMFactory:
                 "enabled": config.LLM_PROVIDER == LLMProvider.OLLAMA.value
             }
         }
+
+
+_OPENAI_COMPAT_LLMS = (
+    LLMProvider.OPENROUTER.value,
+    LLMProvider.GROQ.value,
+    LLMProvider.GEMINI.value,
+    LLMProvider.OPENAI_COMPAT.value,
+)
+
+
+def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = None) -> Any:
+    """Direct (non-LlamaIndex) LLM client for the active provider.
+
+    Returns an object with ``generate`` / ``stream_generate`` / ``get_stats``
+    and a ``model_id`` attribute: ``BedrockLLM`` when LLM_PROVIDER=bedrock,
+    otherwise ``OpenAICompatLLM`` (OpenRouter, Groq, Gemini, Ollama, any OpenAI-compatible
+    endpoint). Use this instead of constructing ``BedrockLLM`` directly.
+    """
+    provider = (provider or config.LLM_PROVIDER).lower()
+    if provider == LLMProvider.BEDROCK.value:
+        from backend.bedrock_llm import BedrockLLM
+
+        return BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID, region=config.AWS_REGION)
+
+    from backend.openai_compat_llm import OpenAICompatLLM
+
+    return OpenAICompatLLM(model_id=model_id, provider=provider)
+
+
+def is_local_embedding_provider(provider: Optional[str] = None) -> bool:
+    return (provider or config.EMBEDDING_PROVIDER).lower() in (
+        LLMProvider.HUGGINGFACE.value,
+        LLMProvider.LOCAL.value,
+        LLMProvider.OLLAMA.value,  # legacy alias, see create_embeddings
+    )
+
+
+def create_embedding_client(provider: Optional[str] = None) -> Any:
+    """Direct embeddings client for the active provider.
+
+    ``BedrockEmbeddings`` (Titan) when EMBEDDING_PROVIDER=bedrock, otherwise
+    ``LocalEmbeddings`` (sentence-transformers, EMBEDDING_MODEL). Both offer
+    ``encode`` / ``get_sentence_embedding_dimension`` / ``get_stats`` and
+    ``model_id``. Prefer ``get_shared_embedding_client`` in request paths:
+    a local model takes seconds and hundreds of MB to load.
+    """
+    provider = (provider or config.EMBEDDING_PROVIDER).lower()
+    if is_local_embedding_provider(provider):
+        from backend.local_embeddings import LocalEmbeddings
+
+        return LocalEmbeddings(model_id=config.EMBEDDING_MODEL)
+    if provider == LLMProvider.BEDROCK.value:
+        from backend.bedrock_embeddings import BedrockEmbeddings
+
+        return BedrockEmbeddings(model_id=config.BEDROCK_EMBEDDING_MODEL_ID, region=config.AWS_REGION)
+    raise ValueError(f"Unknown embedding provider: {provider}")
+
+
+_shared_embedding_client: Any = None
+_shared_embedding_lock = __import__("threading").Lock()
+
+
+def get_shared_embedding_client() -> Any:
+    """Process-wide embeddings client (lazy, thread-safe)."""
+    global _shared_embedding_client
+    if _shared_embedding_client is None:
+        with _shared_embedding_lock:
+            if _shared_embedding_client is None:
+                _shared_embedding_client = create_embedding_client()
+    return _shared_embedding_client
 
 
 # Convenience functions

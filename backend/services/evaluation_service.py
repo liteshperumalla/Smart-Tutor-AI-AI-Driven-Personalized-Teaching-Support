@@ -13,7 +13,7 @@ from backend.config import config
 from backend.database import JSONDatabase
 from backend.rag_evaluation import RAGEvaluationMetrics, get_evaluator
 from backend.s3_retriever import create_s3_retriever
-from backend.bedrock_llm import BedrockLLM
+from backend.llm_provider import create_llm_client
 from backend.services.rag_quality_evaluator import (
     evaluate_quality,
     compute_context_precision,
@@ -441,7 +441,7 @@ class EvaluationService:
         }
 
         gen_start = time.time()
-        llm = BedrockLLM()
+        llm = create_llm_client()
 
         context_passages = [
             node.node.get_text() if hasattr(node.node, "get_text") else ""

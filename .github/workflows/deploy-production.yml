@@ -423,6 +423,29 @@ jobs:
           # Set: the API queues jobs and the smart-tutor-worker container runs
           # them. Empty: no worker; jobs run in a thread inside the API.
           JOBS_QUEUE_URL: ${{ vars.JOBS_QUEUE_URL || '' }}
+          # "redis" runs the same worker on the Redis container instead of
+          # SQS (no JOBS_QUEUE_URL needed). Empty keeps the behaviour above.
+          JOBS_BACKEND: ${{ vars.JOBS_BACKEND || '' }}
+          # Free-stack LLM/embedding settings (docs/runbooks/free-llm-stack.md).
+          # Keys are secrets, the rest variables. Each one that is set replaces
+          # its line in the env file; unset ones leave the file's value alone.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || '' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || '' }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || '' }}
+          LLM_MODEL_ID: ${{ vars.LLM_MODEL_ID || '' }}
+          OPENROUTER_MODEL_ID: ${{ vars.OPENROUTER_MODEL_ID || '' }}
+          OPENROUTER_SITE_URL: ${{ vars.OPENROUTER_SITE_URL || '' }}
+          LLM_CHAT_MODELS: ${{ vars.LLM_CHAT_MODELS || '' }}
+          LLM_FALLBACK_MODELS: ${{ vars.LLM_FALLBACK_MODELS || '' }}
+          LLM_FALLBACK_PROVIDERS: ${{ vars.LLM_FALLBACK_PROVIDERS || '' }}
+          LLM_MODERATION_MODEL: ${{ vars.LLM_MODERATION_MODEL || '' }}
+          GEMINI_MODEL_ID: ${{ vars.GEMINI_MODEL_ID || '' }}
+          GROQ_MODEL_ID: ${{ vars.GROQ_MODEL_ID || '' }}
+          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER || '' }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || '' }}
+          EVAL_JUDGE_PROVIDER: ${{ vars.EVAL_JUDGE_PROVIDER || '' }}
+          EVAL_JUDGE_MODEL_ID: ${{ vars.EVAL_JUDGE_MODEL_ID || '' }}
           # Cloudflare Tunnel (see docs/runbooks/cloudflare-tunnel.md). Set: a
           # cloudflared container serves the backend over HTTPS at
           # BACKEND_PUBLIC_HOSTNAME. Empty: no tunnel is managed.
@@ -433,7 +456,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL,CLOUDFLARE_TUNNEL_TOKEN,BACKEND_PUBLIC_HOSTNAME
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,AWS_REGION,BEDROCK_GUARDRAIL_ID,BEDROCK_GUARDRAIL_VERSION,JOBS_QUEUE_URL,JOBS_BACKEND,CLOUDFLARE_TUNNEL_TOKEN,BACKEND_PUBLIC_HOSTNAME,OPENROUTER_API_KEY,GEMINI_API_KEY,GROQ_API_KEY,LLM_PROVIDER,LLM_MODEL_ID,OPENROUTER_MODEL_ID,OPENROUTER_SITE_URL,LLM_CHAT_MODELS,LLM_FALLBACK_MODELS,LLM_FALLBACK_PROVIDERS,LLM_MODERATION_MODEL,GEMINI_MODEL_ID,GROQ_MODEL_ID,EMBEDDING_PROVIDER,EMBEDDING_MODEL,EVAL_JUDGE_PROVIDER,EVAL_JUDGE_MODEL_ID
           script: |
             set -euo pipefail
 
@@ -451,6 +474,19 @@ jobs:
             else
               echo "No BEDROCK_GUARDRAIL_ID repo variable set -- guardrail enforcement stays disabled."
             fi
+
+            echo "=== Syncing LLM provider settings into smart-tutor.env ==="
+            touch ~/smart-tutor.env
+            synced=""
+            for name in OPENROUTER_API_KEY GEMINI_API_KEY GROQ_API_KEY LLM_PROVIDER LLM_MODEL_ID OPENROUTER_MODEL_ID OPENROUTER_SITE_URL LLM_CHAT_MODELS LLM_FALLBACK_MODELS LLM_FALLBACK_PROVIDERS LLM_MODERATION_MODEL GEMINI_MODEL_ID GROQ_MODEL_ID EMBEDDING_PROVIDER EMBEDDING_MODEL EVAL_JUDGE_PROVIDER EVAL_JUDGE_MODEL_ID; do
+              value="${!name:-}"
+              [ -n "$value" ] || continue
+              sed -i "/^${name}=/d" ~/smart-tutor.env
+              printf '%s=%s\n' "$name" "$value" >> ~/smart-tutor.env
+              synced="$synced $name"
+            done
+            chmod 600 ~/smart-tutor.env
+            echo "Synced:${synced:- (nothing set; existing values kept)}"
 
             echo "=== Syncing code sandbox settings into smart-tutor.env ==="
             sed -i '/^ENABLE_CODE_EXECUTION=/d; /^CODE_RUNNER_URL=/d' ~/smart-tutor.env
@@ -471,12 +507,19 @@ jobs:
             }
 
             echo "=== Syncing jobs queue into smart-tutor.env ==="
-            sed -i '/^JOBS_QUEUE_URL=/d' ~/smart-tutor.env
+            sed -i '/^JOBS_QUEUE_URL=/d; /^JOBS_BACKEND=/d' ~/smart-tutor.env
+            if [ -n "${JOBS_BACKEND:-}" ]; then
+              echo "JOBS_BACKEND=${JOBS_BACKEND}" >> ~/smart-tutor.env
+            fi
             if [ -n "${JOBS_QUEUE_URL:-}" ]; then
               echo "JOBS_QUEUE_URL=${JOBS_QUEUE_URL}" >> ~/smart-tutor.env
-              echo "Jobs queue configured; smart-tutor-worker will run background jobs."
+            fi
+            if [ "${JOBS_BACKEND:-}" = "redis" ]; then
+              echo "Jobs queue on Redis; smart-tutor-worker will run background jobs."
+            elif [ -n "${JOBS_QUEUE_URL:-}" ] && [ "${JOBS_BACKEND:-}" != "inline" ]; then
+              echo "Jobs queue on SQS; smart-tutor-worker will run background jobs."
             else
-              echo "No JOBS_QUEUE_URL repo variable set -- background jobs run inside the API."
+              echo "No jobs queue configured -- background jobs run inside the API."
             fi
 
             echo "=== Syncing TRUSTED_HOSTS into smart-tutor.env ==="
@@ -641,8 +684,9 @@ jobs:
                 docker_force_remove smart-tutor-worker
               fi
 
-              if [ -z "${JOBS_QUEUE_URL:-}" ]; then
-                echo "JOBS_QUEUE_URL not set -- jobs worker not started."
+              # Mirrors backend.jobs.queue.jobs_backend().
+              if [ "${JOBS_BACKEND:-}" != "redis" ] && { [ -z "${JOBS_QUEUE_URL:-}" ] || [ "${JOBS_BACKEND:-}" = "inline" ]; }; then
+                echo "No jobs queue configured -- jobs worker not started."
                 return 0
               fi
 

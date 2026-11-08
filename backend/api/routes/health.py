@@ -29,20 +29,23 @@ async def rag_health_check(session=Depends(get_admin_session)) -> Dict[str, Any]
 
     try:
         from backend.config import config
-        from backend.s3_vector_store import S3VectorStore
-        from backend.bedrock_embeddings import BedrockEmbeddings
+        from backend.s3_retriever import get_shared_embeddings, get_shared_vector_store
 
         status["components"]["config"] = {
             "use_s3_vectors": config.USE_S3_VECTORS,
             "documents_bucket": config.S3_DOCUMENTS_BUCKET,
-            "embedding_model": config.BEDROCK_EMBEDDING_MODEL_ID,
-            "llm_model": config.BEDROCK_MODEL_ID,
+            "embedding_provider": config.EMBEDDING_PROVIDER,
+            "embedding_model": config.EMBEDDING_MODEL_ID,
+            "vector_index_key": config.VECTOR_INDEX_KEY,
+            "llm_model": config.LLM_MODEL_ID,
         }
 
         if config.USE_S3_VECTORS:
             try:
-                vs = S3VectorStore()
-                vs.load_index()
+                # The shared store: loading a second copy of the index (and,
+                # for local embeddings, of the model) here would double RAM.
+                vs = get_shared_vector_store()
+                vs.ensure_loaded()
                 vs_stats = vs.get_stats()
                 status["components"]["vector_store"] = {
                     "status": "healthy",
@@ -58,16 +61,14 @@ async def rag_health_check(session=Depends(get_admin_session)) -> Dict[str, Any]
                 status["status"] = "degraded"
 
         try:
-            emb = BedrockEmbeddings()
+            emb = get_shared_embeddings()
             emb_stats = emb.get_stats()
             status["components"]["embeddings"] = {
                 "status": "healthy",
                 "model": emb_stats["model"],
                 "dimension": emb_stats["dimension"],
                 "total_requests": emb_stats["total_requests"],
-                "cache_size": len(emb._embedding_cache)
-                if hasattr(emb, "_embedding_cache")
-                else 0,
+                "cache_size": len(getattr(emb, "_embedding_cache", None) or getattr(emb, "_cache", None) or {}),
             }
         except Exception as e:
             status["components"]["embeddings"] = {

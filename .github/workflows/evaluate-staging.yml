@@ -1,0 +1,196 @@
+name: Staging Evaluation
+
+# Phase 2 quality gate, run from the Actions tab: scores the staging backend
+# on the current AWS stack (Bedrock + Titan, the baseline) and on the free
+# stack it is configured for (OpenRouter + local embeddings), with the same
+# judge (EVAL_JUDGE_PROVIDER), then compares them with
+# backend/scripts/compare_evaluations.py. Nothing is deployed or changed
+# except, when asked, the free stack's own vector index file.
+# See docs/runbooks/free-llm-stack.md.
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: Questions per run (10 fits OpenRouter's free 50/day; 30 needs the $10 credit)
+        required: true
+        default: "10"
+      max_drop:
+        description: Largest allowed drop per metric (0-1 scale)
+        required: true
+        default: "0.05"
+      rebuild_index:
+        description: Rebuild the free stack's vector index first (needed once, and after changing EMBEDDING_MODEL)
+        type: boolean
+        default: false
+      run_baseline:
+        description: Also run the AWS baseline and compare (off scores only the free stack)
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  EC2_INSTANCE_NAME: ${{ vars.EC2_INSTANCE_NAME || '' }}
+  EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
+  EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
+  STAGING_CONTAINER: smart-tutor-staging-backend
+
+jobs:
+  evaluate:
+    name: Evaluate staging (AWS vs free stack)
+    runs-on: ubuntu-latest
+    # Same group as the staging deploy, so an evaluation never runs while the
+    # container it uses is being replaced.
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+    environment:
+      name: staging
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || '' }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || '' }}
+      EC2_HOST: ${{ secrets.EC2_HOST || '' }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID || vars.EC2_INSTANCE_ID || '' }}
+    steps:
+      - name: Validate inputs
+        env:
+          LIMIT: ${{ inputs.limit }}
+          MAX_DROP: ${{ inputs.max_drop }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${LIMIT}" =~ ^[0-9]+$ ]] || [ "${LIMIT}" -lt 1 ] || [ "${LIMIT}" -gt 200 ]; then
+            echo "::error::limit must be a whole number from 1 to 200."
+            exit 1
+          fi
+          if ! [[ "${MAX_DROP}" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
+            echo "::error::max_drop must be a number from 0 to 1, e.g. 0.05."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install AWS CLI
+        if: ${{ env.AWS_ACCESS_KEY_ID != '' && env.AWS_SECRET_ACCESS_KEY != '' }}
+        uses: unfor19/install-aws-cli-action@e8b481e524a99f37fbd39fdc1dcb3341ab091367  # v1.0.7
+
+      - name: Resolve EC2 target (shared with production)
+        id: ec2-target
+        run: scripts/ci/resolve_ec2_target.sh
+
+      - name: Run evaluations on staging
+        id: evaluate
+        env:
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          LIMIT: ${{ inputs.limit }}
+          REBUILD_INDEX: ${{ inputs.rebuild_index }}
+          RUN_BASELINE: ${{ inputs.run_baseline }}
+        run: |
+          set -euo pipefail
+          mkdir -p eval-results
+
+          key_file="$(mktemp)"
+          trap 'rm -f "${key_file}"' EXIT
+          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
+          chmod 600 "${key_file}"
+          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
+          remote() { ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "$@"; }
+
+          if ! remote "docker inspect -f '{{.State.Running}}' ${STAGING_CONTAINER}" 2>/dev/null | grep -qx true; then
+            echo "::error::${STAGING_CONTAINER} is not running. Deploy staging first (deploy:staging label or Staging Deploy)."
+            exit 1
+          fi
+
+          echo "=== Provider health ==="
+          remote "curl -fsS --max-time 60 http://localhost:8110/health/detailed" > eval-results/health.json || true
+          jq '.checks.bedrock // .' eval-results/health.json || cat eval-results/health.json
+
+          if [ "${REBUILD_INDEX}" = "true" ]; then
+            echo "=== Rebuilding the free stack's vector index ==="
+            remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.rebuild_index" 2>&1 | tee eval-results/rebuild_index.log
+          fi
+
+          if [ "${RUN_BASELINE}" = "true" ]; then
+            echo "=== Baseline: Bedrock + Titan (${LIMIT} questions) ==="
+            remote "docker exec -e LLM_PROVIDER=bedrock -e EMBEDDING_PROVIDER=bedrock ${STAGING_CONTAINER} python -m backend.scripts.run_scheduled_evaluation --limit ${LIMIT} --source phase2-baseline" \
+              > eval-results/baseline.json
+          fi
+
+          echo "=== Candidate: free stack (${LIMIT} questions) ==="
+          remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.run_scheduled_evaluation --limit ${LIMIT} --source phase2-free" \
+            > eval-results/candidate.json
+          echo "Done."
+
+      - name: Revoke temporary SSH ingress
+        if: always()
+        run: scripts/ci/revoke_ec2_ssh_ingress.sh
+
+      - name: Compare runs
+        id: compare
+        if: ${{ inputs.run_baseline }}
+        env:
+          MAX_DROP: ${{ inputs.max_drop }}
+        run: |
+          set -uo pipefail
+          python3 backend/scripts/compare_evaluations.py \
+            eval-results/baseline.json eval-results/candidate.json --max-drop "${MAX_DROP}" \
+            > eval-results/comparison.txt 2>&1
+          status=$?
+          cat eval-results/comparison.txt
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          exit "${status}"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: staging-evaluation-${{ github.run_number }}
+          path: eval-results/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        env:
+          LIMIT: ${{ inputs.limit }}
+          MAX_DROP: ${{ inputs.max_drop }}
+          REBUILD_INDEX: ${{ inputs.rebuild_index }}
+          RUN_BASELINE: ${{ inputs.run_baseline }}
+          COMPARE_STATUS: ${{ steps.compare.outputs.status }}
+        run: |
+          {
+            echo "## Staging evaluation"
+            echo ""
+            echo "Questions: ${LIMIT} · Allowed drop: ${MAX_DROP} · Index rebuilt: ${REBUILD_INDEX} · Baseline run: ${RUN_BASELINE}"
+            echo ""
+            if [ -s eval-results/health.json ]; then
+              echo "**LLM provider check**"
+              echo '```json'
+              jq '.checks.bedrock // .' eval-results/health.json 2>/dev/null || head -c 2000 eval-results/health.json
+              echo '```'
+            fi
+            if [ -s eval-results/comparison.txt ]; then
+              case "${COMPARE_STATUS}" in
+                0) echo "### ✅ PASS" ;;
+                1) echo "### ❌ FAIL: at least one metric regressed" ;;
+                *) echo "### ⚠️ Could not compare (see below)" ;;
+              esac
+              echo '```'
+              cat eval-results/comparison.txt
+              echo '```'
+            elif [ -s eval-results/candidate.json ]; then
+              echo "**Free stack summary** (no baseline run)"
+              echo '```json'
+              tail -n 1 eval-results/candidate.json | jq '{quality_summary, avg_latency, total_evaluated}' 2>/dev/null || echo "unparseable output; see the artifact"
+              echo '```'
+            fi
+            echo ""
+            echo "Raw output is in the \`staging-evaluation-${{ github.run_number }}\` artifact."
+          } >> "$GITHUB_STEP_SUMMARY"

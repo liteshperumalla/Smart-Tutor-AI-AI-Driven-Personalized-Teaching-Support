@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import boto3
 
 from backend.config import config
 
@@ -70,7 +69,9 @@ def _clean_text(text: str) -> str:
 class IndexingService:
     def __init__(self, redis_cache=None):
         self.redis = redis_cache
-        self.s3 = boto3.client("s3", region_name=config.AWS_REGION)
+        from backend.cloud.aws_helpers import get_s3_client
+
+        self.s3 = get_s3_client()
         self.bucket = config.S3_DOCUMENTS_BUCKET
 
     # ── Progress helpers ───────────────────────────────────────────────────────
@@ -182,8 +183,11 @@ class IndexingService:
             _prog(STATUS_EMBEDDING, 40, total=total)
             created = self._embed_and_upload(resource_id, filename, chunks, _prog)
 
-            # 5 — Invalidate prebuilt index
-            self._invalidate_index()
+            # 5 — Make the new chunks searchable. Titan: drop the prebuilt
+            # index so the next query rebuilds it from the inline vectors.
+            # Other models: the chunks were already added to the index.
+            if self._uses_inline_vectors():
+                self._invalidate_index()
 
             _prog(STATUS_COMPLETE, 100, created=created, total=total)
             logger.info("Indexed %s → %d chunks (resource %s)", filename, created, resource_id)
@@ -294,6 +298,9 @@ class IndexingService:
         chunks: List[Tuple[str, dict]],
         progress_cb,
     ) -> int:
+        if not self._uses_inline_vectors():
+            return self._upload_and_index_text(resource_id, filename, chunks, progress_cb)
+
         from backend.bedrock_embeddings import BedrockEmbeddings
 
         embeddings = BedrockEmbeddings(
@@ -336,6 +343,7 @@ class IndexingService:
                     Body=json.dumps({
                         "chunk_id": chunk_id,
                         "embedding": embedding,
+                        "embedding_model": config.BEDROCK_EMBEDDING_MODEL_ID,
                         "dimension": len(embedding),
                         "source_file": filename,
                         "chunk_index": i,
@@ -357,14 +365,67 @@ class IndexingService:
 
         return created
 
+    @staticmethod
+    def _uses_inline_vectors() -> bool:
+        """Titan: chunks carry their vectors and the index is rebuilt from them."""
+        return config.EMBEDDING_PROVIDER == "bedrock"
+
+    def _upload_and_index_text(
+        self,
+        resource_id: str,
+        filename: str,
+        chunks: List[Tuple[str, dict]],
+        progress_cb,
+    ) -> int:
+        """Store chunk text only, then embed it into the active model's index.
+
+        No vector is written next to the text: chunk ``.json``/``.vector.json``
+        vectors are Titan's, and code still reading them (e.g. production on
+        AWS sharing the bucket) must not pick up vectors of another size.
+        """
+        from backend.s3_retriever import get_shared_vector_store
+
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", Path(filename).stem)[:30]
+        base_path = f"resources/{resource_id}/{safe_name}"
+        file_hash = hashlib.sha256(filename.encode()).hexdigest()[:8]
+        total = len(chunks)
+        records = []
+
+        for i, (text, _meta) in enumerate(chunks):
+            chunk_id = f"{safe_name}_{file_hash}_chunk_{i:04d}"
+            txt_key = f"chunks/{base_path}/chunk_{i:04d}.txt"
+            try:
+                self.s3.put_object(
+                    Bucket=self.bucket,
+                    Key=txt_key,
+                    Body=text.encode("utf-8"),
+                    ContentType="text/plain",
+                    Metadata={
+                        "chunk-id": chunk_id,
+                        "source-file": filename,
+                        "chunk-index": str(i),
+                    },
+                )
+            except Exception as e:
+                logger.warning("S3 upload failed for chunk %d: %s", i, e)
+                continue
+            records.append((chunk_id, text, {"source_file": filename, "chunk_index": i, "s3_key": txt_key}))
+            pct = 40 + int((len(records) / total) * 30)
+            progress_cb(STATUS_UPLOADING, pct, created=len(records), total=total)
+
+        progress_cb(STATUS_EMBEDDING, 75, created=len(records), total=total)
+        store = get_shared_vector_store()
+        store.ensure_loaded()
+        added = store.add_records(records)
+        progress_cb(STATUS_UPLOADING, 95, created=added, total=total)
+        return added
+
     # ── Invalidate prebuilt index ──────────────────────────────────────────────
 
     def _invalidate_index(self):
         """Remove the prebuilt vector index so the next query rebuilds from all chunks."""
         try:
-            self.s3.delete_object(
-                Bucket=self.bucket, Key="vector_index/s3_vector_index.pkl"
-            )
+            self.s3.delete_object(Bucket=self.bucket, Key=config.VECTOR_INDEX_KEY)
             logger.info("Deleted prebuilt vector index — will rebuild on next query")
         except Exception as e:
             logger.warning("Could not delete prebuilt index (non-fatal): %s", e)

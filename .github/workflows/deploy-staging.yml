@@ -277,12 +277,32 @@ jobs:
           BACKEND_IMAGE_ARCHIVE: /tmp/staging-${{ steps.export_backend_image.outputs.archive_name }}
           STAGING_MEMORY_LIMIT: ${{ vars.STAGING_MEMORY_LIMIT || '1g' }}
           STAGING_CPU_LIMIT: ${{ vars.STAGING_CPU_LIMIT || '1.0' }}
+          # Free-stack LLM/embedding settings (docs/runbooks/free-llm-stack.md).
+          # Keys are secrets, the rest variables. Each one that is set replaces
+          # its line in the env file; unset ones leave the file's value alone.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || '' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || '' }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || '' }}
+          LLM_MODEL_ID: ${{ vars.LLM_MODEL_ID || '' }}
+          OPENROUTER_MODEL_ID: ${{ vars.OPENROUTER_MODEL_ID || '' }}
+          OPENROUTER_SITE_URL: ${{ vars.OPENROUTER_SITE_URL || '' }}
+          LLM_CHAT_MODELS: ${{ vars.LLM_CHAT_MODELS || '' }}
+          LLM_FALLBACK_MODELS: ${{ vars.LLM_FALLBACK_MODELS || '' }}
+          LLM_FALLBACK_PROVIDERS: ${{ vars.LLM_FALLBACK_PROVIDERS || '' }}
+          LLM_MODERATION_MODEL: ${{ vars.LLM_MODERATION_MODEL || '' }}
+          GEMINI_MODEL_ID: ${{ vars.GEMINI_MODEL_ID || '' }}
+          GROQ_MODEL_ID: ${{ vars.GROQ_MODEL_ID || '' }}
+          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER || '' }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || '' }}
+          EVAL_JUDGE_PROVIDER: ${{ vars.EVAL_JUDGE_PROVIDER || '' }}
+          EVAL_JUDGE_MODEL_ID: ${{ vars.EVAL_JUDGE_MODEL_ID || '' }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,STAGING_MEMORY_LIMIT,STAGING_CPU_LIMIT
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,STAGING_MEMORY_LIMIT,STAGING_CPU_LIMIT,OPENROUTER_API_KEY,GEMINI_API_KEY,GROQ_API_KEY,LLM_PROVIDER,LLM_MODEL_ID,OPENROUTER_MODEL_ID,OPENROUTER_SITE_URL,LLM_CHAT_MODELS,LLM_FALLBACK_MODELS,LLM_FALLBACK_PROVIDERS,LLM_MODERATION_MODEL,GEMINI_MODEL_ID,GROQ_MODEL_ID,EMBEDDING_PROVIDER,EMBEDDING_MODEL,EVAL_JUDGE_PROVIDER,EVAL_JUDGE_MODEL_ID
           script: |
             set -euo pipefail
 
@@ -300,10 +320,60 @@ jobs:
             # Cap staging so it can't starve the production containers it shares the host with.
             STAGING_LIMITS=(--memory "${STAGING_MEMORY_LIMIT:-1g}" --cpus "${STAGING_CPU_LIMIT:-1.0}")
 
+            # First deploy: create an isolated staging env file. It never
+            # copies the production file wholesale: staging gets its own
+            # secrets, stores users on its own disk (no production database),
+            # runs without Redis, and must not load production's Secrets
+            # Manager entry. Only the AWS key, region and documents-bucket
+            # lines are copied, to read course chunks from S3. An existing
+            # file is never touched here.
             if [ ! -f "${STAGING_ENV_FILE}" ]; then
-              echo "::error::Missing ${STAGING_ENV_FILE} on the host. Create it with staging-only settings (separate DB/Redis/S3 prefixes, ENVIRONMENT=staging); do not copy the production env file."
-              exit 1
+              echo "=== Creating ${STAGING_ENV_FILE} (first staging deploy) ==="
+              random_hex() {
+                if command -v openssl >/dev/null 2>&1; then
+                  openssl rand -hex 32
+                else
+                  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'
+                fi
+              }
+              # Owner-only from creation; the subshell keeps umask local.
+              ( umask 077; : > "${STAGING_ENV_FILE}" )
+              {
+                echo "ENVIRONMENT=staging"
+                echo "SECRETS_PROVIDER=env"
+                echo "SECRET_KEY=$(random_hex)"
+                echo "JWT_SECRET_KEY=$(random_hex)"
+                echo "STORAGE_BACKEND=filesystem"
+                echo "USE_REDIS_CACHE=false"
+                echo "JOBS_BACKEND=inline"
+                echo "CLOUD_PROVIDER=aws"
+                echo "OBJECT_STORAGE_PROVIDER=s3"
+                echo "USE_S3_VECTORS=true"
+                echo "ENFORCE_HTTPS=false"
+              } > "${STAGING_ENV_FILE}"
+              if [ -f "$HOME/smart-tutor.env" ]; then
+                grep -E '^(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_REGION|S3_DOCUMENTS_BUCKET)=' \
+                  "$HOME/smart-tutor.env" >> "${STAGING_ENV_FILE}" || true
+              else
+                echo "::warning::$HOME/smart-tutor.env not found; staging has no AWS keys or documents bucket and can't read course chunks until they are added to ${STAGING_ENV_FILE}."
+              fi
+              chmod 600 "${STAGING_ENV_FILE}"
+              echo "Created with: $(cut -d= -f1 "${STAGING_ENV_FILE}" | tr '\n' ' ')"
             fi
+
+            echo "=== Syncing LLM provider settings into the staging env file ==="
+            touch "${STAGING_ENV_FILE}"
+            synced=""
+            for name in OPENROUTER_API_KEY GEMINI_API_KEY GROQ_API_KEY LLM_PROVIDER LLM_MODEL_ID OPENROUTER_MODEL_ID OPENROUTER_SITE_URL LLM_CHAT_MODELS LLM_FALLBACK_MODELS LLM_FALLBACK_PROVIDERS LLM_MODERATION_MODEL GEMINI_MODEL_ID GROQ_MODEL_ID EMBEDDING_PROVIDER EMBEDDING_MODEL EVAL_JUDGE_PROVIDER EVAL_JUDGE_MODEL_ID; do
+              value="${!name:-}"
+              [ -n "$value" ] || continue
+              sed -i "/^${name}=/d" "${STAGING_ENV_FILE}"
+              printf '%s=%s\n' "$name" "$value" >> "${STAGING_ENV_FILE}"
+              synced="$synced $name"
+            done
+            chmod 600 "${STAGING_ENV_FILE}"
+            echo "Synced:${synced:- (nothing set; existing values kept)}"
+
 
             docker_with_timeout() {
               local seconds="$1"

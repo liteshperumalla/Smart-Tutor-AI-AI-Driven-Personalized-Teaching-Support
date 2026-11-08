@@ -1,21 +1,27 @@
 """Job registry and ``enqueue``.
 
 A job is a plain function registered with ``@job("name")``. Its keyword
-arguments must be JSON-serialisable, since they travel in the SQS message.
+arguments must be JSON-serialisable, since they travel in the queue message.
 
 Define jobs in ``backend/jobs/tasks.py``, or in a module that file imports:
 the worker only knows the jobs that module registers, and treats any other
 name as unknown (it retries and ends up in the dead-letter queue).
 
-With ``config.JOBS_QUEUE_URL`` set, ``enqueue`` sends the job to SQS and the
-worker container (``python -m backend.jobs worker``) runs it. Without it, or
-if SQS can't be reached, the job runs in a daemon thread in this process,
-which is how background work ran before the queue existed. That fallback is
-best effort: if the API process restarts before the thread finishes, the job
-is lost, since there is no SQS message to retry.
+The queue backend comes from ``config.JOBS_BACKEND`` (see ``jobs_backend``):
 
-SQS delivers at least once, so a job may run more than once: jobs must be
-safe to repeat.
+- ``sqs``    AWS SQS at ``config.JOBS_QUEUE_URL`` (the default when it is set)
+- ``redis``  a list on the app's Redis (``backend/jobs/redis_queue.py``)
+- ``inline`` no queue (the default otherwise)
+
+With a queue, ``enqueue`` sends the job and the worker container
+(``python -m backend.jobs worker``) runs it. With no queue, or if the queue
+can't be reached, the job runs in a daemon thread in this process, which is
+how background work ran before the queue existed. That fallback is best
+effort: if the API process restarts before the thread finishes, the job is
+lost, since there is no queued message to retry.
+
+Both queues deliver at least once, so a job may run more than once: jobs
+must be safe to repeat.
 """
 from __future__ import annotations
 
@@ -81,6 +87,39 @@ def sqs_client(region: str):
     )
 
 
+def jobs_backend() -> str:
+    """The active queue backend: "sqs", "redis" or "inline"."""
+    backend = (config.JOBS_BACKEND or "").lower()
+    if backend in ("sqs", "redis", "inline"):
+        if backend == "sqs" and not config.JOBS_QUEUE_URL:
+            return "inline"
+        return backend
+    if backend:
+        logger.warning(f"Unknown JOBS_BACKEND={backend!r}; running jobs in-process")
+        return "inline"
+    return "sqs" if config.JOBS_QUEUE_URL else "inline"
+
+
+_redis_client = None
+
+
+def jobs_client() -> Any:
+    """Client with the SQS send/receive/delete/visibility API for the active queue."""
+    global _redis_client
+    if jobs_backend() == "redis":
+        if _redis_client is None:
+            from backend.jobs.redis_queue import redis_jobs_client_from_config
+
+            _redis_client = redis_jobs_client_from_config()
+        return _redis_client
+    return sqs_client(config.JOBS_REGION)
+
+
+def queue_address() -> str:
+    """What the worker polls: the SQS URL or the Redis queue name."""
+    return config.JOBS_REDIS_QUEUE if jobs_backend() == "redis" else config.JOBS_QUEUE_URL
+
+
 def build_message(name: str, kwargs: dict[str, Any]) -> dict[str, Any]:
     return {
         "v": MESSAGE_VERSION,
@@ -101,7 +140,7 @@ def enqueue(name: str, **kwargs: Any) -> str:
     message = build_message(name, kwargs)
     body = json.dumps(message)
 
-    if config.JOBS_QUEUE_URL:
+    if jobs_backend() != "inline":
         try:
             _send(body)
             logger.info(f"Queued job {name} ({message['id']})")
@@ -115,13 +154,13 @@ def enqueue(name: str, **kwargs: Any) -> str:
 
 
 def send_to_queue(name: str, **kwargs: Any) -> str:
-    """Send job ``name`` to SQS with no in-process fallback; SQS errors raise.
+    """Send job ``name`` to the queue with no in-process fallback; errors raise.
 
     For checks such as ``python -m backend.jobs ping`` that must fail when
-    the queue can't be reached. Requires ``config.JOBS_QUEUE_URL``.
+    the queue can't be reached. Requires a queue backend (not "inline").
     """
-    if not config.JOBS_QUEUE_URL:
-        raise RuntimeError("JOBS_QUEUE_URL is not set")
+    if jobs_backend() == "inline":
+        raise RuntimeError("No jobs queue configured (set JOBS_QUEUE_URL or JOBS_BACKEND=redis)")
     get_job(name)
     message = build_message(name, kwargs)
     _send(json.dumps(message))
@@ -129,7 +168,7 @@ def send_to_queue(name: str, **kwargs: Any) -> str:
 
 
 def _send(body: str) -> None:
-    sqs_client(config.JOBS_REGION).send_message(QueueUrl=config.JOBS_QUEUE_URL, MessageBody=body)
+    jobs_client().send_message(QueueUrl=queue_address(), MessageBody=body)
 
 
 def _run_in_thread(func: JobFunc, name: str, job_id: str, kwargs: dict[str, Any]) -> None:

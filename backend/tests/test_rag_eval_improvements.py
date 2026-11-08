@@ -56,7 +56,7 @@ def test_compute_context_precision_explicit_threshold_wins(monkeypatch):
 
 
 class _FakeLLM:
-    """Stand-in for BedrockLLM that returns canned JSON per call."""
+    """Stand-in for the LLM client that returns canned JSON per call."""
 
     def __init__(self, responses: List[str]):
         self._responses = list(responses)
@@ -78,7 +78,7 @@ def test_evaluate_quality_split_mode_makes_four_calls(monkeypatch):
             '{"correctness": 0.85, "reasoning": "matches"}',
         ]
     )
-    monkeypatch.setattr(ev, "BedrockLLM", lambda model_id=None: fake)
+    monkeypatch.setattr(ev, "create_llm_client", lambda model_id=None: fake)
 
     result = ev.evaluate_quality(
         question="What is data leakage?",
@@ -104,7 +104,7 @@ def test_evaluate_quality_combined_mode_uses_single_call(monkeypatch):
     fake = _FakeLLM(
         ['{"faithfulness": 0.5, "answer_relevance": 0.5, "context_recall": 0.5, "correctness": 0.5, "reasoning": "ok"}']
     )
-    monkeypatch.setattr(ev, "BedrockLLM", lambda model_id=None: fake)
+    monkeypatch.setattr(ev, "create_llm_client", lambda model_id=None: fake)
 
     result = ev.evaluate_quality(
         question="q",

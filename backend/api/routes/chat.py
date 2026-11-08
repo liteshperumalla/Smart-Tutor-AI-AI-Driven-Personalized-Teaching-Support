@@ -367,7 +367,7 @@ async def send_message(
         tier, _ = classify_query_complexity(effective_query)
         effective_model = select_model_for_complexity(tier)
     else:
-        effective_model = app_config.BEDROCK_MODEL_ID
+        effective_model = app_config.LLM_MODEL_ID
     await rate_limiter.check_model_rate_limit(request, effective_model)
     await rate_limiter.check_cost_budget(request, effective_model)
 

@@ -1,6 +1,6 @@
 """Command line for the jobs queue.
 
-    python -m backend.jobs worker           run the SQS worker (the worker container's command)
+    python -m backend.jobs worker           run the jobs worker (the worker container's command)
     python -m backend.jobs ping [note]      queue a ping job to check the queue and worker end to end
     python -m backend.jobs healthcheck      exit 0 if the worker polled recently (container health check)
 """
@@ -29,22 +29,25 @@ def main(argv: list[str]) -> int:
 
     from backend.config import config
 
+    from backend.jobs.queue import jobs_backend
+
     if command == "worker":
+        from backend.jobs.queue import jobs_client, queue_address
         from backend.jobs.worker import Worker
 
-        if not config.JOBS_QUEUE_URL:
-            print("JOBS_QUEUE_URL is not set; nothing to consume.", file=sys.stderr)
+        if jobs_backend() == "inline":
+            print("No jobs queue configured (JOBS_QUEUE_URL or JOBS_BACKEND=redis); nothing to consume.", file=sys.stderr)
             return 2
-        Worker(config.JOBS_QUEUE_URL, config.JOBS_REGION).run_forever()
+        Worker(queue_address(), config.JOBS_REGION, client=jobs_client()).run_forever()
         return 0
 
     if command == "ping":
-        if not config.JOBS_QUEUE_URL:
-            print("JOBS_QUEUE_URL is not set; the ping would only run in this process.", file=sys.stderr)
+        if jobs_backend() == "inline":
+            print("No jobs queue configured; the ping would only run in this process.", file=sys.stderr)
             return 2
         from backend.jobs.queue import send_to_queue
 
-        # No in-process fallback here: the point is to prove SQS works.
+        # No in-process fallback here: the point is to prove the queue works.
         try:
             job_id = send_to_queue("ping", note=" ".join(argv[1:]))
         except Exception as exc:
