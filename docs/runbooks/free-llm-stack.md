@@ -113,6 +113,17 @@ point `VECTOR_INDEX_KEY` at the right file.
 
 ## 5. Quality gate
 
+### From GitHub (no server login)
+
+**Actions → Staging Evaluation → Run workflow.** Tick *Rebuild the free
+stack's vector index* on the first run (step 4), keep *limit* at 10 unless
+you bought the OpenRouter credit, and leave *Also run the AWS baseline*
+on. The job summary shows the provider check and the PASS/FAIL table; the
+raw JSON is in the run's `staging-evaluation-<n>` artifact. It shares the
+staging deploy's concurrency group, so it waits for a running deploy.
+
+### On the server
+
 Run the same evaluation twice in the staging container, scored by the same
 judge (Gemini), first on the current AWS stack and then on the free stack:
 
