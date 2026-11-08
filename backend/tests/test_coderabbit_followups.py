@@ -3,7 +3,6 @@
 import json
 import threading
 
-import numpy as np
 import pytest
 
 from backend.config import config
