@@ -57,7 +57,9 @@ def compare(baseline: dict, candidate: dict, max_drop: float) -> tuple[list[tupl
     for metric in METRICS:
         base, cand = baseline.get(metric), candidate.get(metric)
         if base is None or cand is None:
-            rows.append((metric, base, cand, None, "missing"))
+            # A metric that wasn't measured can't be shown to hold up.
+            rows.append((metric, base, cand, None, "MISSING"))
+            ok = False
             continue
         delta = cand - base
         passed = delta >= -max_drop
@@ -77,6 +79,16 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     baseline, candidate = load_summary(args.baseline), load_summary(args.candidate)
+    for name, summary in (("baseline", baseline), ("candidate", candidate)):
+        # evaluate_quality scores 0.0 when the judge call fails (no key, a
+        # 429), so an all-zero run means the judge didn't run, not bad answers.
+        if all(not summary.get(metric) for metric in METRICS):
+            print(
+                f"ERROR: every {name} metric is 0 or missing; the judge most likely failed "
+                f"(check EVAL_JUDGE_PROVIDER, its API key and rate limits) and the run can't be compared.",
+                file=sys.stderr,
+            )
+            return 2
     rows, ok = compare(baseline, candidate, args.max_drop)
 
     print(f"{'metric':<24}{'baseline':>10}{'candidate':>11}{'change':>9}  result")

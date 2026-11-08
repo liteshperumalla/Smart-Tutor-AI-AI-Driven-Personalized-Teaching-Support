@@ -305,8 +305,11 @@ class S3VectorStore:
             "embedding_model": self.embedding_model,
         }
 
-    def _upload_index_to_s3(self):
-        """Upload the current index to S3 for sharing across instances"""
+    def _upload_index_to_s3(self) -> bool:
+        """Upload the current index to S3 for sharing across instances.
+
+        Returns False (after logging) if the upload failed.
+        """
         try:
             logger.info(f"Uploading vector index to S3: {self.s3_index_key}")
 
@@ -331,9 +334,11 @@ class S3VectorStore:
 
             size_mb = len(index_bytes) / (1024 * 1024)
             logger.info(f"Uploaded index to S3 ({size_mb:.1f} MB)")
+            return True
 
         except Exception as e:
             logger.error(f"Failed to upload index to S3: {e}")
+            return False
 
     def _build_index_from_s3(self):
         """Build the index from the chunks in S3, for the active model."""
@@ -355,7 +360,11 @@ class S3VectorStore:
             if not self.vectors:
                 raise RuntimeError(f"No chunks found under chunks/ in {self.bucket_name}")
             self._save_index_cache()
-            self._upload_index_to_s3()
+            if not self._upload_index_to_s3():
+                raise RuntimeError(
+                    f"Built {len(self.vectors)} vectors but failed to upload {self.s3_index_key} "
+                    f"to {self.bucket_name}; see the log for the S3 error"
+                )
             self._build_numpy_cache()
             self._loaded = True
         return len(self.vectors)
@@ -462,7 +471,13 @@ class S3VectorStore:
         self._invalidate_cache()
         if persist and added:
             self._save_index_cache()
-            self._upload_index_to_s3()
+            if not self._upload_index_to_s3():
+                # Searchable in this process, but other processes and the
+                # next restart won't see it until an upload succeeds.
+                logger.warning(
+                    f"{added} chunks were added in memory but {self.s3_index_key} was not uploaded; "
+                    f"they are lost on restart unless the index is uploaded again"
+                )
             self._build_numpy_cache()
         return added
 

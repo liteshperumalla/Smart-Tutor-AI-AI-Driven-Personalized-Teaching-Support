@@ -276,16 +276,35 @@ jobs:
               docker_with_timeout 150s docker stop -t 120 smart-tutor-worker || true
               docker rm -f smart-tutor-worker 2>/dev/null || true
             fi
-            # A Redis queue (JOBS_BACKEND=redis) needs an image that has
-            # backend/jobs/redis_queue.py; older images only know SQS.
-            worker_module=backend.jobs.worker
-            if grep -q '^JOBS_BACKEND=redis$' "$HOME/smart-tutor.env"; then
-              worker_module=backend.jobs.redis_queue
+            # Start a worker only for the queue the rollback image's API will
+            # actually use. Images with backend/jobs/redis_queue.py follow
+            # JOBS_BACKEND (backend.jobs.queue.jobs_backend); older images
+            # ignore it and use SQS whenever JOBS_QUEUE_URL is set.
+            image_has() {
+              docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import $1" >/dev/null 2>&1
+            }
+            jobs_backend="$(sed -n 's/^JOBS_BACKEND=//p' "$HOME/smart-tutor.env" | tail -n1)"
+            has_queue_url=false
+            grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env" && has_queue_url=true
+            start_worker=false
+            if ! image_has backend.jobs.worker; then
+              echo "::warning::Rollback image has no jobs worker; queued jobs wait until a newer release is deployed."
+            elif image_has backend.jobs.redis_queue; then
+              case "$jobs_backend" in
+                redis) start_worker=true ;;
+                inline) ;;
+                *) [ "$has_queue_url" = true ] && start_worker=true ;;
+              esac
+            elif [ "$has_queue_url" = true ]; then
+              start_worker=true  # pre-Redis image: SQS
+              if [ "$jobs_backend" = redis ]; then
+                echo "::warning::Rollback image predates the Redis queue; it uses SQS, so jobs already in Redis wait until a newer release is deployed."
+              fi
+            elif [ "$jobs_backend" = redis ]; then
+              echo "::warning::Rollback image predates the Redis queue and no JOBS_QUEUE_URL is set; it runs jobs in-process, and jobs already in Redis wait."
             fi
-            if [ "$worker_module" = backend.jobs.worker ] && ! grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env"; then
-              echo "No jobs queue configured -- jobs worker not started."
-            elif ! docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import ${worker_module}" >/dev/null 2>&1; then
-              echo "::warning::Rollback image has no jobs worker for this queue; queued jobs wait until a newer release is deployed."
+            if [ "$start_worker" != true ]; then
+              echo "No jobs queue for this image -- jobs worker not started."
             else
               docker run -d \
                 --name smart-tutor-worker \

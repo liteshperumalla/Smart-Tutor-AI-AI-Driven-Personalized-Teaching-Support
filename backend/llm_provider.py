@@ -100,7 +100,10 @@ class LLMFactory:
         """Create a LlamaIndex LLM for Groq / Gemini / an OpenAI-compatible API."""
         from backend.llamaindex_compat import OpenAICompatLlamaIndexLLM
 
-        model_id = kwargs.get("model_id") or config.LLM_MODEL_ID or None
+        model_id = kwargs.get("model_id")
+        if not model_id and provider == config.LLM_PROVIDER:
+            model_id = config.LLM_MODEL_ID or None
+        # model_id None = that provider's own default model.
         logger.info(f"✓ Using {provider} for LLM: {model_id}")
         return OpenAICompatLlamaIndexLLM(model_id=model_id, provider=provider)
 
@@ -110,7 +113,7 @@ class LLMFactory:
         try:
             from llama_index.llms.ollama import Ollama
 
-            model = kwargs.get('model', config.LLM_MODEL)
+            model = kwargs.get('model') or kwargs.get('model_id') or config.LLM_MODEL
             base_url = kwargs.get('base_url', config.OLLAMA_BASE_URL)
             timeout = kwargs.get('request_timeout', config.LLM_REQUEST_TIMEOUT)
 

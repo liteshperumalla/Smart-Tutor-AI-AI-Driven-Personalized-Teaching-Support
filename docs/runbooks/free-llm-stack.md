@@ -132,6 +132,8 @@ rebuild.
 
 ## 6. Rolling back
 
-Delete the staging environment variables, or set `LLM_PROVIDER=bedrock` and
-`EMBEDDING_PROVIDER=bedrock`, and redeploy. The Titan index was never
-touched.
+Set `LLM_PROVIDER=bedrock` and `EMBEDDING_PROVIDER=bedrock` in the `staging`
+environment variables and redeploy. Deleting a variable is not enough: the
+deploy only writes values that are set, so the old line stays in
+`~/smart-tutor-staging.env`. To remove a setting entirely, also delete its
+line from that file on the server. The Titan index was never touched.

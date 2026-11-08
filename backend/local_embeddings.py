@@ -74,6 +74,10 @@ class LocalEmbeddings:
         self._cache: "OrderedDict[str, List[float]]" = OrderedDict()
         # The model isn't documented as thread-safe; API threads share one.
         self._lock = threading.Lock()
+        # Separate lock for the LRU cache and counters, so lookups don't wait
+        # behind a long encode batch (e.g. an upload) and an eviction can't
+        # race another thread's move_to_end.
+        self._cache_lock = threading.Lock()
         self.total_requests = 0
         self.total_tokens = 0
         logger.info(f"✓ Local embeddings initialized: {self.model_id} ({self.dimension} dims)")
@@ -86,15 +90,20 @@ class LocalEmbeddings:
         """Embed ``texts``; cached texts skip the model. Order is preserved."""
         results: List[Optional[List[float]]] = [None] * len(texts)
         missing: List[int] = []
-        for i, text in enumerate(texts):
-            cached = self._cache.get(self._key(text))
-            if cached is not None:
-                self._cache.move_to_end(self._key(text))
-                results[i] = cached
-                _record_cache(hit=True)
-            else:
-                missing.append(i)
-                _record_cache(hit=False)
+        with self._cache_lock:
+            for i, text in enumerate(texts):
+                key = self._key(text)
+                cached = self._cache.get(key)
+                if cached is not None:
+                    self._cache.move_to_end(key)
+                    results[i] = cached
+                else:
+                    missing.append(i)
+        hits = len(texts) - len(missing)
+        for _ in range(hits):
+            _record_cache(hit=True)
+        for _ in missing:
+            _record_cache(hit=False)
 
         if missing:
             batch = [texts[i] for i in missing]
@@ -113,14 +122,15 @@ class LocalEmbeddings:
                 raise
             tokens = sum(len(t) for t in batch) // _CHARS_PER_TOKEN
             _record_metrics(self.model_id, time.monotonic() - started, tokens)
-            self.total_requests += len(batch)
-            self.total_tokens += tokens
-            for i, vector in zip(missing, vectors):
-                as_list = [float(x) for x in vector]
-                results[i] = as_list
-                self._cache[self._key(texts[i])] = as_list
-                if len(self._cache) > self.cache_size:
-                    self._cache.popitem(last=False)
+            new = [(i, [float(x) for x in vector]) for i, vector in zip(missing, vectors)]
+            with self._cache_lock:
+                self.total_requests += len(batch)
+                self.total_tokens += tokens
+                for i, as_list in new:
+                    results[i] = as_list
+                    self._cache[self._key(texts[i])] = as_list
+                    if len(self._cache) > self.cache_size:
+                        self._cache.popitem(last=False)
         return results  # type: ignore[return-value]
 
     def encode_queries(self, queries: List[str]) -> List[List[float]]:

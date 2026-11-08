@@ -263,8 +263,9 @@ class OpenAICompatLLM(BaseLLMClient):
                 model=model,
                 messages=self._messages(prompt, system_prompt),
                 max_tokens=max_tokens,
+                # top_p isn't sent: some models (e.g. Claude) reject it next
+                # to temperature, and the stream path never sent it.
                 temperature=temperature,
-                top_p=top_p,
             )
         except Exception:
             self._record_usage(model, started, status="error")
