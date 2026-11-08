@@ -52,9 +52,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # image so containers don't download it on first query. Best effort: if the
 # Hugging Face Hub is unreachable the build continues and the model is
 # fetched at runtime instead.
+# The model name reaches Python through the environment, never spliced into
+# the code string.
 ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-RUN python -c "from sentence_transformers import SentenceTransformer as S; S('${EMBEDDING_MODEL}', device='cpu')" \
-    || echo "WARNING: could not pre-download ${EMBEDDING_MODEL}; it will be downloaded at runtime"
+RUN EMBEDDING_MODEL="${EMBEDDING_MODEL}" python -c "import os; from sentence_transformers import SentenceTransformer as S; S(os.environ['EMBEDDING_MODEL'], device='cpu')" \
+    || echo "WARNING: could not pre-download the embedding model; it will be downloaded at runtime"
 
 # Copy only backend application code with proper ownership
 COPY --chown=appuser:appuser backend/ ./backend/
