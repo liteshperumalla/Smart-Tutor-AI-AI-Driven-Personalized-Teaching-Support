@@ -127,3 +127,44 @@ class TestProviderModelSelection:
         llm = OpenAICompatLLM(client_factory=lambda e: FakeClient(e.provider, log), fallback_providers=[])
         llm.generate("q", top_p=0.5)
         assert "top_p" not in log[-1][1]
+
+
+class TestAddRecordsMergesExistingIndex:
+    def _setup(self, tmp_path, monkeypatch):
+        from backend.local_embeddings import LocalEmbeddings
+        from backend.s3_vector_store import S3VectorStore
+        from backend.tests.test_local_embeddings_index import FakeModel, FakeS3
+
+        fake = FakeS3()
+        for i, text in enumerate(["aaaa", "eeee", "iiii"]):
+            fake.put_object("b", f"chunks/x/chunk_{i:04d}.json", json.dumps({"chunk_id": f"c{i}", "text": text}))
+        import backend.cloud.aws_helpers as helpers
+
+        monkeypatch.setattr(helpers, "get_s3_client", lambda **kwargs: fake)
+        monkeypatch.setattr(config, "EMBEDDING_PROVIDER", "huggingface")
+
+        def store(cache):
+            return S3VectorStore(bucket_name="b", index_cache_path=str(tmp_path / cache), s3_index_key="vector_index/m.idx",
+                                 embedder=LocalEmbeddings(model=FakeModel()), embedding_model="m")
+
+        store("first").rebuild()  # shared index: c0, c1, c2
+        return fake, store
+
+    def test_unloaded_store_merges_instead_of_overwriting(self, tmp_path, monkeypatch):
+        from backend.s3_vector_store import S3VectorStore
+
+        fake, store = self._setup(tmp_path, monkeypatch)
+        fresh = store("second")  # never loaded
+        fresh.add_records([("new", "oooo", {"source_file": "n", "chunk_index": 0, "s3_key": "k"})])
+        uploaded = S3VectorStore._safe_deserialize(fake.objects["vector_index/m.idx"][0])
+        assert sorted(m["chunk_id"] for m in uploaded["metadata"]) == ["c0", "c1", "c2", "new"]
+
+    def test_in_memory_records_survive_the_load(self, tmp_path, monkeypatch):
+        from backend.s3_vector_store import S3VectorStore
+
+        fake, store = self._setup(tmp_path, monkeypatch)
+        fresh = store("third")
+        fresh.add_records([("mem", "eeii", {"source_file": "m", "chunk_index": 0, "s3_key": "k"})], persist=False)
+        fresh.add_records([("new", "oooo", {"source_file": "n", "chunk_index": 0, "s3_key": "k"})])
+        uploaded = S3VectorStore._safe_deserialize(fake.objects["vector_index/m.idx"][0])
+        assert sorted(m["chunk_id"] for m in uploaded["metadata"]) == ["c0", "c1", "c2", "mem", "new"]

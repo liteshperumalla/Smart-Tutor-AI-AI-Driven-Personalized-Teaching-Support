@@ -283,7 +283,8 @@ jobs:
             image_has() {
               docker run --rm --entrypoint python "$BACKEND_IMAGE" -c "import $1" >/dev/null 2>&1
             }
-            jobs_backend="$(sed -n 's/^JOBS_BACKEND=//p' "$HOME/smart-tutor.env" | tail -n1)"
+            # Lowercased and trimmed like backend/config.py reads it.
+            jobs_backend="$(sed -n 's/^JOBS_BACKEND=//p' "$HOME/smart-tutor.env" | tail -n1 | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
             has_queue_url=false
             grep -q '^JOBS_QUEUE_URL=.' "$HOME/smart-tutor.env" && has_queue_url=true
             start_worker=false

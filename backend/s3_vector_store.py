@@ -448,8 +448,27 @@ class S3VectorStore:
         Re-adding a chunk_id replaces its vector. With ``persist`` the index
         is saved and uploaded afterwards (used by uploads, so new documents
         are searchable without a full rebuild).
+
+        Before persisting, the existing index is loaded and merged, so a
+        store that was never loaded can't upload an index holding only the
+        new records over the shared one. Records already added in memory
+        (``persist=False``) survive that load.
         """
         records = list(records)
+        if persist and not self._loaded:
+            pending_vectors = list(self.vectors)
+            pending_metadata = dict(self.metadata)
+            # Raises IndexModelMismatchError rather than overwrite another
+            # model's index.
+            self.ensure_loaded()
+            known = {chunk_id: i for i, (chunk_id, _) in enumerate(self.vectors)}
+            for chunk_id, vec in pending_vectors:
+                if chunk_id in known:
+                    self.vectors[known[chunk_id]] = (chunk_id, vec)
+                else:
+                    known[chunk_id] = len(self.vectors)
+                    self.vectors.append((chunk_id, vec))
+                self.metadata[chunk_id] = pending_metadata[chunk_id]
         batch_size = max(1, int(getattr(config, "EMBEDDING_BATCH_SIZE", 32)) * 8)
         positions = {chunk_id: i for i, (chunk_id, _) in enumerate(self.vectors)}
         added = 0
