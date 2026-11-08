@@ -53,6 +53,27 @@ else:
     logger.info("Secrets provider: environment variables only (SECRETS_PROVIDER=%s)", _secrets_provider)
 
 
+def redis_password(env: Any, app_secrets: Optional[Dict[str, Any]]) -> str:
+    """Redis password: an explicit REDIS_PASSWORD env var wins, then the
+    Secrets Manager ``redis_auth_token``, then none."""
+    explicit = env.get("REDIS_PASSWORD", "")
+    if explicit:
+        return explicit
+    if app_secrets and app_secrets.get("redis_auth_token"):
+        return app_secrets["redis_auth_token"]
+    return ""
+
+
+def redis_ssl(env: Any, host: str) -> bool:
+    """Redis TLS: an explicit REDIS_SSL env var wins; otherwise on only for
+    ElastiCache endpoints, which require it. Self-hosted Redis (the
+    smart-tutor-redis container, localhost) stays plain TCP."""
+    explicit = env.get("REDIS_SSL")
+    if explicit is not None and explicit.strip() != "":
+        return explicit.strip().lower() == "true"
+    return (host or "").lower().endswith(".cache.amazonaws.com")
+
+
 def vector_index_key_for(embedding_provider: str, embedding_model_id: str) -> str:
     """S3 key of the prebuilt vector index for one embedding model.
 
@@ -243,19 +264,13 @@ class Config:
         os.getenv("REDIS_PORT", "6379")
     )  # 6379 for production ElastiCache, 6380 for local dev
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-    # Redis AUTH token from Secrets Manager or environment
-    REDIS_PASSWORD = (
-        (_app_secrets.get("redis_auth_token") or os.getenv("REDIS_PASSWORD", ""))
-        if _app_secrets
-        else os.getenv("REDIS_PASSWORD", "")
-    )
-    # ElastiCache uses TLS in production
-    REDIS_SSL = (
-        os.getenv(
-            "REDIS_SSL", "true" if ENVIRONMENT == "production" else "false"
-        ).lower()
-        == "true"
-    )
+    # The only definition of the Redis connection settings; every Redis
+    # client (cache, rate limiter, jobs queue, health) reads these.
+    # Password: REDIS_PASSWORD env var, else Secrets Manager redis_auth_token.
+    REDIS_PASSWORD = redis_password(os.environ, _app_secrets)
+    # TLS: REDIS_SSL env var, else on only for ElastiCache hosts. The
+    # production Redis container speaks plain TCP.
+    REDIS_SSL = redis_ssl(os.environ, REDIS_HOST)
     REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
     # Enable Redis in production, optional in dev
     USE_REDIS_CACHE = (
@@ -639,12 +654,9 @@ class Config:
     ANSWER_CACHE_FUZZY_THRESHOLD = float(os.getenv("ANSWER_CACHE_FUZZY_THRESHOLD", "0.95"))
 
     # Redis Cache Settings (optional, falls back to in-memory if not available)
+    # (Host, port, DB, password and TLS are defined once, with the other
+    # Redis settings above.)
     REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
-    REDIS_SSL = os.getenv("REDIS_SSL", "false").lower() == "true"
     REDIS_CONNECTION_TIMEOUT = int(os.getenv("REDIS_CONNECTION_TIMEOUT", "5"))  # seconds
 
     # Rate Limiting
