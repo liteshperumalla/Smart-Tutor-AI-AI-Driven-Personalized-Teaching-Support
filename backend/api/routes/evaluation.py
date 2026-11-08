@@ -45,6 +45,12 @@ def get_cost_tracker():
 
 
 def _bedrock_embedding_dimension() -> int:
+    from backend.config import config
+
+    if config.EMBEDDING_PROVIDER != "bedrock":
+        from backend.llm_provider import get_shared_embedding_client
+
+        return get_shared_embedding_client().get_sentence_embedding_dimension()
     from backend.bedrock_embeddings import BedrockEmbeddings
 
     return BedrockEmbeddings.EMBEDDING_DIMENSION

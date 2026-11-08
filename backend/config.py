@@ -8,6 +8,7 @@ controlled by the SECRETS_PROVIDER environment variable.
 """
 
 import os
+import re
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,6 +51,16 @@ if _secrets_provider == "aws":
         logger.warning("Could not load secrets backend: %s — falling back to .env", exc)
 else:
     logger.info("Secrets provider: environment variables only (SECRETS_PROVIDER=%s)", _secrets_provider)
+
+
+def vector_index_key_for(embedding_provider: str, embedding_model_id: str) -> str:
+    """S3 key of the prebuilt vector index for one embedding model.
+
+    Titan keeps the original key; every other model gets its own file.
+    """
+    if embedding_provider == "bedrock":
+        return "vector_index/s3_vector_index.pkl"
+    return "vector_index/" + re.sub(r"[^a-zA-Z0-9._-]+", "_", embedding_model_id) + ".idx"
 
 
 class Config:
@@ -387,6 +398,28 @@ class Config:
         "gemini": GEMINI_MODEL_ID,
         "ollama": LLM_MODEL,
     }.get(LLM_PROVIDER, "")
+
+    # Active embedding model. "bedrock" = Titan (BEDROCK_EMBEDDING_MODEL_ID);
+    # "huggingface"/"local" = EMBEDDING_MODEL run locally with
+    # sentence-transformers (backend/local_embeddings.py).
+    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER.strip().lower()
+    EMBEDDING_MODEL_ID = (
+        BEDROCK_EMBEDDING_MODEL_ID if EMBEDDING_PROVIDER == "bedrock" else EMBEDDING_MODEL
+    )
+    # Where the prebuilt vector index lives in S3_DOCUMENTS_BUCKET. Each
+    # embedding model gets its own file, so switching models never reads
+    # vectors made by another one, and switching back is instant. Titan keeps
+    # the original key.
+    VECTOR_INDEX_KEY = os.getenv("VECTOR_INDEX_KEY", "") or vector_index_key_for(
+        EMBEDDING_PROVIDER, EMBEDDING_MODEL_ID
+    )
+    # Optional fixed judge for RAG quality evaluations, so runs on different
+    # answer models are scored by the same model (e.g. "gemini" with
+    # EVAL_JUDGE_MODEL_ID empty = GEMINI_MODEL_ID). Empty = the answer model.
+    EVAL_JUDGE_PROVIDER = os.getenv("EVAL_JUDGE_PROVIDER", "").strip().lower()
+    EVAL_JUDGE_MODEL_ID = os.getenv("EVAL_JUDGE_MODEL_ID", "").strip()
+    # Texts per batch when embedding locally (index rebuilds, uploads).
+    EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
     # Retrieval Settings
     SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "3"))

@@ -13,7 +13,6 @@ import time
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode, QueryBundle
 from backend.s3_vector_store import S3VectorStore
-from backend.bedrock_embeddings import BedrockEmbeddings
 from backend.config import config
 from backend.logger import get_logger
 
@@ -28,7 +27,6 @@ _cross_encoder_lock = threading.Lock()
 # rebuild, so retrievers created without explicit dependencies share these
 # instances instead of re-downloading the index from S3 on every request.
 _shared_vector_store: Optional[S3VectorStore] = None
-_shared_embeddings: Optional[BedrockEmbeddings] = None
 _shared_lock = threading.Lock()
 
 
@@ -42,14 +40,11 @@ def get_shared_vector_store() -> S3VectorStore:
     return _shared_vector_store
 
 
-def get_shared_embeddings() -> BedrockEmbeddings:
-    """Return the process-wide BedrockEmbeddings singleton (lazy, thread-safe)."""
-    global _shared_embeddings
-    if _shared_embeddings is None:
-        with _shared_lock:
-            if _shared_embeddings is None:
-                _shared_embeddings = BedrockEmbeddings()
-    return _shared_embeddings
+def get_shared_embeddings():
+    """Return the process-wide embeddings client (Titan or local; lazy, thread-safe)."""
+    from backend.llm_provider import get_shared_embedding_client
+
+    return get_shared_embedding_client()
 
 
 def _get_cross_encoder():
@@ -72,7 +67,7 @@ class S3Retriever(BaseRetriever):
     def __init__(
         self,
         vector_store: Optional[S3VectorStore] = None,
-        embeddings: Optional[BedrockEmbeddings] = None,
+        embeddings=None,
         similarity_top_k: int = 5,
         force_rebuild_index: bool = False,
     ):
@@ -81,7 +76,7 @@ class S3Retriever(BaseRetriever):
 
         Args:
             vector_store: S3VectorStore instance (creates new if None)
-            embeddings: BedrockEmbeddings instance (creates new if None)
+            embeddings: embeddings client (shared Titan or local client if None)
             similarity_top_k: Number of top results to return
             force_rebuild_index: Whether to rebuild index from S3 on init
         """

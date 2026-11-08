@@ -137,6 +137,8 @@ class OpenAICompatLLM(BaseLLMClient):
         provider: Optional[str] = None,
         fallback_providers: Optional[List[str]] = None,
         client_factory: Any = None,
+        fallback_models: Optional[List[str]] = None,
+        strict: bool = False,
     ):
         self.provider = (provider or config.LLM_PROVIDER).lower()
         self.endpoint = resolve_endpoint(self.provider)
@@ -144,6 +146,12 @@ class OpenAICompatLLM(BaseLLMClient):
         if fallback_providers is None:
             fallback_providers = config.LLM_FALLBACK_PROVIDERS
         self.fallback_providers = [p for p in fallback_providers if p and p != self.provider]
+        # LLM_FALLBACK_MODELS name models of the primary provider only.
+        if fallback_models is None:
+            fallback_models = config.LLM_FALLBACK_MODELS if self.provider == config.LLM_PROVIDER else []
+        self.fallback_models = list(fallback_models)
+        # strict: only ever call model_id (e.g. an evaluation judge).
+        self.strict = strict
         # Tests pass a factory; production builds openai.OpenAI clients.
         self._client_factory = client_factory or _openai_client
         self._clients: Dict[str, Any] = {}
@@ -210,7 +218,9 @@ class OpenAICompatLLM(BaseLLMClient):
     def _attempts(self) -> List[tuple]:
         """(endpoint, model) pairs to try, in order."""
         attempts = [(self.endpoint, self.model_id)]
-        for model in [self.endpoint.default_model, *config.LLM_FALLBACK_MODELS]:
+        if self.strict:
+            return attempts
+        for model in [self.endpoint.default_model, *self.fallback_models]:
             if model and all(model != m for _, m in attempts):
                 attempts.append((self.endpoint, model))
         for provider in self.fallback_providers:

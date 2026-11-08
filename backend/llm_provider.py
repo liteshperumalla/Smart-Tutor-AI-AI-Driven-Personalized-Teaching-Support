@@ -264,6 +264,49 @@ def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = 
     return OpenAICompatLLM(model_id=model_id, provider=provider)
 
 
+def is_local_embedding_provider(provider: Optional[str] = None) -> bool:
+    return (provider or config.EMBEDDING_PROVIDER).lower() in (
+        LLMProvider.HUGGINGFACE.value,
+        LLMProvider.LOCAL.value,
+        LLMProvider.OLLAMA.value,  # legacy alias, see create_embeddings
+    )
+
+
+def create_embedding_client(provider: Optional[str] = None) -> Any:
+    """Direct embeddings client for the active provider.
+
+    ``BedrockEmbeddings`` (Titan) when EMBEDDING_PROVIDER=bedrock, otherwise
+    ``LocalEmbeddings`` (sentence-transformers, EMBEDDING_MODEL). Both offer
+    ``encode`` / ``get_sentence_embedding_dimension`` / ``get_stats`` and
+    ``model_id``. Prefer ``get_shared_embedding_client`` in request paths:
+    a local model takes seconds and hundreds of MB to load.
+    """
+    provider = (provider or config.EMBEDDING_PROVIDER).lower()
+    if is_local_embedding_provider(provider):
+        from backend.local_embeddings import LocalEmbeddings
+
+        return LocalEmbeddings(model_id=config.EMBEDDING_MODEL)
+    if provider == LLMProvider.BEDROCK.value:
+        from backend.bedrock_embeddings import BedrockEmbeddings
+
+        return BedrockEmbeddings(model_id=config.BEDROCK_EMBEDDING_MODEL_ID, region=config.AWS_REGION)
+    raise ValueError(f"Unknown embedding provider: {provider}")
+
+
+_shared_embedding_client: Any = None
+_shared_embedding_lock = __import__("threading").Lock()
+
+
+def get_shared_embedding_client() -> Any:
+    """Process-wide embeddings client (lazy, thread-safe)."""
+    global _shared_embedding_client
+    if _shared_embedding_client is None:
+        with _shared_embedding_lock:
+            if _shared_embedding_client is None:
+                _shared_embedding_client = create_embedding_client()
+    return _shared_embedding_client
+
+
 # Convenience functions
 def get_llm(provider: Optional[str] = None, **kwargs) -> Any:
     """Convenience function to create LLM"""

@@ -1,6 +1,6 @@
 # Plan: Move off AWS to free services
 
-**Date:** 2026-11-08 · **Status:** Phase 1 done (switches in place, AWS still the default) · **Scope:** backend runtime, CI/CD, infra code, scripts
+**Date:** 2026-11-08 · **Status:** Phase 1 done; Phase 2 code done, staging run pending (runbook: `docs/runbooks/free-llm-stack.md`) · **Scope:** backend runtime, CI/CD, infra code, scripts
 
 ## 1. What production uses today
 
@@ -179,6 +179,18 @@ All new behaviour is opt-in through env vars; with none set the app runs on AWS 
 Also: health reports an OpenAI-compatible provider under the existing `bedrock` key (so deploy gates don't change), and the chat model picker lists the provider's own models off Bedrock.
 
 Not done in Phase 1, carried forward: verifying the ARM64 image build (needs Docker/buildx in CI, do it at the start of Phase 3), renaming `cloud/aws_helpers.py` (Phase 5), and Langfuse dashboards still filter on the `bedrock-generation` trace name, which every provider keeps using.
+
+### Phase 2 status (code done; staging run pending)
+
+Follow [`docs/runbooks/free-llm-stack.md`](../runbooks/free-llm-stack.md): it covers where the keys go, deploying staging, building the index and the quality gate.
+
+- **Local embeddings:** `EMBEDDING_PROVIDER=huggingface` uses `backend/local_embeddings.py` (sentence-transformers, default `BAAI/bge-small-en-v1.5`, 384 dims, no API). It is created through `llm_provider.create_embedding_client()` / `get_shared_embedding_client()`. The model is baked into the backend image at build time.
+- **One index per embedding model:** `config.VECTOR_INDEX_KEY` is `vector_index/<model>.idx`, while Titan keeps `vector_index/s3_vector_index.pkl`. Each index is tagged with its model, and loading another model's index raises `IndexModelMismatchError` instead of returning wrong results or rebuilding over it.
+- **Rebuild:** `python -m backend.scripts.rebuild_index` re-embeds the text of every chunk (all three chunk layouts) into the active model's index. Uploads on a non-Titan model store text-only chunks and append to the index (`S3VectorStore.add_records`). They never write non-Titan vectors next to Titan ones, so production can keep sharing the bucket.
+- **Quality gate:** `EVAL_JUDGE_PROVIDER` / `EVAL_JUDGE_MODEL_ID` score both runs with the same judge (strict: no fallback). `python -m backend.scripts.compare_evaluations baseline.json candidate.json --max-drop 0.05` exits 1 on a regression.
+- **Keys and settings:** `deploy-staging.yml` and `deploy-production.yml` write the keys (secrets) and LLM/embedding settings (variables) from GitHub into the server env files. Set the Phase 2 values on the `staging` environment only.
+
+Still to do in Phase 2: run the runbook on staging and record the baseline vs candidate scores here.
 
 ## 5. Risks and mitigations
 

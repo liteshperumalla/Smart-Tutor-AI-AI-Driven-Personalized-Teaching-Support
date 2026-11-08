@@ -35,6 +35,29 @@ from backend.config import config
 logger = logging.getLogger(__name__)
 
 
+def _judge_llm(model_id: Optional[str]):
+    """LLM that scores answers: EVAL_JUDGE_PROVIDER if set, else the answer model.
+
+    A fixed judge makes scores comparable across answer models (Bedrock
+    baseline vs the free stack). It never falls back to another model, since
+    a different judge would change the scale mid-run.
+    """
+    provider = config.EVAL_JUDGE_PROVIDER
+    if not provider:
+        return create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
+    if provider == "bedrock":
+        return create_llm_client(model_id=config.EVAL_JUDGE_MODEL_ID or config.BEDROCK_MODEL_ID, provider="bedrock")
+    from backend.openai_compat_llm import OpenAICompatLLM
+
+    return OpenAICompatLLM(
+        model_id=config.EVAL_JUDGE_MODEL_ID or None,
+        provider=provider,
+        fallback_providers=[],
+        fallback_models=[],
+        strict=True,
+    )
+
+
 # Per-subject thresholds for context_precision. Educational content shows
 # meaningfully different cosine-score distributions by domain — calibrate
 # at the subject level instead of using one global cutoff. Keys are
@@ -235,7 +258,7 @@ def _evaluate_split(
     model_id: Optional[str],
 ) -> Dict[str, Any]:
     """Score the 4 metrics with 4 separate LLM calls (anti-halo)."""
-    llm = create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
+    llm = _judge_llm(model_id)
     results: Dict[str, float] = {}
     reasonings: List[str] = []
     inputs = {
@@ -309,7 +332,7 @@ def evaluate_quality(
     )
 
     try:
-        llm = create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
+        llm = _judge_llm(model_id)
         raw_response = llm.generate(
             prompt=prompt,
             max_tokens=300,

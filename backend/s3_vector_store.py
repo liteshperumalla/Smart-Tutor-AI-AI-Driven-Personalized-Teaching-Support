@@ -1,6 +1,14 @@
 """
 S3 Vector Store for RAG
 Implements vector similarity search using S3 + local index
+
+Each embedding model has its own index file (``config.VECTOR_INDEX_KEY``),
+tagged with the model that made it. Loading an index made by a different
+model fails loudly instead of searching mismatched vectors.
+
+Chunks live under ``chunks/`` in the bucket. Their inline ``embedding``
+fields are Titan vectors, so a Titan index is built from them directly;
+for any other model the chunk text is re-embedded (see ``rebuild``).
 """
 
 import io
@@ -8,7 +16,7 @@ import json
 import numpy as np
 import struct
 import threading
-from typing import List, Dict, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from pathlib import Path
 from botocore.exceptions import ClientError
 from botocore.config import Config
@@ -19,6 +27,13 @@ from backend.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Titan indexes predate the model tag, so an untagged index means Titan.
+LEGACY_INDEX_MODEL = "amazon.titan-embed-text-v2:0"
+
+
+class IndexModelMismatchError(RuntimeError):
+    """The stored index was made by a different embedding model."""
+
 
 class S3VectorStore:
     """Vector store that uses S3 for storage with local index for fast search"""
@@ -27,10 +42,21 @@ class S3VectorStore:
         self,
         bucket_name: str = None,
         region: str = None,
-        index_cache_path: str = "./s3_vector_index.pkl",
-        s3_index_key: str = "vector_index/s3_vector_index.pkl",
+        index_cache_path: Optional[str] = None,
+        s3_index_key: Optional[str] = None,
+        embedder: Any = None,
+        embedding_model: Optional[str] = None,
     ):
         self.bucket_name = bucket_name or config.S3_DOCUMENTS_BUCKET
+        s3_index_key = s3_index_key or config.VECTOR_INDEX_KEY
+        # One local cache file per index key, so models never share a cache.
+        index_cache_path = index_cache_path or "./" + Path(s3_index_key).name
+        self.embedding_model = embedding_model or config.EMBEDDING_MODEL_ID
+        # Titan: build from the chunks' inline vectors. Others: re-embed text.
+        self.uses_inline_vectors = self.embedding_model == config.BEDROCK_EMBEDDING_MODEL_ID and (
+            config.EMBEDDING_PROVIDER == "bedrock"
+        )
+        self._embedder = embedder
         self.region = region or config.AWS_REGION
 
         boto_config = Config(
@@ -73,6 +99,8 @@ class S3VectorStore:
             "count": int(data["count"]),
             "dimension": int(data["dimension"]),
         }
+        if data.get("embedding_model"):
+            meta["embedding_model"] = data["embedding_model"]
         meta_bytes = json.dumps(meta).encode("utf-8")
 
         vectors_buf = io.BytesIO()
@@ -93,10 +121,29 @@ class S3VectorStore:
             "metadata": meta["metadata"],
             "count": meta["count"],
             "dimension": meta["dimension"],
+            "embedding_model": meta.get("embedding_model"),
         }
+
+    def _check_model(self, data: dict) -> None:
+        stored = data.get("embedding_model") or LEGACY_INDEX_MODEL
+        if stored != self.embedding_model:
+            raise IndexModelMismatchError(
+                f"Vector index {self.s3_index_key} was built with {stored}, but the active "
+                f"embedding model is {self.embedding_model}. Rebuild it with "
+                f"`python -m backend.scripts.rebuild_index` or set VECTOR_INDEX_KEY to that model's index."
+            )
+
+    @property
+    def embedder(self) -> Any:
+        if self._embedder is None:
+            from backend.llm_provider import get_shared_embedding_client
+
+            self._embedder = get_shared_embedding_client()
+        return self._embedder
 
     def _populate_from_data(self, data: dict):
         """Populate vectors and metadata from a deserialized data dict."""
+        self._check_model(data)
         vectors_array = data["vectors"]
         metadata_list = data["metadata"]
 
@@ -188,6 +235,10 @@ class S3VectorStore:
             data = self._safe_deserialize(raw)
             self._populate_from_data(data)
             return True
+        except IndexModelMismatchError as e:
+            # A stale cache from another model: ignore it, never search it.
+            logger.warning(f"Ignoring local index cache: {e}")
+            return False
         except Exception as e:
             logger.warning(f"Failed to load from local cache: {e}")
             return False
@@ -215,6 +266,9 @@ class S3VectorStore:
             logger.info("Downloaded index from S3 and cached locally")
             return True
 
+        except IndexModelMismatchError:
+            # Never rebuild over (and upload on top of) another model's index.
+            raise
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
                 logger.info("Vector index not found in S3")
@@ -226,34 +280,38 @@ class S3VectorStore:
             logger.warning(f"Failed to download index from S3: {e}")
             return False
 
+    def _index_payload(self) -> dict:
+        vectors_array = np.array([vec for _, vec in self.vectors])
+        metadata_list = [
+            {
+                "chunk_id": chunk_id,
+                "source_file": self.metadata[chunk_id].get("source_file", ""),
+                "chunk_index": self.metadata[chunk_id].get("chunk_index", 0),
+                "s3_key": self.metadata[chunk_id].get(
+                    "s3_key",
+                    self._default_chunk_s3_key(
+                        self.metadata[chunk_id].get("source_file", ""),
+                        self.metadata[chunk_id].get("chunk_index", 0),
+                    ),
+                ),
+            }
+            for chunk_id, _ in self.vectors
+        ]
+        return {
+            "vectors": vectors_array,
+            "metadata": metadata_list,
+            "count": len(self.vectors),
+            "dimension": len(vectors_array[0]) if len(vectors_array) > 0 else 0,
+            "embedding_model": self.embedding_model,
+        }
+
     def _upload_index_to_s3(self):
         """Upload the current index to S3 for sharing across instances"""
         try:
             logger.info(f"Uploading vector index to S3: {self.s3_index_key}")
 
-            vectors_array = np.array([vec for _, vec in self.vectors])
-            metadata_list = [
-                {
-                    "chunk_id": chunk_id,
-                    "source_file": self.metadata[chunk_id].get("source_file", ""),
-                    "chunk_index": self.metadata[chunk_id].get("chunk_index", 0),
-                    "s3_key": self.metadata[chunk_id].get(
-                        "s3_key",
-                        self._default_chunk_s3_key(
-                            self.metadata[chunk_id].get("source_file", ""),
-                            self.metadata[chunk_id].get("chunk_index", 0),
-                        ),
-                    ),
-                }
-                for chunk_id, _ in self.vectors
-            ]
-
-            data = {
-                "vectors": vectors_array,
-                "metadata": metadata_list,
-                "count": len(self.vectors),
-                "dimension": len(vectors_array[0]) if len(vectors_array) > 0 else 0,
-            }
+            data = self._index_payload()
+            vectors_array = data["vectors"]
 
             index_bytes = self._safe_serialize(data)
 
@@ -267,6 +325,7 @@ class S3VectorStore:
                     "dimension": str(
                         len(vectors_array[0]) if len(vectors_array) > 0 else 0
                     ),
+                    "embedding-model": self.embedding_model,
                 },
             )
 
@@ -277,6 +336,137 @@ class S3VectorStore:
             logger.error(f"Failed to upload index to S3: {e}")
 
     def _build_index_from_s3(self):
+        """Build the index from the chunks in S3, for the active model."""
+        if self.uses_inline_vectors:
+            self._build_index_from_inline_vectors()
+        else:
+            self._build_index_by_embedding()
+
+    def rebuild(self) -> int:
+        """Rebuild the index from the chunks, save it locally and upload it.
+
+        Returns the number of vectors. For a non-Titan model this embeds
+        every chunk, which takes minutes on CPU, so run it ahead of time
+        (python -m backend.scripts.rebuild_index) rather than on a user's first query.
+        """
+        with self._load_lock:
+            self._invalidate_cache()
+            self._build_index_from_s3()
+            if not self.vectors:
+                raise RuntimeError(f"No chunks found under chunks/ in {self.bucket_name}")
+            self._save_index_cache()
+            self._upload_index_to_s3()
+            self._build_numpy_cache()
+            self._loaded = True
+        return len(self.vectors)
+
+    def list_chunk_records(self) -> List[str]:
+        """Keys of the chunks to index: one per chunk, whatever its layout.
+
+        ``<name>.json`` (text + Titan vector inline), ``<name>.vector.json``
+        (Titan vector; text in a sibling ``.txt``) and a bare ``<name>.txt``
+        (text only, written by uploads when the model isn't Titan).
+        """
+        paginator = self.s3.get_paginator("list_objects_v2")
+        keys = [
+            obj["Key"]
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix="chunks/")
+            for obj in page.get("Contents", [])
+        ]
+        key_set = set(keys)
+        records = []
+        for key in keys:
+            if key.endswith(".json"):
+                records.append(key)
+            elif key.endswith(".txt") and key[: -len(".txt")] + ".vector.json" not in key_set:
+                records.append(key)
+        return records
+
+    def _read_chunk_record(self, key: str) -> Optional[Tuple[str, str, Dict]]:
+        """(chunk_id, text, metadata) for one chunk record, or None to skip."""
+        response = self.s3.get_object(Bucket=self.bucket_name, Key=key)
+        raw = response["Body"].read()
+        if key.endswith(".txt"):
+            meta = response.get("Metadata", {}) or {}
+            text = raw.decode("utf-8")
+            chunk_id = meta.get("chunk-id") or key
+            return chunk_id, text, {
+                "source_file": meta.get("source-file", ""),
+                "chunk_index": int(meta.get("chunk-index", 0) or 0),
+                "s3_key": key,
+            }
+        data = json.loads(raw)
+        chunk_id = data.get("chunk_id") or key
+        if key.endswith(".vector.json"):
+            text_key = key.replace(".vector.json", ".txt")
+            text = self.s3.get_object(Bucket=self.bucket_name, Key=text_key)["Body"].read().decode("utf-8")
+        else:
+            text_key = key
+            text = data.get("text", "")
+        if not text.strip():
+            return None
+        return chunk_id, text, {
+            "source_file": data.get("source_file", ""),
+            "chunk_index": data.get("chunk_index", 0),
+            "s3_key": text_key,
+        }
+
+    def _build_index_by_embedding(self) -> None:
+        """Embed every chunk's text with the active model."""
+        from concurrent.futures import ThreadPoolExecutor
+
+        logger.info(f"Building {self.embedding_model} index by re-embedding chunk text...")
+        keys = self.list_chunk_records()
+
+        def _read(key):
+            try:
+                return self._read_chunk_record(key)
+            except Exception as e:
+                logger.warning(f"Error reading chunk {key}: {e}")
+                return None
+
+        with ThreadPoolExecutor(max_workers=32) as executor:
+            records = [r for r in executor.map(_read, keys) if r is not None]
+
+        self.vectors = []
+        self.metadata = {}
+        self.add_records(records, persist=False)
+        logger.info(f"✓ Built index with {len(self.vectors)} vectors ({self.embedding_model})")
+
+    def add_records(self, records: Iterable[Tuple[str, str, Dict]], persist: bool = True) -> int:
+        """Embed and add (chunk_id, text, metadata) records to the index.
+
+        Re-adding a chunk_id replaces its vector. With ``persist`` the index
+        is saved and uploaded afterwards (used by uploads, so new documents
+        are searchable without a full rebuild).
+        """
+        records = list(records)
+        batch_size = max(1, int(getattr(config, "EMBEDDING_BATCH_SIZE", 32)) * 8)
+        positions = {chunk_id: i for i, (chunk_id, _) in enumerate(self.vectors)}
+        added = 0
+        for start in range(0, len(records), batch_size):
+            batch = records[start : start + batch_size]
+            vectors = self.embedder.encode([text for _, text, _ in batch])
+            for (chunk_id, _, meta), vector in zip(batch, vectors):
+                if vector is None:
+                    continue
+                vec = np.asarray(vector, dtype=np.float32)
+                if chunk_id in positions:
+                    self.vectors[positions[chunk_id]] = (chunk_id, vec)
+                else:
+                    positions[chunk_id] = len(self.vectors)
+                    self.vectors.append((chunk_id, vec))
+                self.metadata[chunk_id] = meta
+                added += 1
+            logger.info(f"  Embedded {min(start + batch_size, len(records))}/{len(records)} chunks")
+        self._invalidate_cache()
+        if persist and added:
+            self._save_index_cache()
+            self._upload_index_to_s3()
+            self._build_numpy_cache()
+        return added
+
+    def _build_index_from_inline_vectors(self):
         """Build index by downloading all chunk embeddings from S3.
 
         Supports two on-disk chunk layouts:
@@ -351,30 +541,7 @@ class S3VectorStore:
         """Save index to cache for faster loading"""
         cache_path = Path(self.index_cache_path)
         try:
-            vectors_array = np.array([vec for _, vec in self.vectors])
-            metadata_list = [
-                {
-                    "chunk_id": chunk_id,
-                    "source_file": self.metadata[chunk_id].get("source_file", ""),
-                    "chunk_index": self.metadata[chunk_id].get("chunk_index", 0),
-                    "s3_key": self.metadata[chunk_id].get(
-                        "s3_key",
-                        self._default_chunk_s3_key(
-                            self.metadata[chunk_id].get("source_file", ""),
-                            self.metadata[chunk_id].get("chunk_index", 0),
-                        ),
-                    ),
-                }
-                for chunk_id, _ in self.vectors
-            ]
-
-            data = {
-                "vectors": vectors_array,
-                "metadata": metadata_list,
-                "count": len(self.vectors),
-                "dimension": len(vectors_array[0]) if len(vectors_array) > 0 else 0,
-            }
-
+            data = self._index_payload()
             cache_path.write_bytes(self._safe_serialize(data))
             logger.info(f"Saved index cache to {cache_path}")
             return True

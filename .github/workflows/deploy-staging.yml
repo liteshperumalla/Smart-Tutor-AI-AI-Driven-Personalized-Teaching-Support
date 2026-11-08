@@ -277,12 +277,32 @@ jobs:
           BACKEND_IMAGE_ARCHIVE: /tmp/staging-${{ steps.export_backend_image.outputs.archive_name }}
           STAGING_MEMORY_LIMIT: ${{ vars.STAGING_MEMORY_LIMIT || '1g' }}
           STAGING_CPU_LIMIT: ${{ vars.STAGING_CPU_LIMIT || '1.0' }}
+          # Free-stack LLM/embedding settings (docs/runbooks/free-llm-stack.md).
+          # Keys are secrets, the rest variables. Each one that is set replaces
+          # its line in the env file; unset ones leave the file's value alone.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || '' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || '' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || '' }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || '' }}
+          LLM_MODEL_ID: ${{ vars.LLM_MODEL_ID || '' }}
+          OPENROUTER_MODEL_ID: ${{ vars.OPENROUTER_MODEL_ID || '' }}
+          OPENROUTER_SITE_URL: ${{ vars.OPENROUTER_SITE_URL || '' }}
+          LLM_CHAT_MODELS: ${{ vars.LLM_CHAT_MODELS || '' }}
+          LLM_FALLBACK_MODELS: ${{ vars.LLM_FALLBACK_MODELS || '' }}
+          LLM_FALLBACK_PROVIDERS: ${{ vars.LLM_FALLBACK_PROVIDERS || '' }}
+          LLM_MODERATION_MODEL: ${{ vars.LLM_MODERATION_MODEL || '' }}
+          GEMINI_MODEL_ID: ${{ vars.GEMINI_MODEL_ID || '' }}
+          GROQ_MODEL_ID: ${{ vars.GROQ_MODEL_ID || '' }}
+          EMBEDDING_PROVIDER: ${{ vars.EMBEDDING_PROVIDER || '' }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL || '' }}
+          EVAL_JUDGE_PROVIDER: ${{ vars.EVAL_JUDGE_PROVIDER || '' }}
+          EVAL_JUDGE_MODEL_ID: ${{ vars.EVAL_JUDGE_MODEL_ID || '' }}
         with:
           host: ${{ steps.ec2-target.outputs.host }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 75m
-          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,STAGING_MEMORY_LIMIT,STAGING_CPU_LIMIT
+          envs: BACKEND_IMAGE,BACKEND_IMAGE_ARCHIVE,STAGING_MEMORY_LIMIT,STAGING_CPU_LIMIT,OPENROUTER_API_KEY,GEMINI_API_KEY,GROQ_API_KEY,LLM_PROVIDER,LLM_MODEL_ID,OPENROUTER_MODEL_ID,OPENROUTER_SITE_URL,LLM_CHAT_MODELS,LLM_FALLBACK_MODELS,LLM_FALLBACK_PROVIDERS,LLM_MODERATION_MODEL,GEMINI_MODEL_ID,GROQ_MODEL_ID,EMBEDDING_PROVIDER,EMBEDDING_MODEL,EVAL_JUDGE_PROVIDER,EVAL_JUDGE_MODEL_ID
           script: |
             set -euo pipefail
 
@@ -304,6 +324,20 @@ jobs:
               echo "::error::Missing ${STAGING_ENV_FILE} on the host. Create it with staging-only settings (separate DB/Redis/S3 prefixes, ENVIRONMENT=staging); do not copy the production env file."
               exit 1
             fi
+
+            echo "=== Syncing LLM provider settings into the staging env file ==="
+            touch "${STAGING_ENV_FILE}"
+            synced=""
+            for name in OPENROUTER_API_KEY GEMINI_API_KEY GROQ_API_KEY LLM_PROVIDER LLM_MODEL_ID OPENROUTER_MODEL_ID OPENROUTER_SITE_URL LLM_CHAT_MODELS LLM_FALLBACK_MODELS LLM_FALLBACK_PROVIDERS LLM_MODERATION_MODEL GEMINI_MODEL_ID GROQ_MODEL_ID EMBEDDING_PROVIDER EMBEDDING_MODEL EVAL_JUDGE_PROVIDER EVAL_JUDGE_MODEL_ID; do
+              value="${!name:-}"
+              [ -n "$value" ] || continue
+              sed -i "/^${name}=/d" "${STAGING_ENV_FILE}"
+              printf '%s=%s\n' "$name" "$value" >> "${STAGING_ENV_FILE}"
+              synced="$synced $name"
+            done
+            chmod 600 "${STAGING_ENV_FILE}"
+            echo "Synced:${synced:- (nothing set; existing values kept)}"
+
 
             docker_with_timeout() {
               local seconds="$1"
