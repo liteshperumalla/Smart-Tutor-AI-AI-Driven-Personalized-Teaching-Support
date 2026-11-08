@@ -94,7 +94,7 @@ class TestEndpoints:
 
     def test_gemini_uses_its_openai_compatible_endpoint(self):
         endpoint = resolve_endpoint("gemini")
-        assert "generativelanguage.googleapis.com" in endpoint.base_url
+        assert endpoint.base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
         assert endpoint.default_model == "gemini-2.5-flash"
 
     def test_ollama_appends_v1(self, monkeypatch):
@@ -107,7 +107,7 @@ class TestEndpoints:
     def test_base_url_override_applies_to_the_primary_only(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_BASE_URL", "https://proxy.example/v1")
         assert resolve_endpoint("groq").base_url == "https://proxy.example/v1"
-        assert "googleapis" in resolve_endpoint("gemini").base_url
+        assert resolve_endpoint("gemini").base_url == "https://generativelanguage.googleapis.com/v1beta/openai/"
 
     def test_openai_compat_requires_url_and_model(self, monkeypatch):
         monkeypatch.setattr(config, "LLM_PROVIDER", "openai_compat")

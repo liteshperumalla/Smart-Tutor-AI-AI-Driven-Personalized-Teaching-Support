@@ -1423,6 +1423,18 @@ def get_aws_metrics(
         try:
             tracker = get_cost_tracker()
             daily_costs = tracker.get_daily_costs(date)
+            if isinstance(daily_costs, dict) and daily_costs.get("error"):
+                # get_daily_costs puts the raw exception text here; log it,
+                # don't send it to the client.
+                logging.getLogger(__name__).error(f"Cost tracking error: {daily_costs['error']}")
+                metrics["errors"].append("Cost Tracking: service unavailable")
+                daily_costs = {
+                    "date": daily_costs.get("date") or date,
+                    "total_cost_usd": None,
+                    "total_tokens": None,
+                    "entries": None,
+                    "error": "Cost tracking unavailable",
+                }
             metrics["costs"] = {
                 "daily": daily_costs,
                 "tracking_enabled": config.ENABLE_COST_TRACKING,

@@ -43,3 +43,19 @@ def test_object_storage_check_on_local_disk(monkeypatch, tmp_path):
 
     monkeypatch.setattr(config, "LOCAL_STORAGE_ROOT", str(tmp_path / "missing"))
     assert HealthChecker.check_s3()["status"] == "unhealthy"
+
+
+def test_aws_metrics_off_aws_hides_cost_tracker_exception_text(monkeypatch):
+    from backend.api.routes import evaluation
+
+    class Tracker:
+        def get_daily_costs(self, date):
+            return {"date": "2026-11-08", "error": "Traceback ... secret-bucket-name AccessDenied"}
+
+    monkeypatch.setattr(config, "CLOUD_PROVIDER", "local")
+    monkeypatch.setattr(evaluation, "get_cost_tracker", lambda: Tracker())
+    result = evaluation.get_aws_metrics(date=None, session={})["aws_metrics"]
+    assert result["services"] == {}
+    assert result["costs"]["daily"]["error"] == "Cost tracking unavailable"
+    assert "secret-bucket-name" not in str(result)
+    assert result["summary"]["has_errors"] is True
