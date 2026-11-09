@@ -39,6 +39,54 @@ def _build_client_kwargs() -> dict[str, Any]:
     return kwargs
 
 
+def _s3_compat_kwargs() -> dict[str, Any]:
+    """Endpoint, region and keys for an S3-compatible store such as Cloudflare R2.
+
+    Empty when S3_ENDPOINT_URL is unset, so plain AWS S3 behaves as before.
+    S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY let the object store use its
+    own keys while other services (e.g. Bedrock) still use the AWS ones.
+    """
+    import os
+
+    try:
+        from backend.config import config
+        endpoint = getattr(config, "S3_ENDPOINT_URL", "") or os.getenv("S3_ENDPOINT_URL", "")
+        region = getattr(config, "S3_REGION", "") or os.getenv("S3_REGION", "")
+        access_key = getattr(config, "S3_ACCESS_KEY_ID", "") or os.getenv("S3_ACCESS_KEY_ID", "")
+        secret_key = getattr(config, "S3_SECRET_ACCESS_KEY", "") or os.getenv("S3_SECRET_ACCESS_KEY", "")
+    except (ImportError, AttributeError):
+        endpoint = os.getenv("S3_ENDPOINT_URL", "")
+        region = os.getenv("S3_REGION", "")
+        access_key = os.getenv("S3_ACCESS_KEY_ID", "")
+        secret_key = os.getenv("S3_SECRET_ACCESS_KEY", "")
+
+    kwargs: dict[str, Any] = {}
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    if region:
+        kwargs["region_name"] = region
+    if access_key and secret_key:
+        kwargs["aws_access_key_id"] = access_key
+        kwargs["aws_secret_access_key"] = secret_key
+        kwargs["aws_session_token"] = None
+    return kwargs
+
+
+def get_s3_client(**overrides: Any) -> Any:
+    """S3 client for AWS S3 or an S3-compatible store (S3_ENDPOINT_URL).
+
+    Use this instead of ``boto3.client("s3")`` so every caller follows the
+    same endpoint and credentials.
+    """
+    import boto3
+
+    kwargs = _build_client_kwargs()
+    kwargs.update(_s3_compat_kwargs())
+    kwargs.update(overrides)
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    return boto3.client("s3", **kwargs)
+
+
 def get_boto3_client(service: str, **overrides: Any) -> Any:
     """
     Create a boto3 client for the given AWS service.
@@ -53,6 +101,9 @@ def get_boto3_client(service: str, **overrides: Any) -> Any:
     Returns:
         boto3 client instance
     """
+    if service == "s3":
+        return get_s3_client(**overrides)
+
     import boto3
 
     kwargs = _build_client_kwargs()

@@ -8,6 +8,7 @@ controlled by the SECRETS_PROVIDER environment variable.
 """
 
 import os
+import re
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -50,6 +51,37 @@ if _secrets_provider == "aws":
         logger.warning("Could not load secrets backend: %s — falling back to .env", exc)
 else:
     logger.info("Secrets provider: environment variables only (SECRETS_PROVIDER=%s)", _secrets_provider)
+
+
+def redis_password(env: Any, app_secrets: Optional[Dict[str, Any]]) -> str:
+    """Redis password: an explicit REDIS_PASSWORD env var wins, then the
+    Secrets Manager ``redis_auth_token``, then none."""
+    explicit = env.get("REDIS_PASSWORD", "")
+    if explicit:
+        return explicit
+    if app_secrets and app_secrets.get("redis_auth_token"):
+        return app_secrets["redis_auth_token"]
+    return ""
+
+
+def redis_ssl(env: Any, host: str) -> bool:
+    """Redis TLS: an explicit REDIS_SSL env var wins; otherwise on only for
+    ElastiCache endpoints, which require it. Self-hosted Redis (the
+    smart-tutor-redis container, localhost) stays plain TCP."""
+    explicit = env.get("REDIS_SSL")
+    if explicit is not None and explicit.strip() != "":
+        return explicit.strip().lower() == "true"
+    return (host or "").lower().endswith(".cache.amazonaws.com")
+
+
+def vector_index_key_for(embedding_provider: str, embedding_model_id: str) -> str:
+    """S3 key of the prebuilt vector index for one embedding model.
+
+    Titan keeps the original key; every other model gets its own file.
+    """
+    if embedding_provider == "bedrock":
+        return "vector_index/s3_vector_index.pkl"
+    return "vector_index/" + re.sub(r"[^a-zA-Z0-9._-]+", "_", embedding_model_id) + ".idx"
 
 
 class Config:
@@ -232,19 +264,13 @@ class Config:
         os.getenv("REDIS_PORT", "6379")
     )  # 6379 for production ElastiCache, 6380 for local dev
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-    # Redis AUTH token from Secrets Manager or environment
-    REDIS_PASSWORD = (
-        (_app_secrets.get("redis_auth_token") or os.getenv("REDIS_PASSWORD", ""))
-        if _app_secrets
-        else os.getenv("REDIS_PASSWORD", "")
-    )
-    # ElastiCache uses TLS in production
-    REDIS_SSL = (
-        os.getenv(
-            "REDIS_SSL", "true" if ENVIRONMENT == "production" else "false"
-        ).lower()
-        == "true"
-    )
+    # The only definition of the Redis connection settings; every Redis
+    # client (cache, rate limiter, jobs queue, health) reads these.
+    # Password: REDIS_PASSWORD env var, else Secrets Manager redis_auth_token.
+    REDIS_PASSWORD = redis_password(os.environ, _app_secrets)
+    # TLS: REDIS_SSL env var, else on only for ElastiCache hosts. The
+    # production Redis container speaks plain TCP.
+    REDIS_SSL = redis_ssl(os.environ, REDIS_HOST)
     REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", "50"))
     # Enable Redis in production, optional in dev
     USE_REDIS_CACHE = (
@@ -256,12 +282,13 @@ class Config:
 
     # Cloud Provider Settings (Multi-Cloud Abstraction)
     CLOUD_PROVIDER = os.getenv("CLOUD_PROVIDER", "aws")  # aws or local
-    OBJECT_STORAGE_PROVIDER = os.getenv("OBJECT_STORAGE_PROVIDER", "s3")  # s3 or local
+    OBJECT_STORAGE_PROVIDER = os.getenv("OBJECT_STORAGE_PROVIDER", "s3").lower()  # s3 (AWS or S3_ENDPOINT_URL) or local
     SECRETS_PROVIDER = os.getenv("SECRETS_PROVIDER", _secrets_provider)  # aws or env
 
     # AWS Bedrock Settings (Phase 4)
     AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
+    # bedrock (AWS, default) | openrouter | groq | gemini | ollama | openai_compat
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock").strip().lower()
     EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "bedrock")  # bedrock (prod) or ollama (local dev)
 
     # Bedrock Models
@@ -291,6 +318,16 @@ class Config:
     S3_DOCUMENTS_BUCKET = os.getenv(
         "S3_DOCUMENTS_BUCKET", "smart-ai-tutor-docs"
     )  # For course documents
+    # S3-compatible object storage (e.g. Cloudflare R2). Empty endpoint =
+    # AWS S3. For R2: https://<account_id>.r2.cloudflarestorage.com and
+    # S3_REGION=auto. S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY default to the
+    # AWS keys when unset.
+    S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL", "").strip()
+    S3_REGION = os.getenv("S3_REGION", "").strip()
+    S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "")
+    S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "")
+    # Root directory when OBJECT_STORAGE_PROVIDER=local.
+    LOCAL_STORAGE_ROOT = os.getenv("LOCAL_STORAGE_ROOT", "./local_storage")
     S3_VECTOR_INDEX_NAME = os.getenv(
         "S3_VECTOR_INDEX_NAME", ""
     )  # AWS S3 Vector Index name
@@ -325,6 +362,79 @@ class Config:
     LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2:latest")
     LLM_REQUEST_TIMEOUT = float(os.getenv("LLM_REQUEST_TIMEOUT", "120.0"))
     OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    # OpenAI-compatible LLM providers (backend/openai_compat_llm.py), used
+    # when LLM_PROVIDER is openrouter, groq, gemini, ollama or openai_compat.
+    #
+    # OpenRouter: one key for hundreds of models. Free models (IDs ending in
+    # ":free") are capped at 20 requests/min and 50/day (1,000/day once the
+    # account has bought $10 of credits); failed attempts count too.
+    # "openrouter/free" lets OpenRouter pick an available free model.
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL_ID = os.getenv("OPENROUTER_MODEL_ID", "openrouter/free")
+    # Optional app attribution headers (X-Title / HTTP-Referer).
+    OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "Smart Tutor AI")
+    OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL", "")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+    GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile")
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
+    # Override the primary provider's base URL / key (required for openai_compat).
+    LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
+    LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+    # Providers tried in order when the primary fails before answering
+    # (e.g. a free-tier rate limit), e.g. "gemini,ollama".
+    LLM_FALLBACK_PROVIDERS = [
+        p.strip().lower() for p in os.getenv("LLM_FALLBACK_PROVIDERS", "").split(",") if p.strip()
+    ]
+    # Other models on the primary provider to try before LLM_FALLBACK_PROVIDERS,
+    # e.g. "nvidia/nemotron-3.5-super-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free".
+    LLM_FALLBACK_MODELS = [
+        m.strip() for m in os.getenv("LLM_FALLBACK_MODELS", "").split(",") if m.strip()
+    ]
+    # Models students can pick in chat when not on Bedrock, as "id" or
+    # "id=Label", comma-separated. Empty = the default and routing models.
+    LLM_CHAT_MODELS = [
+        m.strip() for m in os.getenv("LLM_CHAT_MODELS", "").split(",") if m.strip()
+    ]
+    # Retries the OpenAI SDK makes on 429/5xx before falling back.
+    # -1 = provider default (0 for OpenRouter, whose failed calls count
+    # against the free daily cap; 2 elsewhere).
+    LLM_SDK_MAX_RETRIES = int(os.getenv("LLM_SDK_MAX_RETRIES", "-1"))
+    # Optional moderation model (e.g. a Llama Guard model) checked before
+    # each generation; replaces Bedrock Guardrails off AWS. Empty = off.
+    LLM_MODERATION_MODEL = os.getenv("LLM_MODERATION_MODEL", "")
+    # The app's default model ID for the active provider. Code that needs
+    # "the default model" reads this rather than BEDROCK_MODEL_ID.
+    LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "") or {
+        "bedrock": BEDROCK_MODEL_ID,
+        "openrouter": OPENROUTER_MODEL_ID,
+        "groq": GROQ_MODEL_ID,
+        "gemini": GEMINI_MODEL_ID,
+        "ollama": LLM_MODEL,
+    }.get(LLM_PROVIDER, "")
+
+    # Active embedding model. "bedrock" = Titan (BEDROCK_EMBEDDING_MODEL_ID);
+    # "huggingface"/"local" = EMBEDDING_MODEL run locally with
+    # sentence-transformers (backend/local_embeddings.py).
+    EMBEDDING_PROVIDER = EMBEDDING_PROVIDER.strip().lower()
+    EMBEDDING_MODEL_ID = (
+        BEDROCK_EMBEDDING_MODEL_ID if EMBEDDING_PROVIDER == "bedrock" else EMBEDDING_MODEL
+    )
+    # Where the prebuilt vector index lives in S3_DOCUMENTS_BUCKET. Each
+    # embedding model gets its own file, so switching models never reads
+    # vectors made by another one, and switching back is instant. Titan keeps
+    # the original key.
+    VECTOR_INDEX_KEY = os.getenv("VECTOR_INDEX_KEY", "") or vector_index_key_for(
+        EMBEDDING_PROVIDER, EMBEDDING_MODEL_ID
+    )
+    # Optional fixed judge for RAG quality evaluations, so runs on different
+    # answer models are scored by the same model (e.g. "gemini" with
+    # EVAL_JUDGE_MODEL_ID empty = GEMINI_MODEL_ID). Empty = the answer model.
+    EVAL_JUDGE_PROVIDER = os.getenv("EVAL_JUDGE_PROVIDER", "").strip().lower()
+    EVAL_JUDGE_MODEL_ID = os.getenv("EVAL_JUDGE_MODEL_ID", "").strip()
+    # Texts per batch when embedding locally (index rebuilds, uploads).
+    EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
     # Retrieval Settings
     SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "3"))
@@ -497,6 +607,13 @@ class Config:
     # Background jobs (backend/jobs). Without a queue URL, jobs run in a
     # thread inside the API process, as before.
     JOBS_QUEUE_URL = os.getenv("JOBS_QUEUE_URL", "").strip()
+    # Queue backend: "sqs", "redis" or "inline". Empty = "sqs" when
+    # JOBS_QUEUE_URL is set, else "inline" (a thread in the API process).
+    JOBS_BACKEND = os.getenv("JOBS_BACKEND", "").strip().lower()
+    JOBS_REDIS_QUEUE = os.getenv("JOBS_REDIS_QUEUE", "smart-tutor:jobs")
+    # Receives before a failing job goes to the dead-letter queue (Redis;
+    # SQS sets this in its redrive policy).
+    JOBS_MAX_RECEIVES = int(os.getenv("JOBS_MAX_RECEIVES", "5"))
     JOBS_REGION = os.getenv("JOBS_REGION") or os.getenv("AWS_REGION", "us-east-1")
     USER_DATA_SHARED_STORAGE = (
         os.getenv("USER_DATA_SHARED_STORAGE", "false").lower() == "true"
@@ -523,7 +640,7 @@ class Config:
     # LLM Routing (Complexity-Based Model Selection)
     LLM_ROUTING_ENABLED = os.getenv("LLM_ROUTING_ENABLED", "false").lower() == "true"
     LLM_ROUTING_SIMPLE_MODEL = os.getenv("LLM_ROUTING_SIMPLE_MODEL", "")  # e.g. meta.llama3-8b-instruct-v1:0
-    LLM_ROUTING_COMPLEX_MODEL = os.getenv("LLM_ROUTING_COMPLEX_MODEL", "")  # falls back to BEDROCK_MODEL_ID
+    LLM_ROUTING_COMPLEX_MODEL = os.getenv("LLM_ROUTING_COMPLEX_MODEL", "")  # falls back to LLM_MODEL_ID
     LLM_ROUTING_COMPLEXITY_THRESHOLD = float(os.getenv("LLM_ROUTING_COMPLEXITY_THRESHOLD", "0.5"))
 
     # Cache Settings
@@ -537,12 +654,9 @@ class Config:
     ANSWER_CACHE_FUZZY_THRESHOLD = float(os.getenv("ANSWER_CACHE_FUZZY_THRESHOLD", "0.95"))
 
     # Redis Cache Settings (optional, falls back to in-memory if not available)
+    # (Host, port, DB, password and TLS are defined once, with the other
+    # Redis settings above.)
     REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
-    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
-    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
-    REDIS_SSL = os.getenv("REDIS_SSL", "false").lower() == "true"
     REDIS_CONNECTION_TIMEOUT = int(os.getenv("REDIS_CONNECTION_TIMEOUT", "5"))  # seconds
 
     # Rate Limiting

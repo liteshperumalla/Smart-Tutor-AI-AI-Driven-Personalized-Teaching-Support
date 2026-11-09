@@ -153,8 +153,8 @@ async def run_research_query(
     rate_limiter: PerUserRateLimiter = Depends(get_rate_limiter_dep),
 ):
     await rate_limiter.check_rate_limit(request, limit=30, window=3600, scope="research_query")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     if not payload.query.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -317,8 +317,8 @@ async def compare_sources(
 ):
     """Compare information across multiple documents on a topic."""
     await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_compare")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     try:
         result = service.compare_sources(
             payload.topic, payload.document_ids, payload.uploaded_only
@@ -342,8 +342,8 @@ async def extract_citations(
 ):
     """Extract and format citations from uploaded documents."""
     await rate_limiter.check_rate_limit(request, limit=20, window=3600, scope="research_citations")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     try:
         result = service.extract_citations(payload.document_id, payload.format_style)
         return result
@@ -365,8 +365,8 @@ async def generate_summary(
 ):
     """Generate document summary in specified mode (executive, detailed, bullets)."""
     await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_summary")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     try:
         result = service.generate_summary(
             payload.document_id, payload.mode, payload.max_length
@@ -390,8 +390,8 @@ async def generate_questions(
 ):
     """Generate study questions from uploaded documents."""
     await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_questions")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     try:
         result = service.generate_questions(
             payload.document_id,
@@ -418,8 +418,8 @@ async def fact_check(
 ):
     """Cross-reference claims across sources and provide a verdict."""
     await rate_limiter.check_rate_limit(request, limit=15, window=3600, scope="research_fact_check")
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     try:
         result = service.fact_check(
             payload.claim, payload.uploaded_only, payload.include_web

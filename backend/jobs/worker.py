@@ -1,4 +1,7 @@
-"""SQS worker: receive one job at a time, run it, delete it on success.
+"""Jobs worker: receive one job at a time, run it, delete it on success.
+
+Works with SQS or with ``RedisJobsClient`` (backend/jobs/redis_queue.py),
+which offers the same calls.
 
 Runs in its own container (``python -m backend.jobs worker``) from the
 backend image, so API deploys and restarts don't kill running jobs.
@@ -50,7 +53,7 @@ class Worker:
         alive_file: str | None = DEFAULT_ALIVE_FILE,
     ):
         self.queue_url = queue_url
-        self.client = client or sqs_client(region)
+        self.client = client if client is not None else sqs_client(region)
         self.wait_seconds = wait_seconds
         self.visibility_seconds = visibility_seconds
         self.heartbeat_seconds = heartbeat_seconds or max(1, visibility_seconds // 3)
@@ -82,7 +85,7 @@ class Worker:
                 AttributeNames=["ApproximateReceiveCount"],
             )
         except Exception as exc:
-            logger.error(f"SQS receive failed: {exc}")
+            logger.error(f"Jobs queue receive failed: {exc}")
             self._stop.wait(5)
             return False
 

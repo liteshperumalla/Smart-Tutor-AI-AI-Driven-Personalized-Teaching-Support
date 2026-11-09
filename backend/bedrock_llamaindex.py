@@ -62,6 +62,10 @@ class BedrockLLM(LLM):
         elif "mistral" in model_lower:
             return (32000, 8192)  # Mistral models
 
+        # Gemini models (OpenAI-compatible provider)
+        elif "gemini" in model_lower:
+            return (32000, 8192)
+
         # Titan models
         elif "amazon.titan" in model_lower:
             return (32000, 4096)  # Titan Text models

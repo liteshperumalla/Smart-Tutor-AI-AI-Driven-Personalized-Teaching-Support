@@ -45,6 +45,12 @@ def get_cost_tracker():
 
 
 def _bedrock_embedding_dimension() -> int:
+    from backend.config import config
+
+    if config.EMBEDDING_PROVIDER != "bedrock":
+        from backend.llm_provider import get_shared_embedding_client
+
+        return get_shared_embedding_client().get_sentence_embedding_dimension()
     from backend.bedrock_embeddings import BedrockEmbeddings
 
     return BedrockEmbeddings.EMBEDDING_DIMENSION
@@ -784,7 +790,7 @@ def _build_drift_summary(drift_records: List[dict], enabled: bool) -> dict:
 def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
     import time
     from backend.s3_retriever import create_s3_retriever
-    from backend.bedrock_llm import BedrockLLM
+    from backend.llm_provider import create_llm_client
     from backend.drift_monitor import get_drift_monitor
     from backend.services.rag_quality_evaluator import (
         evaluate_quality,
@@ -823,7 +829,7 @@ def _run_dataset_quality(limit: int, model_id: Optional[str]) -> dict:
         retriever = create_s3_retriever(
             similarity_top_k=max(6, config.SIMILARITY_TOP_K + 2)
         )
-        llm = BedrockLLM(model_id=model_id or config.BEDROCK_MODEL_ID)
+        llm = create_llm_client(model_id=model_id or config.LLM_MODEL_ID)
         drift_monitor = get_drift_monitor()
     except Exception as exc:
         logging.getLogger(__name__).exception(
@@ -1413,6 +1419,49 @@ def get_aws_metrics(
         "errors": [],
     }
 
+    def _fill_costs() -> None:
+        try:
+            tracker = get_cost_tracker()
+            daily_costs = tracker.get_daily_costs(date)
+            if isinstance(daily_costs, dict) and daily_costs.get("error"):
+                # get_daily_costs puts the raw exception text here; log it,
+                # don't send it to the client.
+                logging.getLogger(__name__).error(f"Cost tracking error: {daily_costs['error']}")
+                metrics["errors"].append("Cost Tracking: service unavailable")
+                daily_costs = {
+                    "date": daily_costs.get("date") or date,
+                    "total_cost_usd": None,
+                    "total_tokens": None,
+                    "entries": None,
+                    "error": "Cost tracking unavailable",
+                }
+            metrics["costs"] = {
+                "daily": daily_costs,
+                "tracking_enabled": config.ENABLE_COST_TRACKING,
+            }
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Cost tracking error: {e}")
+            metrics["errors"].append("Cost Tracking: service unavailable")
+            metrics["costs"] = {
+                "daily": {
+                    "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "total_cost_usd": None,
+                    "total_tokens": None,
+                    "entries": None,
+                    "error": "Cost tracking unavailable",
+                },
+                "tracking_enabled": False,
+            }
+
+    if config.CLOUD_PROVIDER != "aws":
+        # Off AWS there's nothing to query: no Pricing, CloudWatch or STS
+        # calls. Cost tracking still reports the app's own token log.
+        metrics["region"] = None
+        metrics["note"] = f"AWS metrics disabled (CLOUD_PROVIDER={config.CLOUD_PROVIDER})"
+        _fill_costs()
+        metrics["summary"] = {"total_services": 0, "active_services": 0, "has_errors": bool(metrics["errors"])}
+        return {"aws_metrics": metrics}
+
     # AWS Client setup
     client_kwargs = {"region_name": config.AWS_REGION}
     if config.AWS_ACCESS_KEY_ID and config.AWS_SECRET_ACCESS_KEY:
@@ -1457,7 +1506,9 @@ def get_aws_metrics(
 
     # 2. S3 METRICS
     try:
-        s3 = boto3.client("s3", **client_kwargs)
+        from backend.cloud.aws_helpers import get_s3_client
+
+        s3 = get_s3_client()
         bucket_name = config.S3_DOCUMENTS_BUCKET
 
         # Get bucket stats
@@ -1530,26 +1581,7 @@ def get_aws_metrics(
         metrics["services"]["dynamodb"] = {"status": "error", "error": "Service unavailable"}
 
     # 4. COST TRACKING
-    try:
-        tracker = get_cost_tracker()
-        daily_costs = tracker.get_daily_costs(date)
-        metrics["costs"] = {
-            "daily": daily_costs,
-            "tracking_enabled": config.ENABLE_COST_TRACKING,
-        }
-    except Exception as e:
-        logging.getLogger(__name__).error(f"Cost tracking error: {e}")
-        metrics["errors"].append("Cost Tracking: service unavailable")
-        metrics["costs"] = {
-            "daily": {
-                "date": date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                "total_cost_usd": None,
-                "total_tokens": None,
-                "entries": None,
-                "error": "Cost tracking unavailable",
-            },
-            "tracking_enabled": False,
-        }
+    _fill_costs()
 
     # 5. STS (Identity verification)
     try:

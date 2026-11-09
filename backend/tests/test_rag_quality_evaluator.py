@@ -21,7 +21,7 @@ def test_evaluate_quality_uses_explicit_correctness_from_judge(monkeypatch):
                 }
             )
 
-    monkeypatch.setattr(evaluator, "BedrockLLM", FakeLLM)
+    monkeypatch.setattr(evaluator, "create_llm_client", FakeLLM)
 
     scores = evaluator.evaluate_quality(
         question="What is machine learning?",
@@ -51,7 +51,7 @@ def test_evaluate_quality_falls_back_when_judge_omits_correctness(monkeypatch):
                 }
             )
 
-    monkeypatch.setattr(evaluator, "BedrockLLM", FakeLLM)
+    monkeypatch.setattr(evaluator, "create_llm_client", FakeLLM)
 
     scores = evaluator.evaluate_quality(
         question="What is chunking?",

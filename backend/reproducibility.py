@@ -64,6 +64,7 @@ def generate_manifest() -> Dict[str, Any]:
         },
         "models": {
             "llm_provider": config.LLM_PROVIDER,
+            "llm_model_id": config.LLM_MODEL_ID,
             "bedrock_model_id": config.BEDROCK_MODEL_ID,
             "bedrock_embedding_model_id": config.BEDROCK_EMBEDDING_MODEL_ID,
             "embedding_model": config.EMBEDDING_MODEL,

@@ -138,7 +138,9 @@ def _refresh_s3_knowledge_base_stats() -> Dict[str, Any]:
         return stats
 
     try:
-        s3_client = boto3.client("s3")
+        from backend.cloud.aws_helpers import get_s3_client
+
+        s3_client = get_s3_client()
         bucket = config.S3_DOCUMENTS_BUCKET
 
         paginator = s3_client.get_paginator("list_objects_v2")
@@ -404,6 +406,16 @@ def get_system_status() -> Dict[str, Any]:
                 }
             except Exception as e:
                 llm_status = {"ready": False, "provider": "bedrock", "error": str(e)}
+    elif llm_provider in ("openrouter", "groq", "gemini", "openai_compat"):
+        from backend.health import HealthChecker
+
+        check = HealthChecker.check_llm_provider()
+        llm_status = {
+            "ready": check.get("status") == "healthy",
+            "provider": llm_provider,
+            "model": check.get("model"),
+            "error": check.get("error"),
+        }
 
     issues = []
     # Only check local indexes if NOT using S3 vectors

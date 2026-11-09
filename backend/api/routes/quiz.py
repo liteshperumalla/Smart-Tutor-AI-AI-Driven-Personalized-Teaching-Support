@@ -74,8 +74,8 @@ async def generate_quiz(
         window=_QUIZ_GEN_WINDOW,
         scope="quiz_generate",
     )
-    await rate_limiter.check_model_rate_limit(request, config.BEDROCK_MODEL_ID)
-    await rate_limiter.check_cost_budget(request, config.BEDROCK_MODEL_ID)
+    await rate_limiter.check_model_rate_limit(request, config.LLM_MODEL_ID)
+    await rate_limiter.check_cost_budget(request, config.LLM_MODEL_ID)
     _, user = session
     from backend.services.learning_service import get_learning_service
     learning = get_learning_service()

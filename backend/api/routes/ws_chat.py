@@ -138,7 +138,7 @@ async def websocket_chat_endpoint(
                             tier, _ = classify_query_complexity(query)
                             effective_model = select_model_for_complexity(tier)
                         else:
-                            effective_model = app_config.BEDROCK_MODEL_ID
+                            effective_model = app_config.LLM_MODEL_ID
                         await rate_limiter.check_model_rate_limit(websocket, effective_model)
                         await rate_limiter.check_cost_budget(websocket, effective_model)
                     except HTTPException as exc:
