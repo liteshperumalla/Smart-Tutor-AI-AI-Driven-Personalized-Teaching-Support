@@ -20,10 +20,17 @@ import glob
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
 DASHBOARD_GLOB = "monitoring/grafana/dashboards/*.json"
+
+
+# A Grafana Cloud stack that has been idle answers 502/503/504 while it
+# resumes, which takes a few minutes; retry those (and 429) before failing.
+RETRY_STATUSES = {429, 502, 503, 504}
+RETRY_DELAYS = (10, 20, 30, 60, 60, 60)
 
 
 def _request(method: str, url: str, token: str, body: dict | None = None) -> dict:
@@ -32,8 +39,21 @@ def _request(method: str, url: str, token: str, body: dict | None = None) -> dic
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/json")
     req.add_header("Accept", "application/json")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read() or b"{}")
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read() or b"{}")
+        except urllib.error.HTTPError as exc:
+            if exc.code not in RETRY_STATUSES or delay is None:
+                raise
+            reason = f"HTTP {exc.code}"
+        except urllib.error.URLError as exc:
+            if delay is None:
+                raise
+            reason = str(exc.reason)
+        print(f"Grafana Cloud {method} {url} failed ({reason}); retrying in {delay}s.")
+        time.sleep(delay)
+    raise AssertionError("unreachable")
 
 
 def _ensure_folder(base: str, token: str, title: str) -> str:

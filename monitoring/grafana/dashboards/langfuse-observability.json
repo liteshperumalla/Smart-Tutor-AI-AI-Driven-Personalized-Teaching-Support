@@ -225,7 +225,7 @@
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total[1m]))",
+          "expr": "sum(rate(http_requests_total[2m]))",
           "legendFormat": "Total Requests / sec",
           "refId": "A"
         }

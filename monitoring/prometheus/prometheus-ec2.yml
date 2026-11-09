@@ -1,7 +1,11 @@
 # Prometheus configuration for single-EC2 production
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  # Grafana Cloud's free tier counts usage as max(active series, data points
+  # per minute), so every scrape faster than 60s multiplies the series count.
+  # 60s by default; only the backend is faster (30s) because two alerts use
+  # 2-minute rate windows.
+  scrape_interval: 60s
+  evaluation_interval: 30s
   external_labels:
     cluster: 'smart-ai-tutor-ec2'
     environment: 'production'
@@ -14,13 +18,23 @@ alerting:
 rule_files:
   - 'alerts.yml'
 
-# Remote Write to Grafana Cloud Hosted Prometheus (Option A)
+# Remote Write to Grafana Cloud Hosted Prometheus (free tier: 10k active
+# series, 14 days retention). Only the metrics the Grafana Cloud dashboards in
+# monitoring/grafana/dashboards query are sent; everything else (cAdvisor,
+# most node-exporter metrics, Prometheus' own metrics, Python runtime metrics)
+# stays in the local Prometheus, which alerting and the EC2 Grafana read.
+# When a dashboard starts using a new metric, add it to this list.
 remote_write:
   - url: 'https://prometheus-prod-66-prod-us-east-3.grafana.net/api/prom/push'
     basic_auth:
       username: '3689873'
       password_file: '/etc/prometheus/grafana-cloud-token'
-    send_exemplars: true
+    send_exemplars: false
+    write_relabel_configs:
+      - source_labels: [__name__]
+        action: keep
+        regex: >-
+          up|http_requests_total|http_requests_in_progress|http_request_duration_seconds_(bucket|sum|count)|db_query_duration_seconds_(bucket|sum|count)|llm_(requests|tokens|satisfaction)_total|llm_latency_seconds_(bucket|sum|count)|rag_(query|embedding_requests|embedding_errors|tokens_processed|cache_hits|cache_misses)_total|rag_(query|embedding)_duration_seconds_(bucket|sum|count)|rag_query_drift_score|rag_retrieval_(precision|recall)_at_3|rag_total_cost_dollars|node_cpu_seconds_total|node_memory_(MemAvailable|MemTotal)_bytes|node_filesystem_(avail|size)_bytes|node_network_(receive|transmit)_bytes_total|pg_settings_max_connections|pg_stat_database_numbackends|redis_memory_(used|max)_bytes
     queue_config:
       capacity: 10000
       max_shards: 10
@@ -44,7 +58,7 @@ scrape_configs:
         labels:
           service: 'backend-api'
           app: 'smart-ai-tutor'
-    scrape_interval: 10s
+    scrape_interval: 30s
 
   # No 'frontend' job here: in production the Next.js frontend is deployed
   # to Vercel, not as a container on this EC2 host, so 'frontend:4000' never
@@ -57,7 +71,6 @@ scrape_configs:
         labels:
           service: 'postgres'
           database: 'smart_tutor'
-    scrape_interval: 30s
 
   - job_name: 'redis'
     static_configs:
@@ -65,7 +78,6 @@ scrape_configs:
         labels:
           service: 'redis'
           cache: 'rag-cache'
-    scrape_interval: 30s
 
   - job_name: 'node'
     static_configs:
@@ -73,7 +85,6 @@ scrape_configs:
         labels:
           service: 'node-exporter'
           instance: 'ec2-host'
-    scrape_interval: 30s
 
   - job_name: 'cadvisor'
     static_configs:
@@ -81,4 +92,3 @@ scrape_configs:
         labels:
           service: 'cadvisor'
           instance: 'ec2-host'
-    scrape_interval: 30s
