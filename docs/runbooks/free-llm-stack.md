@@ -92,20 +92,38 @@ is still `bedrock` for compatibility with existing deploy gates.
 ## 4. Build the free vector index
 
 Each embedding model has its own index file (`vector_index/<model>.idx`), so
-building this one leaves the Titan index production uses untouched. On the
-server:
+building this one leaves the Titan index production uses untouched.
+
+**It is slow.** Re-embedding the ~12.7k course chunks on one CPU runs at about
+1.2 chunks/s, so about **3 hours**. The rebuild therefore:
+
+- saves its progress to a checkpoint every two minutes and resumes from it
+  when run again, so an interruption costs minutes, not hours;
+- runs, when started from the **Staging Evaluation** workflow, in its own
+  container (`smart-tutor-staging-reindex`), which keeps going after the
+  workflow stops waiting. Re-run the workflow later and it picks up the
+  result (or waits for the rebuild still in progress).
+
+Its CPU and memory come from the `staging` environment variables
+`STAGING_REINDEX_CPUS` (default `1.0`) and `STAGING_REINDEX_MEMORY` (default
+`1500m`). The workflow prints the host's CPU count. Production runs on the
+same instance, so raise the CPUs only if the host has cores to spare: `2.0`
+roughly halves the time.
+
+By hand on the server:
 
 ```bash
-docker exec smart-tutor-staging-backend python -m backend.scripts.rebuild_index --dry-run
+docker exec smart-tutor-staging-backend python -m backend.scripts.rebuild_index --check
 ```
 
 ```bash
 docker exec smart-tutor-staging-backend python -m backend.scripts.rebuild_index
 ```
 
-It re-embeds every chunk's text on CPU. Expect minutes for the ~14k course
-chunks. Until it finishes, staging's first RAG query would build the index
-itself, so run this before testing.
+`--check` exits 0 when the index exists and 3 when it doesn't. Don't query the
+free stack before the index exists: the first RAG query would start the
+multi-hour build inside the staging backend. The evaluation workflow checks
+this and stops instead.
 
 If staging ever loads an index made by another model, it refuses with
 `IndexModelMismatchError` instead of returning wrong results. Rebuild, or
@@ -117,9 +135,16 @@ point `VECTOR_INDEX_KEY` at the right file.
 
 **Actions → Staging Evaluation → Run workflow.** Tick *Rebuild the free
 stack's vector index* on the first run (step 4), keep *limit* at 10 unless
-you bought the OpenRouter credit, and leave *Also run the AWS baseline*
-on. The job summary shows the provider check and the PASS/FAIL table; the
-raw JSON is in the run's `staging-evaluation-<n>` artifact. It shares the
+you bought the OpenRouter credit, and leave *Also run the AWS baseline* on.
+
+The first run waits up to *rebuild_wait_minutes* (default 150) for the
+index. If the rebuild isn't done by then, the run ends with "still running"
+and the rebuild carries on on the server; run the workflow again later. The
+box can stay ticked: a finished index is not rebuilt, and a running rebuild
+is waited for rather than started twice.
+
+The job summary shows the provider check and the PASS/FAIL table; the raw
+JSON is in the run's `staging-evaluation-<n>` artifact. It shares the
 staging deploy's concurrency group, so it waits for a running deploy.
 
 ### On the server

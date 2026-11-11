@@ -624,7 +624,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           command_timeout: 5m
           script: |
-            docker rm -f smart-tutor-staging-backend smart-tutor-staging-backend-candidate 2>/dev/null || true
+            docker rm -f smart-tutor-staging-backend smart-tutor-staging-backend-candidate smart-tutor-staging-reindex 2>/dev/null || true
             rm -f /tmp/staging-backend-image-*.tar.gz 2>/dev/null || true
             docker image prune -f >/dev/null 2>&1 || true
             echo "Staging containers removed."

@@ -19,9 +19,13 @@ on:
         required: true
         default: "0.05"
       rebuild_index:
-        description: Rebuild the free stack's vector index first (needed once, and after changing EMBEDDING_MODEL)
+        description: Rebuild the free stack's vector index first (needed once, and after changing EMBEDDING_MODEL). Resumes an interrupted rebuild.
         type: boolean
         default: false
+      rebuild_wait_minutes:
+        description: How long to wait for the rebuild before stopping (it keeps running on the server; re-run to pick it up)
+        required: true
+        default: "150"
       run_baseline:
         description: Also run the AWS baseline and compare (off scores only the free stack)
         type: boolean
@@ -33,6 +37,12 @@ env:
   EC2_AUTO_START: ${{ vars.EC2_AUTO_START || 'true' }}
   EC2_TEMPORARY_SSH_INGRESS: ${{ vars.EC2_TEMPORARY_SSH_INGRESS || 'true' }}
   STAGING_CONTAINER: smart-tutor-staging-backend
+  # The re-index runs in its own container, so it outlives this job and the
+  # staging backend's 1-CPU cap. Raise these (staging environment variables)
+  # if the host has spare capacity: production runs on the same instance.
+  REINDEX_CONTAINER: smart-tutor-staging-reindex
+  REINDEX_CPUS: ${{ vars.STAGING_REINDEX_CPUS || '1.0' }}
+  REINDEX_MEMORY: ${{ vars.STAGING_REINDEX_MEMORY || '1500m' }}
 
 jobs:
   evaluate:
@@ -45,7 +55,8 @@ jobs:
       cancel-in-progress: false
     environment:
       name: staging
-    timeout-minutes: 120
+    # Up to rebuild_wait_minutes for the index, plus the two evaluation runs.
+    timeout-minutes: 240
     permissions:
       contents: read
     env:
@@ -58,10 +69,15 @@ jobs:
         env:
           LIMIT: ${{ inputs.limit }}
           MAX_DROP: ${{ inputs.max_drop }}
+          REBUILD_WAIT: ${{ inputs.rebuild_wait_minutes }}
         run: |
           set -euo pipefail
           if ! [[ "${LIMIT}" =~ ^[0-9]+$ ]] || [ "${LIMIT}" -lt 1 ] || [ "${LIMIT}" -gt 200 ]; then
             echo "::error::limit must be a whole number from 1 to 200."
+            exit 1
+          fi
+          if ! [[ "${REBUILD_WAIT}" =~ ^[0-9]+$ ]] || [ "${REBUILD_WAIT}" -gt 180 ]; then
+            echo "::error::rebuild_wait_minutes must be a whole number from 0 to 180."
             exit 1
           fi
           if ! [[ "${MAX_DROP}" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
@@ -83,39 +99,122 @@ jobs:
         id: ec2-target
         run: scripts/ci/resolve_ec2_target.sh
 
-      - name: Run evaluations on staging
-        id: evaluate
+      - name: Prepare SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p eval-results "${RUNNER_TEMP}/ssh"
+          ( umask 077; printf '%s\n' "${EC2_SSH_KEY}" > "${RUNNER_TEMP}/ssh/key" )
+
+      - name: Check staging
         env:
           EC2_HOST: ${{ steps.ec2-target.outputs.host }}
           EC2_USER: ${{ secrets.EC2_USER }}
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          LIMIT: ${{ inputs.limit }}
-          REBUILD_INDEX: ${{ inputs.rebuild_index }}
-          RUN_BASELINE: ${{ inputs.run_baseline }}
         run: |
           set -euo pipefail
-          mkdir -p eval-results
-
-          key_file="$(mktemp)"
-          trap 'rm -f "${key_file}"' EXIT
-          printf '%s\n' "${EC2_SSH_KEY}" > "${key_file}"
-          chmod 600 "${key_file}"
-          ssh_opts=(-o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10)
-          remote() { ssh "${ssh_opts[@]}" -i "${key_file}" "${EC2_USER}@${EC2_HOST}" "$@"; }
-
+          remote() { ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${RUNNER_TEMP}/ssh/key" "${EC2_USER}@${EC2_HOST}" "$@"; }
           if ! remote "docker inspect -f '{{.State.Running}}' ${STAGING_CONTAINER}" 2>/dev/null | grep -qx true; then
-            echo "::error::${STAGING_CONTAINER} is not running. Deploy staging first (deploy:staging label or Staging Deploy)."
+            echo "::error::${STAGING_CONTAINER} is not running. Deploy staging first (Actions → Staging Deploy → Run workflow on main)."
             exit 1
           fi
-
+          echo "=== Host ==="
+          remote 'echo "CPUs: $(nproc)"; free -h | sed -n 1,2p'
           echo "=== Provider health ==="
           remote "curl -fsS --max-time 60 http://localhost:8110/health/detailed" > eval-results/health.json || true
           jq '.checks.bedrock // .' eval-results/health.json || cat eval-results/health.json
 
-          if [ "${REBUILD_INDEX}" = "true" ]; then
-            echo "=== Rebuilding the free stack's vector index ==="
-            remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.rebuild_index" 2>&1 | tee eval-results/rebuild_index.log
+      - name: Vector index
+        id: index
+        env:
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          REBUILD_INDEX: ${{ inputs.rebuild_index }}
+          REBUILD_WAIT: ${{ inputs.rebuild_wait_minutes }}
+        run: |
+          set -euo pipefail
+          remote() { ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${RUNNER_TEMP}/ssh/key" "${EC2_USER}@${EC2_HOST}" "$@"; }
+          reindex_state() { remote "docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' ${REINDEX_CONTAINER} 2>/dev/null" || true; }
+          index_ready() { remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.rebuild_index --check" >/dev/null 2>&1; }
+
+          state="$(reindex_state)"
+          if [ "${REBUILD_INDEX}" = "true" ] && [ "${state%% *}" != "running" ] && index_ready; then
+            # A model change gets a new index key, so "exists" means this
+            # model's index is built; uploads keep it up to date.
+            echo "The free stack's index already exists; skipping the rebuild."
+          elif [ "${REBUILD_INDEX}" = "true" ] && [ "${state%% *}" != "running" ]; then
+            echo "=== Starting the re-index container ==="
+            # Same image and env file as staging; progress is checkpointed in
+            # the staging data dir, so a stopped rebuild resumes from there.
+            remote bash -s -- "${STAGING_CONTAINER}" "${REINDEX_CONTAINER}" "${REINDEX_CPUS}" "${REINDEX_MEMORY}" <<'REMOTE'
+          set -euo pipefail
+          staging="$1"; reindex="$2"; cpus="$3"; memory="$4"
+          image="$(docker inspect -f '{{.Config.Image}}' "$staging")"
+          data_dir="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/chroma_db"}}{{.Source}}{{end}}{{end}}' "$staging")"
+          data_dir="$(dirname "${data_dir:-$HOME/smart-tutor-staging-data/chroma_db}")"
+          mkdir -p "$data_dir/reindex"
+          # The image runs as uid 1001; let it write the checkpoint dir.
+          docker run --rm --user root --entrypoint chown -v "$data_dir/reindex:/reindex" "$image" -R 1001:1001 /reindex
+          docker rm -f "$reindex" >/dev/null 2>&1 || true
+          docker run -d --name "$reindex" \
+            --env-file "$HOME/smart-tutor-staging.env" \
+            -e REINDEX_CHECKPOINT_DIR=/reindex \
+            --cpus "$cpus" --memory "$memory" \
+            -v "$data_dir/reindex:/reindex" \
+            "$image" python -m backend.scripts.rebuild_index
+          echo "Started $reindex from $image with --cpus $cpus --memory $memory."
+          REMOTE
+            state="running 0"
+          elif [ "${state%% *}" = "running" ]; then
+            echo "A re-index started earlier is still running; waiting for it."
           fi
+
+          if [ "${state%% *}" = "running" ]; then
+            deadline=$(( $(date +%s) + REBUILD_WAIT * 60 ))
+            while :; do
+              state="$(reindex_state)"
+              [ "${state%% *}" = "running" ] || break
+              remote "docker logs --tail 1 ${REINDEX_CONTAINER} 2>&1" | jq -r '.message? // .' 2>/dev/null || true
+              if [ "$(date +%s)" -ge "${deadline}" ]; then
+                echo "::warning::The index rebuild is still running after ${REBUILD_WAIT} minutes. It carries on on the server; re-run this workflow later (the rebuild box can stay ticked: it waits for the running rebuild instead of starting another)."
+                echo "ready=false" >> "$GITHUB_OUTPUT"
+                echo "status=still running" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              sleep 60
+            done
+            remote "docker logs --tail 40 ${REINDEX_CONTAINER} 2>&1" > eval-results/rebuild_index.log || true
+            if [ "${state#* }" != "0" ]; then
+              tail -n 20 eval-results/rebuild_index.log
+              echo "::error::The index rebuild failed (exit ${state#* }); see the log above. Re-running resumes from its checkpoint."
+              exit 1
+            fi
+            echo "Rebuild finished."
+          fi
+
+          if index_ready; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+            echo "The free stack's index is ready."
+          else
+            # Without it the first free-stack query would start a multi-hour
+            # build inside the staging backend, so stop here instead.
+            echo "::error::The free stack has no vector index yet. Re-run with \"Rebuild the free stack's vector index\" ticked."
+            echo "status=missing" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Run evaluations on staging
+        id: evaluate
+        if: ${{ steps.index.outputs.ready == 'true' }}
+        env:
+          EC2_HOST: ${{ steps.ec2-target.outputs.host }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          LIMIT: ${{ inputs.limit }}
+          RUN_BASELINE: ${{ inputs.run_baseline }}
+        run: |
+          set -euo pipefail
+          remote() { ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${RUNNER_TEMP}/ssh/key" "${EC2_USER}@${EC2_HOST}" "$@"; }
 
           if [ "${RUN_BASELINE}" = "true" ]; then
             echo "=== Baseline: Bedrock + Titan (${LIMIT} questions) ==="
@@ -130,11 +229,13 @@ jobs:
 
       - name: Revoke temporary SSH ingress
         if: always()
-        run: scripts/ci/revoke_ec2_ssh_ingress.sh
+        run: |
+          rm -rf "${RUNNER_TEMP}/ssh"
+          scripts/ci/revoke_ec2_ssh_ingress.sh
 
       - name: Compare runs
         id: compare
-        if: ${{ inputs.run_baseline }}
+        if: ${{ inputs.run_baseline && steps.evaluate.outcome == 'success' }}
         env:
           MAX_DROP: ${{ inputs.max_drop }}
         run: |
@@ -164,11 +265,17 @@ jobs:
           REBUILD_INDEX: ${{ inputs.rebuild_index }}
           RUN_BASELINE: ${{ inputs.run_baseline }}
           COMPARE_STATUS: ${{ steps.compare.outputs.status }}
+          INDEX_STATUS: ${{ steps.index.outputs.status }}
         run: |
           {
             echo "## Staging evaluation"
             echo ""
-            echo "Questions: ${LIMIT} · Allowed drop: ${MAX_DROP} · Index rebuilt: ${REBUILD_INDEX} · Baseline run: ${RUN_BASELINE}"
+            echo "Questions: ${LIMIT} · Allowed drop: ${MAX_DROP} · Rebuild requested: ${REBUILD_INDEX} · Baseline run: ${RUN_BASELINE}"
+            echo ""
+            case "${INDEX_STATUS}" in
+              "still running") echo "### ⏳ The index rebuild is still running on the server. Re-run this workflow later to score the free stack." ;;
+              missing) echo "### ⚠️ The free stack has no vector index. Re-run with the rebuild box ticked." ;;
+            esac
             echo ""
             if [ -s eval-results/health.json ]; then
               echo "**LLM provider check**"
