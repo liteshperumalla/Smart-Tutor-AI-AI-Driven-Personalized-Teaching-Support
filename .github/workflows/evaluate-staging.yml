@@ -135,7 +135,20 @@ jobs:
           set -euo pipefail
           remote() { ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${RUNNER_TEMP}/ssh/key" "${EC2_USER}@${EC2_HOST}" "$@"; }
           reindex_state() { remote "docker inspect -f '{{.State.Status}} {{.State.ExitCode}}' ${REINDEX_CONTAINER} 2>/dev/null" || true; }
-          index_ready() { remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.rebuild_index --check" >/dev/null 2>&1; }
+          check_rc=0
+          index_ready() {
+            check_rc=0
+            remote "docker exec ${STAGING_CONTAINER} python -m backend.scripts.rebuild_index --check" > eval-results/index_check.log 2>&1 || check_rc=$?
+            if [ "${check_rc}" -ne 0 ] && [ "${check_rc}" -ne 3 ]; then
+              tail -n 5 eval-results/index_check.log
+              # 2: an image from before --check existed, or EMBEDDING_PROVIDER=bedrock.
+              echo "::error::Staging couldn't check the free stack's index (exit ${check_rc}). Redeploy staging from main (Actions → Staging Deploy) so it has the current code, and check that the staging environment's EMBEDDING_PROVIDER isn't bedrock."
+              exit 1
+            fi
+            [ "${check_rc}" -eq 0 ]
+          }
+          # Fail early, before starting anything, if staging can't run the check.
+          index_ready || true
 
           state="$(reindex_state)"
           if [ "${REBUILD_INDEX}" = "true" ] && [ "${state%% *}" != "running" ] && index_ready; then
