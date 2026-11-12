@@ -347,16 +347,26 @@ class S3VectorStore:
         else:
             self._build_index_by_embedding()
 
-    def rebuild(self) -> int:
+    def rebuild(self, checkpoint_path: Optional[str] = None, checkpoint_every: float = 120.0) -> int:
         """Rebuild the index from the chunks, save it locally and upload it.
 
         Returns the number of vectors. For a non-Titan model this embeds
-        every chunk, which takes minutes on CPU, so run it ahead of time
+        every chunk, which takes a long time on a small CPU (hours for ~13k
+        chunks on one core), so run it ahead of time
         (python -m backend.scripts.rebuild_index) rather than on a user's first query.
+
+        With ``checkpoint_path``, vectors are saved there every
+        ``checkpoint_every`` seconds, and a later rebuild with the same path
+        reuses the ones whose chunk text hasn't changed, so an interrupted
+        rebuild resumes instead of starting over. The checkpoint is deleted
+        once the index is uploaded.
         """
         with self._load_lock:
             self._invalidate_cache()
-            self._build_index_from_s3()
+            if self.uses_inline_vectors:
+                self._build_index_from_inline_vectors()
+            else:
+                self._build_index_by_embedding(checkpoint_path=checkpoint_path, checkpoint_every=checkpoint_every)
             if not self.vectors:
                 raise RuntimeError(f"No chunks found under chunks/ in {self.bucket_name}")
             self._save_index_cache()
@@ -367,7 +377,72 @@ class S3VectorStore:
                 )
             self._build_numpy_cache()
             self._loaded = True
+        if checkpoint_path:
+            try:
+                Path(checkpoint_path).unlink(missing_ok=True)
+            except OSError as e:
+                logger.warning(f"Could not remove rebuild checkpoint {checkpoint_path}: {e}")
         return len(self.vectors)
+
+    def index_exists(self) -> bool:
+        """Whether this model's index is in the bucket (raises on another model's index)."""
+        try:
+            raw = self.s3.get_object(Bucket=self.bucket_name, Key=self.s3_index_key)["Body"].read()
+        except ClientError as e:
+            if e.response["Error"]["Code"] in ("NoSuchKey", "404", "NotFound"):
+                return False
+            raise
+        data = self._safe_deserialize(raw)
+        self._check_model(data)
+        return int(data.get("count") or 0) > 0
+
+    @staticmethod
+    def _text_hash(text: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+    def _save_checkpoint(self, path: str, hashes: Dict[str, str]) -> None:
+        """Write the vectors embedded so far; atomic, so a kill can't corrupt it."""
+        import os
+
+        header = {
+            "embedding_model": self.embedding_model,
+            "chunk_ids": [chunk_id for chunk_id, _ in self.vectors],
+            "hashes": [hashes[chunk_id] for chunk_id, _ in self.vectors],
+        }
+        header_bytes = json.dumps(header).encode("utf-8")
+        buf = io.BytesIO()
+        np.save(buf, np.array([vec for _, vec in self.vectors], dtype=np.float32))
+        tmp = f"{path}.tmp"
+        Path(tmp).parent.mkdir(parents=True, exist_ok=True)
+        with open(tmp, "wb") as fh:
+            fh.write(struct.pack("<Q", len(header_bytes)) + header_bytes + buf.getvalue())
+        os.replace(tmp, path)
+
+    def _load_checkpoint(self, path: str) -> Dict[str, Tuple[str, np.ndarray]]:
+        """{chunk_id: (text hash, vector)} from a checkpoint for this model, else {}."""
+        try:
+            raw = Path(path).read_bytes()
+        except FileNotFoundError:
+            return {}
+        except OSError as e:
+            logger.warning(f"Can't read rebuild checkpoint {path}: {e}")
+            return {}
+        try:
+            header_len = struct.unpack("<Q", raw[:8])[0]
+            header = json.loads(raw[8 : 8 + header_len].decode("utf-8"))
+            vectors = np.load(io.BytesIO(raw[8 + header_len :]), allow_pickle=False)
+        except Exception as e:
+            logger.warning(f"Ignoring unreadable rebuild checkpoint {path}: {e}")
+            return {}
+        if header.get("embedding_model") != self.embedding_model:
+            logger.warning(f"Ignoring rebuild checkpoint {path}: made by {header.get('embedding_model')}")
+            return {}
+        return {
+            chunk_id: (text_hash, vec)
+            for chunk_id, text_hash, vec in zip(header["chunk_ids"], header["hashes"], vectors)
+        }
 
     def list_chunk_records(self) -> List[str]:
         """Keys of the chunks to index: one per chunk, whatever its layout.
@@ -420,8 +495,8 @@ class S3VectorStore:
             "s3_key": text_key,
         }
 
-    def _build_index_by_embedding(self) -> None:
-        """Embed every chunk's text with the active model."""
+    def _build_index_by_embedding(self, checkpoint_path: Optional[str] = None, checkpoint_every: float = 120.0) -> None:
+        """Embed every chunk's text with the active model (resumable, see ``rebuild``)."""
         from concurrent.futures import ThreadPoolExecutor
 
         logger.info(f"Building {self.embedding_model} index by re-embedding chunk text...")
@@ -439,8 +514,66 @@ class S3VectorStore:
 
         self.vectors = []
         self.metadata = {}
-        self.add_records(records, persist=False)
+        hashes = {chunk_id: self._text_hash(text) for chunk_id, text, _ in records}
+        done = self._load_checkpoint(checkpoint_path) if checkpoint_path else {}
+        todo = []
+        for chunk_id, text, meta in records:
+            saved = done.get(chunk_id)
+            if saved is not None and saved[0] == hashes[chunk_id] and chunk_id not in self.metadata:
+                self.vectors.append((chunk_id, np.asarray(saved[1], dtype=np.float32)))
+                self.metadata[chunk_id] = meta
+            else:
+                todo.append((chunk_id, text, meta))
+        if done:
+            logger.info(f"Resuming from {checkpoint_path}: {len(self.vectors)} chunks already embedded, {len(todo)} to go")
+
+        positions = {chunk_id: i for i, (chunk_id, _) in enumerate(self.vectors)}
+        started = last_saved = time.monotonic()
+        total = len(records)
+
+        def _progress(embedded: int) -> None:
+            nonlocal last_saved
+            elapsed = time.monotonic() - started
+            rate = embedded / elapsed if elapsed > 0 else 0.0
+            remaining = (len(todo) - embedded) / rate if rate else 0.0
+            logger.info(
+                f"  Embedded {len(self.vectors)}/{total} chunks "
+                f"({rate:.1f}/s, about {remaining / 60:.0f} min left)"
+            )
+            if checkpoint_path and time.monotonic() - last_saved >= checkpoint_every:
+                try:
+                    self._save_checkpoint(checkpoint_path, hashes)
+                except OSError as e:
+                    # Keep embedding: a missing checkpoint only costs a resume.
+                    logger.warning(f"Could not write rebuild checkpoint {checkpoint_path}: {e}")
+                last_saved = time.monotonic()
+
+        self._embed_records(todo, positions, on_batch=_progress)
         logger.info(f"✓ Built index with {len(self.vectors)} vectors ({self.embedding_model})")
+
+    def _embed_records(self, records: List[Tuple[str, str, Dict]], positions: Dict[str, int], on_batch=None) -> int:
+        """Embed records into self.vectors (replacing known chunk_ids); returns how many were added."""
+        batch_size = max(1, int(getattr(config, "EMBEDDING_BATCH_SIZE", 32)) * 8)
+        added = 0
+        for start in range(0, len(records), batch_size):
+            batch = records[start : start + batch_size]
+            vectors = self.embedder.encode([text for _, text, _ in batch])
+            for (chunk_id, _, meta), vector in zip(batch, vectors):
+                if vector is None:
+                    continue
+                vec = np.asarray(vector, dtype=np.float32)
+                if chunk_id in positions:
+                    self.vectors[positions[chunk_id]] = (chunk_id, vec)
+                else:
+                    positions[chunk_id] = len(self.vectors)
+                    self.vectors.append((chunk_id, vec))
+                self.metadata[chunk_id] = meta
+                added += 1
+            if on_batch is not None:
+                on_batch(min(start + batch_size, len(records)))
+            else:
+                logger.info(f"  Embedded {min(start + batch_size, len(records))}/{len(records)} chunks")
+        return added
 
     def add_records(self, records: Iterable[Tuple[str, str, Dict]], persist: bool = True) -> int:
         """Embed and add (chunk_id, text, metadata) records to the index.
@@ -469,24 +602,8 @@ class S3VectorStore:
                     known[chunk_id] = len(self.vectors)
                     self.vectors.append((chunk_id, vec))
                 self.metadata[chunk_id] = pending_metadata[chunk_id]
-        batch_size = max(1, int(getattr(config, "EMBEDDING_BATCH_SIZE", 32)) * 8)
         positions = {chunk_id: i for i, (chunk_id, _) in enumerate(self.vectors)}
-        added = 0
-        for start in range(0, len(records), batch_size):
-            batch = records[start : start + batch_size]
-            vectors = self.embedder.encode([text for _, text, _ in batch])
-            for (chunk_id, _, meta), vector in zip(batch, vectors):
-                if vector is None:
-                    continue
-                vec = np.asarray(vector, dtype=np.float32)
-                if chunk_id in positions:
-                    self.vectors[positions[chunk_id]] = (chunk_id, vec)
-                else:
-                    positions[chunk_id] = len(self.vectors)
-                    self.vectors.append((chunk_id, vec))
-                self.metadata[chunk_id] = meta
-                added += 1
-            logger.info(f"  Embedded {min(start + batch_size, len(records))}/{len(records)} chunks")
+        added = self._embed_records(records, positions)
         self._invalidate_cache()
         if persist and added:
             self._save_index_cache()

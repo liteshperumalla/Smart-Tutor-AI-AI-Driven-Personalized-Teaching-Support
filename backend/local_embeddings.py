@@ -41,6 +41,35 @@ def _record_metrics(model_id: str, duration: float, tokens: int, error_type: Opt
         pass
 
 
+def _cpu_threads() -> int:
+    """Threads for torch: EMBEDDING_NUM_THREADS, else the container's CPU quota.
+
+    torch defaults to one thread per host core, but a container capped with
+    ``--cpus 1`` gets throttled when it runs more threads than its quota,
+    which slows encoding down.
+    """
+    import os
+
+    configured = os.getenv("EMBEDDING_NUM_THREADS", "").strip()
+    if configured.isdigit() and int(configured) > 0:
+        return int(configured)
+    cores = os.cpu_count() or 1
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()[:2]  # cgroup v2
+        if quota != "max":
+            return max(1, min(cores, round(int(quota) / int(period))))
+    except (OSError, ValueError):
+        pass
+    try:
+        quota = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())  # cgroup v1
+        period = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        if quota > 0:
+            return max(1, min(cores, round(quota / period)))
+    except (OSError, ValueError):
+        pass
+    return cores
+
+
 def _record_cache(hit: bool) -> None:
     try:
         from backend import metrics
@@ -68,6 +97,14 @@ class LocalEmbeddings:
         if model is None:
             from sentence_transformers import SentenceTransformer
 
+            try:
+                import torch
+
+                threads = _cpu_threads()
+                torch.set_num_threads(threads)
+                logger.info(f"Local embeddings: {threads} CPU thread(s)")
+            except Exception as exc:  # torch missing or already initialised
+                logger.debug(f"Could not set torch threads: {exc}")
             model = SentenceTransformer(self.model_id, device="cpu")
         self._model = model
         self.dimension = int(self._model.get_sentence_embedding_dimension())
