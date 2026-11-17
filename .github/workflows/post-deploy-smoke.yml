@@ -1,10 +1,11 @@
 name: Post-Deploy Smoke Tests
 
 on:
-  workflow_run:
-    workflows: ["Production Deploy"]
-    types: [completed]
-    branches: [main]
+  # Called by Production Deploy as its last job. A workflow_run trigger on
+  # "Production Deploy" stopped firing after Oct 31 (that deploy is itself
+  # started by workflow_run, which is GitHub's chaining limit), so the
+  # November deploys were never smoke-tested.
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -15,10 +16,6 @@ jobs:
   smoke-tests:
     name: Production Smoke Tests
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success') ||
-      github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -127,6 +124,18 @@ jobs:
 
             echo "=== Backend health ==="
             curl -fsS http://127.0.0.1:8010/health >/dev/null
+
+            echo "=== LLM provider check ==="
+            # /ready and /health pass even when every answer fails (e.g.
+            # LLM_PROVIDER=openrouter with no key); the detailed report's
+            # LLM check (under "bedrock") says so.
+            llm_check="$(docker exec smart-tutor-backend curl -fsS --max-time 60 http://127.0.0.1:8000/health/detailed \
+              | docker exec -i smart-tutor-backend python -c 'import json,sys; c=json.load(sys.stdin).get("checks",{}).get("bedrock",{}); print(c.get("status","unknown"), c.get("provider","bedrock"), c.get("error",""))' || echo "unknown")"
+            echo "LLM: ${llm_check}"
+            if [ "${llm_check%% *}" = "unhealthy" ]; then
+              echo "The backend's LLM provider is misconfigured: ${llm_check}"
+              exit 1
+            fi
 
             echo "=== In-container ready probe ==="
             docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/ready >/dev/null

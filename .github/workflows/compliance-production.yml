@@ -181,7 +181,9 @@ jobs:
           }
 
           backend_ready() {
-            retry_check 3 5 backend_ready_once
+            # Up to ~5 minutes: this scan may have just started the instance
+            # (EC2_AUTO_START), and a cold backend takes a few minutes to boot.
+            retry_check 30 10 backend_ready_once
           }
 
           backend_health_once() {

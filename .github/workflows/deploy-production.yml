@@ -488,6 +488,25 @@ jobs:
             chmod 600 ~/smart-tutor.env
             echo "Synced:${synced:- (nothing set; existing values kept)}"
 
+            # Refuse to start a backend whose LLM provider has no API key:
+            # every answer would fail (this happened when LLM_PROVIDER was set
+            # as a repository variable without its key). Runs before any
+            # container is replaced, so the running backend is left alone.
+            env_value() { sed -n "s/^$1=//p" "$HOME/smart-tutor.env" | tail -n1 | tr -d '[:space:]'; }
+            llm_provider="$(env_value LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"
+            case "${llm_provider:-bedrock}" in
+              openrouter) llm_key=OPENROUTER_API_KEY ;;
+              groq) llm_key=GROQ_API_KEY ;;
+              gemini) llm_key=GEMINI_API_KEY ;;
+              openai_compat) llm_key=LLM_API_KEY ;;
+              *) llm_key="" ;;
+            esac
+            if [ -n "${llm_key}" ] && [ -z "$(env_value "${llm_key}")" ]; then
+              echo "::error::LLM_PROVIDER=${llm_provider} but ${llm_key} is not set, so every answer would fail. Set the ${llm_key} secret for this environment, or set the LLM_PROVIDER variable back to bedrock, then redeploy. (Production reads repository-level variables: Settings → Secrets and variables → Actions.)"
+              exit 1
+            fi
+            echo "LLM provider: ${llm_provider:-bedrock}"
+
             echo "=== Syncing code sandbox settings into smart-tutor.env ==="
             sed -i '/^ENABLE_CODE_EXECUTION=/d; /^CODE_RUNNER_URL=/d' ~/smart-tutor.env
             if docker inspect --format '{{.State.Running}}' smart-tutor-code-runner 2>/dev/null | grep -qx true; then
@@ -975,6 +994,15 @@ jobs:
             echo "- Optional Vercel production deploy"
             echo "- Backend EC2 rolling replacement via candidate container"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  smoke-tests:
+    name: Post-Deploy Smoke Tests
+    needs: [build-and-deploy]
+    if: needs.build-and-deploy.result == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/post-deploy-smoke.yml
+    secrets: inherit
 
   gitops-promote:
     name: GitOps Promote
