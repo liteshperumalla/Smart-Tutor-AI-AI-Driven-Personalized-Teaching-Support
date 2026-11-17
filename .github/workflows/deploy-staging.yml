@@ -374,7 +374,7 @@ jobs:
             chmod 600 "${STAGING_ENV_FILE}"
             echo "Synced:${synced:- (nothing set; existing values kept)}"
 
-            # Refuse to start a backend whose LLM provider has no API key:
+            # Refuse to start a backend whose hosted LLM provider has no API key:
             # every answer would fail (this happened when LLM_PROVIDER was set
             # as a repository variable without its key). Runs before any
             # container is replaced, so the running backend is left alone.
@@ -384,7 +384,7 @@ jobs:
               openrouter) llm_key=OPENROUTER_API_KEY ;;
               groq) llm_key=GROQ_API_KEY ;;
               gemini) llm_key=GEMINI_API_KEY ;;
-              openai_compat) llm_key=LLM_API_KEY ;;
+              # openai_compat may be a keyless endpoint (the client sends "none").
               *) llm_key="" ;;
             esac
             if [ -n "${llm_key}" ] && [ -z "$(env_value "${llm_key}")" ]; then

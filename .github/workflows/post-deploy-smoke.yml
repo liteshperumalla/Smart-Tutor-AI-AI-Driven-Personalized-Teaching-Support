@@ -127,13 +127,22 @@ jobs:
 
             echo "=== LLM provider check ==="
             # /ready and /health pass even when every answer fails (e.g.
-            # LLM_PROVIDER=openrouter with no key); the detailed report's
-            # LLM check (under "bedrock") says so.
-            llm_check="$(docker exec smart-tutor-backend curl -fsS --max-time 60 http://127.0.0.1:8000/health/detailed \
-              | docker exec -i smart-tutor-backend python -c 'import json,sys; c=json.load(sys.stdin).get("checks",{}).get("bedrock",{}); print(c.get("status","unknown"), c.get("provider","bedrock"), c.get("error",""))' || echo "unknown")"
-            echo "LLM: ${llm_check}"
-            if [ "${llm_check%% *}" = "unhealthy" ]; then
-              echo "The backend's LLM provider is misconfigured: ${llm_check}"
+            # LLM_PROVIDER=openrouter with no key). Run the same check the
+            # detailed health report uses, in the backend container: over HTTP
+            # /health/detailed is redirected when ENFORCE_HTTPS is on.
+            # Fails on unhealthy, on any other status, and if it can't run.
+            if ! docker exec -i smart-tutor-backend python - <<'PY'
+            import sys
+            from backend.health import HealthChecker
+            c = HealthChecker.check_bedrock()
+            status = c.get("status")
+            print("LLM:", status, c.get("provider", "bedrock"), c.get("error") or c.get("message") or "")
+            # healthy: Bedrock credentials or the hosted provider's key are set.
+            # not_configured: a provider this check doesn't cover (e.g. ollama).
+            sys.exit(0 if status in ("healthy", "not_configured") else 1)
+            PY
+            then
+              echo "The backend's LLM provider check failed or couldn't run; answers would fail."
               exit 1
             fi
 

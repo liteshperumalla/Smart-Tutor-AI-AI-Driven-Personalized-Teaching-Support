@@ -488,7 +488,7 @@ jobs:
             chmod 600 ~/smart-tutor.env
             echo "Synced:${synced:- (nothing set; existing values kept)}"
 
-            # Refuse to start a backend whose LLM provider has no API key:
+            # Refuse to start a backend whose hosted LLM provider has no API key:
             # every answer would fail (this happened when LLM_PROVIDER was set
             # as a repository variable without its key). Runs before any
             # container is replaced, so the running backend is left alone.
@@ -498,7 +498,7 @@ jobs:
               openrouter) llm_key=OPENROUTER_API_KEY ;;
               groq) llm_key=GROQ_API_KEY ;;
               gemini) llm_key=GEMINI_API_KEY ;;
-              openai_compat) llm_key=LLM_API_KEY ;;
+              # openai_compat may be a keyless endpoint (the client sends "none").
               *) llm_key="" ;;
             esac
             if [ -n "${llm_key}" ] && [ -z "$(env_value "${llm_key}")" ]; then
@@ -1073,7 +1073,7 @@ jobs:
 
   notify-deploy-smart-tutor-ai:
     name: Notify Deploy Result (#smart-tutor-ai)
-    needs: [build-and-deploy]
+    needs: [build-and-deploy, smoke-tests]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
     secrets:
@@ -1082,22 +1082,23 @@ jobs:
     with:
       channel: SMART_TUTOR_AI
       workflow_name: Production Deploy
-      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      status: ${{ (needs.build-and-deploy.result == 'failure' || needs.smoke-tests.result == 'failure') && 'failure' || 'success' }}
       verbiage: Deploy
       message: |
-        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || needs.smoke-tests.result == 'failure' && ':warning: *Production deployed, but smoke tests FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
         Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
           {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
           {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true},
+          {"title": "Smoke tests", "value": "${{ needs.smoke-tests.result }}", "short": true}
         ]
 
   notify-deploy-app-development-analytics:
     name: Notify Deploy Result (#app-development-analytics)
-    needs: [build-and-deploy]
+    needs: [build-and-deploy, smoke-tests]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
     secrets:
@@ -1106,15 +1107,16 @@ jobs:
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: Production Deploy
-      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      status: ${{ (needs.build-and-deploy.result == 'failure' || needs.smoke-tests.result == 'failure') && 'failure' || 'success' }}
       verbiage: Deploy
       message: |
-        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || needs.smoke-tests.result == 'failure' && ':warning: *Production deployed, but smoke tests FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
         Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
           {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
           {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true},
+          {"title": "Smoke tests", "value": "${{ needs.smoke-tests.result }}", "short": true}
         ]

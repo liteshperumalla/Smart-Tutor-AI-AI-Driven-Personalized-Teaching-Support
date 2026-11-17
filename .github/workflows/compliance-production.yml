@@ -181,9 +181,16 @@ jobs:
           }
 
           backend_ready() {
-            # Up to ~5 minutes: this scan may have just started the instance
-            # (EC2_AUTO_START), and a cold backend takes a few minutes to boot.
-            retry_check 30 10 backend_ready_once
+            # This scan may have just started the instance (EC2_AUTO_START),
+            # and a cold backend takes a few minutes to boot. No new attempt
+            # starts after 5 minutes, so the wait ends within ~6 (one attempt
+            # is at most ~55 s).
+            local deadline=$(( $(date +%s) + 300 ))
+            while :; do
+              backend_ready_once && return 0
+              [ "$(date +%s)" -lt "${deadline}" ] || return 1
+              sleep 10
+            done
           }
 
           backend_health_once() {
@@ -199,8 +206,9 @@ jobs:
           DATA_ROOT="/home/ubuntu/smart-tutor-data"
 
           check "docker installed" timed 10 sh -c "command -v docker >/dev/null"
-          check "backend container running" timed 20 sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
+          # Readiness first: right after a boot the container may not exist yet.
           check "backend readiness endpoint responds" backend_ready
+          check "backend container running" timed 20 sh -c "docker ps --format '{{.Names}}' | grep -qx 'smart-tutor-backend'"
           if backend_health; then
             echo "[PASS] backend health endpoint responds"
           else
