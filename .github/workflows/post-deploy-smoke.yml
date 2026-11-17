@@ -1,10 +1,25 @@
 name: Post-Deploy Smoke Tests
 
 on:
-  workflow_run:
-    workflows: ["Production Deploy"]
-    types: [completed]
-    branches: [main]
+  # Called by Production Deploy as its last job. A workflow_run trigger on
+  # "Production Deploy" stopped firing after Oct 31 (that deploy is itself
+  # started by workflow_run, which is GitHub's chaining limit), so the
+  # November deploys were never smoke-tested.
+  workflow_call:
+    # Only the secrets this workflow reads (no "secrets: inherit").
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      EC2_HOST:
+        required: false
+      EC2_INSTANCE_ID:
+        required: false
+      EC2_USER:
+        required: false
+      EC2_SSH_KEY:
+        required: false
   workflow_dispatch:
 
 concurrency:
@@ -15,10 +30,6 @@ jobs:
   smoke-tests:
     name: Production Smoke Tests
     runs-on: ubuntu-latest
-    if: >-
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success') ||
-      github.event_name == 'workflow_dispatch'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -127,6 +138,27 @@ jobs:
 
             echo "=== Backend health ==="
             curl -fsS http://127.0.0.1:8010/health >/dev/null
+
+            echo "=== LLM provider check ==="
+            # /ready and /health pass even when every answer fails (e.g.
+            # LLM_PROVIDER=openrouter with no key). Run the same check the
+            # detailed health report uses, in the backend container: over HTTP
+            # /health/detailed is redirected when ENFORCE_HTTPS is on.
+            # Fails on unhealthy, on any other status, and if it can't run.
+            if ! docker exec -i smart-tutor-backend python - <<'PY'
+            import sys
+            from backend.health import HealthChecker
+            c = HealthChecker.check_bedrock()
+            status = c.get("status")
+            print("LLM:", status, c.get("provider", "bedrock"), c.get("error") or c.get("message") or "")
+            # healthy: Bedrock credentials or the hosted provider's key are set.
+            # not_configured: a provider this check doesn't cover (e.g. ollama).
+            sys.exit(0 if status in ("healthy", "not_configured") else 1)
+            PY
+            then
+              echo "The backend's LLM provider check failed or couldn't run; answers would fail."
+              exit 1
+            fi
 
             echo "=== In-container ready probe ==="
             docker exec smart-tutor-backend curl -fsS http://127.0.0.1:8000/ready >/dev/null

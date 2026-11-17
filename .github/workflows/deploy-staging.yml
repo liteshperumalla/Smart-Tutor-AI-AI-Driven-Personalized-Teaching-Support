@@ -374,6 +374,25 @@ jobs:
             chmod 600 "${STAGING_ENV_FILE}"
             echo "Synced:${synced:- (nothing set; existing values kept)}"
 
+            # Refuse to start a backend whose hosted LLM provider has no API key:
+            # every answer would fail (this happened when LLM_PROVIDER was set
+            # as a repository variable without its key). Runs before any
+            # container is replaced, so the running backend is left alone.
+            env_value() { sed -n "s/^$1=//p" "${STAGING_ENV_FILE}" | tail -n1 | tr -d '[:space:]'; }
+            llm_provider="$(env_value LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"
+            case "${llm_provider:-bedrock}" in
+              openrouter) llm_key=OPENROUTER_API_KEY ;;
+              groq) llm_key=GROQ_API_KEY ;;
+              gemini) llm_key=GEMINI_API_KEY ;;
+              # openai_compat may be a keyless endpoint (the client sends "none").
+              *) llm_key="" ;;
+            esac
+            if [ -n "${llm_key}" ] && [ -z "$(env_value "${llm_key}")" ]; then
+              echo "::error::LLM_PROVIDER=${llm_provider} but ${llm_key} is not set, so every answer would fail. Set the ${llm_key} secret for this environment, or set the LLM_PROVIDER variable back to bedrock, then redeploy. (Staging reads the staging environment: Settings → Environments → staging.)"
+              exit 1
+            fi
+            echo "LLM provider: ${llm_provider:-bedrock}"
+
 
             docker_with_timeout() {
               local seconds="$1"

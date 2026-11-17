@@ -488,6 +488,25 @@ jobs:
             chmod 600 ~/smart-tutor.env
             echo "Synced:${synced:- (nothing set; existing values kept)}"
 
+            # Refuse to start a backend whose hosted LLM provider has no API key:
+            # every answer would fail (this happened when LLM_PROVIDER was set
+            # as a repository variable without its key). Runs before any
+            # container is replaced, so the running backend is left alone.
+            env_value() { sed -n "s/^$1=//p" "$HOME/smart-tutor.env" | tail -n1 | tr -d '[:space:]'; }
+            llm_provider="$(env_value LLM_PROVIDER | tr '[:upper:]' '[:lower:]')"
+            case "${llm_provider:-bedrock}" in
+              openrouter) llm_key=OPENROUTER_API_KEY ;;
+              groq) llm_key=GROQ_API_KEY ;;
+              gemini) llm_key=GEMINI_API_KEY ;;
+              # openai_compat may be a keyless endpoint (the client sends "none").
+              *) llm_key="" ;;
+            esac
+            if [ -n "${llm_key}" ] && [ -z "$(env_value "${llm_key}")" ]; then
+              echo "::error::LLM_PROVIDER=${llm_provider} but ${llm_key} is not set, so every answer would fail. Set the ${llm_key} secret for this environment, or set the LLM_PROVIDER variable back to bedrock, then redeploy. (Production reads repository-level variables: Settings → Secrets and variables → Actions.)"
+              exit 1
+            fi
+            echo "LLM provider: ${llm_provider:-bedrock}"
+
             echo "=== Syncing code sandbox settings into smart-tutor.env ==="
             sed -i '/^ENABLE_CODE_EXECUTION=/d; /^CODE_RUNNER_URL=/d' ~/smart-tutor.env
             if docker inspect --format '{{.State.Running}}' smart-tutor-code-runner 2>/dev/null | grep -qx true; then
@@ -976,6 +995,21 @@ jobs:
             echo "- Backend EC2 rolling replacement via candidate container"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  smoke-tests:
+    name: Post-Deploy Smoke Tests
+    needs: [build-and-deploy]
+    if: needs.build-and-deploy.result == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/post-deploy-smoke.yml
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
   gitops-promote:
     name: GitOps Promote
     runs-on: ubuntu-latest
@@ -1045,7 +1079,7 @@ jobs:
 
   notify-deploy-smart-tutor-ai:
     name: Notify Deploy Result (#smart-tutor-ai)
-    needs: [build-and-deploy]
+    needs: [build-and-deploy, smoke-tests]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
     secrets:
@@ -1054,22 +1088,23 @@ jobs:
     with:
       channel: SMART_TUTOR_AI
       workflow_name: Production Deploy
-      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      status: ${{ (needs.build-and-deploy.result == 'failure' || needs.smoke-tests.result == 'failure') && 'failure' || 'success' }}
       verbiage: Deploy
       message: |
-        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || needs.smoke-tests.result == 'failure' && ':warning: *Production deployed, but smoke tests FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
         Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
           {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
           {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true},
+          {"title": "Smoke tests", "value": "${{ needs.smoke-tests.result }}", "short": true}
         ]
 
   notify-deploy-app-development-analytics:
     name: Notify Deploy Result (#app-development-analytics)
-    needs: [build-and-deploy]
+    needs: [build-and-deploy, smoke-tests]
     if: always()
     uses: ./.github/workflows/_slack-notify.yml
     secrets:
@@ -1078,15 +1113,16 @@ jobs:
     with:
       channel: APP_DEV_ANALYTICS
       workflow_name: Production Deploy
-      status: ${{ needs.build-and-deploy.result == 'failure' && 'failure' || 'success' }}
+      status: ${{ (needs.build-and-deploy.result == 'failure' || needs.smoke-tests.result == 'failure') && 'failure' || 'success' }}
       verbiage: Deploy
       message: |
-        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
+        ${{ needs.build-and-deploy.result == 'failure' && ':x: *Production deploy FAILED*' || needs.smoke-tests.result == 'failure' && ':warning: *Production deployed, but smoke tests FAILED*' || ':white_check_mark: *Production deploy SUCCEEDED*' }}
         Components: ${{ needs.build-and-deploy.outputs.components || 'both' }}. Frontend (Vercel): ${{ needs.build-and-deploy.outputs.frontend_deploy || 'skipped' }}.
       fields: >-
         [
           {"title": "Version", "value": "${{ needs.build-and-deploy.outputs.version || 'n/a' }}", "short": true},
           {"title": "Deploy Ref", "value": "${{ needs.build-and-deploy.outputs.deploy_ref || 'n/a' }}", "short": true},
           {"title": "Trigger", "value": "${{ github.event_name }}", "short": true},
-          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true}
+          {"title": "Result", "value": "${{ needs.build-and-deploy.result }}", "short": true},
+          {"title": "Smoke tests", "value": "${{ needs.smoke-tests.result }}", "short": true}
         ]

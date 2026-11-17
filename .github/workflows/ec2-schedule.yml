@@ -68,12 +68,27 @@ jobs:
 
           # Safeguard: Do not stop EC2 if deployment, maintenance, or monitoring
           # workflows are currently running or queued in GitHub Actions.
-          if command -v gh >/dev/null 2>&1 && [ -n "${GH_TOKEN:-}" ]; then
-            active_runs="$(gh run list --repo "${GITHUB_REPO}" \
-              --json workflowName,status \
-              --jq '.[] | select(.status == "in_progress" or .status == "queued") | .workflowName' 2>/dev/null || true)"
+          # Without gh or a token the check below can't run; fail rather than
+          # stop the instance blind (GitHub runners ship gh and GITHUB_TOKEN).
+          if ! command -v gh >/dev/null 2>&1 || [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::gh or GH_TOKEN is unavailable, so active runs can't be checked; leaving the instance as it is."
+            exit 1
+          fi
+            # Ask for the active runs themselves (gh lists only 20 runs by
+            # default, so a long evaluation could fall off a plain listing).
+            # If GitHub can't be asked, don't risk stopping a running job.
+            active_runs=""
+            for run_status in in_progress queued; do
+              if ! runs="$(gh run list --repo "${GITHUB_REPO}" --status "${run_status}" --limit 200 \
+                --json workflowName --jq '.[].workflowName')"; then
+                echo "::warning::Couldn't list ${run_status} workflow runs; keeping the instance running this time."
+                echo "desired=running" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              active_runs="${active_runs}${runs:+${runs}$'\n'}"
+            done
             if [ -n "${active_runs}" ]; then
-              critical_workflows="Production Deploy|Staging Deploy|Production Observability Bootstrap|Synthetic Production Monitor|Post-Deploy Smoke Tests|Database Migrations|Rollback Production|CI Pipeline"
+              critical_workflows="Production Deploy|Staging Deploy|Production Observability Bootstrap|Synthetic Production Monitor|Post-Deploy Smoke Tests|Database Migrations|Production Rollback|Rollback Production|CI Pipeline|Scheduled RAG Evaluation|Scheduled Production Sample Evaluation|Production Compliance Scan|Staging Evaluation"
               matched="$(echo "${active_runs}" | grep -E "${critical_workflows}" || true)"
               if [ -n "${matched}" ]; then
                 echo "Active workflows currently in progress or queued:"
@@ -83,7 +98,6 @@ jobs:
                 exit 0
               fi
             fi
-          fi
 
           NOW="$(TZ='America/Chicago' date '+%A %Y-%m-%d %H:%M %Z')"
           HOUR="$(TZ='America/Chicago' date +%-H)"
