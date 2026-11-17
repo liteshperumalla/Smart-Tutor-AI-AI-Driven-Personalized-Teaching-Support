@@ -171,7 +171,7 @@ jobs:
           }
 
           backend_health_status() {
-            docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' smart-tutor-backend 2>/dev/null
+            timed 10 docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' smart-tutor-backend 2>/dev/null
           }
 
           backend_ready_once() {
@@ -182,14 +182,16 @@ jobs:
 
           backend_ready() {
             # This scan may have just started the instance (EC2_AUTO_START),
-            # and a cold backend takes a few minutes to boot. No new attempt
-            # starts after 5 minutes, so the wait ends within ~6 (one attempt
-            # is at most ~55 s).
+            # and a cold backend takes a few minutes to boot. No sleep or new
+            # attempt crosses the 5-minute deadline; one attempt is capped at
+            # ~65 s (every call is under `timed`), so the wait ends within ~6.
             local deadline=$(( $(date +%s) + 300 ))
             while :; do
               backend_ready_once && return 0
+              local left=$(( deadline - $(date +%s) ))
+              [ "${left}" -gt 0 ] || return 1
+              sleep $(( left < 10 ? left : 10 ))
               [ "$(date +%s)" -lt "${deadline}" ] || return 1
-              sleep 10
             done
           }
 
