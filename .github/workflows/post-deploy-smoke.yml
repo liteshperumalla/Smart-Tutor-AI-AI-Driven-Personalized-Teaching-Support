@@ -6,6 +6,20 @@ on:
   # started by workflow_run, which is GitHub's chaining limit), so the
   # November deploys were never smoke-tested.
   workflow_call:
+    # Only the secrets this workflow reads (no "secrets: inherit").
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+      EC2_HOST:
+        required: false
+      EC2_INSTANCE_ID:
+        required: false
+      EC2_USER:
+        required: false
+      EC2_SSH_KEY:
+        required: false
   workflow_dispatch:
 
 concurrency:
