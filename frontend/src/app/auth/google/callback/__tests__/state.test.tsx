@@ -14,10 +14,17 @@ jest.mock("next/navigation", () => ({
   useSearchParams: () => params,
 }));
 
+// Stub what the page reads instead of writing real cookies.
+let cookieJar = "";
+
 describe("Google callback state check", () => {
+  afterAll(() => jest.restoreAllMocks());
+
   beforeEach(() => {
     params = new URLSearchParams({ code: "c", state });
-    document.cookie = "google_oauth_nonce=n1; path=/";
+    cookieJar = "google_oauth_nonce=n1";
+    jest.spyOn(document, "cookie", "get").mockImplementation(() => cookieJar);
+    jest.spyOn(document, "cookie", "set").mockImplementation(() => {});
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       ok: true,
@@ -35,7 +42,7 @@ describe("Google callback state check", () => {
   });
 
   it("explains how to recover when the nonce is missing", async () => {
-    document.cookie = "google_oauth_nonce=; path=/; max-age=0";
+    cookieJar = "";
     render(<GoogleCallbackPage />);
     expect(await screen.findByText(/choose Sign in with Google again/)).toBeInTheDocument();
     expect(global.fetch).not.toHaveBeenCalled();

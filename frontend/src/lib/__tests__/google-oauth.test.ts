@@ -6,16 +6,23 @@ import { beginGoogleSignIn, readGoogleNonceCookie } from "@/lib/google-oauth";
 
 const ENV = process.env;
 
+// A cookie jar stub: keeps the last value written, without real cookies.
+let cookieJar = "";
 function clearCookie() {
-  document.cookie = "google_oauth_nonce=; path=/; max-age=0";
+  cookieJar = "";
 }
 
 describe("beginGoogleSignIn", () => {
   beforeEach(() => {
     clearCookie();
+    jest.spyOn(document, "cookie", "get").mockImplementation(() => cookieJar);
+    jest.spyOn(document, "cookie", "set").mockImplementation((value: string) => {
+      cookieJar = value.split(";")[0];
+    });
     process.env = { ...ENV, NEXT_PUBLIC_GOOGLE_CLIENT_ID: "client-1" };
   });
   afterAll(() => {
+    jest.restoreAllMocks();
     process.env = ENV;
   });
 
