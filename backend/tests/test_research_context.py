@@ -327,6 +327,7 @@ def test_pinned_https_checks_the_certificate_against_the_hostname(monkeypatch, t
         key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     )
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert_file, key_file)
 
     seen = []
