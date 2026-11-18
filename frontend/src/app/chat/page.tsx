@@ -179,14 +179,27 @@ function ChatWorkspaceContent() {
   // Sources added in research mode stay attached to the chat, so every
   // follow-up question in it is answered with them as context. Composer
   // attachments (uploadedFiles) go with one message only.
-  const [researchSources, setResearchSources] = useState<ResearchSource[]>([]);
+  // Kept per chat, so switching away and back keeps each chat's sources.
+  // A chat not yet created (no id until its first message) uses NEW_CHAT_KEY.
+  const [researchSourcesByChat, setResearchSourcesByChat] = useState<Record<string, ResearchSource[]>>({});
   const [researchSourcesSessionId, setResearchSourcesSessionId] = useState(selectedSessionId);
   if (researchSourcesSessionId !== selectedSessionId) {
     setResearchSourcesSessionId(selectedSessionId);
-    // A new chat gets its id when its first message is sent; sources added
-    // before that belong to it. Switching to another chat drops them.
-    if (researchSourcesSessionId !== null) setResearchSources([]);
+    setResearchSourcesByChat((prev) => {
+      const { [NEW_CHAT_KEY]: draft, ...rest } = prev;
+      // The new chat just got its id: its sources move with it.
+      if (researchSourcesSessionId === null && selectedSessionId !== null && draft?.length) {
+        return { ...rest, [selectedSessionId]: [...(rest[selectedSessionId] ?? []), ...draft] };
+      }
+      // Starting a new chat: it begins with no sources.
+      return selectedSessionId === null ? rest : prev;
+    });
   }
+  const currentChatKey = selectedSessionId ?? NEW_CHAT_KEY;
+  const researchSources = useMemo(
+    () => researchSourcesByChat[currentChatKey] ?? [],
+    [researchSourcesByChat, currentChatKey]
+  );
   const researchFileIds = useMemo(
     () =>
       researchSources
@@ -496,19 +509,37 @@ function ChatWorkspaceContent() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  // Source keys are unique across chats, so an upload that finishes after
+  // the user switched chats still updates the chat it was added to.
   const updateResearchSource = useCallback((key: string, patch: Partial<ResearchSource>) => {
-    setResearchSources((prev) => prev.map((source) => (source.key === key ? { ...source, ...patch } : source)));
+    setResearchSourcesByChat((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([chat, sources]) => [
+          chat,
+          sources.map((source) => (source.key === key ? { ...source, ...patch } : source)),
+        ])
+      )
+    );
   }, []);
+
+  const addResearchSources = useCallback(
+    (added: ResearchSource[]) => {
+      setResearchSourcesByChat((prev) => ({
+        ...prev,
+        [currentChatKey]: [...(prev[currentChatKey] ?? []), ...added],
+      }));
+    },
+    [currentChatKey]
+  );
 
   // Files added in the research sidebar become sources for the whole chat.
   const handleResearchFilesAdded = useCallback(
     async (files: File[]) => {
       if (!token) return;
       const added = files.map((file) => ({ file, key: newResearchSourceKey() }));
-      setResearchSources((prev) => [
-        ...prev,
-        ...added.map(({ file, key }): ResearchSource => ({ key, name: file.name, kind: "file", status: "adding" })),
-      ]);
+      addResearchSources(
+        added.map(({ file, key }): ResearchSource => ({ key, name: file.name, kind: "file", status: "adding" }))
+      );
       for (const { file, key } of added) {
         try {
           const preview = await postChatUpload(file);
@@ -522,7 +553,7 @@ function ChatWorkspaceContent() {
         }
       }
     },
-    [token, updateResearchSource]
+    [token, addResearchSources, updateResearchSource]
   );
 
   // A link or YouTube video added in the research sidebar: the backend reads
@@ -533,7 +564,7 @@ function ChatWorkspaceContent() {
       if (!token) return;
       const kind = isYouTubeUrl(url) ? "youtube" : "webpage";
       const key = newResearchSourceKey();
-      setResearchSources((prev) => [...prev, { key, name: url, kind, status: "adding" }]);
+      addResearchSources([{ key, name: url, kind, status: "adding" }]);
       try {
         const result = await postJSON<{ preview?: { id?: string; file_name?: string; title?: string } }>({
           path: kind === "youtube" ? "/research/upload/youtube" : "/research/upload/url",
@@ -554,11 +585,15 @@ function ChatWorkspaceContent() {
         toast.error(message);
       }
     },
-    [token, updateResearchSource]
+    [token, addResearchSources, updateResearchSource]
   );
 
   const handleRemoveResearchSource = useCallback((key: string) => {
-    setResearchSources((prev) => prev.filter((source) => source.key !== key));
+    setResearchSourcesByChat((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([chat, sources]) => [chat, sources.filter((source) => source.key !== key)])
+      )
+    );
   }, []);
 
   const handleResearchToolSelect = useCallback((prompt: string) => {
@@ -2936,6 +2971,9 @@ const MODE_STARTERS: Record<LearningMode, string[]> = {
   ],
 };
 
+
+// Research sources of a chat that has no id yet (before its first message).
+const NEW_CHAT_KEY = "";
 
 let researchSourceCounter = 0;
 function newResearchSourceKey(): string {
