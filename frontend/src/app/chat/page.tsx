@@ -19,6 +19,7 @@ import {
   renameChatSession,
   pinChatSession,
   archiveChatSession,
+  postJSON,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
@@ -38,7 +39,7 @@ import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { UserMessageActions, EditableUserMessage } from "@/components/chat/user-message-actions";
 import { StreamingPhaseIndicator } from "@/components/chat/streaming-phase-indicator";
 import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-preview-grid";
-import { ResearchSidebar } from "@/components/chat/research-sidebar";
+import { ResearchSidebar, type ResearchSource } from "@/components/chat/research-sidebar";
 import { toast } from "sonner";
 import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
@@ -175,6 +176,24 @@ function ChatWorkspaceContent() {
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
+  // Sources added in research mode stay attached to the chat, so every
+  // follow-up question in it is answered with them as context. Composer
+  // attachments (uploadedFiles) go with one message only.
+  const [researchSources, setResearchSources] = useState<ResearchSource[]>([]);
+  const [researchSourcesSessionId, setResearchSourcesSessionId] = useState(selectedSessionId);
+  if (researchSourcesSessionId !== selectedSessionId) {
+    setResearchSourcesSessionId(selectedSessionId);
+    // A new chat gets its id when its first message is sent; sources added
+    // before that belong to it. Switching to another chat drops them.
+    if (researchSourcesSessionId !== null) setResearchSources([]);
+  }
+  const researchFileIds = useMemo(
+    () =>
+      researchSources
+        .filter((source) => source.status === "ready" && source.id)
+        .map((source) => source.id as string),
+    [researchSources]
+  );
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
@@ -430,29 +449,15 @@ function ChatWorkspaceContent() {
       }));
       setUploadedFiles((prev) => [...prev, ...pendingItems]);
 
-      const apiBaseUrl = getApiBaseUrl();
       for (const file of fileList) {
-        const formData = new FormData();
-        formData.append("file", file);
         try {
-          const response = await fetch(`${apiBaseUrl}/chat/uploads`, {
-            method: "POST",
-            credentials: "include",
-            body: formData,
-          });
-          const payload = (await response.json().catch(() => ({}))) as {
-            preview?: { id?: string; file_name?: string };
-            detail?: string;
-          };
-          if (!response.ok) {
-            throw new Error(payload.detail || "Upload failed");
-          }
+          const preview = await postChatUpload(file);
           setUploadedFiles((prev) =>
             prev.map((item) =>
               item.file === file
                 ? {
                     ...item,
-                    id: payload.preview?.id,
+                    id: preview.id,
                     status: "ready",
                   }
                 : item
@@ -491,20 +496,75 @@ function ChatWorkspaceContent() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // Handle adding files from research sidebar
+  const updateResearchSource = useCallback((key: string, patch: Partial<ResearchSource>) => {
+    setResearchSources((prev) => prev.map((source) => (source.key === key ? { ...source, ...patch } : source)));
+  }, []);
+
+  // Files added in the research sidebar become sources for the whole chat.
   const handleResearchFilesAdded = useCallback(
     async (files: File[]) => {
-      await uploadFiles(files);
+      if (!token) return;
+      const added = files.map((file) => ({ file, key: newResearchSourceKey() }));
+      setResearchSources((prev) => [
+        ...prev,
+        ...added.map(({ file, key }): ResearchSource => ({ key, name: file.name, kind: "file", status: "adding" })),
+      ]);
+      for (const { file, key } of added) {
+        try {
+          const preview = await postChatUpload(file);
+          if (!preview.id) throw new Error("Upload failed");
+          updateResearchSource(key, { id: preview.id, status: "ready" });
+        } catch (err) {
+          updateResearchSource(key, {
+            status: "error",
+            error: err instanceof Error ? err.message : "Upload failed",
+          });
+        }
+      }
     },
-    [uploadFiles]
+    [token, updateResearchSource]
   );
 
-  // Handle URL submission from research sidebar
-  const handleResearchUrlSubmit = useCallback((url: string) => {
-    // For now, add the URL as a message context - could be expanded later
-    console.log("Research URL submitted:", url);
-    // Close the sidebar after URL submission
+  // A link or YouTube video added in the research sidebar: the backend reads
+  // the page (or transcript) and stores its text; its id then goes with every
+  // message in this chat.
+  const handleResearchUrlSubmit = useCallback(
+    async (url: string) => {
+      if (!token) return;
+      const kind = isYouTubeUrl(url) ? "youtube" : "webpage";
+      const key = newResearchSourceKey();
+      setResearchSources((prev) => [...prev, { key, name: url, kind, status: "adding" }]);
+      try {
+        const result = await postJSON<{ preview?: { id?: string; file_name?: string; title?: string } }>({
+          path: kind === "youtube" ? "/research/upload/youtube" : "/research/upload/url",
+          body: { url },
+          token,
+          timeoutMs: 60000,
+        });
+        const preview = result.preview;
+        if (!preview?.id) throw new Error("Couldn't read that link");
+        updateResearchSource(key, {
+          id: preview.id,
+          name: preview.file_name || preview.title || url,
+          status: "ready",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Couldn't read that link";
+        updateResearchSource(key, { status: "error", error: message });
+        toast.error(message);
+      }
+    },
+    [token, updateResearchSource]
+  );
+
+  const handleRemoveResearchSource = useCallback((key: string) => {
+    setResearchSources((prev) => prev.filter((source) => source.key !== key));
+  }, []);
+
+  const handleResearchToolSelect = useCallback((prompt: string) => {
+    setComposerText(prompt);
     setResearchSidebarOpen(false);
+    composerRef.current?.focus();
   }, []);
 
   // Fetch feedback when session changes
@@ -627,9 +687,10 @@ function ChatWorkspaceContent() {
         previewUrl: isImage ? URL.createObjectURL(f.file) : undefined,
       };
     });
-    const uploadedFileIds = readyFiles
-      .map((item) => item.id)
-      .filter((id): id is string => Boolean(id));
+    const uploadedFileIds = [
+      ...readyFiles.map((item) => item.id).filter((id): id is string => Boolean(id)),
+      ...researchFileIds,
+    ];
 
     const userMessage: ChatMessageDTO = {
       role: "user",
@@ -669,7 +730,7 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: attachments.length > 0,
+            uploaded_only: uploadedFileIds.length > 0,
             uploaded_file_ids: uploadedFileIds.length > 0 ? uploadedFileIds : undefined,
             attachments: attachments.length > 0
               ? attachments.map(({ name, ext, isImage }) => ({ name, ext, isImage }))
@@ -980,10 +1041,8 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: uploadedFiles.length > 0,
-            uploaded_file_ids: uploadedFiles
-              .map((item) => item.id)
-              .filter((id): id is string => Boolean(id)),
+            uploaded_only: researchFileIds.length > 0,
+            uploaded_file_ids: researchFileIds.length > 0 ? researchFileIds : undefined,
           }),
           signal: controller.signal,
         }
@@ -1103,7 +1162,7 @@ function ChatWorkspaceContent() {
       setIsStreaming(false);
       setIsEditSending(false);
     }
-  }, [token, selectedSessionId, isStreaming, isEditSending, refreshSessions]);
+  }, [token, selectedSessionId, isStreaming, isEditSending, refreshSessions, researchFileIds]);
 
   // Handle regenerating a response (Try Again)
   const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
@@ -1157,10 +1216,8 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: uploadedFiles.length > 0,
-            uploaded_file_ids: uploadedFiles
-              .map((item) => item.id)
-              .filter((id): id is string => Boolean(id)),
+            uploaded_only: researchFileIds.length > 0,
+            uploaded_file_ids: researchFileIds.length > 0 ? researchFileIds : undefined,
           }),
           signal: controller.signal,
         }
@@ -1271,7 +1328,7 @@ function ChatWorkspaceContent() {
       setIsStreaming(false);
       setRegeneratingMessageIndex(null);
     }
-  }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions]);
+  }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions, researchFileIds]);
 
   // Persistent mic permission ref - once granted, stays for the session
   const micPermissionGranted = useRef(false);
@@ -1980,7 +2037,9 @@ function ChatWorkspaceContent() {
         onClose={() => setResearchSidebarOpen(false)}
         onFilesAdded={handleResearchFilesAdded}
         onUrlSubmit={handleResearchUrlSubmit}
-        activeSourceCount={uploadedFiles.length}
+        onRemoveSource={handleRemoveResearchSource}
+        onToolSelect={handleResearchToolSelect}
+        sources={researchSources}
       />
     </div>
   );
@@ -2876,6 +2935,41 @@ const MODE_STARTERS: Record<LearningMode, string[]> = {
     "What should I review before the exam?",
   ],
 };
+
+
+let researchSourceCounter = 0;
+function newResearchSourceKey(): string {
+  researchSourceCounter += 1;
+  return `source-${Date.now()}-${researchSourceCounter}`;
+}
+
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\.|^m\./, "");
+    return host === "youtube.com" || host === "youtu.be" || host.endsWith(".youtube.com");
+  } catch {
+    return false;
+  }
+}
+
+// Uploads one file for chat use; the returned id goes in uploaded_file_ids.
+async function postChatUpload(file: File): Promise<{ id?: string; file_name?: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${getApiBaseUrl()}/chat/uploads`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    preview?: { id?: string; file_name?: string };
+    detail?: string;
+  };
+  if (!response.ok) {
+    throw new Error(payload.detail || "Upload failed");
+  }
+  return payload.preview ?? {};
+}
 
 export default function ChatWorkspace() {
   return (

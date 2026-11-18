@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { stashAuthHandoff } from "@/lib/auth-handoff";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 import { saveAuthToken } from "@/lib/auth";
-import { getGoogleOAuthRedirectUri } from "@/lib/google-oauth";
+import {
+  clearGoogleNonceCookie,
+  getGoogleOAuthRedirectUri,
+  readGoogleNonceCookie,
+} from "@/lib/google-oauth";
 import { getSafeNextPath } from "@/lib/safe-next";
 import { SkeletonAuthForm } from "@/components/skeleton";
 
@@ -17,8 +21,14 @@ function GoogleCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("Verifying Google sign-in…");
   const [error, setError] = useState<string | null>(null);
+  // An authorization code and its nonce are single-use. The check below
+  // consumes the nonce, so a second run of this effect (a re-render with new
+  // search params) would report a bad state while the first run signs in.
+  const started = useRef(false);
 
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
     const code = searchParams.get("code");
     const state = searchParams.get("state") || "";
     if (!code) {
@@ -34,14 +44,12 @@ function GoogleCallbackContent() {
         returnTo = getSafeNextPath(parsed.next);
         // Read nonce from cookie (more reliable than sessionStorage on iOS Safari,
         // which can clear sessionStorage during cross-origin OAuth navigation)
-        const cookieMatch = document.cookie.match(/(?:^|;\s*)google_oauth_nonce=([^;]*)/);
-        const stored = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+        const stored = readGoogleNonceCookie();
         if (!stored || parsed.nonce !== stored) {
-          setError("Invalid or expired OAuth state.");
+          setError("This sign-in link has expired. Go back and choose Sign in with Google again.");
           return;
         }
-        // Clear the nonce cookie
-        document.cookie = "google_oauth_nonce=; path=/; max-age=0";
+        clearGoogleNonceCookie();
       } catch (err) {
         setError("Invalid OAuth state.");
         return;

@@ -90,6 +90,37 @@ def _validate_url_not_internal(url: str) -> None:
             raise ValueError(f"URL resolves to a non-public address")
 
 
+MAX_URL_REDIRECTS = 5
+
+
+def _fetch_public_url(url: str, headers: Dict[str, str], timeout: int = 15) -> requests.Response:
+    """GET a public URL, following redirects one hop at a time.
+
+    Each hop is checked against internal addresses before it is fetched, so
+    a public page can't redirect the server to an internal one. Most links
+    redirect at least once (http to https, a trailing slash), so not following
+    them failed the request with an empty page. Fetch and HTTP failures raise
+    ValueError with a message the student can act on.
+    """
+    current = url
+    for _ in range(MAX_URL_REDIRECTS + 1):
+        _validate_url_not_internal(current)
+        try:
+            response = requests.get(current, headers=headers, timeout=timeout, allow_redirects=False)
+        except requests.RequestException as exc:
+            raise ValueError("Couldn't reach that page. Check the link and try again.") from exc
+        if response.is_redirect or response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            if not location:
+                raise ValueError("That page couldn't be read.")
+            current = urllib.parse.urljoin(current, location)
+            continue
+        if response.status_code >= 400:
+            raise ValueError(f"That page returned HTTP {response.status_code}, so it couldn't be read.")
+        return response
+    raise ValueError("That link redirects too many times to be read.")
+
+
 class ResearchService:
     def __init__(self) -> None:
         self.s3_retriever = S3Retriever(similarity_top_k=10)
@@ -440,8 +471,7 @@ class ResearchService:
             headers = {
                 "User-Agent": "Mozilla/5.0 (compatible; SmartAITutor/1.0)",
             }
-            response = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
-            response.raise_for_status()
+            response = _fetch_public_url(url, headers)
 
             soup = BeautifulSoup(response.content, "html.parser")
             title = (
@@ -488,12 +518,17 @@ class ResearchService:
                 ContentType="application/json",
             )
 
-            return self._build_preview(
+            preview = self._build_preview(
                 "webpage",
                 title,
                 text=text.strip()[:800],
                 source=url,
             )
+            # The chat sends this id back as uploaded_file_ids so follow-up
+            # questions in the session use the page's text.
+            preview["id"] = safe_url_id
+            preview["file_name"] = title[:100]
+            return preview
         except Exception as e:
             logger.error(f"Error processing URL: {e}")
             raise
@@ -560,12 +595,15 @@ class ResearchService:
             ContentType="application/json",
         )
 
-        return self._build_preview(
+        preview = self._build_preview(
             "youtube",
             title,
             text=transcript.strip()[:800],
             source=f"https://www.youtube.com/watch?v={video_id}",
         )
+        preview["id"] = safe_yt_id
+        preview["file_name"] = title
+        return preview
 
     def get_chunks_by_file_ids(
         self, file_ids: List[str]
@@ -588,6 +626,9 @@ class ResearchService:
                 prefix = meta.get("chunks_prefix", "")
                 if not prefix:
                     continue
+                # Chunks of a link carry its internal id ("url_ab12cd34") as
+                # source_file; the metadata has the readable name (page title).
+                display_name = meta.get("file_name")
 
                 paginator = s3.get_paginator("list_objects_v2")
                 for page in paginator.paginate(Bucket=self._uploads_bucket, Prefix=prefix):
@@ -602,7 +643,7 @@ class ResearchService:
                                 "id": chunk.get("chunk_id"),
                                 "text": chunk.get("text", ""),
                                 "score": 1.0,
-                                "source_file": chunk.get("source_file", fid),
+                                "source_file": display_name or chunk.get("source_file", fid),
                                 "chunk_index": chunk.get("chunk_index", 0),
                                 "is_uploaded": True,
                             })
