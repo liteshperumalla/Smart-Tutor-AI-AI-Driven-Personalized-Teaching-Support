@@ -44,8 +44,17 @@ describe("ResearchSidebar", () => {
   });
 
   it("puts a research tool's prompt in the composer", () => {
-    const props = renderSidebar();
+    const props = renderSidebar([{ key: "a", id: "url_1", name: "Page", kind: "webpage", status: "ready" }]);
     fireEvent.click(screen.getByRole("button", { name: /Summarize/ }));
-    expect(props.onToolSelect).toHaveBeenCalledWith(expect.stringContaining("summarize the key points"));
+    expect(props.onToolSelect).toHaveBeenCalledWith(expect.stringContaining("Summarize the key points"));
+  });
+
+  it("disables source-based tools until a source is ready, but not topic tools", () => {
+    const props = renderSidebar([{ key: "b", name: "https://x.io", kind: "webpage", status: "adding" }]);
+    for (const name of [/Summarize/, /Fact Check/, /Compare/]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: /Explain/ }));
+    expect(props.onToolSelect).toHaveBeenCalledWith("Explain in simple terms: ");
   });
 });

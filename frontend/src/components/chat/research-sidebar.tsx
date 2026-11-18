@@ -48,51 +48,61 @@ interface ResearchTool {
   name: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Put in the composer; a prompt ending in ": " waits for the topic. */
   prompt: string;
+  /** Works on the chat's sources, so it needs at least one. */
+  needsSources: boolean;
 }
 
 const RESEARCH_TOOLS: ResearchTool[] = [
   {
     id: "summarize",
     name: "Summarize",
-    description: "Get key points and main ideas",
+    description: "Key points and main ideas of your sources",
     icon: FileText,
-    prompt: "Please summarize the key points and main ideas from the sources provided.",
+    prompt: "Summarize the key points and main ideas from my sources.",
+    needsSources: true,
   },
   {
     id: "fact-check",
     name: "Fact Check",
-    description: "Verify claims and find evidence",
+    description: "Check the claims in your sources",
     icon: Scale,
-    prompt: "Please fact-check the claims made and provide supporting evidence or corrections.",
-  },
-  {
-    id: "academic",
-    name: "Academic",
-    description: "Scholarly analysis and citations",
-    icon: GraduationCap,
-    prompt: "Please provide an academic analysis with proper citations and scholarly perspective.",
+    prompt:
+      "Fact-check the main claims in my sources. For each, say whether it is supported, disputed or unclear, and why.",
+    needsSources: true,
   },
   {
     id: "compare",
     name: "Compare",
-    description: "Compare different sources or viewpoints",
+    description: "Compare your sources and the course material",
     icon: GitCompare,
-    prompt: "Please compare and contrast the different sources and viewpoints on this topic.",
+    prompt: "Compare and contrast the viewpoints in my sources with each other and with the course material.",
+    needsSources: true,
+  },
+  {
+    id: "academic",
+    name: "Academic",
+    description: "Scholarly analysis with citations",
+    icon: GraduationCap,
+    prompt: "Give an academic analysis, citing my sources and the course material, of: ",
+    needsSources: false,
   },
   {
     id: "explain",
     name: "Explain",
-    description: "Simple explanation of complex topics",
+    description: "Simple explanation of a complex topic",
     icon: Lightbulb,
-    prompt: "Please explain this topic in simple terms that are easy to understand.",
+    prompt: "Explain in simple terms: ",
+    needsSources: false,
   },
   {
     id: "deep-dive",
     name: "Deep Dive",
     description: "Comprehensive research and analysis",
     icon: Search,
-    prompt: "Please conduct a comprehensive deep dive into this topic with detailed analysis.",
+    prompt: "Give a comprehensive deep dive, with detailed analysis, into: ",
+    needsSources: false,
   },
 ];
 
@@ -298,14 +308,23 @@ export function ResearchSidebar({
             <h3 className="text-sm font-medium text-foreground mb-3">
               Research Tools
             </h3>
+            {readyCount === 0 && (
+              <p className="mb-2 text-xs text-muted">
+                Add a file, link or video to use Summarize, Fact Check and Compare.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               {RESEARCH_TOOLS.map((tool) => {
                 const IconComponent = tool.icon;
+                const unavailable = tool.needsSources && readyCount === 0;
                 return (
                   <button
                     key={tool.id}
+                    type="button"
                     onClick={() => handleToolClick(tool)}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-line hover:bg-surface-2 hover:border-primary/30 transition-all text-center group"
+                    disabled={unavailable}
+                    title={unavailable ? "Add a source first" : tool.description}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-line hover:bg-surface-2 hover:border-primary/30 transition-all text-center group disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:border-line"
                   >
                     <IconComponent className="h-5 w-5 text-muted group-hover:text-primary transition-colors" />
                     <span className="text-xs font-medium text-foreground">{tool.name}</span>
