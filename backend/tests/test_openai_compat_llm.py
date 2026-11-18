@@ -262,6 +262,7 @@ class TestChatModelCatalog:
 
         monkeypatch.setattr(config, "LLM_ROUTING_SIMPLE_MODEL", "llama-3.1-8b-instant")
         monkeypatch.setattr(config, "LLM_ROUTING_COMPLEX_MODEL", "")
+        monkeypatch.setattr(config, "GEMINI_API_KEY", "")  # Gemini is offered only with a key
         ids = [m["model_id"] for m in available_chat_models(is_admin=True)]
         assert ids == ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
         validate_model_choice("llama-3.1-8b-instant", is_admin=False)
@@ -330,6 +331,7 @@ class TestOpenRouter:
         )
         monkeypatch.setattr(config, "LLM_ROUTING_SIMPLE_MODEL", "")
         monkeypatch.setattr(config, "LLM_ROUTING_COMPLEX_MODEL", "")
+        monkeypatch.setattr(config, "GEMINI_API_KEY", "")  # Gemini is offered only with a key
         student = [(m["model_id"], m["label"]) for m in available_chat_models(is_admin=False)]
         assert student == [
             ("meta-llama/llama-3.3-70b-instruct:free", "Llama 3.3 70B"),

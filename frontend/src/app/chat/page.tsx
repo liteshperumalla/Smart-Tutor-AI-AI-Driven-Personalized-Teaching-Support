@@ -49,6 +49,9 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "meta.llama3-3-70b-instruct-v1:0": "Llama 3.3 70B",
   "us.meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
   "meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
+  "us.anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+  "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+  // No longer offered; kept so older answers still show their model.
   "us.anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
   "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
   "us.anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
@@ -67,6 +70,20 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "anthropic.claude-3-haiku-20240307-v1:0": "Claude 3 Haiku",
   "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
 };
+
+/** "gemini-3.8-flash" -> "Gemini 3.8 Flash" (matches backend/chat_models.py). */
+function geminiLabel(modelId: string): string {
+  return modelId
+    .split("-")
+    .map((part) => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(" ");
+}
+
+function modelDisplayName(modelId: string): string {
+  if (MODEL_DISPLAY_NAMES[modelId]) return MODEL_DISPLAY_NAMES[modelId];
+  if (modelId.toLowerCase().startsWith("gemini-")) return geminiLabel(modelId);
+  return modelId;
+}
 
 /** Message time: short label in the thread, full date and time on hover. */
 function MessageTime({ iso, className = "" }: { iso?: string; className?: string }) {
@@ -102,6 +119,14 @@ function LLMCompanyIcon({ company, className = "h-4 w-4" }: { company?: string |
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M22.28 10.15a5.53 5.53 0 0 0-.46-4.42 5.6 5.6 0 0 0-4.04-2.73 5.54 5.54 0 0 0-4.75 1.13A5.55 5.55 0 0 0 8.65 3a5.59 5.59 0 0 0-4.43 2.61 5.53 5.53 0 0 0-.69 4.4 5.55 5.55 0 0 0-1.8 4.23 5.59 5.59 0 0 0 2.25 4.51 5.53 5.53 0 0 0 .46 4.42 5.6 5.6 0 0 0 4.04 2.73 5.54 5.54 0 0 0 4.75-1.13A5.55 5.55 0 0 0 17.63 23a5.59 5.59 0 0 0 4.43-2.61 5.53 5.53 0 0 0 .69-4.4 5.55 5.55 0 0 0 1.8-4.23 5.59 5.59 0 0 0-2.27-3.61zm-8.2 11.2a3.88 3.88 0 0 1-2.48-.9l.13-.08 4.14-2.39a.86.86 0 0 0 .43-.75v-5.85l1.75 1.01a.08.08 0 0 1 .04.07v4.75a3.9 3.9 0 0 1-4.01 4.14zM4.32 17.5a3.86 3.86 0 0 1-.46-2.61l.13.08 4.14 2.39a.87.87 0 0 0 .86 0l5.07-2.93v2.02a.08.08 0 0 1-.04.07l-4.11 2.38a3.9 3.9 0 0 1-5.69-1.4zM3.4 9.17a3.87 3.87 0 0 1 2.02-1.72v4.94a.86.86 0 0 0 .43.75l5.07 2.92-1.75 1.01a.08.08 0 0 1-.08 0l-4.12-2.38a3.9 3.9 0 0 1-1.57-5.52zm14.39 2.5-5.07-2.92 1.75-1.01a.08.08 0 0 1 .08 0l4.12 2.38a3.9 3.9 0 0 1-1.31 7.08v-4.78a.86.86 0 0 0-.43-.75zm2.49-3.23a3.87 3.87 0 0 1 .46 2.61l-.13-.08-4.14-2.39a.87.87 0 0 0-.86 0l-5.07 2.93V8.89a.08.08 0 0 1 .04-.07l4.11-2.38a3.9 3.9 0 0 1 5.69 1.4zm-7.61-4.63a3.88 3.88 0 0 1 2.48.9l-.13.08-4.14 2.39a.86.86 0 0 0-.43.75v5.85l-1.75-1.01a.08.08 0 0 1-.04-.07V7.95a3.9 3.9 0 0 1 4.01-4.14zM12 13.73l-2.48-1.43 2.48-1.43 2.48 1.43L12 13.73z" />
+      </svg>
+    );
+  }
+  if (company === "google") {
+    // Four-point star, as in the Gemini mark.
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 1.5c.5 5.6 4.9 10 10.5 10.5-5.6.5-10 4.9-10.5 10.5-.5-5.6-4.9-10-10.5-10.5C7.1 11.5 11.5 7.1 12 1.5z" />
       </svg>
     );
   }
@@ -239,8 +264,13 @@ function ChatWorkspaceContent() {
   }, []);
 
   // Models the server will accept for this user (null until loaded). The
-  // selector hides the rest, e.g. GPT 6 Luna when no OpenAI key is configured.
+  // selector hides the rest, e.g. Gemini when no Gemini API key is configured.
   const [offeredModelIds, setOfferedModelIds] = useState<Set<string> | null>(null);
+  // Which Gemini model the server offers (GEMINI_MODEL_ID), if any.
+  const geminiModelId = useMemo(
+    () => [...(offeredModelIds ?? [])].find((id) => id.toLowerCase().startsWith("gemini-")) ?? null,
+    [offeredModelIds]
+  );
   useEffect(() => {
     if (!isLoggedIn) return;
     let cancelled = false;
@@ -277,35 +307,25 @@ function ChatWorkspaceContent() {
       family: "default",
     },
     {
-      id: "claude-sonnet",
-      name: "Claude Sonnet 5.5",
-      shortName: "Sonnet 5.5",
-      description: "Next-gen reasoning, elite coding & complex analysis",
-      modelId: "us.anthropic.claude-sonnet-5-5",
-      badge: "Pro",
-      company: "anthropic",
-      family: "pro",
-    },
-    {
       id: "claude-haiku",
-      name: "Claude Haiku 5.5",
-      shortName: "Haiku 5.5",
-      description: "Ultra-fast response time for everyday learning",
-      modelId: "us.anthropic.claude-haiku-5-5",
+      name: "Claude Haiku 4.5",
+      shortName: "Haiku 4.5",
+      description: "Fast, capable answers for everyday learning",
+      modelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0" as string | null,
       badge: "Fast",
       company: "anthropic",
       family: "fast",
     },
-    {
-      id: "gpt-6-luna",
-      name: "GPT-6 Luna",
-      shortName: "GPT-6 Luna",
-      description: "OpenAI's efficient GPT-6 model for quick, focused answers",
-      modelId: "us.openai.gpt-6-luna",
-      badge: "Luna",
-      company: "openai",
-      family: "pro",
-    },
+    ...(geminiModelId ? [{
+      id: "gemini",
+      name: geminiLabel(geminiModelId),
+      shortName: geminiLabel(geminiModelId),
+      description: "Google's Gemini model, fast with a long context",
+      modelId: geminiModelId as string | null,
+      badge: "Google",
+      company: "google",
+      family: "fast",
+    }] : []),
     ...(isAdmin ? [{
       id: "claude-opus",
       name: "Claude Opus 4",
@@ -2268,7 +2288,7 @@ function ChatBubble({
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
             {message.model_used && !message.agent && (
                 (() => {
-                  const usedName = MODEL_DISPLAY_NAMES[message.model_used] || message.model_used;
+                  const usedName = modelDisplayName(message.model_used);
                   const requested = message.model_requested;
                   const fellBack = Boolean(requested && requested !== message.model_used);
                   const modelIdLower = (message.model_used || "").toLowerCase();
@@ -2278,6 +2298,8 @@ function ChatBubble({
                     ? "anthropic"
                     : modelIdLower.includes("gpt") || modelIdLower.includes("luna")
                     ? "openai"
+                    : modelIdLower.includes("gemini")
+                    ? "google"
                     : "auto";
                   return (
                     <span
@@ -2287,11 +2309,11 @@ function ChatBubble({
                           ? "bg-warning-bg text-warning border-warning/30"
                           : "bg-primary-bg text-primary border-primary/20",
                       ].join(" ")}
-                      title={fellBack ? `${MODEL_DISPLAY_NAMES[requested!] || requested} was unavailable, so ${usedName} answered.` : undefined}
+                      title={fellBack ? `${modelDisplayName(requested!)} was unavailable, so ${usedName} answered.` : undefined}
                     >
                       <LLMCompanyIcon company={comp} className="h-3 w-3" />
                       {fellBack
-                        ? `${MODEL_DISPLAY_NAMES[requested!] || requested} unavailable · answered by ${usedName}`
+                        ? `${modelDisplayName(requested!)} unavailable · answered by ${usedName}`
                         : `via ${usedName}`}
                     </span>
                   );
