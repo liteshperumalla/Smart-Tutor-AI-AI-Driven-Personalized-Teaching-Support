@@ -4,6 +4,7 @@ except ImportError:
     st = None  # Running outside Streamlit (e.g. FastAPI backend)
 import os
 import re
+import string
 import base64
 import json
 import textwrap
@@ -824,6 +825,26 @@ def _log_metrics_generator(
         logging.warning(f"Chat metrics logging failed: {exc}")
 
 
+def _uploaded_context_nodes(uploaded_context: List[Dict[str, Any]]) -> List[NodeWithScore]:
+    """Turn the student's uploaded excerpts into prompt nodes."""
+    nodes: List[NodeWithScore] = []
+    for i, item in enumerate(uploaded_context):
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        node = TextNode(
+            id_=str(item.get("id") or f"uploaded-{i}"),
+            text=text,
+            metadata={
+                "source_file": item.get("source_file") or "Uploaded source",
+                "chunk_index": item.get("chunk_index", 0),
+                "is_uploaded": True,
+            },
+        )
+        nodes.append(NodeWithScore(node=node, score=float(item.get("score") or 1.0)))
+    return nodes
+
+
 def generate_response_stream_and_sources(
     query: str,
     user_id: str = "default-user",
@@ -833,8 +854,14 @@ def generate_response_stream_and_sources(
     source_prefixes: Optional[List[str]] = None,
     allow_web_search: bool = True,
     answer_instructions: Optional[str] = None,
+    uploaded_context: Optional[List[Dict[str, Any]]] = None,
 ):
     """Generate streaming response with sources
+
+    ``uploaded_context`` holds excerpts from the student's own sources for this
+    chat (files, links, transcripts). They are put ahead of the retrieved
+    course passages, so the answer uses them even when the course has nothing
+    on the topic; such answers skip the answer cache and web search.
 
     ``answer_instructions`` (e.g. a chat learning mode) shapes the answer only:
     it is added to the synthesis prompt, never to the retrieval query, and
@@ -869,7 +896,7 @@ def generate_response_stream_and_sources(
             return greeting_stream(), []
 
         # Answer Cache: check for cached response before RAG retrieval
-        if config.ANSWER_CACHE_ENABLED and not answer_instructions:
+        if config.ANSWER_CACHE_ENABLED and not answer_instructions and not uploaded_context:
             cached = _check_answer_cache(query, user_id=user_id)
             if cached:
                 logging.info(f"Answer cache HIT for: {query[:60]}...")
@@ -953,6 +980,8 @@ def generate_response_stream_and_sources(
                     item for item in retrieved_nodes
                     if str((item.node.metadata.get("file_path") or item.node.metadata.get("source_file") or "")).replace("\\", "/").lstrip("/").startswith(normalized_prefixes)
                 ]
+            if uploaded_context:
+                retrieved_nodes = _uploaded_context_nodes(uploaded_context) + list(retrieved_nodes)
             local_sources = []
             for n_ws in retrieved_nodes:
                 node = n_ws.node
@@ -965,9 +994,10 @@ def generate_response_stream_and_sources(
                 fp = node.metadata.get("file_path") or node.metadata.get("source_file")
                 file_name = os.path.basename(fp) if fp else "Unknown Source"
 
+                is_uploaded = bool(node.metadata.get("is_uploaded"))
                 source_url = (
                     f"/api/backend/files/s3-document?source_file={quote(file_name)}"
-                    if fp
+                    if fp and not is_uploaded
                     else None
                 )
 
@@ -1002,7 +1032,11 @@ def generate_response_stream_and_sources(
 
         # ── Span: web-search-decision ────────────────────────────────
         with traced_span(main_trace, "web-search-decision", input={"query": query}) as ws_decision_span:
-            should_search = allow_web_search and _should_search_web(query, context_str, local_sources)
+            should_search = (
+                allow_web_search
+                and not uploaded_context
+                and _should_search_web(query, context_str, local_sources)
+            )
 
         if should_search:
             # ── Span: web-search-execution ───────────────────────────
@@ -1208,7 +1242,16 @@ def _fallback_session_title(first_user_message: str | None) -> str:
     cleaned_words = [word for word in words if word.strip("_-")]
     if not cleaned_words:
         return "New Chat"
-    return " ".join(cleaned_words[:5]).title()
+    return string.capwords(" ".join(cleaned_words[:5]))
+
+
+def _generate_title_text(prompt: str) -> str:
+    """Ask the model for a title directly. Not through the RAG answer path:
+    retrieval finds no course material for a title prompt, so that path
+    returns NO_RELEVANT_MATERIAL_RESPONSE, which then became the title."""
+    from backend.agents.llm_utils import complete_with_model_fallback
+
+    return complete_with_model_fallback(prompt=prompt, logger=logging.getLogger(__name__))
 
 
 def _clean_generated_session_title(raw_title: str) -> str:
@@ -1233,7 +1276,7 @@ def _is_invalid_generated_session_title(title: str) -> bool:
         return True
     if normalized in _INVALID_SESSION_TITLES:
         return True
-    if normalized.startswith(("error", "sorry", "i'm sorry", "unable to", "failed to")):
+    if normalized.startswith(("error", "sorry", "i'm sorry", "unable to", "failed to", "i couldn't find anything")):
         return True
     if len(re.findall(r"[A-Za-z0-9]", normalized)) < 2:
         return True
@@ -1282,7 +1325,7 @@ def make_session_title(history: List) -> str:
             f"{snippet}\n"
             "Just return the title, nothing else:"
         )
-        title_response, _ = generate_response_with_sources(prompt)
+        title_response = _generate_title_text(prompt)
 
         # Clean up the title
         title = _clean_generated_session_title(title_response)
@@ -1292,7 +1335,9 @@ def make_session_title(history: List) -> str:
 
         # Limit to 5 words max
         words = title.split()[:5]
-        title = " ".join(words).title()
+        # capwords, not str.title(): title() capitalises after apostrophes
+        # ("Couldn'T").
+        title = string.capwords(" ".join(words))
 
         return title if not _is_invalid_generated_session_title(title) else _fallback_session_title(first_user_message)
 

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { getGoogleOAuthRedirectUri } from "@/lib/google-oauth";
+import { beginGoogleSignIn } from "@/lib/google-oauth";
 import { getSafeNextPath } from "@/lib/safe-next";
 
 type GoogleAuthButtonProps = {
@@ -9,58 +8,18 @@ type GoogleAuthButtonProps = {
   returnTo?: string;
 };
 
-function generateNonce(): string {
-  if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-    return Array.from(window.crypto.getRandomValues(new Uint8Array(16)))
-      .map((value) => value.toString(16).padStart(2, "0"))
-      .join("");
-  }
-  return Date.now().toString(16);
-}
-
 export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
-  const [nonce] = useState<string>(generateNonce);
-
-  useEffect(() => {
-    // sessionStorage can be cleared during the Google OAuth round-trip on iOS Safari.
-    // Keep the nonce in a short-lived cookie so the callback can validate state reliably.
-    document.cookie = `google_oauth_nonce=${nonce}; path=/; SameSite=Lax; max-age=600`;
-  }, [nonce]);
-
-  const config = useMemo(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const redirectEnv = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
-    const redirectUri = getGoogleOAuthRedirectUri(redirectEnv);
-
-    if (!clientId || !redirectUri) {
-      return { ready: false } as const;
-    }
-
-    const statePayload = btoa(JSON.stringify({ intent, nonce, next: getSafeNextPath(returnTo) }));
-
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: "code",
-      scope: "openid email profile",
-      access_type: "offline",
-      prompt: "consent",
-      state: statePayload,
-    });
-
-    return {
-      ready: true,
-      url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
-    } as const;
-  }, [intent, nonce, returnTo]);
+  // The redirect URI always resolves in the browser (it falls back to this
+  // origin's callback), so the client id alone says whether sign-in works,
+  // and it reads the same on the server and the client.
+  const ready = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
 
   const label =
     intent === "login" ? "Sign in with Google" : "Sign up with Google";
 
   const handleClick = () => {
-    if (config.ready && config.url) {
-      window.location.href = config.url;
-    }
+    const url = beginGoogleSignIn(intent, getSafeNextPath(returnTo));
+    if (url) window.location.href = url;
   };
 
   return (
@@ -68,7 +27,7 @@ export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
       <button
         type="button"
         onClick={handleClick}
-        disabled={!config.ready || !config.url}
+        disabled={!ready}
         className="flex w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
@@ -91,7 +50,7 @@ export function GoogleAuthButton({ intent, returnTo }: GoogleAuthButtonProps) {
         </svg>
         {label}
       </button>
-      {!config.ready && (
+      {!ready && (
         <p className="text-center text-xs text-muted">
           Google sign-in is currently unavailable.
         </p>

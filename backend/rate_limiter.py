@@ -34,8 +34,7 @@ MODEL_FAMILY_MAP = {
     "claude-3-7-sonnet": "pro",
     "claude-3-5-sonnet": "pro",
     "claude-sonnet": "pro",
-    "gpt-6": "pro",
-    "luna": "pro",
+    "gemini": "fast",
     "claude-opus": "admin",
 }
 

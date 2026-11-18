@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Request, status
 from fastapi.responses import StreamingResponse
@@ -138,6 +139,47 @@ class AttachmentInfo(BaseModel):
     name: str = Field(..., max_length=255)
     ext: str = Field(..., max_length=20)
     isImage: bool = False
+
+
+# How many excerpts from the student's own sources go into one answer. A long
+# page or transcript has many chunks; sending them all would crowd out the
+# course material and the token budget.
+MAX_UPLOADED_CONTEXT_CHUNKS = 12
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def select_uploaded_context(chunks: List[dict], query: str, limit: int = MAX_UPLOADED_CONTEXT_CHUNKS) -> List[dict]:
+    """Pick the uploaded excerpts for an answer.
+
+    Short sources go in whole. Longer ones keep each source's first chunk
+    (title and intro) and fill the rest with the chunks sharing the most
+    words with the question, returned in document order.
+    """
+    usable = [c for c in chunks if (c.get("text") or "").strip()]
+    if len(usable) <= limit:
+        return usable
+    query_words = {w for w in _WORD_RE.findall(query.lower()) if len(w) > 2}
+
+    def overlap(chunk: dict) -> int:
+        return len(query_words & set(_WORD_RE.findall(chunk["text"].lower())))
+
+    picked: dict[int, dict] = {}
+    seen_sources: set = set()
+    for i, chunk in enumerate(usable):
+        source = chunk.get("source_file")
+        if source not in seen_sources:
+            seen_sources.add(source)
+            picked[i] = chunk
+        if len(picked) >= limit:
+            break
+    ranked = sorted(
+        (i for i in range(len(usable)) if i not in picked),
+        key=lambda i: overlap(usable[i]),
+        reverse=True,
+    )
+    for i in ranked[: max(0, limit - len(picked))]:
+        picked[i] = usable[i]
+    return [picked[i] for i in sorted(picked)]
 
 
 # How each chat mode shapes the tutor's answer. "ask" is a direct answer.
@@ -323,6 +365,12 @@ async def send_message(
             f"{style_instructions[payload.response_style]}\n\nUser question: {effective_query}"
         )
 
+    # The student's own sources (files, links, videos added in research mode)
+    # go to the answering pipeline as context in their own right, ahead of
+    # the course material. Pasting them into the query text instead left the
+    # course retrieval deciding the context, so a link the course doesn't
+    # cover got "not related to the question" answers.
+    uploaded_context: Optional[List[dict]] = None
     if payload.uploaded_only:
         try:
             research_service = get_research_service()
@@ -335,18 +383,9 @@ async def send_message(
                 uploaded_results = research_service.query(
                     query, uploaded_only=True
                 ).get("results", [])
-            if uploaded_results:
-                context_snippets = "\n\n".join(
-                    [r.get("text", "") for r in uploaded_results[:10] if r.get("text")]
-                ).strip()
-                if context_snippets:
-                    effective_query = (
-                        "Use the following uploaded document excerpts as context. "
-                        "Base your answer on this content:\n"
-                        f"{context_snippets}\n\nUser question: {query}"
-                    )
+            uploaded_context = select_uploaded_context(uploaded_results, query) or None
         except Exception as _exc:  # context fetch failure is non-fatal; log and continue
-            _logger.debug("Uploaded-only context lookup failed: %s", _exc)
+            _logger.warning("Uploaded-only context lookup failed: %s", _exc)
 
     if payload.web_search_enabled is False:
         effective_query = (
@@ -397,6 +436,7 @@ async def send_message(
             session_id=session_id,
             model_id=model_id,
             answer_instructions=LEARNING_MODE_INSTRUCTIONS.get(payload.learning_mode or "ask"),
+            uploaded_context=uploaded_context,
         )
     except CircuitBreakerOpenError as e:
         raise HTTPException(
@@ -458,12 +498,10 @@ async def send_message(
                 "meta.llama3-3-70b-instruct-v1:0":        (0.00072, 0.00072),
                 "meta.llama3-70b-instruct-v1:0":          (0.00265, 0.00350),
                 "us.meta.llama3-1-70b-instruct-v1:0":     (0.00265, 0.00350),
-                "us.anthropic.claude-sonnet-5-5":               (0.00300, 0.01500),
-                "anthropic.claude-sonnet-5-5":                  (0.00300, 0.01500),
-                "us.anthropic.claude-haiku-5-5":                (0.00080, 0.00400),
-                "anthropic.claude-haiku-5-5":                   (0.00080, 0.00400),
-                "us.openai.gpt-6-luna":                         (0.00250, 0.01000),
-                "openai.gpt-6-luna":                            (0.00250, 0.01000),
+                "us.anthropic.claude-haiku-4-5-20251001-v1:0":  (0.00100, 0.00500),
+                "anthropic.claude-haiku-4-5-20251001-v1:0":     (0.00100, 0.00500),
+                # Gemini 3.8 Flash introductory rate (through Dec 2026).
+                "gemini-3.8-flash":                             (0.00075, 0.00375),
                 "us.anthropic.claude-3-5-sonnet-20241022-v2:0": (0.00300, 0.01500),
                 "us.anthropic.claude-3-haiku-20240307-v1:0":    (0.00025, 0.00125),
                 "amazon.titan-embed-text-v2:0":            (0.00020, 0.00000),

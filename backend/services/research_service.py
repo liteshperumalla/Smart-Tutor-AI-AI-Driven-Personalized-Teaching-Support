@@ -5,6 +5,7 @@ Research Service - S3-based implementation for file uploads and querying
 from __future__ import annotations
 
 import base64
+import os
 import io
 import json
 import logging
@@ -16,13 +17,14 @@ import urllib.parse
 import defusedxml.ElementTree as ET  # type: ignore[import-untyped]
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 import ipaddress
 import socket
 
 import requests
+from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup
 from docx import Document as DocxDocument
 from llama_index.core import Document, Settings, get_response_synthesizer
@@ -38,7 +40,11 @@ from youtube_transcript_api import (
     YouTubeTranscriptApi,
     TranscriptsDisabled,
     NoTranscriptFound,
+    IpBlocked,
+    RequestBlocked,
+    VideoUnavailable,
 )
+from youtube_transcript_api.proxies import GenericProxyConfig
 
 from backend.cloud.aws_helpers import get_boto3_client
 from backend.config import config
@@ -68,26 +74,126 @@ def _search_web_results(*args, **kwargs):
     return search_web_results(*args, **kwargs)
 
 
-def _validate_url_not_internal(url: str) -> None:
-    """Reject URLs that resolve to private/reserved IP addresses (SSRF protection)."""
-    parsed = urllib.parse.urlparse(url)
-    hostname = parsed.hostname
-    if not hostname:
-        raise ValueError("Invalid URL: no hostname")
+def _is_public_ip(ip: "ipaddress._BaseAddress") -> bool:
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_reserved
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
+
+def _resolve_public_address(url: str) -> Tuple[str, str, str, Optional[int]]:
+    """Validate a URL and resolve its host to a public IP.
+
+    Returns (scheme, hostname, ip, port). Raises ValueError for another
+    scheme, a missing host, or a host with any non-public address.
+    """
+    parsed = urllib.parse.urlparse(url)
     scheme = (parsed.scheme or "").lower()
     if scheme not in ("http", "https"):
         raise ValueError(f"Unsupported URL scheme: {scheme}")
 
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: no hostname")
+
     try:
-        resolved_ips = socket.getaddrinfo(hostname, parsed.port or 443)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Invalid URL: bad port") from exc
+
+    try:
+        resolved = socket.getaddrinfo(hostname, port or (443 if scheme == "https" else 80))
     except socket.gaierror:
         raise ValueError(f"Cannot resolve hostname: {hostname}")
 
-    for family, _, _, _, sockaddr in resolved_ips:
-        ip = ipaddress.ip_address(sockaddr[0])
-        if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
-            raise ValueError(f"URL resolves to a non-public address")
+    ips = [ipaddress.ip_address(sockaddr[0]) for _, _, _, _, sockaddr in resolved]
+    if not ips or not all(_is_public_ip(ip) for ip in ips):
+        raise ValueError("URL resolves to a non-public address")
+    return scheme, hostname, str(ips[0]), port
+
+
+def _validate_url_not_internal(url: str) -> None:
+    """Reject URLs that resolve to private/reserved IP addresses (SSRF protection)."""
+    _resolve_public_address(url)
+
+
+class _PinnedHTTPSAdapter(HTTPAdapter):
+    """Sends HTTPS to an IP while TLS (SNI and certificate check) uses the
+    original hostname, so pinning the address keeps the connection secure."""
+
+    def __init__(self, hostname: str, **kwargs: Any) -> None:
+        self._hostname = hostname
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
+        kwargs["server_hostname"] = self._hostname
+        kwargs["assert_hostname"] = self._hostname
+        super().init_poolmanager(*args, **kwargs)
+
+
+MAX_URL_REDIRECTS = 5
+
+
+def _pinned_get(url: str, headers: Dict[str, str], timeout: int) -> requests.Response:
+    """GET a URL by connecting to the public IP its host was validated as.
+
+    Resolving the host once to check it and again to connect would let a
+    DNS server answer with a public address first and an internal one
+    second (DNS rebinding). The request goes to the checked IP instead, with
+    the hostname kept in the Host header and for TLS.
+    """
+    scheme, hostname, ip, port = _resolve_public_address(url)
+    parsed = urllib.parse.urlparse(url)
+    ip_host = f"[{ip}]" if ":" in ip else ip
+    netloc = f"{ip_host}:{port}" if port else ip_host
+    target = urllib.parse.urlunparse(
+        ("https" if scheme == "https" else "http", netloc, parsed.path or "/", parsed.params, parsed.query, "")
+    )
+    host_header = f"{hostname}:{port}" if port else hostname
+
+    with requests.Session() as session:
+        # No proxy: a proxy would resolve the hostname itself.
+        session.trust_env = False
+        if scheme == "https":
+            session.mount("https://", _PinnedHTTPSAdapter(hostname))
+        return session.get(
+            target,
+            headers={**headers, "Host": host_header},
+            timeout=timeout,
+            allow_redirects=False,
+        )
+
+
+def _fetch_public_url(url: str, headers: Dict[str, str], timeout: int = 15) -> requests.Response:
+    """GET a public URL, following redirects one hop at a time.
+
+    Each hop is validated and fetched from the address it was validated as,
+    so neither a redirect nor a changing DNS answer can send the server to
+    an internal address. Most links redirect at least once (http to https,
+    a trailing slash), so not following them failed the request with an
+    empty page. Fetch and HTTP failures raise ValueError with a message the
+    student can act on.
+    """
+    current = url
+    for _ in range(MAX_URL_REDIRECTS + 1):
+        try:
+            response = _pinned_get(current, headers, timeout)
+        except requests.RequestException as exc:
+            raise ValueError("Couldn't reach that page. Check the link and try again.") from exc
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            if not location:
+                raise ValueError("That page couldn't be read.")
+            current = urllib.parse.urljoin(current, location)
+            continue
+        if response.status_code >= 400:
+            raise ValueError(f"That page returned HTTP {response.status_code}, so it couldn't be read.")
+        return response
+    raise ValueError("That link redirects too many times to be read.")
 
 
 class ResearchService:
@@ -440,8 +546,7 @@ class ResearchService:
             headers = {
                 "User-Agent": "Mozilla/5.0 (compatible; SmartAITutor/1.0)",
             }
-            response = requests.get(url, headers=headers, timeout=15, allow_redirects=False)
-            response.raise_for_status()
+            response = _fetch_public_url(url, headers)
 
             soup = BeautifulSoup(response.content, "html.parser")
             title = (
@@ -488,12 +593,17 @@ class ResearchService:
                 ContentType="application/json",
             )
 
-            return self._build_preview(
+            preview = self._build_preview(
                 "webpage",
                 title,
                 text=text.strip()[:800],
                 source=url,
             )
+            # The chat sends this id back as uploaded_file_ids so follow-up
+            # questions in the session use the page's text.
+            preview["id"] = safe_url_id
+            preview["file_name"] = title[:100]
+            return preview
         except Exception as e:
             logger.error(f"Error processing URL: {e}")
             raise
@@ -507,13 +617,7 @@ class ResearchService:
         upload_id = str(uuid.uuid4())[:8]
         safe_yt_id = f"youtube_{video_id}_{upload_id}"
 
-        try:
-            api = YouTubeTranscriptApi()
-            segments = api.fetch(video_id)
-        except (TranscriptsDisabled, NoTranscriptFound) as exc:
-            raise ValueError("Transcript unavailable for this video") from exc
-        except Exception as exc:
-            raise ValueError(f"Failed to fetch transcript: {exc}") from exc
+        segments = self._fetch_youtube_transcript(video_id)
 
         text_segments = []
         for segment in segments:
@@ -523,7 +627,7 @@ class ResearchService:
                 text_segments.append(segment.get("text", ""))
 
         transcript = " ".join(text_segments)
-        title = f"YouTube Video: {video_id}"
+        title = self._youtube_title(video_id) or f"YouTube Video: {video_id}"
 
         if not transcript.strip():
             raise ValueError("Transcript unavailable for this video")
@@ -560,12 +664,15 @@ class ResearchService:
             ContentType="application/json",
         )
 
-        return self._build_preview(
+        preview = self._build_preview(
             "youtube",
             title,
             text=transcript.strip()[:800],
             source=f"https://www.youtube.com/watch?v={video_id}",
         )
+        preview["id"] = safe_yt_id
+        preview["file_name"] = title
+        return preview
 
     def get_chunks_by_file_ids(
         self, file_ids: List[str]
@@ -588,6 +695,9 @@ class ResearchService:
                 prefix = meta.get("chunks_prefix", "")
                 if not prefix:
                     continue
+                # Chunks of a link carry its internal id ("url_ab12cd34") as
+                # source_file; the metadata has the readable name (page title).
+                display_name = meta.get("file_name")
 
                 paginator = s3.get_paginator("list_objects_v2")
                 for page in paginator.paginate(Bucket=self._uploads_bucket, Prefix=prefix):
@@ -602,7 +712,7 @@ class ResearchService:
                                 "id": chunk.get("chunk_id"),
                                 "text": chunk.get("text", ""),
                                 "score": 1.0,
-                                "source_file": chunk.get("source_file", fid),
+                                "source_file": display_name or chunk.get("source_file", fid),
                                 "chunk_index": chunk.get("chunk_index", 0),
                                 "is_uploaded": True,
                             })
@@ -794,12 +904,62 @@ class ResearchService:
             "source": source,
         }
 
+    def _fetch_youtube_transcript(self, video_id: str):
+        """A video's transcript: English when there is one, otherwise the
+        first available language.
+
+        YouTube often blocks requests from cloud servers. Set
+        YOUTUBE_PROXY_URL (an http(s) proxy URL) to send these requests
+        through a proxy.
+        """
+        proxy_url = os.getenv("YOUTUBE_PROXY_URL", "").strip()
+        api = YouTubeTranscriptApi(
+            proxy_config=GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
+        )
+        try:
+            try:
+                return api.fetch(video_id, languages=("en", "en-US", "en-GB"))
+            except NoTranscriptFound:
+                for transcript in api.list(video_id):
+                    return transcript.fetch()
+                raise
+        except (TranscriptsDisabled, NoTranscriptFound) as exc:
+            raise ValueError("This video has no transcript, so it can't be used as a source.") from exc
+        except VideoUnavailable as exc:
+            raise ValueError("That video is unavailable (private, removed or region-locked).") from exc
+        except (RequestBlocked, IpBlocked) as exc:
+            logger.warning("YouTube blocked the transcript request for %s: %s", video_id, type(exc).__name__)
+            raise ValueError(
+                "YouTube is blocking transcript requests from the server right now. "
+                "Try again later, or upload the video's transcript as a file."
+            ) from exc
+        except Exception as exc:
+            logger.warning("YouTube transcript fetch failed for %s: %s", video_id, exc)
+            raise ValueError("Couldn't fetch this video's transcript. Try again later.") from exc
+
+    def _youtube_title(self, video_id: str) -> Optional[str]:
+        """The video's title from YouTube's oEmbed endpoint; None on failure."""
+        try:
+            response = requests.get(
+                "https://www.youtube.com/oembed",
+                params={"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"},
+                timeout=5,
+            )
+            if response.ok:
+                title = (response.json().get("title") or "").strip()
+                return title[:100] or None
+        except Exception:  # the title is cosmetic; the transcript is what matters
+            pass
+        return None
+
     def _extract_video_id(self, url: str) -> Optional[str]:
         patterns = [
             r"[?&]v=([a-zA-Z0-9_-]{11})",
             r"youtu\.be/([a-zA-Z0-9_-]{11})",
             r"/embed/([a-zA-Z0-9_-]{11})",
             r"/v/([a-zA-Z0-9_-]{11})",
+            r"/shorts/([a-zA-Z0-9_-]{11})",
+            r"/live/([a-zA-Z0-9_-]{11})",
         ]
         for pattern in patterns:
             match = re.search(pattern, url)

@@ -16,20 +16,62 @@ from backend.csrf_protection import csrf_protect
 from backend.services.models import ChatMessage, ChatSession
 
 STUDENT = {"username": "model-tester", "role": "Student"}
-SONNET = "us.anthropic.claude-sonnet-5-5"
-HAIKU = "us.anthropic.claude-haiku-5-5"
+SONNET = "us.anthropic.claude-sonnet-5-5"  # no longer offered in chat
+HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 OPUS = "us.anthropic.claude-opus-4-20250514-v1:0"
-LUNA = "us.openai.gpt-6-luna"
+LUNA = "us.openai.gpt-6-luna"  # no longer offered in chat; the Bedrock client still supports it
+GEMINI = "gemini-3.8-flash"
 LLAMA = "us.meta.llama3-3-70b-instruct-v1:0"
 
 
 # ── Validation ──────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def no_gemini_key(monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")
+
+
 def test_auto_and_offered_models_are_accepted():
-    for model_id in (None, "", LLAMA, SONNET, HAIKU, LUNA):
+    for model_id in (None, "", LLAMA, HAIKU):
         validate_model_choice(model_id, is_admin=False)
     validate_model_choice(OPUS, is_admin=True)
+
+
+@pytest.mark.parametrize("model_id", [SONNET, LUNA, "us.anthropic.claude-haiku-5-5"])
+def test_removed_models_are_rejected(model_id):
+    with pytest.raises(ModelChoiceError):
+        validate_model_choice(model_id, is_admin=True)
+
+
+def test_gemini_is_offered_only_with_an_api_key(monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_MODEL_ID", GEMINI)
+    assert GEMINI not in {m["model_id"] for m in available_chat_models(False)}
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "key")
+    offered = {m["model_id"]: m["label"] for m in available_chat_models(False)}
+    assert offered[GEMINI] == "Gemini 3.8 Flash"
+    validate_model_choice(GEMINI, is_admin=False)
+
+
+def test_gemini_model_ids_go_to_the_gemini_api(monkeypatch):
+    from backend import llm_provider
+
+    monkeypatch.setattr(config, "LLM_PROVIDER", "bedrock")
+    assert llm_provider.provider_for_model(GEMINI) == "gemini"
+    assert llm_provider.provider_for_model(HAIKU) == "bedrock"
+    assert llm_provider.provider_for_model(None) == "bedrock"
+
+    created = {}
+
+    class _FakeCompat:
+        def __init__(self, model_id=None, provider=None):
+            created.update(model_id=model_id, provider=provider)
+
+    import backend.openai_compat_llm as compat
+
+    monkeypatch.setattr(compat, "OpenAICompatLLM", _FakeCompat)
+    llm_provider.create_llm_client(model_id=GEMINI)
+    assert created == {"model_id": GEMINI, "provider": "gemini"}
 
 
 @pytest.mark.parametrize(
@@ -56,7 +98,7 @@ def test_students_are_not_offered_admin_models():
     student = {m["model_id"] for m in available_chat_models(False)}
     admin = {m["model_id"] for m in available_chat_models(True)}
     assert OPUS not in student and OPUS in admin
-    assert student == {LLAMA, SONNET, HAIKU, LUNA}
+    assert student == {LLAMA, HAIKU}
 
 
 # ── Route ───────────────────────────────────────────────────────────────
@@ -116,19 +158,19 @@ def _assistant(service):
 def test_answer_records_the_fallback_model(client_with):
     service = _FallbackChatService(answered_by=LLAMA)
     client = client_with(service)
-    response = client.post("/chat/sessions/s1/messages", json={"query": "hi", "model_id": SONNET})
+    response = client.post("/chat/sessions/s1/messages", json={"query": "hi", "model_id": HAIKU})
     assert response.status_code == 200, response.text
-    assert service.calls[-1]["model_id"] == SONNET
+    assert service.calls[-1]["model_id"] == HAIKU
     message = _assistant(service)
-    assert message.model_requested == SONNET
+    assert message.model_requested == HAIKU
     assert message.model_used == LLAMA  # not mislabelled as Sonnet
 
 
 def test_answer_records_the_requested_model_when_it_answers(client_with):
-    service = _FallbackChatService(answered_by=SONNET)
+    service = _FallbackChatService(answered_by=HAIKU)
     client = client_with(service)
-    assert client.post("/chat/sessions/s1/messages", json={"query": "hi", "model_id": SONNET}).status_code == 200
-    assert _assistant(service).model_used == SONNET
+    assert client.post("/chat/sessions/s1/messages", json={"query": "hi", "model_id": HAIKU}).status_code == 200
+    assert _assistant(service).model_used == HAIKU
 
 
 def test_route_rejects_admin_model_for_students(client_with):
@@ -142,7 +184,7 @@ def test_route_rejects_admin_model_for_students(client_with):
 def test_models_endpoint_lists_what_the_user_may_pick(client_with):
     client = client_with(_FallbackChatService(answered_by=LLAMA))
     ids = {m["model_id"] for m in client.get("/chat/models").json()["models"]}
-    assert ids == {LLAMA, SONNET, HAIKU, LUNA}
+    assert ids == {LLAMA, HAIKU}
 
 
 def test_model_fields_round_trip_through_storage():

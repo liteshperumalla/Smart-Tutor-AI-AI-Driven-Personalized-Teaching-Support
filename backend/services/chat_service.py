@@ -70,7 +70,9 @@ def _is_auto_title_placeholder(title: str) -> bool:
     # rather than a bare "error" prefix (which would clobber a legitimately
     # named chat such as "Error Handling in Python").
     stripped = re.sub(r"^[^a-z0-9]+", "", normalized)
-    return stripped.startswith("error processing your query")
+    # Also heal titles taken from the "no course material" reply, which the
+    # title generator used to receive from the RAG path.
+    return stripped.startswith(("error processing your query", "i couldn't find anything"))
 
 
 class ChatService:
@@ -166,6 +168,7 @@ class ChatService:
         source_prefixes: Optional[list[str]] = None,
         allow_web_search: bool = True,
         answer_instructions: Optional[str] = None,
+        uploaded_context: Optional[list[dict]] = None,
     ):
         from backend.config import config as app_config
         import logging
@@ -199,7 +202,7 @@ class ChatService:
             generator, sources = run_agent_pipeline(
                 query=query, user_id=user_id,
                 session_id=session_id, model_id=routed_model_id, source_prefixes=source_prefixes,
-                answer_instructions=answer_instructions,
+                answer_instructions=answer_instructions, uploaded_context=uploaded_context,
             )
             return generator, sources, routed_model_id
 
@@ -208,6 +211,7 @@ class ChatService:
             source_prefixes=source_prefixes,
             allow_web_search=allow_web_search,
             answer_instructions=answer_instructions,
+            uploaded_context=uploaded_context,
         )
         return generator, sources, routed_model_id
 
