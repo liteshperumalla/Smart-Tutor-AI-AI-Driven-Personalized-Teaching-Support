@@ -7,7 +7,9 @@ and once on the free stack (OpenRouter + local embeddings, the candidate),
 with the same EVAL_JUDGE_PROVIDER for both so the scores are comparable.
 
 Exits 1 if any metric drops by more than ``--max-drop`` (absolute, on the
-0-1 scale), so it can gate a cutover in CI.
+0-1 scale), so it can gate a cutover in CI. Exits 2 if a run can't be
+compared: a file holds no evaluation result or no quality_summary, or the
+judge scored every metric 0.
 
     python -m backend.scripts.compare_evaluations baseline.json candidate.json --max-drop 0.05
 """
@@ -28,6 +30,10 @@ METRICS = (
 )
 
 
+class UnusableRun(Exception):
+    """An input file holds no evaluation result that can be compared."""
+
+
 def load_summary(path: str) -> dict:
     text = Path(path).read_text()
     # The container also prints JSON log lines; the result is the last JSON
@@ -45,10 +51,10 @@ def load_summary(path: str) -> dict:
             payload = candidate
             break
     if payload is None:
-        raise SystemExit(f"{path}: no evaluation result found")
+        raise UnusableRun(f"{path}: no evaluation result found")
     summary = payload.get("quality_summary")
     if not summary:
-        raise SystemExit(f"{path}: no quality_summary ({payload.get('message') or payload.get('error') or 'empty run'})")
+        raise UnusableRun(f"{path}: no quality_summary ({payload.get('message') or payload.get('error') or 'empty run'})")
     return {**summary, "avg_latency": payload.get("avg_latency")}
 
 
@@ -78,7 +84,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-drop", type=float, default=0.05, help="largest allowed drop per metric (default 0.05)")
     args = parser.parse_args(argv)
 
-    baseline, candidate = load_summary(args.baseline), load_summary(args.candidate)
+    try:
+        baseline, candidate = load_summary(args.baseline), load_summary(args.candidate)
+    except UnusableRun as exc:
+        # Exit 2 (can't compare), not 1: an evaluation that produced no
+        # result is not a metric regression.
+        print(f"ERROR: {exc}; the run can't be compared.", file=sys.stderr)
+        return 2
     for name, summary in (("baseline", baseline), ("candidate", candidate)):
         # evaluate_quality scores 0.0 when the judge call fails (no key, a
         # 429), so an all-zero run means the judge didn't run, not bad answers.

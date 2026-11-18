@@ -31,6 +31,22 @@ class TestQualityGate:
         assert main([_summary(tmp_path / "b", **zeros), _summary(tmp_path / "c", **GOOD)]) == 2
         assert "judge most likely failed" in capsys.readouterr().err
 
+    def test_run_without_a_result_cannot_be_compared(self, tmp_path, capsys):
+        from backend.scripts.compare_evaluations import main
+
+        failed = tmp_path / "c"
+        failed.write_text('{"level": "info", "msg": "starting"}\n{"total_evaluated": 0, "error": "cli_execution_failed"}\n')
+        assert main([_summary(tmp_path / "b", **GOOD), str(failed)]) == 2
+        assert "no quality_summary (cli_execution_failed)" in capsys.readouterr().err
+
+    def test_file_with_no_result_cannot_be_compared(self, tmp_path, capsys):
+        from backend.scripts.compare_evaluations import main
+
+        empty = tmp_path / "c"
+        empty.write_text("Traceback (most recent call last):\n")
+        assert main([_summary(tmp_path / "b", **GOOD), str(empty)]) == 2
+        assert "no evaluation result found" in capsys.readouterr().err
+
 
 class TestIndexUploadFailure:
     def _store(self, tmp_path, monkeypatch):
