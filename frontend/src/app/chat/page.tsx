@@ -19,6 +19,7 @@ import {
   renameChatSession,
   pinChatSession,
   archiveChatSession,
+  postJSON,
 } from "@/lib/api";
 import { useAuthToken } from "@/hooks/useAuthToken";
 import { useActiveCourse } from "@/components/active-course-provider";
@@ -38,7 +39,7 @@ import { RenameChatModal } from "@/components/chat/rename-chat-modal";
 import { UserMessageActions, EditableUserMessage } from "@/components/chat/user-message-actions";
 import { StreamingPhaseIndicator } from "@/components/chat/streaming-phase-indicator";
 import { FilePreviewGrid, type UploadedFileItem } from "@/components/chat/file-preview-grid";
-import { ResearchSidebar } from "@/components/chat/research-sidebar";
+import { ResearchSidebar, type ResearchSource } from "@/components/chat/research-sidebar";
 import { toast } from "sonner";
 import { Skeleton, SkeletonRegion } from "@/components/skeleton";
 
@@ -48,6 +49,9 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "meta.llama3-3-70b-instruct-v1:0": "Llama 3.3 70B",
   "us.meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
   "meta.llama3-1-70b-instruct-v1:0": "Llama 3.1 70B",
+  "us.anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+  "anthropic.claude-haiku-4-5-20251001-v1:0": "Claude Haiku 4.5",
+  // No longer offered; kept so older answers still show their model.
   "us.anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
   "anthropic.claude-sonnet-5-5": "Claude Sonnet 5.5",
   "us.anthropic.claude-haiku-5-5": "Claude Haiku 5.5",
@@ -66,6 +70,20 @@ const MODEL_DISPLAY_NAMES: Record<string, string> = {
   "anthropic.claude-3-haiku-20240307-v1:0": "Claude 3 Haiku",
   "us.anthropic.claude-opus-4-20250514-v1:0": "Claude Opus 4",
 };
+
+/** "gemini-3.8-flash" -> "Gemini 3.8 Flash" (matches backend/chat_models.py). */
+function geminiLabel(modelId: string): string {
+  return modelId
+    .split("-")
+    .map((part) => (/^\d/.test(part) ? part : part.charAt(0).toUpperCase() + part.slice(1)))
+    .join(" ");
+}
+
+function modelDisplayName(modelId: string): string {
+  if (MODEL_DISPLAY_NAMES[modelId]) return MODEL_DISPLAY_NAMES[modelId];
+  if (modelId.toLowerCase().startsWith("gemini-")) return geminiLabel(modelId);
+  return modelId;
+}
 
 /** Message time: short label in the thread, full date and time on hover. */
 function MessageTime({ iso, className = "" }: { iso?: string; className?: string }) {
@@ -101,6 +119,14 @@ function LLMCompanyIcon({ company, className = "h-4 w-4" }: { company?: string |
     return (
       <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
         <path d="M22.28 10.15a5.53 5.53 0 0 0-.46-4.42 5.6 5.6 0 0 0-4.04-2.73 5.54 5.54 0 0 0-4.75 1.13A5.55 5.55 0 0 0 8.65 3a5.59 5.59 0 0 0-4.43 2.61 5.53 5.53 0 0 0-.69 4.4 5.55 5.55 0 0 0-1.8 4.23 5.59 5.59 0 0 0 2.25 4.51 5.53 5.53 0 0 0 .46 4.42 5.6 5.6 0 0 0 4.04 2.73 5.54 5.54 0 0 0 4.75-1.13A5.55 5.55 0 0 0 17.63 23a5.59 5.59 0 0 0 4.43-2.61 5.53 5.53 0 0 0 .69-4.4 5.55 5.55 0 0 0 1.8-4.23 5.59 5.59 0 0 0-2.27-3.61zm-8.2 11.2a3.88 3.88 0 0 1-2.48-.9l.13-.08 4.14-2.39a.86.86 0 0 0 .43-.75v-5.85l1.75 1.01a.08.08 0 0 1 .04.07v4.75a3.9 3.9 0 0 1-4.01 4.14zM4.32 17.5a3.86 3.86 0 0 1-.46-2.61l.13.08 4.14 2.39a.87.87 0 0 0 .86 0l5.07-2.93v2.02a.08.08 0 0 1-.04.07l-4.11 2.38a3.9 3.9 0 0 1-5.69-1.4zM3.4 9.17a3.87 3.87 0 0 1 2.02-1.72v4.94a.86.86 0 0 0 .43.75l5.07 2.92-1.75 1.01a.08.08 0 0 1-.08 0l-4.12-2.38a3.9 3.9 0 0 1-1.57-5.52zm14.39 2.5-5.07-2.92 1.75-1.01a.08.08 0 0 1 .08 0l4.12 2.38a3.9 3.9 0 0 1-1.31 7.08v-4.78a.86.86 0 0 0-.43-.75zm2.49-3.23a3.87 3.87 0 0 1 .46 2.61l-.13-.08-4.14-2.39a.87.87 0 0 0-.86 0l-5.07 2.93V8.89a.08.08 0 0 1 .04-.07l4.11-2.38a3.9 3.9 0 0 1 5.69 1.4zm-7.61-4.63a3.88 3.88 0 0 1 2.48.9l-.13.08-4.14 2.39a.86.86 0 0 0-.43.75v5.85l-1.75-1.01a.08.08 0 0 1-.04-.07V7.95a3.9 3.9 0 0 1 4.01-4.14zM12 13.73l-2.48-1.43 2.48-1.43 2.48 1.43L12 13.73z" />
+      </svg>
+    );
+  }
+  if (company === "google") {
+    // Four-point star, as in the Gemini mark.
+    return (
+      <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 1.5c.5 5.6 4.9 10 10.5 10.5-5.6.5-10 4.9-10.5 10.5-.5-5.6-4.9-10-10.5-10.5C7.1 11.5 11.5 7.1 12 1.5z" />
       </svg>
     );
   }
@@ -175,6 +201,37 @@ function ChatWorkspaceContent() {
   const [styleSubmenuOpen, setStyleSubmenuOpen] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileItem[]>([]);
   const [researchSidebarOpen, setResearchSidebarOpen] = useState(false);
+  // Sources added in research mode stay attached to the chat, so every
+  // follow-up question in it is answered with them as context. Composer
+  // attachments (uploadedFiles) go with one message only.
+  // Kept per chat, so switching away and back keeps each chat's sources.
+  // A chat not yet created (no id until its first message) uses NEW_CHAT_KEY.
+  const [researchSourcesByChat, setResearchSourcesByChat] = useState<Record<string, ResearchSource[]>>({});
+  const [researchSourcesSessionId, setResearchSourcesSessionId] = useState(selectedSessionId);
+  if (researchSourcesSessionId !== selectedSessionId) {
+    setResearchSourcesSessionId(selectedSessionId);
+    setResearchSourcesByChat((prev) => {
+      const { [NEW_CHAT_KEY]: draft, ...rest } = prev;
+      // The new chat just got its id: its sources move with it.
+      if (researchSourcesSessionId === null && selectedSessionId !== null && draft?.length) {
+        return { ...rest, [selectedSessionId]: [...(rest[selectedSessionId] ?? []), ...draft] };
+      }
+      // Starting a new chat: it begins with no sources.
+      return selectedSessionId === null ? rest : prev;
+    });
+  }
+  const currentChatKey = selectedSessionId ?? NEW_CHAT_KEY;
+  const researchSources = useMemo(
+    () => researchSourcesByChat[currentChatKey] ?? [],
+    [researchSourcesByChat, currentChatKey]
+  );
+  const researchFileIds = useMemo(
+    () =>
+      researchSources
+        .filter((source) => source.status === "ready" && source.id)
+        .map((source) => source.id as string),
+    [researchSources]
+  );
   const plusMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLInputElement>(null);
@@ -207,8 +264,13 @@ function ChatWorkspaceContent() {
   }, []);
 
   // Models the server will accept for this user (null until loaded). The
-  // selector hides the rest, e.g. GPT 6 Luna when no OpenAI key is configured.
+  // selector hides the rest, e.g. Gemini when no Gemini API key is configured.
   const [offeredModelIds, setOfferedModelIds] = useState<Set<string> | null>(null);
+  // Which Gemini model the server offers (GEMINI_MODEL_ID), if any.
+  const geminiModelId = useMemo(
+    () => [...(offeredModelIds ?? [])].find((id) => id.toLowerCase().startsWith("gemini-")) ?? null,
+    [offeredModelIds]
+  );
   useEffect(() => {
     if (!isLoggedIn) return;
     let cancelled = false;
@@ -245,35 +307,25 @@ function ChatWorkspaceContent() {
       family: "default",
     },
     {
-      id: "claude-sonnet",
-      name: "Claude Sonnet 5.5",
-      shortName: "Sonnet 5.5",
-      description: "Next-gen reasoning, elite coding & complex analysis",
-      modelId: "us.anthropic.claude-sonnet-5-5",
-      badge: "Pro",
-      company: "anthropic",
-      family: "pro",
-    },
-    {
       id: "claude-haiku",
-      name: "Claude Haiku 5.5",
-      shortName: "Haiku 5.5",
-      description: "Ultra-fast response time for everyday learning",
-      modelId: "us.anthropic.claude-haiku-5-5",
+      name: "Claude Haiku 4.5",
+      shortName: "Haiku 4.5",
+      description: "Fast, capable answers for everyday learning",
+      modelId: "us.anthropic.claude-haiku-4-5-20251001-v1:0" as string | null,
       badge: "Fast",
       company: "anthropic",
       family: "fast",
     },
-    {
-      id: "gpt-6-luna",
-      name: "GPT-6 Luna",
-      shortName: "GPT-6 Luna",
-      description: "OpenAI's efficient GPT-6 model for quick, focused answers",
-      modelId: "us.openai.gpt-6-luna",
-      badge: "Luna",
-      company: "openai",
-      family: "pro",
-    },
+    ...(geminiModelId ? [{
+      id: "gemini",
+      name: geminiLabel(geminiModelId),
+      shortName: geminiLabel(geminiModelId),
+      description: "Google's Gemini model, fast with a long context",
+      modelId: geminiModelId as string | null,
+      badge: "Google",
+      company: "google",
+      family: "fast",
+    }] : []),
     ...(isAdmin ? [{
       id: "claude-opus",
       name: "Claude Opus 4",
@@ -430,29 +482,15 @@ function ChatWorkspaceContent() {
       }));
       setUploadedFiles((prev) => [...prev, ...pendingItems]);
 
-      const apiBaseUrl = getApiBaseUrl();
       for (const file of fileList) {
-        const formData = new FormData();
-        formData.append("file", file);
         try {
-          const response = await fetch(`${apiBaseUrl}/chat/uploads`, {
-            method: "POST",
-            credentials: "include",
-            body: formData,
-          });
-          const payload = (await response.json().catch(() => ({}))) as {
-            preview?: { id?: string; file_name?: string };
-            detail?: string;
-          };
-          if (!response.ok) {
-            throw new Error(payload.detail || "Upload failed");
-          }
+          const preview = await postChatUpload(file);
           setUploadedFiles((prev) =>
             prev.map((item) =>
               item.file === file
                 ? {
                     ...item,
-                    id: payload.preview?.id,
+                    id: preview.id,
                     status: "ready",
                   }
                 : item
@@ -491,20 +529,97 @@ function ChatWorkspaceContent() {
     setUploadedFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // Handle adding files from research sidebar
-  const handleResearchFilesAdded = useCallback(
-    async (files: File[]) => {
-      await uploadFiles(files);
+  // Source keys are unique across chats, so an upload that finishes after
+  // the user switched chats still updates the chat it was added to.
+  const updateResearchSource = useCallback((key: string, patch: Partial<ResearchSource>) => {
+    setResearchSourcesByChat((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([chat, sources]) => [
+          chat,
+          sources.map((source) => (source.key === key ? { ...source, ...patch } : source)),
+        ])
+      )
+    );
+  }, []);
+
+  const addResearchSources = useCallback(
+    (added: ResearchSource[]) => {
+      setResearchSourcesByChat((prev) => ({
+        ...prev,
+        [currentChatKey]: [...(prev[currentChatKey] ?? []), ...added],
+      }));
     },
-    [uploadFiles]
+    [currentChatKey]
   );
 
-  // Handle URL submission from research sidebar
-  const handleResearchUrlSubmit = useCallback((url: string) => {
-    // For now, add the URL as a message context - could be expanded later
-    console.log("Research URL submitted:", url);
-    // Close the sidebar after URL submission
+  // Files added in the research sidebar become sources for the whole chat.
+  const handleResearchFilesAdded = useCallback(
+    async (files: File[]) => {
+      if (!token) return;
+      const added = files.map((file) => ({ file, key: newResearchSourceKey() }));
+      addResearchSources(
+        added.map(({ file, key }): ResearchSource => ({ key, name: file.name, kind: "file", status: "adding" }))
+      );
+      for (const { file, key } of added) {
+        try {
+          const preview = await postChatUpload(file);
+          if (!preview.id) throw new Error("Upload failed");
+          updateResearchSource(key, { id: preview.id, status: "ready" });
+        } catch (err) {
+          updateResearchSource(key, {
+            status: "error",
+            error: err instanceof Error ? err.message : "Upload failed",
+          });
+        }
+      }
+    },
+    [token, addResearchSources, updateResearchSource]
+  );
+
+  // A link or YouTube video added in the research sidebar: the backend reads
+  // the page (or transcript) and stores its text; its id then goes with every
+  // message in this chat.
+  const handleResearchUrlSubmit = useCallback(
+    async (url: string) => {
+      if (!token) return;
+      const kind = isYouTubeUrl(url) ? "youtube" : "webpage";
+      const key = newResearchSourceKey();
+      addResearchSources([{ key, name: url, kind, status: "adding" }]);
+      try {
+        const result = await postJSON<{ preview?: { id?: string; file_name?: string; title?: string } }>({
+          path: kind === "youtube" ? "/research/upload/youtube" : "/research/upload/url",
+          body: { url },
+          token,
+          timeoutMs: 60000,
+        });
+        const preview = result.preview;
+        if (!preview?.id) throw new Error("Couldn't read that link");
+        updateResearchSource(key, {
+          id: preview.id,
+          name: preview.file_name || preview.title || url,
+          status: "ready",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Couldn't read that link";
+        updateResearchSource(key, { status: "error", error: message });
+        toast.error(message);
+      }
+    },
+    [token, addResearchSources, updateResearchSource]
+  );
+
+  const handleRemoveResearchSource = useCallback((key: string) => {
+    setResearchSourcesByChat((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([chat, sources]) => [chat, sources.filter((source) => source.key !== key)])
+      )
+    );
+  }, []);
+
+  const handleResearchToolSelect = useCallback((prompt: string) => {
+    setComposerText(prompt);
     setResearchSidebarOpen(false);
+    composerRef.current?.focus();
   }, []);
 
   // Fetch feedback when session changes
@@ -627,9 +742,10 @@ function ChatWorkspaceContent() {
         previewUrl: isImage ? URL.createObjectURL(f.file) : undefined,
       };
     });
-    const uploadedFileIds = readyFiles
-      .map((item) => item.id)
-      .filter((id): id is string => Boolean(id));
+    const uploadedFileIds = [
+      ...readyFiles.map((item) => item.id).filter((id): id is string => Boolean(id)),
+      ...researchFileIds,
+    ];
 
     const userMessage: ChatMessageDTO = {
       role: "user",
@@ -669,7 +785,7 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: attachments.length > 0,
+            uploaded_only: uploadedFileIds.length > 0,
             uploaded_file_ids: uploadedFileIds.length > 0 ? uploadedFileIds : undefined,
             attachments: attachments.length > 0
               ? attachments.map(({ name, ext, isImage }) => ({ name, ext, isImage }))
@@ -980,10 +1096,8 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: uploadedFiles.length > 0,
-            uploaded_file_ids: uploadedFiles
-              .map((item) => item.id)
-              .filter((id): id is string => Boolean(id)),
+            uploaded_only: researchFileIds.length > 0,
+            uploaded_file_ids: researchFileIds.length > 0 ? researchFileIds : undefined,
           }),
           signal: controller.signal,
         }
@@ -1103,7 +1217,7 @@ function ChatWorkspaceContent() {
       setIsStreaming(false);
       setIsEditSending(false);
     }
-  }, [token, selectedSessionId, isStreaming, isEditSending, refreshSessions]);
+  }, [token, selectedSessionId, isStreaming, isEditSending, refreshSessions, researchFileIds]);
 
   // Handle regenerating a response (Try Again)
   const handleRegenerateMessage = useCallback(async (messageIndex: number) => {
@@ -1157,10 +1271,8 @@ function ChatWorkspaceContent() {
             response_style: selectedStyle,
             course_id: activeCourseId,
             learning_mode: learningMode,
-            uploaded_only: uploadedFiles.length > 0,
-            uploaded_file_ids: uploadedFiles
-              .map((item) => item.id)
-              .filter((id): id is string => Boolean(id)),
+            uploaded_only: researchFileIds.length > 0,
+            uploaded_file_ids: researchFileIds.length > 0 ? researchFileIds : undefined,
           }),
           signal: controller.signal,
         }
@@ -1271,7 +1383,7 @@ function ChatWorkspaceContent() {
       setIsStreaming(false);
       setRegeneratingMessageIndex(null);
     }
-  }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions]);
+  }, [token, selectedSessionId, isStreaming, activeSession, currentModel.modelId, refreshSessions, researchFileIds]);
 
   // Persistent mic permission ref - once granted, stays for the session
   const micPermissionGranted = useRef(false);
@@ -1980,7 +2092,9 @@ function ChatWorkspaceContent() {
         onClose={() => setResearchSidebarOpen(false)}
         onFilesAdded={handleResearchFilesAdded}
         onUrlSubmit={handleResearchUrlSubmit}
-        activeSourceCount={uploadedFiles.length}
+        onRemoveSource={handleRemoveResearchSource}
+        onToolSelect={handleResearchToolSelect}
+        sources={researchSources}
       />
     </div>
   );
@@ -2174,7 +2288,7 @@ function ChatBubble({
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
             {message.model_used && !message.agent && (
                 (() => {
-                  const usedName = MODEL_DISPLAY_NAMES[message.model_used] || message.model_used;
+                  const usedName = modelDisplayName(message.model_used);
                   const requested = message.model_requested;
                   const fellBack = Boolean(requested && requested !== message.model_used);
                   const modelIdLower = (message.model_used || "").toLowerCase();
@@ -2184,6 +2298,8 @@ function ChatBubble({
                     ? "anthropic"
                     : modelIdLower.includes("gpt") || modelIdLower.includes("luna")
                     ? "openai"
+                    : modelIdLower.includes("gemini")
+                    ? "google"
                     : "auto";
                   return (
                     <span
@@ -2193,11 +2309,11 @@ function ChatBubble({
                           ? "bg-warning-bg text-warning border-warning/30"
                           : "bg-primary-bg text-primary border-primary/20",
                       ].join(" ")}
-                      title={fellBack ? `${MODEL_DISPLAY_NAMES[requested!] || requested} was unavailable, so ${usedName} answered.` : undefined}
+                      title={fellBack ? `${modelDisplayName(requested!)} was unavailable, so ${usedName} answered.` : undefined}
                     >
                       <LLMCompanyIcon company={comp} className="h-3 w-3" />
                       {fellBack
-                        ? `${MODEL_DISPLAY_NAMES[requested!] || requested} unavailable · answered by ${usedName}`
+                        ? `${modelDisplayName(requested!)} unavailable · answered by ${usedName}`
                         : `via ${usedName}`}
                     </span>
                   );
@@ -2876,6 +2992,44 @@ const MODE_STARTERS: Record<LearningMode, string[]> = {
     "What should I review before the exam?",
   ],
 };
+
+
+// Research sources of a chat that has no id yet (before its first message).
+const NEW_CHAT_KEY = "";
+
+let researchSourceCounter = 0;
+function newResearchSourceKey(): string {
+  researchSourceCounter += 1;
+  return `source-${Date.now()}-${researchSourceCounter}`;
+}
+
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\.|^m\./, "");
+    return host === "youtube.com" || host === "youtu.be" || host.endsWith(".youtube.com");
+  } catch {
+    return false;
+  }
+}
+
+// Uploads one file for chat use; the returned id goes in uploaded_file_ids.
+async function postChatUpload(file: File): Promise<{ id?: string; file_name?: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${getApiBaseUrl()}/chat/uploads`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  const payload = (await response.json().catch(() => ({}))) as {
+    preview?: { id?: string; file_name?: string };
+    detail?: string;
+  };
+  if (!response.ok) {
+    throw new Error(payload.detail || "Upload failed");
+  }
+  return payload.preview ?? {};
+}
 
 export default function ChatWorkspace() {
   return (

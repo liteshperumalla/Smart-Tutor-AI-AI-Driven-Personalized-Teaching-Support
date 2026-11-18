@@ -378,7 +378,9 @@ class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "gemini-2.5-flash")
+    # Also the Gemini model offered in the chat selector when GEMINI_API_KEY
+    # is set (backend/chat_models.py), on any provider.
+    GEMINI_MODEL_ID = os.getenv("GEMINI_MODEL_ID", "") or "gemini-3.8-flash"
     # Override the primary provider's base URL / key (required for openai_compat).
     LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
     LLM_API_KEY = os.getenv("LLM_API_KEY", "")

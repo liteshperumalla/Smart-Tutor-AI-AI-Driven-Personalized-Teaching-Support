@@ -20,14 +20,27 @@ class ChatModel:
 
 
 # Bedrock US cross-Region inference profile IDs, from the AWS model cards.
-# All of them run on the app's Bedrock credentials (GPT-6 Luna included).
+# They run on the app's Bedrock credentials.
 CHAT_MODELS: List[ChatModel] = [
     ChatModel("us.meta.llama3-3-70b-instruct-v1:0", "Llama 3.3 70B"),
-    ChatModel("us.anthropic.claude-sonnet-5-5", "Claude Sonnet 5.5"),
-    ChatModel("us.anthropic.claude-haiku-5-5", "Claude Haiku 5.5"),
-    ChatModel("us.openai.gpt-6-luna", "GPT-6 Luna"),
+    ChatModel("us.anthropic.claude-haiku-4-5-20251001-v1:0", "Claude Haiku 4.5"),
     ChatModel("us.anthropic.claude-opus-4-20250514-v1:0", "Claude Opus 4", admin_only=True),
 ]
+
+
+def gemini_label(model_id: str) -> str:
+    """"gemini-3.8-flash" -> "Gemini 3.8 Flash"."""
+    return " ".join(part if part[:1].isdigit() else part.capitalize() for part in model_id.split("-"))
+
+
+def _gemini_models() -> List[ChatModel]:
+    """Gemini, called through Google's Gemini API, whatever the main
+    provider. Offered only when GEMINI_API_KEY is set."""
+    from backend.config import config
+
+    if not (config.GEMINI_API_KEY and config.GEMINI_MODEL_ID):
+        return []
+    return [ChatModel(config.GEMINI_MODEL_ID, gemini_label(config.GEMINI_MODEL_ID))]
 
 
 
@@ -43,7 +56,7 @@ def _catalog() -> List[ChatModel]:
     from backend.config import config
 
     if config.LLM_PROVIDER == "bedrock":
-        return CHAT_MODELS
+        return CHAT_MODELS + _gemini_models()
     models: List[ChatModel] = []
 
     def add(model_id: str, label: str, admin_only: bool = False) -> None:
@@ -57,6 +70,8 @@ def _catalog() -> List[ChatModel]:
         add(model_id.strip(), label.strip(), admin_only)
     for model_id in (config.LLM_MODEL_ID, config.LLM_ROUTING_COMPLEX_MODEL, config.LLM_ROUTING_SIMPLE_MODEL):
         add(model_id, _default_label(model_id))
+    for model in _gemini_models():
+        add(model.model_id, model.label)
     return models
 
 

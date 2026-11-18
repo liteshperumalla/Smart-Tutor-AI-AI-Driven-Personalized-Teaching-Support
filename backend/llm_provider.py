@@ -53,7 +53,7 @@ class LLMFactory:
         Raises:
             ValueError: If unknown provider
         """
-        provider = provider or config.LLM_PROVIDER
+        provider = provider or provider_for_model(kwargs.get("model_id"))
 
         logger.info(f"Creating LLM with provider: {provider}")
 
@@ -248,6 +248,18 @@ _OPENAI_COMPAT_LLMS = (
 )
 
 
+def provider_for_model(model_id: Optional[str]) -> str:
+    """The provider that serves ``model_id``.
+
+    Gemini models go to Google's Gemini API whatever LLM_PROVIDER is, so a
+    student can pick Gemini in chat on a Bedrock deployment. Everything
+    else uses the configured provider.
+    """
+    if model_id and model_id.lower().startswith("gemini-"):
+        return LLMProvider.GEMINI.value
+    return config.LLM_PROVIDER
+
+
 def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = None) -> Any:
     """Direct (non-LlamaIndex) LLM client for the active provider.
 
@@ -256,7 +268,7 @@ def create_llm_client(model_id: Optional[str] = None, provider: Optional[str] = 
     otherwise ``OpenAICompatLLM`` (OpenRouter, Groq, Gemini, Ollama, any OpenAI-compatible
     endpoint). Use this instead of constructing ``BedrockLLM`` directly.
     """
-    provider = (provider or config.LLM_PROVIDER).lower()
+    provider = (provider or provider_for_model(model_id)).lower()
     if provider == LLMProvider.BEDROCK.value:
         from backend.bedrock_llm import BedrockLLM
 

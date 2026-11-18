@@ -175,8 +175,8 @@ class TestChatSessionTitleLogic:
     def test_make_session_title_rejects_empty_response_placeholder(self, monkeypatch):
         monkeypatch.setattr(
             utils,
-            "generate_response_with_sources",
-            lambda prompt: ("Empty Response", []),
+            "_generate_title_text",
+            lambda prompt: "Empty Response",
         )
 
         title = utils.make_session_title(
@@ -188,6 +188,45 @@ class TestChatSessionTitleLogic:
 
         assert title == "What Is The Main Topic"
 
+    def test_make_session_title_does_not_go_through_rag(self, monkeypatch):
+        # The RAG path finds no course material for a title prompt and returns
+        # the "no relevant material" reply, which used to become the title.
+        def _no_rag(*args, **kwargs):
+            raise AssertionError("title generation must not use the RAG answer path")
+
+        monkeypatch.setattr(utils, "generate_response_with_sources", _no_rag)
+        monkeypatch.setattr(utils, "_generate_title_text", lambda prompt: "Tokenization in NLP")
+
+        title = utils.make_session_title(
+            [["user", "What is tokenization"], ["assistant", "Tokenization splits text."]]
+        )
+
+        assert title == "Tokenization In Nlp"
+
+    def test_make_session_title_rejects_no_material_reply_and_keeps_apostrophes(self, monkeypatch):
+        monkeypatch.setattr(utils, "_generate_title_text", lambda prompt: utils.NO_RELEVANT_MATERIAL_RESPONSE)
+
+        title = utils.make_session_title(
+            [["user", "What's tokenization? Explain it"], ["assistant", "..."]]
+        )
+
+        assert title == "What's Tokenization Explain It"
+
+    def test_title_from_no_material_reply_is_regenerated(self, monkeypatch):
+        session = ChatSession(
+            id="session-4",
+            title="I Couldn'T Find Anything In",
+            messages=[ChatMessage(role="user", content="What is tokenization")],
+        )
+        monkeypatch.setattr(
+            "backend.services.chat_service.make_session_title",
+            lambda history: "Tokenization Basics",
+        )
+
+        ChatService().append_message(session, ChatMessage(role="assistant", content="Tokens are units."))
+
+        assert session.title == "Tokenization Basics"
+
     def test_make_session_title_rejects_leaked_rag_error_string(self, monkeypatch):
         # The RAG fallback returns "⚠️ Error processing your query: …" without
         # raising. The leading "⚠️ " glyph must not defeat the error-prefix
@@ -195,8 +234,8 @@ class TestChatSessionTitleLogic:
         # where a chat was titled "⚠️ Error Processing Your Query:").
         monkeypatch.setattr(
             utils,
-            "generate_response_with_sources",
-            lambda prompt: ("⚠️ Error processing your query: boom", []),
+            "_generate_title_text",
+            lambda prompt: "⚠️ Error processing your query: boom",
         )
 
         title = utils.make_session_title(

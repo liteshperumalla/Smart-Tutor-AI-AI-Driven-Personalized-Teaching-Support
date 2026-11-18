@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthToken } from "@/hooks/useAuthToken";
@@ -86,6 +87,9 @@ export function SiteChrome({
   const [hasHydrated, setHasHydrated] = useState(false);
   const [recentSessions, setRecentSessions] = useState<ChatSessionDTO[]>([]);
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null);
+  // Where the open chat menu sits: it renders in a portal (the sidebar nav
+  // clips overflow), positioned from its button.
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
   const [shareStatus, setShareStatus] = useState<{ sharing: boolean; message: string | null; shareUrl: string | null }>({ sharing: false, message: null, shareUrl: null });
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [deleteModalSession, setDeleteModalSession] = useState<ChatSessionDTO | null>(null);
@@ -203,9 +207,18 @@ export function SiteChrome({
       if (menuContainer) return;
       setMenuSessionId(null);
     }
+    // The menu is positioned from its button, so close it rather than let it
+    // drift when the sidebar scrolls or the window resizes.
+    function handleMove() {
+      setMenuSessionId(null);
+    }
     document.addEventListener("mousedown", handleClick);
+    window.addEventListener("resize", handleMove);
+    window.addEventListener("scroll", handleMove, true);
     return () => {
       document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("resize", handleMove);
+      window.removeEventListener("scroll", handleMove, true);
     };
   }, [menuSessionId]);
 
@@ -216,7 +229,16 @@ export function SiteChrome({
   const showThemeToggle = themeHasHydrated;
 
   const sessionMenuPanelClass =
-    "absolute right-0 top-full z-[60] mt-1 w-48 rounded-md border border-line bg-surface/95 p-1.5 text-foreground shadow-lg backdrop-blur animate-scale-in";
+    "fixed z-[70] w-48 rounded-md border border-line bg-surface/95 p-1.5 text-foreground shadow-lg backdrop-blur animate-scale-in";
+
+  // Open below the button, or above it when the menu wouldn't fit below.
+  const SESSION_MENU_HEIGHT = 190;
+  const sessionMenuPosition = (anchor: DOMRect): CSSProperties => {
+    const right = Math.max(8, window.innerWidth - anchor.right);
+    return window.innerHeight - anchor.bottom < SESSION_MENU_HEIGHT + 8
+      ? { right, bottom: window.innerHeight - anchor.top + 4 }
+      : { right, top: anchor.bottom + 4 };
+  };
 
   const sessionMenuItemClass =
     "flex w-full items-center gap-2 rounded-sm px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-2";
@@ -539,7 +561,7 @@ export function SiteChrome({
               {displayedSessions.length === 0 ? (
                 <p className="px-3 py-1 text-xs text-muted">No chats yet. Start one above.</p>
               ) : (
-                <ul className={`-mx-1 min-h-0 flex-1 space-y-1 px-1 pb-2 ${menuSessionId ? "overflow-visible" : "overflow-y-auto"}`}>
+                <ul className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1 pb-2">
                   {displayedSessions.map((session) => {
                     const title = session.title?.trim() || "New chat";
                     const current = pathname === "/chat" && activeSessionId === session.id;
@@ -565,7 +587,14 @@ export function SiteChrome({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setMenuSessionId(menuOpen ? null : session.id)}
+                            onClick={(event) => {
+                              if (menuOpen) {
+                                setMenuSessionId(null);
+                                return;
+                              }
+                              setMenuAnchor(event.currentTarget.getBoundingClientRect());
+                              setMenuSessionId(session.id);
+                            }}
                             className={[
                               "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-sm text-muted transition hover:bg-surface-2 hover:text-foreground",
                               // Visible on hover/focus, or always on touch screens.
@@ -577,8 +606,8 @@ export function SiteChrome({
                             <MoreHorizontal className="h-4 w-4" />
                           </button>
                         </div>
-                        {menuOpen && (
-                          <div className={sessionMenuPanelClass} role="menu">
+                        {menuOpen && menuAnchor && createPortal(
+                          <div className={sessionMenuPanelClass} style={sessionMenuPosition(menuAnchor)} role="menu" data-session-menu>
                             <button type="button" role="menuitem" onClick={() => handlePinSession(session)} className={sessionMenuItemClass}>
                               <Pin className={sessionMenuIconClass} />
                               <span>{session.is_pinned ? "Unpin" : "Pin chat"}</span>
@@ -596,7 +625,8 @@ export function SiteChrome({
                               <Trash2 className={sessionMenuDeleteIconClass} />
                               <span>Delete</span>
                             </button>
-                          </div>
+                          </div>,
+                          document.body
                         )}
                       </li>
                     );

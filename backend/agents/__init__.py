@@ -91,8 +91,13 @@ def run_agent_pipeline(
     model_id: Optional[str] = None,
     source_prefixes: Optional[List[str]] = None,
     answer_instructions: Optional[str] = None,
+    uploaded_context: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
     """Run the full multi-agent pipeline and return (stream_generator, sources).
+
+    ``uploaded_context`` holds excerpts from the student's own sources (files,
+    links, transcripts) for this chat; they go into the agents' context ahead
+    of the course material.
 
     Steps:
         1. Load student profile (quiz_results + Neo4j)
@@ -114,7 +119,7 @@ def run_agent_pipeline(
     try:
         return _run_agent_pipeline(
             main_trace, start_time, query, user_id, session_id,
-            model_id, source_prefixes, answer_instructions,
+            model_id, source_prefixes, answer_instructions, uploaded_context,
         )
     except Exception as exc:
         # The stream callbacks end the root on the normal paths; a failure
@@ -132,6 +137,7 @@ def _run_agent_pipeline(
     model_id: Optional[str],
     source_prefixes: Optional[List[str]],
     answer_instructions: Optional[str],
+    uploaded_context: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[Generator[str, None, None], List[Dict[str, Any]]]:
     # ── 1. Student profile ────────────────────────────────────────
     from backend.agents.profile import load_student_profile
@@ -143,6 +149,8 @@ def _run_agent_pipeline(
     retrieval_started_at = time.time()
     with traced_span(main_trace, "agent-rag-retrieval", input={"query": query}) as rag_span:
         context_str, sources = _retrieve_rag_context(query, source_prefixes=source_prefixes)
+    if uploaded_context:
+        context_str, sources = _merge_uploaded_context(uploaded_context, context_str, sources)
     retrieval_elapsed = time.time() - retrieval_started_at
 
     # ── 3. Build state + classify intent ─────────────────────────
@@ -428,6 +436,38 @@ def _log_post_stream(
 
 
 # ── RAG context helper ───────────────────────────────────────────
+
+def _merge_uploaded_context(
+    uploaded_context: List[Dict[str, Any]],
+    context_str: str,
+    sources: List[Dict[str, Any]],
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Put the student's uploaded excerpts ahead of the course context. When
+    the course had nothing relevant, they replace the NO_COURSE_MATERIAL
+    marker, so the agent answers from them instead of abstaining."""
+    parts = []
+    uploaded_sources: List[Dict[str, Any]] = []
+    for i, item in enumerate(uploaded_context, 1):
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        name = item.get("source_file") or "Uploaded source"
+        parts.append(f"[Uploaded source {i}: {name}]\n{text}")
+        uploaded_sources.append({
+            "file_name": name,
+            "file_path": None,
+            "source_url": None,
+            "chunk_text": text[:300] + "..." if len(text) > 300 else text,
+            "score": item.get("score"),
+            "is_uploaded": True,
+        })
+    if not parts:
+        return context_str, sources
+    uploaded = "\n\n".join(parts)
+    if context_str in (NO_COURSE_MATERIAL, "No context available.", "Context retrieval failed."):
+        return uploaded, uploaded_sources
+    return f"{uploaded}\n\n{context_str}", uploaded_sources + list(sources)
+
 
 def _retrieve_rag_context(query: str, source_prefixes: Optional[List[str]] = None) -> Tuple[str, List[Dict[str, Any]]]:
     """Run the existing S3/Chroma retrieval pipeline and return (context_str, sources)."""
