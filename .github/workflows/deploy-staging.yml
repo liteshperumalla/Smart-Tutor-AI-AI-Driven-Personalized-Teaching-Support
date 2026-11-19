@@ -504,6 +504,13 @@ jobs:
             docker_load_backend_image
             docker image inspect "$BACKEND_IMAGE" >/dev/null
 
+            # The image runs as appuser (uid 1001); the data dirs were created
+            # by the SSH user, so hand them over or the app can't write
+            # logs/ (e.g. the evaluation run log).
+            docker run --rm --user root --entrypoint chown \
+              -v "${STAGING_DATA_DIR}:/staging-data" \
+              "$BACKEND_IMAGE" -R 1001:1001 /staging-data/logs /staging-data/user_data /staging-data/chroma_db
+
             echo "=== Starting candidate staging backend container ==="
             docker stop "${STAGING_CANDIDATE_CONTAINER}" 2>/dev/null || true
             docker rm "${STAGING_CANDIDATE_CONTAINER}" 2>/dev/null || true
