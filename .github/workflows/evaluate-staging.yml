@@ -253,10 +253,12 @@ jobs:
           MAX_DROP: ${{ inputs.max_drop }}
         run: |
           set -uo pipefail
+          # Actions runs this with bash -e; capture the exit status instead of
+          # stopping on it, so a FAIL still prints the table and sets the output.
+          status=0
           python3 backend/scripts/compare_evaluations.py \
             eval-results/baseline.json eval-results/candidate.json --max-drop "${MAX_DROP}" \
-            > eval-results/comparison.txt 2>&1
-          status=$?
+            > eval-results/comparison.txt 2>&1 || status=$?
           cat eval-results/comparison.txt
           echo "status=${status}" >> "$GITHUB_OUTPUT"
           exit "${status}"
