@@ -229,6 +229,11 @@ jobs:
           set -euo pipefail
           remote() { ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -i "${RUNNER_TEMP}/ssh/key" "${EC2_USER}@${EC2_HOST}" "$@"; }
 
+          # The evaluation appends to logs/rag_evaluation_runs.jsonl, and the
+          # app runs as uid 1001. Staging deployed before the deploy started
+          # chowning its data dirs has logs/ owned by the SSH user.
+          remote "docker exec --user root ${STAGING_CONTAINER} chown -R 1001:1001 /app/logs"
+
           if [ "${RUN_BASELINE}" = "true" ]; then
             echo "=== Baseline: Bedrock + Titan (${LIMIT} questions) ==="
             remote "docker exec -e LLM_PROVIDER=bedrock -e EMBEDDING_PROVIDER=bedrock ${STAGING_CONTAINER} python -m backend.scripts.run_scheduled_evaluation --limit ${LIMIT} --source phase2-baseline" \
