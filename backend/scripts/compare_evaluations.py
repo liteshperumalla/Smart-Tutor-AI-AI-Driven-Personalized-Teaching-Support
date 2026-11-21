@@ -8,8 +8,8 @@ with the same EVAL_JUDGE_PROVIDER for both so the scores are comparable.
 
 Exits 1 if any metric drops by more than ``--max-drop`` (absolute, on the
 0-1 scale), so it can gate a cutover in CI. Exits 2 if a run can't be
-compared: a file holds no evaluation result or no quality_summary, or the
-judge scored every metric 0.
+compared: a file holds no evaluation result or no quality_summary, or every
+judge-scored metric is 0.
 
     python -m backend.scripts.compare_evaluations baseline.json candidate.json --max-drop 0.05
 """
@@ -28,6 +28,9 @@ METRICS = (
     "avg_context_precision",
     "avg_correctness",
 )
+# Scored by the LLM judge; avg_context_precision is computed from retrieval
+# scores without it, so it stays non-zero when the judge fails.
+JUDGED_METRICS = tuple(m for m in METRICS if m != "avg_context_precision")
 
 
 class UnusableRun(Exception):
@@ -55,7 +58,16 @@ def load_summary(path: str) -> dict:
     summary = payload.get("quality_summary")
     if not summary:
         raise UnusableRun(f"{path}: no quality_summary ({payload.get('message') or payload.get('error') or 'empty run'})")
-    return {**summary, "avg_latency": payload.get("avg_latency")}
+    return {**summary, "avg_latency": payload.get("avg_latency"), "judge_error": _judge_error(payload)}
+
+
+def _judge_error(payload: dict) -> str | None:
+    """The first per-question judge failure reason, if the run recorded one."""
+    for result in payload.get("individual_results") or []:
+        reasoning = str(result.get("reasoning") or "")
+        if "failed" in reasoning.lower():
+            return reasoning[:300]
+    return None
 
 
 def compare(baseline: dict, candidate: dict, max_drop: float) -> tuple[list[tuple], bool]:
@@ -93,11 +105,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for name, summary in (("baseline", baseline), ("candidate", candidate)):
         # evaluate_quality scores 0.0 when the judge call fails (no key, a
-        # 429), so an all-zero run means the judge didn't run, not bad answers.
-        if all(not summary.get(metric) for metric in METRICS):
+        # 429), so all judged metrics at 0 means the judge didn't run, not
+        # bad answers.
+        if all(not summary.get(metric) for metric in JUDGED_METRICS):
+            reason = summary.get("judge_error")
             print(
-                f"ERROR: every {name} metric is 0 or missing; the judge most likely failed "
-                f"(check EVAL_JUDGE_PROVIDER, its API key and rate limits) and the run can't be compared.",
+                f"ERROR: every {name} judge-scored metric is 0 or missing; the judge most likely failed "
+                f"(check EVAL_JUDGE_PROVIDER, its API key and rate limits) and the run can't be compared."
+                + (f"\nFirst judge error: {reason}" if reason else ""),
                 file=sys.stderr,
             )
             return 2

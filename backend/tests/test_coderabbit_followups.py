@@ -31,6 +31,23 @@ class TestQualityGate:
         assert main([_summary(tmp_path / "b", **zeros), _summary(tmp_path / "c", **GOOD)]) == 2
         assert "judge most likely failed" in capsys.readouterr().err
 
+    def test_judge_failure_with_retrieval_scores_cannot_be_compared(self, tmp_path, capsys):
+        # Staging Evaluation run #6: the judge failed on every question, but
+        # context precision (no judge) was non-zero, so the run "passed".
+        from backend.scripts.compare_evaluations import main
+
+        judged_zero = {k: (0.64 if k == "context_precision" else 0.0) for k in GOOD}
+        base = tmp_path / "b"
+        payload = {
+            "quality_summary": {f"avg_{k}": v for k, v in judged_zero.items()},
+            "individual_results": [{"reasoning": "Evaluation failed: 429 quota exceeded"}],
+        }
+        base.write_text(json.dumps(payload) + "\n")
+        assert main([str(base), _summary(tmp_path / "c", **GOOD)]) == 2
+        err = capsys.readouterr().err
+        assert "judge most likely failed" in err
+        assert "429 quota exceeded" in err
+
     def test_run_without_a_result_cannot_be_compared(self, tmp_path, capsys):
         from backend.scripts.compare_evaluations import main
 
